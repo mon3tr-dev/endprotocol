@@ -1,3 +1,5 @@
+import { isWindowsPlatform } from "@/utils/platform";
+
 export type LauncherViewMode = "data" | "game";
 
 const STORAGE_KEY = "launcher_view_mode";
@@ -5,6 +7,10 @@ const STORAGE_KEY = "launcher_view_mode";
 let currentMode: LauncherViewMode = (() => {
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
+    if (stored === "game" && !isWindowsPlatform()) {
+      localStorage.setItem(STORAGE_KEY, "data");
+      return "data";
+    }
     if (stored === "data" || stored === "game") return stored;
   } catch {}
   return "data";
@@ -21,10 +27,11 @@ export function getLauncherMode(): LauncherViewMode {
 }
 
 export function setLauncherMode(mode: LauncherViewMode) {
-  if (currentMode === mode) return;
-  currentMode = mode;
+  const nextMode = mode === "game" && !isWindowsPlatform() ? "data" : mode;
+  if (currentMode === nextMode) return;
+  currentMode = nextMode;
   try {
-    localStorage.setItem(STORAGE_KEY, mode);
+    localStorage.setItem(STORAGE_KEY, nextMode);
   } catch {}
   emit();
 }

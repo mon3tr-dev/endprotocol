@@ -3,9 +3,9 @@
 > 逐行精读源码生成。行号基于当前工作区版本，仅用于快速定位。
 
 ## `src/pages/settings.tsx`
-**文件职责**：应用「设置」路由页（`/settings`）的全部 UI 与状态管理。分 5 张卡片呈现通用偏好、游戏启动、外观、开发者模式开关、更新与关于信息，并负责把偏好写入配置服务（`configService`）或后端状态，附带三个确认对话框与更新对话框。
+**文件职责**：应用「设置」路由页（`/settings`）的全部 UI 与状态管理。呈现通用偏好、外观、开发者模式开关、更新与关于信息，并负责把偏好写入配置服务（`configService`）或后端状态，附带三个确认对话框与更新对话框；Windows 额外显示游戏启动设置卡，macOS/Linux 隐藏该卡。
 **导出**：`export default function SettingsPage()`（settings.tsx:41），仅此一个导出。
-**主要依赖**：`react-i18next`（`useTranslation`）、`@/components/ui/glass`（GlassAlertDialog/GlassButton/GlassCard/GlassSelect/GlassSkeleton/GlassSwitch）、`@/components/game-launch-settings`（`GameLaunchSettings`）、`@/components/appearance-settings`（`AppearanceSettings`）、`react`（useState/useEffect/useRef/useCallback）、`react-dom`（`createPortal`）、`@tauri-apps/api/core`（`invoke`）、`@tauri-apps/api/app`（`getVersion`/`getTauriVersion`/`getIdentifier`）、`@/utils/configService`（`getConfig`/`setConfig`）、`@/utils/roleDetailService`、`@/utils/roleDataService`、`@/utils/accountService`（`getAccounts`）、`@/components/ui/settings-row`（`SettingsDivider`）、`@/utils/updateService`（`fetchRemoteVersion`/`getRemoteVersion`/`subscribeRemoteVersion`/`getChannel`/`setChannel`/`getSource`/`setSource`/`initializeChannel`）、`@/components/ui/global-alert`（`pushGlobalAlert`）、`@/components/update-dialog`（`UpdateDialog`）。
+**主要依赖**：`react-i18next`（`useTranslation`）、`@/components/ui/glass`（GlassAlertDialog/GlassButton/GlassCard/GlassSelect/GlassSkeleton/GlassSwitch）、`@/components/game-launch-settings`（`GameLaunchSettings`）、`@/components/appearance-settings`（`AppearanceSettings`）、`react`（useState/useEffect/useRef/useCallback）、`react-dom`（`createPortal`）、`@tauri-apps/api/core`（`invoke`）、`@tauri-apps/api/app`（`getVersion`/`getTauriVersion`/`getIdentifier`）、`@/utils/configService`（`getConfig`/`setConfig`）、`@/utils/roleDetailService`、`@/utils/roleDataService`、`@/utils/accountService`（`getAccounts`）、`@/components/ui/settings-row`（`SettingsDivider`）、`@/utils/updateService`（`fetchRemoteVersion`/`getRemoteVersion`/`subscribeRemoteVersion`/`getChannel`/`setChannel`/`getSource`/`setSource`/`initializeChannel`）、`@/components/ui/global-alert`（`pushGlobalAlert`）、`@/components/update-dialog`（`UpdateDialog`）、`@/utils/platform`（`isWindowsPlatform`）。
 
 ### 内部结构总览
 | 区间 | 内容 |
@@ -24,7 +24,7 @@
 | settings.tsx:368-374 | `platformInfo` IIFE：按 UA 推断 Windows x64 / macOS / Linux |
 | settings.tsx:376-385 | 页头（`settings.title` + `common.managePreferences`） |
 | settings.tsx:387-708 | 通用设置卡 `#settings-general`：加载骨架屏 408-449；语言下拉 452-554（按钮 + portal 菜单）；切换刷新 558-582；懒加载 586-608；Wiki 预加载 612-636；关闭行为 641-680；托盘用户 685-705 |
-| settings.tsx:710-741 | 游戏启动设置卡 `#settings-game-launch`（整卡委托给 `GameLaunchSettings`，settings.tsx:739） |
+| settings.tsx:710-741 | Windows 上显示游戏启动设置卡 `#settings-game-launch`（整卡委托给 `GameLaunchSettings`，settings.tsx:739） |
 | settings.tsx:743-763 | 外观设置卡 `#settings-appearance`（整卡委托给 `AppearanceSettings`，settings.tsx:762） |
 | settings.tsx:765-819 | 开发者模式卡 `#settings-developer`：骨架屏 770-779，开关 797-815 |
 | settings.tsx:821-1337 | 更新与关于卡 `#settings-about`：应用头像/更新状态徽标 843-874；更新通道 878-948；更新源 952-1022；版本四宫格 1026-1070；发布日期 1072-1077；「更新到 vX」按钮 1079-1105；「检查更新」按钮 1107-1136；identifier 1140-1143；License 1147-1158；开源致谢列表（20 项）1162-1293；GitHub/License 链接 1297-1335 |

@@ -1,13 +1,19 @@
+#[cfg(windows)]
 use base64::Engine;
+#[cfg(windows)]
 use std::mem::size_of;
 use tauri::WebviewWindow;
+#[cfg(windows)]
 use tokio::time::{sleep, Duration};
+#[cfg(windows)]
 use windows_sys::Win32::Foundation::POINT;
+#[cfg(windows)]
 use windows_sys::Win32::Graphics::Gdi::{
     BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, DeleteDC, DeleteObject, GetDC, GetDIBits,
     GetMonitorInfoW, MonitorFromPoint, ReleaseDC, SelectObject, BITMAPINFO, BITMAPINFOHEADER,
     BI_RGB, DIB_RGB_COLORS, MONITORINFO, MONITOR_DEFAULTTONEAREST, SRCCOPY,
 };
+#[cfg(windows)]
 use windows_sys::Win32::UI::WindowsAndMessaging::GetCursorPos;
 
 #[derive(serde::Serialize)]
@@ -25,6 +31,7 @@ pub struct ScreenCapture {
 /// 1. 最小化窗口（保证截图里不含应用本身）
 /// 2. 截取鼠标所在屏幕
 /// 3. 还原窗口并全屏，前端在该全屏覆盖层上取色
+#[cfg(windows)]
 #[tauri::command]
 pub async fn capture_screen(window: WebviewWindow) -> Result<ScreenCapture, String> {
     let _ = window.minimize();
@@ -44,12 +51,14 @@ pub async fn capture_screen(window: WebviewWindow) -> Result<ScreenCapture, Stri
 }
 
 /// 取色完成或取消后退出全屏，还原窗口。
+#[cfg(windows)]
 #[tauri::command]
 pub fn finish_screen_pick(window: WebviewWindow) {
     let _ = window.set_fullscreen(false);
     let _ = window.set_focus();
 }
 
+#[cfg(windows)]
 fn capture_screen_sync() -> Result<ScreenCapture, String> {
     unsafe {
         let mut pt = POINT { x: 0, y: 0 };
@@ -149,3 +158,13 @@ fn capture_screen_sync() -> Result<ScreenCapture, String> {
         })
     }
 }
+
+#[cfg(not(windows))]
+#[tauri::command]
+pub async fn capture_screen(_window: WebviewWindow) -> Result<ScreenCapture, String> {
+    Err("Screen color picking is only supported on Windows".to_string())
+}
+
+#[cfg(not(windows))]
+#[tauri::command]
+pub fn finish_screen_pick(_window: WebviewWindow) {}

@@ -6,6 +6,7 @@ import { addMessage, updateMessage, removeMessage, removeMessagesByTag, type App
 import { pushGlobalAlert } from "@/components/ui/global-alert";
 import { getConfig, setConfig } from "./configService";
 import logger from "./logger";
+import { isWindowsPlatform } from "./platform";
 
 // ============================================================================
 // Types
@@ -42,6 +43,13 @@ export interface UpdateInfo {
   body?: string;
 }
 
+export interface ManualUpdate {
+  currentVersion: string;
+  version: string;
+  date?: string;
+  body?: string;
+}
+
 export interface UpdateCheckResult {
   available: boolean;
   update: UpdateInfo | null;
@@ -55,6 +63,7 @@ export interface UpdateCheckResult {
 interface GitHubRelease {
   tag_name: string;
   prerelease: boolean;
+  draft: boolean;
   body: string;
   published_at: string;
   assets: Array<{ name: string; browser_download_url: string }>;
@@ -80,7 +89,7 @@ const CHANGELOG_CACHE_KEY_PREFIX = "changelog_cache_";
 // State
 // ============================================================================
 
-let currentUpdate: Update | null = null;
+let currentUpdate: Update | ManualUpdate | null = null;
 let currentUpdateInfo: UpdateInfo | null = null;
 let isDownloading = false;
 let downloadProgress = 0;
@@ -94,8 +103,8 @@ let changelogCache: Map<string, ChangelogCacheEntry> = new Map();
 let status: UpdateStatus = "idle";
 let listeners: Array<() => void> = [];
 
-// Manual preview download state
-let manualDownloadUrl: string | null = null;
+// The updater plugin installs manual channel updates from this manifest endpoint.
+let manualUpdaterEndpoint: string | null = null;
 
 // ============================================================================
 // SemVer Helpers
@@ -194,6 +203,24 @@ async function fetchGitHubReleaseByTag(
   }
 }
 
+async function getLatestPreviewEndpoint(): Promise<string | null> {
+  const releases = await fetchGitHubReleases();
+  const latest = releases
+    .filter((release) => release.prerelease && !release.draft)
+    .map((release) => ({
+      release,
+      version: parseSemVer(stripVPrefix(release.tag_name)),
+    }))
+    .filter(
+      (item): item is { release: GitHubRelease; version: SemVer } =>
+        item.version !== null,
+    )
+    .sort((a, b) => compareSemVer(b.version, a.version))[0]?.release;
+
+  if (!latest) return null;
+  return `https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/download/${encodeURIComponent(latest.tag_name)}/latest.json`;
+}
+
 // ============================================================================
 // Changelog Cache
 // ============================================================================
@@ -267,7 +294,7 @@ async function fetchMirrorChangelogUrl(channel: UpdateChannel): Promise<string |
 // Resolve Release (Unified)
 // ============================================================================
 
-async function resolveRelease(): Promise<Update | null> {
+async function resolveRelease(): Promise<Update | ManualUpdate | null> {
   const channel = currentChannel;
   logger.info(`Resolving ${channel} release (source: ${currentSource})...`, "Updater");
 
@@ -301,11 +328,11 @@ async function resolveRelease(): Promise<Update | null> {
   return update;
 }
 
-async function resolvePreviewRelease(): Promise<Update | null> {
+async function resolvePreviewRelease(): Promise<Update | ManualUpdate | null> {
   const { getVersion } = await import("@tauri-apps/api/app");
   const localVersion = await getVersion();
   const localParsed = parseSemVer(localVersion);
-  manualDownloadUrl = null;
+  manualUpdaterEndpoint = null;
 
   if (!localParsed) {
     logger.error(`Failed to parse local version: ${localVersion}`, "Updater");
@@ -322,35 +349,31 @@ async function resolvePreviewRelease(): Promise<Update | null> {
       version: string;
       pub_date?: string;
       notes?: string;
-      platforms?: Record<string, { signature: string; url: string }>;
     } = JSON.parse(text);
     const stableVersion = parseSemVer(stableJson.version);
-    const stablePlatform = stableJson.platforms?.["windows-x86_64"];
 
     if (
       stableVersion &&
       stableVersion.prerelease.length === 0 &&
       compareSemVer(stableVersion, localParsed) > 0
     ) {
-      if (!stablePlatform?.url) {
-        logger.error(
-          `No download URL for windows-x86_64 in stable latest.json (${stableJson.version})`,
-          "Updater",
-        );
-      } else {
+      const stableUpdate = await invoke<{
+        version: string;
+        date?: string;
+        body?: string;
+      } | null>("check_update_endpoint", { endpoint: stableEndpoint });
+      if (stableUpdate) {
         logger.info(
           `Stable update available on preview channel: ${localVersion} → ${stableJson.version}`,
           "Updater",
         );
-        manualDownloadUrl = stablePlatform.url;
+        manualUpdaterEndpoint = stableEndpoint;
         return {
-          version: stableJson.version,
+          version: stableUpdate.version,
           currentVersion: localVersion,
-          date: stableJson.pub_date,
-          body: stableJson.notes,
-          download: async () => {},
-          install: async () => {},
-        } as unknown as Update;
+          date: stableUpdate.date ?? stableJson.pub_date,
+          body: stableUpdate.body ?? stableJson.notes,
+        };
       }
     }
   } catch (error) {
@@ -363,7 +386,12 @@ async function resolvePreviewRelease(): Promise<Update | null> {
   // Determine preview endpoint based on source
   const endpoint = currentSource === "mirror"
     ? `${MIRROR_BASE}/preview/latest.json`
-    : `https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/latest/download/latest.json`;
+    : await getLatestPreviewEndpoint();
+
+  if (!endpoint) {
+    logger.info("No published preview release was found", "Updater");
+    return null;
+  }
 
   logger.info(`Fetching preview endpoint: ${endpoint}`, "Updater");
 
@@ -371,7 +399,6 @@ async function resolvePreviewRelease(): Promise<Update | null> {
     version: string;
     pub_date?: string;
     notes?: string;
-    platforms?: Record<string, { signature: string; url: string }>;
   };
 
   try {
@@ -413,31 +440,33 @@ async function resolvePreviewRelease(): Promise<Update | null> {
     return null;
   }
 
-  // Get platform download URL
-  const platformKey = "windows-x86_64";
-  const platform = latestJson.platforms?.[platformKey];
-  if (!platform?.url) {
-    logger.error(`No download URL for ${platformKey} in preview latest.json`, "Updater");
+  const endpointUpdate = await invoke<{
+    version: string;
+    date?: string;
+    body?: string;
+  } | null>("check_update_endpoint", { endpoint });
+  if (!endpointUpdate) {
+    logger.info(
+      `No compatible ${remoteVersion} update is available for this platform`,
+      "Updater",
+    );
     return null;
   }
 
   logger.info(`Preview update available: ${localVersion} → ${remoteVersion}`, "Updater");
 
-  // Store download URL for use by downloadUpdate()
-  manualDownloadUrl = platform.url;
+  manualUpdaterEndpoint = endpoint;
 
   // Return an Update-like object
   return {
-    version: remoteVersion,
+    version: endpointUpdate.version,
     currentVersion: localVersion,
-    date: latestJson.pub_date,
-    body: latestJson.notes,
-    download: async () => {},
-    install: async () => {},
-  } as unknown as Update;
+    date: endpointUpdate.date ?? latestJson.pub_date,
+    body: endpointUpdate.body ?? latestJson.notes,
+  };
 }
 
-async function resolveChannelSwitchRelease(): Promise<Update | null> {
+async function resolveChannelSwitchRelease(): Promise<Update | ManualUpdate | null> {
   const { getVersion } = await import("@tauri-apps/api/app");
   const localVersion = await getVersion();
   const channel = currentChannel;
@@ -451,6 +480,7 @@ async function resolveChannelSwitchRelease(): Promise<Update | null> {
   }
 
   const filtered = releases.filter((r) => {
+    if (r.draft) return false;
     if (!r.tag_name.startsWith("v")) return false;
     return channel === "stable" ? !r.prerelease : r.prerelease;
   });
@@ -478,14 +508,21 @@ async function resolveChannelSwitchRelease(): Promise<Update | null> {
   try {
     const response = await fetch(latestJsonUrl);
     if (!response.ok) return null;
-    const latestJson: { version: string; pub_date: string; notes: string; platforms?: Record<string, { signature: string; url: string }> } = await response.json();
+    const latestJson: { version: string; pub_date: string; notes: string } = await response.json();
+    const endpointUpdate = await invoke<{
+      version: string;
+      date?: string;
+      body?: string;
+    } | null>("check_update_endpoint", { endpoint: latestJsonUrl });
+    if (!endpointUpdate) return null;
 
+    manualUpdaterEndpoint = latestJsonUrl;
     return {
-      version: remoteVersion,
+      version: endpointUpdate.version,
       currentVersion: localVersion,
-      date: latestJson.pub_date,
-      body: latestJson.notes,
-    } as unknown as Update;
+      date: endpointUpdate.date ?? latestJson.pub_date,
+      body: endpointUpdate.body ?? latestJson.notes,
+    };
   } catch (error) {
     logger.error("Failed to fetch latest.json for channel switch: " + error, "Updater");
     return null;
@@ -649,6 +686,7 @@ export async function setChannel(channel: UpdateChannel): Promise<void> {
 
   currentUpdate = null;
   currentUpdateInfo = null;
+  manualUpdaterEndpoint = null;
   changelogCache.clear();
   status = "idle";
 
@@ -723,6 +761,7 @@ export async function setSource(source: UpdateSource): Promise<void> {
 
   currentUpdate = null;
   currentUpdateInfo = null;
+  manualUpdaterEndpoint = null;
   changelogCache.clear();
   status = "idle";
 
@@ -777,7 +816,7 @@ export async function checkForUpdate(): Promise<UpdateCheckResult> {
   return result;
 }
 
-export function getCurrentUpdate(): Update | null {
+export function getCurrentUpdate(): Update | ManualUpdate | null {
   return currentUpdate;
 }
 
@@ -802,7 +841,9 @@ export function getDownloadTotal(): number {
 }
 
 export async function downloadUpdate(): Promise<void> {
-  if (!currentUpdate) {
+  const update = currentUpdate;
+  const updaterEndpoint = manualUpdaterEndpoint;
+  if (!update) {
     pushGlobalAlert("warning", "No update available");
     return;
   }
@@ -824,16 +865,8 @@ export async function downloadUpdate(): Promise<void> {
   emitChange();
 
   try {
-    // Manual preview download: use Rust commands directly
-    if (manualDownloadUrl) {
-      const url = manualDownloadUrl;
-      logger.info(`Starting manual preview download from: ${url}`, "Updater");
-
-      await invoke("reset_download_cancel");
-
-      const tempDir = await invoke<string>("get_temp_dir");
-      const installerPath = `${tempDir}\\endprotocol-update.exe`;
-
+    if (updaterEndpoint) {
+      logger.info("Starting channel update via Tauri updater...", "Updater");
       const unlisten = await listen<{ downloaded: number; total: number }>(
         "download-progress",
         (event) => {
@@ -848,23 +881,22 @@ export async function downloadUpdate(): Promise<void> {
         },
       );
       try {
-        await invoke("download_file", {
-          url,
-          path: installerPath,
-        });
+        await invoke("install_update_endpoint", { endpoint: updaterEndpoint });
       } finally {
         unlisten();
       }
 
-      logger.info("Download complete, installing...", "Updater");
-
-      await invoke("run_installer", {
-        path: installerPath,
-      });
+      if (!isWindowsPlatform()) {
+        const { relaunch } = await import("@tauri-apps/plugin-process");
+        await relaunch();
+      }
     } else {
       // Standard Tauri updater plugin download + install
+      if (!("download" in update)) {
+        throw new Error("No Tauri updater is available for this update");
+      }
       logger.info("Starting update download via Tauri updater...", "Updater");
-      await currentUpdate.download((event) => {
+      await update.download((event) => {
         if (event.event === "Started") {
           downloadTotal = event.data.contentLength ?? 0;
           updateProgressMessage(
@@ -886,7 +918,7 @@ export async function downloadUpdate(): Promise<void> {
         emitChange();
       });
       logger.info("Download complete, installing...", "Updater");
-      await currentUpdate.install();
+      await update.install();
       logger.info("Install complete, restarting...", "Updater");
       const { relaunch } = await import("@tauri-apps/plugin-process");
       await relaunch();
@@ -905,7 +937,7 @@ export async function downloadUpdate(): Promise<void> {
     downloadAbortController = null;
     downloadProgress = 0;
     downloadTotal = 0;
-    manualDownloadUrl = null;
+    manualUpdaterEndpoint = null;
     emitChange();
   }
 }

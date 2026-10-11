@@ -14,6 +14,7 @@ import { SettingsDivider } from "@/components/ui/settings-row";
 import { Slider } from "@/components/ui/slider";
 import ScreenColorPicker from "@/components/screen-color-picker";
 import { getConfig, setConfig } from "@/utils/configService";
+import { isWindowsPlatform } from "@/utils/platform";
 import { MorphIcon } from "morphicons/react";
 import {
   Sun,
@@ -371,6 +372,9 @@ export function AppearanceSettings() {
   const [screenPickerOpen, setScreenPickerOpen] = useState(false);
   const supportsEyeDropper =
     typeof window !== "undefined" && "EyeDropper" in window;
+  const canPickFromScreen = isTauri()
+    ? isWindowsPlatform()
+    : supportsEyeDropper;
   const [rgbDraft, setRgbDraft] = useState<{ r: string; g: string; b: string }>(
     {
       r: "99",
@@ -811,6 +815,7 @@ export function AppearanceSettings() {
   const handlePickFromScreen = () => {
     // WebView2 中 EyeDropper API 存在但 open() 静默失效，Tauri 环境下改用原生截图 + 放大镜覆盖层
     if (isTauri()) {
+      if (!isWindowsPlatform()) return;
       setScreenPickerOpen(true);
       return;
     }
@@ -1156,7 +1161,7 @@ export function AppearanceSettings() {
                               maxLength={6}
                             />
                           </div>
-                          {(supportsEyeDropper || isTauri()) && (
+                          {canPickFromScreen && (
                             <button
                               type="button"
                               onClick={handlePickFromScreen}

@@ -128,7 +128,7 @@
 | `prom-assets/` | 宣传物料图片（`promotional-cover.html`、`promotional-demo.html` 使用） |
 | `tray-panel.html` | 托盘面板的独立 HTML 入口（对应 `src/tray-panel.tsx`） |
 | `index.html` | 主窗口 HTML 入口 |
-| `.github/workflows/release.yml` | 发布流水线（构建 Tauri 安装包） |
+| `.github/workflows/release.yml` | 发布流水线（Windows/Linux/macOS 安装包与 updater 签名清单） |
 | `dist/`、`target/`、`node_modules/` | 构建产物与依赖，**不要阅读** |
 | `src-tauri/gen/schemas/` | Tauri 自动生成的权限 schema，**不要手改** |
 

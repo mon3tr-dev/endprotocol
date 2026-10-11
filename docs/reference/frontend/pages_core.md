@@ -3,12 +3,12 @@
 > 逐文件精读源码生成。行号基于当前工作区版本，仅用于快速定位。
 
 ## `src/layouts/dashboard.tsx`
-**职责**：全局仪表板外壳布局。根据 `launcherMode` 切换两种完全不同的渲染分支：`game`（游戏启动器全屏背景 + 底部公告/轮播 + 游戏操作面板）与 `data`（侧边栏 + 可滚动内容区，包裹所有业务页面）。同时负责加载背景媒体与公告数据、在游戏/数据模式间挂起与恢复内置浏览器。
+**职责**：全局仪表板外壳布局。根据 `launcherMode` 切换两种完全不同的渲染分支：Windows 上的 `game`（游戏启动器全屏背景 + 底部公告/轮播 + 游戏操作面板）与 `data`（侧边栏 + 可滚动内容区，包裹所有业务页面）。同时负责加载背景媒体与公告数据、在游戏/数据模式间挂起与恢复内置浏览器；非 Windows 平台固定使用 data 模式且不请求启动器公告/背景。
 
 **导出**：`export default function DashboardLayout`（默认导出，React 组件，接收 `{ children }`）。
 
 **主要依赖**：
-- 项目内：`@/components/custom-titlebar`（`CustomTitlebar`）、`@/components/dashboard-sidebar`（`Sidebar`）、`@/components/in-app-browser`（`InAppBrowser`）、`@/components/game-action-panel`（`GameActionPanel`）、`@/stores/launcherMode`（模式与背景媒体的可订阅 store）、`@/stores/inAppBrowser`（`openInAppBrowser`/`suspendInAppBrowser`/`resumeInAppBrowser`）、`@/utils/launcherService`（`getNoticeContent`/`getBackgroundImage` 与 `GameChannel`/`BannerItem`/`AnnouncementItem` 类型）、`@/utils/startupProgress`（`trackStartupTask`）。
+- 项目内：`@/components/custom-titlebar`（`CustomTitlebar`）、`@/components/dashboard-sidebar`（`Sidebar`）、`@/components/in-app-browser`（`InAppBrowser`）、`@/components/game-action-panel`（`GameActionPanel`）、`@/stores/launcherMode`（模式与背景媒体的可订阅 store）、`@/stores/inAppBrowser`（`openInAppBrowser`/`suspendInAppBrowser`/`resumeInAppBrowser`）、`@/utils/launcherService`（`getNoticeContent`/`getBackgroundImage` 与 `GameChannel`/`BannerItem`/`AnnouncementItem` 类型）、`@/utils/platform`（`isWindowsPlatform`）、`@/utils/startupProgress`（`trackStartupTask`）。
 - 第三方：`react`（`useState`/`useEffect`/`useRef`）、`react-router-dom`（`useLocation`）。
 
 | 符号 | 位置 | 说明 |
@@ -47,6 +47,7 @@
 **备注**：
 - **invoke 命令**：本文件无直接 `invoke(...)`；间接经 `launcherService` 调用 `launcher_get_notice_content`（公告）与 `launcher_get_background_image`（背景）。
 - 路由：作为所有业务路由的外层包裹（`App.tsx` 中 `/`、`/settings`、`/account`、`/characters`、`/medals`、`/attendance`、`/gacha`、`/developer` 均包在 `DashboardLayout` 内）。
+- 平台限制：游戏启动器页面分支和公告/背景 IPC 仅在 Windows 启用；`launcherMode` store 在其他平台始终返回 data 模式。
 - 关键 window/事件语义：无自定义 window 事件；使用 store 订阅（`subscribeLauncherMode` 等返回退订函数）。
 - localStorage：`launcher_channel`（读写）。
 - 模式切换要点：`viewMode` 决定分支，`game` 分支**不渲染 children**（业务页面被丢弃），`data` 分支才渲染 `{children}`；因此 game 模式下页面组件会卸载。

@@ -39,9 +39,11 @@ import {
 } from "@/utils/updateService";
 import { pushGlobalAlert } from "@/components/ui/global-alert";
 import { UpdateDialog } from "@/components/update-dialog";
+import { isWindowsPlatform } from "@/utils/platform";
 
 export default function SettingsPage() {
   const { t, i18n } = useTranslation();
+  const supportsLauncher = isWindowsPlatform();
   const [isLangDropdownOpen, setIsLangDropdownOpen] = useState(false);
   const langDropdownRef = useRef<HTMLDivElement>(null);
   const langBtnRef = useRef<HTMLButtonElement>(null);
@@ -710,37 +712,39 @@ export default function SettingsPage() {
         </GlassCard>
 
         {/* Game Launch Settings */}
-        <GlassCard
-          id="settings-game-launch"
-          className="p-6 glass-surface border border-separator/90"
-        >
-          <h2 className="text-lg font-semibold mb-6 flex items-center gap-3">
-            <div className="w-8 h-8 rounded-xl bg-primary/10 flex items-center justify-center ring-1 ring-primary/20">
-              <svg
-                className="w-4 h-4 text-primary"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-                strokeWidth="1.5"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"
-                />
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                />
-              </svg>
+        {supportsLauncher && (
+          <GlassCard
+            id="settings-game-launch"
+            className="p-6 glass-surface border border-separator/90"
+          >
+            <h2 className="text-lg font-semibold mb-6 flex items-center gap-3">
+              <div className="w-8 h-8 rounded-xl bg-primary/10 flex items-center justify-center ring-1 ring-primary/20">
+                <svg
+                  className="w-4 h-4 text-primary"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  strokeWidth="1.5"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"
+                  />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
+                </svg>
+              </div>
+              {t("settings.game_launch.title")}
+            </h2>
+            <div className="space-y-6">
+              <GameLaunchSettings />
             </div>
-            {t("settings.game_launch.title")}
-          </h2>
-          <div className="space-y-6">
-            <GameLaunchSettings />
-          </div>
-        </GlassCard>
+          </GlassCard>
+        )}
 
         {/* Appearance Settings */}
         <GlassCard

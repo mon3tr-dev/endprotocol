@@ -30,6 +30,7 @@ import {
   getNoticeContent,
   getBackgroundImage,
 } from "@/utils/launcherService";
+import { isWindowsPlatform } from "@/utils/platform";
 
 const STORAGE_KEY_CHANNEL = "launcher_channel";
 
@@ -94,6 +95,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
 
   // Fetch background + banners when channel changes
   useEffect(() => {
+    if (!isWindowsPlatform()) return;
     const initialData = Promise.all([
       getBackgroundImage(channel)
         .then(setLauncherBgMedia)

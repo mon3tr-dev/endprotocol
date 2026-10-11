@@ -28,6 +28,7 @@ import {
   type LauncherViewMode,
 } from "@/stores/launcherMode";
 import logger from "@/utils/logger";
+import { isWindowsPlatform } from "@/utils/platform";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 
 export const CustomTitlebar = () => {
@@ -39,6 +40,7 @@ export const CustomTitlebar = () => {
   const [showCloseConfirm, setShowCloseConfirm] = useState(false);
   const [closeAction, setCloseAction] = useState<string>("ask");
   const [viewMode, setViewMode] = useState<LauncherViewMode>(getLauncherMode);
+  const supportsLauncher = isWindowsPlatform();
   const [newMessage, setNewMessage] = useState<AppMessage | null>(null);
   const [flyoutOpen, setFlyoutOpen] = useState(true);
   const latestMessageId = useRef(getMessages()[0]?.id ?? null);
@@ -179,29 +181,31 @@ export const CustomTitlebar = () => {
             </h1>
           </div>
 
-          <ToggleGroup
-            type="single"
-            value={viewMode}
-            onValueChange={(value) => {
-              if (value) setLauncherMode(value as LauncherViewMode);
-            }}
-            aria-label={`${t("launcher.mode_data")} / ${t("launcher.mode_game")}`}
-            className={`titlebar-mode-toggle ml-2 relative grid h-7 w-[104px] grid-cols-2 overflow-hidden rounded-full border-white/20 bg-default-100/55 p-0.5 shadow-[inset_0_1px_1px_rgba(255,255,255,0.2)] ${viewMode === "game" ? "is-game" : ""}`}
-            style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
-          >
-            <ToggleGroupItem
-              value="data"
-              className={`relative z-10 h-full w-full rounded-full px-1 text-[10px] font-medium data-[state=on]:bg-transparent data-[state=on]:text-primary-foreground ${viewMode === "data" ? "text-primary-foreground" : "adaptive-contrast-text"}`}
+          {supportsLauncher && (
+            <ToggleGroup
+              type="single"
+              value={viewMode}
+              onValueChange={(value) => {
+                if (value) setLauncherMode(value as LauncherViewMode);
+              }}
+              aria-label={`${t("launcher.mode_data")} / ${t("launcher.mode_game")}`}
+              className={`titlebar-mode-toggle ml-2 relative grid h-7 w-[104px] grid-cols-2 overflow-hidden rounded-full border-white/20 bg-default-100/55 p-0.5 shadow-[inset_0_1px_1px_rgba(255,255,255,0.2)] ${viewMode === "game" ? "is-game" : ""}`}
+              style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
             >
-              {t("launcher.mode_data")}
-            </ToggleGroupItem>
-            <ToggleGroupItem
-              value="game"
-              className={`relative z-10 h-full w-full rounded-full px-1 text-[10px] font-medium data-[state=on]:bg-transparent data-[state=on]:text-primary-foreground ${viewMode === "game" ? "text-primary-foreground" : "adaptive-contrast-text"}`}
-            >
-              {t("launcher.mode_game")}
-            </ToggleGroupItem>
-          </ToggleGroup>
+              <ToggleGroupItem
+                value="data"
+                className={`relative z-10 h-full w-full rounded-full px-1 text-[10px] font-medium data-[state=on]:bg-transparent data-[state=on]:text-primary-foreground ${viewMode === "data" ? "text-primary-foreground" : "adaptive-contrast-text"}`}
+              >
+                {t("launcher.mode_data")}
+              </ToggleGroupItem>
+              <ToggleGroupItem
+                value="game"
+                className={`relative z-10 h-full w-full rounded-full px-1 text-[10px] font-medium data-[state=on]:bg-transparent data-[state=on]:text-primary-foreground ${viewMode === "game" ? "text-primary-foreground" : "adaptive-contrast-text"}`}
+              >
+                {t("launcher.mode_game")}
+              </ToggleGroupItem>
+            </ToggleGroup>
+          )}
 
           <div
             className="flex-1"

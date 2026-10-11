@@ -3,11 +3,11 @@
 > 逐文件精读源码生成。行号基于当前工作区版本，仅用于快速定位。
 
 ## `src/utils/updateService.ts`
-**职责**：应用内更新服务（共 1038 行）。封装 Tauri updater 插件与 GitHub/镜像双源的版本检查、更新日志（changelog）获取与缓存、稳定/预览双频道切换、下载安装流程，并通过自定义订阅系统与消息中心向 UI 推送状态。
+**职责**：应用内更新服务。封装 Tauri updater 插件与 GitHub/镜像双源的版本检查、更新日志（changelog）获取与缓存、稳定/预览双频道切换、跨平台验签安装流程，并通过自定义订阅系统与消息中心向 UI 推送状态。
 
-**导出**：类型 `UpdateChannel`、`UpdateSource`、`UpdateStatus`、`ChangelogStatus`、`UpdateErrorCode`、`UpdateInfo`、`UpdateCheckResult`、`RemoteVersionState`；函数 `getChannel`、`getSource`、`setChannel`、`initializeChannel`、`setSource`、`checkForUpdate`、`getCurrentUpdate`、`getCurrentUpdateInfo`、`getStatus`、`getIsDownloading`、`getDownloadProgress`、`getDownloadTotal`、`downloadUpdate`、`cancelDownload`、`openUpdateDialog`、`subscribeUpdateState`、`subscribeDownloadProgress`、`getRemoteVersion`、`subscribeRemoteVersion`、`fetchRemoteVersion`、`addUpdateMessage`、`checkAndNotify`、`addProgressMessage`、`updateProgressMessage`、`removeProgressMessage`。
+**导出**：类型 `UpdateChannel`、`UpdateSource`、`UpdateStatus`、`ChangelogStatus`、`UpdateErrorCode`、`UpdateInfo`、`ManualUpdate`、`UpdateCheckResult`、`RemoteVersionState`；函数 `getChannel`、`getSource`、`setChannel`、`initializeChannel`、`setSource`、`checkForUpdate`、`getCurrentUpdate`、`getCurrentUpdateInfo`、`getStatus`、`getIsDownloading`、`getDownloadProgress`、`getDownloadTotal`、`downloadUpdate`、`cancelDownload`、`openUpdateDialog`、`subscribeUpdateState`、`subscribeDownloadProgress`、`getRemoteVersion`、`subscribeRemoteVersion`、`fetchRemoteVersion`、`addUpdateMessage`、`checkAndNotify`、`addProgressMessage`、`updateProgressMessage`、`removeProgressMessage`。
 
-**主要依赖**：`@tauri-apps/plugin-updater`（`check`/`Update`）、`@tauri-apps/api/core`（`invoke`）、`@tauri-apps/api/event`（`listen`）、`@tauri-apps/api/app`（动态 `getVersion`）、`@tauri-apps/plugin-process`（动态 `relaunch`）、`@/i18n`、`./messageStore`、`@/components/ui/global-alert`、`./configService`、`./logger`。
+**主要依赖**：`@tauri-apps/plugin-updater`（`check`/`Update`）、`@tauri-apps/api/core`（`invoke`）、`@tauri-apps/api/event`（`listen`）、`@tauri-apps/api/app`（动态 `getVersion`）、`@tauri-apps/plugin-process`（动态 `relaunch`）、`./platform`（区分 Windows 安装重启行为）、`@/i18n`、`./messageStore`、`@/components/ui/global-alert`、`./configService`、`./logger`。
 
 ### 导出符号表
 
@@ -19,56 +19,56 @@
 | `ChangelogStatus` | updateService.ts:25 | 类型：`idle/loading/success/failed/unavailable` |
 | `UpdateErrorCode` | updateService.ts:32 | 类型：`UPDATE_CHECK_FAILED` / `CHANGELOG_FETCH_FAILED` / `DOWNLOAD_FAILED` / `INSTALL_FAILED`（后三者在本文件中未被赋值） |
 | `UpdateInfo` | updateService.ts:38 | 接口：`currentVersion/newVersion/date?/body?` |
-| `UpdateCheckResult` | updateService.ts:45 | 接口：检查结果（`available/update/changelog/changelogStatus/status/errorCode?/errorMessage?`） |
-| `getChannel` | updateService.ts:578 | 同步返回当前 `currentChannel`，无 IPC |
-| `getSource` | updateService.ts:582 | 同步返回当前 `currentSource`，无 IPC |
-| `setChannel` | updateService.ts:586 | 切换频道：`invoke("set_config")`（经 `setConfig("update_channel", …)`，见 configService）→ 清空缓存与状态 → `emitChange` → 自动调用 `checkForUpdate()` → 用 `removeMessagesByTag("app-update")`/`addUpdateMessage` 更新消息中心；结束时复位 `channelSwitchDetected` |
-| `initializeChannel` | updateService.ts:646 | 启动时 `Promise.all([getConfig("update_channel"), getConfig("update_source")])` 恢复持久化配置，非法值回退默认（stable/github） |
-| `setSource` | updateService.ts:664 | 切换来源：`setConfig("update_source", source)` → 清缓存 → `emitChange` → 自动 `checkForUpdate()` 并刷新消息 |
-| `checkForUpdate` | updateService.ts:713 | 核心检查入口：置 `status="checking"` → `emitChange()` → `performUpdateCheck()` → 回写 `status` 并广播；返回 `Promise<UpdateCheckResult>`。稳定频道走 `check()`（Tauri updater 插件）；预览频道先检查稳定版清单，若正式版高于本机版本则提供正式版更新，否则继续检查预览版 `latest.json`；更新日志频道按实际候选版本（稳定/预览）选择 |
-| `getCurrentUpdate` | updateService.ts:725 | 返回缓存的 `Update` 对象（`check` 返回值或手工构造的伪对象） |
-| `getCurrentUpdateInfo` | updateService.ts:729 | 返回最近一次的 `UpdateInfo` |
-| `getStatus` | updateService.ts:733 | 返回 `UpdateStatus` |
-| `getIsDownloading` | updateService.ts:737 | 返回下载中标记 |
-| `getDownloadProgress` | updateService.ts:741 | 返回已下载字节数 |
-| `getDownloadTotal` | updateService.ts:745 | 返回总字节数 |
-| `downloadUpdate` | updateService.ts:749 | 下载并安装。手工预览路径：`invoke("reset_download_cancel")` → `invoke("get_temp_dir")` → `listen("download-progress")` → `invoke("download_file", {url, path})` → `invoke("run_installer", {path})`；标准路径：`currentUpdate.download(cb)` + `currentUpdate.install()` + 动态 `relaunch()`。进度经 `addProgressMessage`/`updateProgressMessage` 展示，异常走 `pushGlobalAlert("danger", …)` |
-| `cancelDownload` | updateService.ts:858 | 中止 `downloadAbortController`、复位进度、移除进度消息、`emitChange()` |
-| `openUpdateDialog` | updateService.ts:872 | 派发 `window` 自定义事件 `openUpdateDialog` |
-| `subscribeUpdateState` | updateService.ts:885 | 注册状态监听（推入 `listeners`），返回退订函数 |
-| `subscribeDownloadProgress` | updateService.ts:892 | 与 `subscribeUpdateState` 完全同实现（共用同一 `listeners` 数组） |
-| `RemoteVersionState` | updateService.ts:900 | 遗留接口：远程版本状态（`version/date/body/checked/loading/error/hasUpdate`） |
-| `getRemoteVersion` | updateService.ts:927 | 返回模块内 `remoteState` 快照 |
-| `subscribeRemoteVersion` | updateService.ts:931 | 注册 `remoteListeners`，返回退订函数 |
-| `fetchRemoteVersion` | updateService.ts:938 | 防重入拉取：`checkForUpdate()` 后写入 `remoteState` 并 `emitRemoteChange()`；失败置 `error=true` |
-| `addUpdateMessage` | updateService.ts:976 | 向 messageStore `addMessage`（`type:"urgent"`、`tag:"app-update"`、动作按钮派发 `openUpdateDialog` 事件），返回 `AppMessage` |
-| `checkAndNotify` | updateService.ts:1003 | `initializeChannel()` + `checkForUpdate()`，有更新则 `addUpdateMessage` |
-| `addProgressMessage` | updateService.ts:1013 | 创建带 `progress` 的 info 消息（`tag="update-progress"`），以 `progressMessageId` 防重复 |
-| `updateProgressMessage` | updateService.ts:1027 | 按 `progressMessageId` 更新 title/body/progress |
-| `removeProgressMessage` | updateService.ts:1034 | 移除进度消息并清空 `progressMessageId` |
+| `ManualUpdate` | updateService.ts:46 | 预览/频道切换候选；安装通过 Tauri updater 按本机目标处理 |
+| `UpdateCheckResult` | updateService.ts:53 | 接口：检查结果（`available/update/changelog/changelogStatus/status/errorCode?/errorMessage?`） |
+| `getChannel` | updateService.ts:670 | 同步返回当前 `currentChannel`，无 IPC |
+| `getSource` | updateService.ts:674 | 同步返回当前 `currentSource`，无 IPC |
+| `setChannel` | updateService.ts:678 | 切换频道：持久化配置 → 清空缓存与状态 → `emitChange` → 自动调用 `checkForUpdate()` 并刷新消息中心 |
+| `initializeChannel` | updateService.ts:739 | 启动时恢复频道与更新源配置，非法值回退默认（stable/github） |
+| `setSource` | updateService.ts:757 | 持久化更新源 → 清缓存 → `emitChange` → 自动 `checkForUpdate()` 并刷新消息 |
+| `checkForUpdate` | updateService.ts:807 | 核心检查入口：置 `status="checking"` → `performUpdateCheck()` → 回写状态并广播。预览频道会比较稳定版与预览版，endpoint updater 根据本机平台检查签名更新；更新日志按候选版本选择 |
+| `getCurrentUpdate` | updateService.ts:819 | 返回缓存的 `Update` 或 `ManualUpdate` |
+| `getCurrentUpdateInfo` | updateService.ts:823 | 返回最近一次的 `UpdateInfo` |
+| `getStatus` | updateService.ts:827 | 返回 `UpdateStatus` |
+| `getIsDownloading` | updateService.ts:831 | 返回下载中标记 |
+| `getDownloadProgress` | updateService.ts:835 | 返回已下载字节数 |
+| `getDownloadTotal` | updateService.ts:839 | 返回总字节数 |
+| `downloadUpdate` | updateService.ts:843 | 下载并安装。预览/频道切换通过 `install_update_endpoint` 使用 Tauri updater 验签安装；稳定更新使用插件 `Update.download()`/`install()`；macOS/Linux 安装后 `relaunch()`。进度经 `addProgressMessage`/`updateProgressMessage` 展示，异常走 `pushGlobalAlert("danger", …)` |
+| `cancelDownload` | updateService.ts:945 | 中止当前下载控制器、复位进度、移除进度消息、`emitChange()` |
+| `openUpdateDialog` | updateService.ts:959 | 派发 `window` 自定义事件 `openUpdateDialog` |
+| `subscribeUpdateState` | updateService.ts:972 | 注册状态监听（推入 `listeners`），返回退订函数 |
+| `subscribeDownloadProgress` | updateService.ts:979 | 与 `subscribeUpdateState` 共用 `listeners` 数组 |
+| `RemoteVersionState` | updateService.ts:987 | 遗留接口：远程版本状态（`version/date/body/checked/loading/error/hasUpdate`） |
+| `getRemoteVersion` | updateService.ts:1014 | 返回模块内 `remoteState` 快照 |
+| `subscribeRemoteVersion` | updateService.ts:1018 | 注册 `remoteListeners`，返回退订函数 |
+| `fetchRemoteVersion` | updateService.ts:1025 | 防重入拉取：`checkForUpdate()` 后写入 `remoteState` 并 `emitRemoteChange()`；失败置 `error=true` |
+| `addUpdateMessage` | updateService.ts:1063 | 向 messageStore 添加更新通知，动作派发 `openUpdateDialog` 事件 |
+| `checkAndNotify` | updateService.ts:1090 | `initializeChannel()` + `checkForUpdate()`，有更新则 `addUpdateMessage` |
+| `addProgressMessage` | updateService.ts:1100 | 创建带进度的 info 消息，以 `progressMessageId` 防重复 |
+| `updateProgressMessage` | updateService.ts:1114 | 按 `progressMessageId` 更新消息 |
+| `removeProgressMessage` | updateService.ts:1121 | 移除进度消息并清空 `progressMessageId` |
 
 ### 内部结构（行号区间）
 
 | 区间 | 内容 |
 | --- | --- |
-| 10–66 | 类型定义与内部接口（`GitHubRelease`、`ChangelogCacheEntry`） |
-| 68–98 | 常量（仓库/镜像基址/TTL）与模块级状态变量 |
-| 100–169 | SemVer 解析/比较、`isPreviewChannel`、`stripVPrefix`、`channelFromVersion` |
-| 171–195 | GitHub API 抓取（releases 列表 / 按 tag 取单个 release） |
-| 197–226 | changelog 内存缓存（key 前缀 `changelog_cache_`、TTL 30s） |
-| 228–264 | 频道切换判定、镜像 changelog URL 获取（`invoke("fetch_url")`） |
-| 266–439 | `resolveRelease`：预览频道优先检查高于本机版本的稳定版，再直连预览端点；稳定频道走插件；频道切换回退到 GitHub release 列表。正式版发布后将高于同版本号的预览版（如 `0.1.3` 高于 `0.1.3-pre7`） |
-| 441–505 | `fetchChangelog` 三级策略：镜像 notes URL → GitHub Release body → `CHANGELOG.md` 附件 |
-| 507–572 | `performUpdateCheck` 组装 `UpdateCheckResult` |
-| 574–874 | 公共 API：频道/来源设置、检查、下载/取消、对话框事件 |
-| 876–974 | 订阅系统与遗留 `remoteState` API |
-| 976–1038 | 消息中心集成（更新提示与下载进度消息） |
+| 15–79 | 类型定义与内部接口（`GitHubRelease`、`ChangelogCacheEntry`） |
+| 81–117 | 常量（仓库/镜像基址/TTL）与模块级状态变量 |
+| 120–182 | SemVer 解析/比较、`isPreviewChannel`、`stripVPrefix`、`channelFromVersion` |
+| 184–226 | GitHub Release 列表与预览 release endpoint 解析 |
+| 228–295 | changelog 缓存、频道切换判定与镜像 changelog URL |
+| 297–534 | 更新解析：preview 检查稳定/预览清单；GitHub 频道切换加载对应 tag 的 `latest.json` 并按本机平台检查更新 |
+| 536–601 | `fetchChangelog`：镜像 notes URL → GitHub Release body → `CHANGELOG.md` 附件 |
+| 602–669 | `performUpdateCheck` 组装 `UpdateCheckResult` |
+| 670–966 | 公共 API：频道/来源设置、检查、跨平台下载安装/取消、对话框事件 |
+| 967–1062 | 订阅系统与遗留 `remoteState` API |
+| 1063–1127 | 消息中心集成（更新提示与下载进度消息） |
 
 **备注**：
-- **Tauri invoke 命令**：`fetch_url`（:255、:323、:463，代理 HTTP GET）、`reset_download_cancel`（:777）、`get_temp_dir`（:779）、`download_file`（:796，参数 `url`/`path`）、`run_installer`（:806，参数 `path`）；另经 `configService` 使用 `get_config`/`set_config`；插件 API `check()`（:283）、`Update.download/install`、`relaunch()`（:837）。
-- **事件监听**：`listen("download-progress", …)`（:782）；自定义 window 事件 `openUpdateDialog`（:873、:996）、`remoteVersionChanged`（:882、:924）。
-- **网络端点**：`https://api.github.com/repos/soldiereleven/endprotocol`（:74），子路径 `/releases?per_page=100`（:176）、`/releases/tags/{tag}`（:188）；`https://updates.msk-network.cn`（:75），子路径 `/stable/latest.json`、`/preview/latest.json`（:251–253、:310）；`https://github.com/soldiereleven/endprotocol/releases/latest/download/latest.json`（:311）、`.../releases/download/{tag}/latest.json`（:422）、`.../releases/download/{tag}/CHANGELOG.md`（:489）。
-- **缓存**：changelog 为模块内 `Map`，key = `changelog_cache_{channel}_{version}`，TTL 30000ms（:76–77）；临时安装包路径 `{tempDir}\endprotocol-update.exe`（:780，仅 Windows 反斜杠拼接）。
+- **Tauri invoke 命令**：`fetch_url`（:282、:347、:405、:554，代理 HTTP GET）、`check_update_endpoint`（:364、:447、:516，按本机平台检查受限清单）、`install_update_endpoint`（:884，updater 签名安装）；另经 `configService` 使用 `get_config`/`set_config`。
+- **事件监听**：`listen("download-progress", …)`（:864）；自定义 window 事件 `openUpdateDialog`、`remoteVersionChanged`。
+- **网络端点**：GitHub API Release 列表与 tag release；镜像稳定/预览清单；GitHub stable latest 与预览 tag 的 `latest.json`，以及 release `CHANGELOG.md` 附件。
+- **缓存**：changelog 为模块内 `Map`，key = `changelog_cache_{channel}_{version}`，TTL 30000ms。
 - **日志写入**：全部经 `./logger` 默认实例，模块标签传在第二个实参位置（见异常项）。
 - **平台限定**：预览下载平台 key 硬编码 `windows-x86_64`（:363）。
 
@@ -305,3 +305,14 @@
 | `listToJson` / `parseJsonList` | 完整字段 JSON 往返；`parseJsonList` 对缺省字段做规范化，解析失败返回 `null` |
 
 **备注**：无 IPC、无事件；纯字符串处理，供 `pages/todo.tsx` 的导入导出按钮调用。
+
+## `src/utils/platform.ts`
+**职责**：同步判断当前 WebView/浏览器运行平台，供平台能力受限的 UI 做一致性门控。
+**导出**：`isWindowsPlatform(): boolean`。
+**主要依赖**：浏览器 `navigator.platform` 与 `navigator.userAgent`。
+
+| 符号 | 说明 |
+| --- | --- |
+| `isWindowsPlatform` | 通过 `navigator.platform`（`Win*`）或 UA（`Windows`）判断 Windows；navigator 不存在时返回 `false` |
+
+**备注**：当前用于限定 Windows 原生屏幕取色器和游戏启动器；不依赖 IPC、配置或第三方库。

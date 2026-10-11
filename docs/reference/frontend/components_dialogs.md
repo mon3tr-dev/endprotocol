@@ -113,7 +113,7 @@
 ## `src/components/custom-titlebar.tsx`
 **职责**：自定义标题栏——包含品牌区、数据/游戏视图切换、通知铃铛与消息浮层、窗口最小化/最大化/关闭按钮，并挂载消息抽屉与关闭确认框。
 **导出**：`CustomTitlebar`
-**主要依赖**：`react`（`useState/useEffect/useRef`）、`react-i18next`、`@tauri-apps/api/core`（`invoke`）、`@tauri-apps/api/window`（`getCurrentWindow`）、`@tauri-apps/api/event`（`listen`、`UnlistenFn`）、`@/components/ui/app-icon`（`MinimizeIcon`、`MaximizeIcon`、`RestoreIcon`、`CloseIcon`、`BellIcon`）、`@/components/app-info-drawer`、`@/components/close-confirm-dialog`、`@/utils/messageStore`（`getMessages`、`getUnreadCount`、`hasUrgentUnread`、`subscribeMessages`、`AppMessage`）、`@/components/message-card`、`@/utils/configService`（`getConfig`）、`@/stores/launcherMode`（`getLauncherMode`、`setLauncherMode`、`subscribeLauncherMode`、`LauncherViewMode`）、`@/utils/logger`、`@/components/ui/toggle-group`（`ToggleGroup`、`ToggleGroupItem`）
+**主要依赖**：`react`（`useState/useEffect/useRef`）、`react-i18next`、`@tauri-apps/api/core`（`invoke`）、`@tauri-apps/api/window`（`getCurrentWindow`）、`@tauri-apps/api/event`（`listen`、`UnlistenFn`）、`@/components/ui/app-icon`（`MinimizeIcon`、`MaximizeIcon`、`RestoreIcon`、`CloseIcon`、`BellIcon`）、`@/components/app-info-drawer`、`@/components/close-confirm-dialog`、`@/utils/messageStore`（`getMessages`、`getUnreadCount`、`hasUrgentUnread`、`subscribeMessages`、`AppMessage`）、`@/components/message-card`、`@/utils/configService`（`getConfig`）、`@/stores/launcherMode`（`getLauncherMode`、`setLauncherMode`、`subscribeLauncherMode`、`LauncherViewMode`）、`@/utils/platform`（`isWindowsPlatform`）、`@/utils/logger`、`@/components/ui/toggle-group`（`ToggleGroup`、`ToggleGroupItem`）
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
@@ -137,6 +137,7 @@
 - 其它事件源：`subscribeMessages`、`subscribeLauncherMode`（均为前端 store 回调，非 Tauri event）。
 - 层级：标题栏 `titlebar-shell`，消息浮层 `z-[220]`；抽屉 `z-[200]/[210]`（在 `AppInfoDrawer` 内）。
 - i18n key：`launcher.game_title`、`launcher.mode_data`、`launcher.mode_game`。
+- 游戏模式切换仅在 Windows 显示；macOS/Linux 通过 `isWindowsPlatform()` 隐藏切换控件，模式 store 也会拒绝切换到游戏模式。
 - 关闭确认框文案本身无 i18n key（见 close-confirm-dialog 备注）。
 
 ## `src/components/role-select-modal.tsx`
@@ -205,7 +206,7 @@
 - 右键与悬停按钮行为一致，均只提供「编辑/删除」两项。
 
 ## `src/components/screen-color-picker.tsx`
-**职责**：全屏取色器。截取整屏像素铺满窗口，鼠标移动时显示 220px 放大镜与实时色值，点击取色、右键或 Esc 取消。
+**职责**：Windows 专用全屏取色器。截取整屏像素铺满窗口，鼠标移动时显示 220px 放大镜与实时色值，点击取色、右键或 Esc 取消；macOS/Linux 不展示屏幕吸管入口。
 **导出**：默认导出 `ScreenColorPicker`（同文件内有未导出的 `ScreenCaptureResult` 接口与 `MAGNIFIER`/`ZOOM` 常量）
 **主要依赖**：`react`（`useCallback/useEffect/useRef/useState`）、`react-dom`（`createPortal`）、`@tauri-apps/api/core`（`invoke`）
 
@@ -231,6 +232,7 @@
 - 层级：根 `z-[10000]`，信息条/关闭按钮 `z-[10001]`。
 - 无 i18n（提示文案硬编码英文：screen-color-picker.tsx:286-288）。
 - 取色结果始终为小写 `#rrggbb`（`toString(16)`），显示时才 `toUpperCase()`。
+- 原生截图依赖 Win32 GDI；Linux/macOS 不挂载此组件，其后端命令返回明确的 Windows-only 错误。
 
 ## `src/components/simple-pagination.tsx`
 **职责**：统一分页控件（液态玻璃风格）。按页数生成页码序列（含首尾省略号），并提供前后翻页与「跳至指定页」输入框。

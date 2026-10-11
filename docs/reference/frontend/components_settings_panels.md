@@ -5,7 +5,7 @@
 ## `src/components/appearance-settings.tsx`
 **职责**：外观设置面板，集中管理主题模式（浅色/深色/跟随系统）、主题色（预设 + 自定义色阶）、窗口背景图（选择/删除/透明度/模糊）与毛玻璃清晰度，并实时写入 CSS 变量与持久化配置。
 **导出**：`getAllColors`、`findColorByName`、`AppearanceSettings`（另有未导出的 `ThemeMode`、`ThemeColor`、`PRESET_COLORS`、多个颜色转换函数、`useDragArea`、`generateColorScale`、`applyThemeColor`、`applyGlassClarity`、`applyThemeModeLocal`、`dispatchThemeChange`）。
-**主要依赖**：`react`（含 `createPortal`）、`react-i18next`、`@tauri-apps/api/core`（`isTauri`/`invoke`）、`@tauri-apps/api/event`（`emit`）、`@/components/ui/settings-row`（`SettingsDivider`）、`@/components/ui/slider`（`Slider`）、`@/components/screen-color-picker`（`ScreenColorPicker`）、`@/utils/configService`（`getConfig`/`setConfig`）、`morphicons/react`（`MorphIcon`）、`lucide`（`Sun`/`Moon`/`Monitor`/`Check`/`Plus`/`Pencil`/`Trash2`/`Pipette`/`ImagePlus`/`X`）。
+**主要依赖**：`react`（含 `createPortal`）、`react-i18next`、`@tauri-apps/api/core`（`isTauri`/`invoke`）、`@tauri-apps/api/event`（`emit`）、`@/components/ui/settings-row`（`SettingsDivider`）、`@/components/ui/slider`（`Slider`）、`@/components/screen-color-picker`（`ScreenColorPicker`）、`@/utils/configService`（`getConfig`/`setConfig`）、`@/utils/platform`（`isWindowsPlatform`）、`morphicons/react`（`MorphIcon`）、`lucide`（`Sun`/`Moon`/`Monitor`/`Check`/`Plus`/`Pencil`/`Trash2`/`Pipette`/`ImagePlus`/`X`）。
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
@@ -62,7 +62,7 @@
 | 自定义主题色编辑 | `theme_custom_colors` | 右键菜单「编辑」+ 取色器 | 733-746，菜单 1261-1275 |
 | 自定义主题色删除 | `theme_color`（回退 indigo）+ `theme_custom_colors` | 右键菜单「删除」 | 766-778，菜单 1276-1282 |
 | 取色器（SV 面板 / 色相条 / Hex 输入 / RGB 输入 / 名称输入） | 草稿态，保存时并入 `theme_custom_colors` | portal 弹层 + 拖拽 + 受控输入 | 面板 987-1236，交互 401-431 |
-| 屏幕取色（Tauri 截图放大镜 / 浏览器 EyeDropper） | —（结果进入取色器草稿） | `Pipette` 按钮 + `ScreenColorPicker` | 811-835，按钮 1159-1172，portal 1288-1295 |
+| 屏幕取色（Windows Tauri 截图放大镜 / 支持 EyeDropper 的浏览器） | —（结果进入取色器草稿） | `Pipette` 按钮 + `ScreenColorPicker` | 811-835，按钮 1159-1172，portal 1288-1295；Tauri macOS/Linux 隐藏 |
 | 背景图选择/替换（WebP 转码后保存） | `bg_image_path` | 隐藏 file input + 预览按钮 | 644-666，input 1311-1318，预览 1323-1331 |
 | 背景图移除 | `bg_image_path`（置 null） | 预览图右上角 X | 668-678，按钮 1333-1342 |
 | 背景图不透明度（0-1） | `bg_image_opacity` | `Slider` + 重置按钮 | 680-697，UI 1345-1371 |
@@ -125,7 +125,7 @@
 **备注**：`invoke`：无；`listen`：无；Tauri `emit`：`theme-changed`（63、77）；window 事件：监听 `themeChange`（53）、派发 `themeChange`（76）；配置键 `theme_mode`（读 36/48，写 75）。未使用的 `btnRef` 仅绑定在按钮上。
 
 ## `src/components/game-launch-settings.tsx`
-**职责**：游戏启动相关设置组（取消下载行为 / 校验线程数 / 启动界面背景媒体），存储在 localStorage 并通过自定义事件与数据模式设置页实时同步；另提供游戏模式右下角弹出的毛玻璃设置弹窗。
+**职责**：Windows 游戏启动相关设置组（取消下载行为 / 校验线程数 / 启动界面背景媒体），存储在 localStorage 并通过自定义事件与数据模式设置页实时同步；另提供游戏模式右下角弹出的毛玻璃设置弹窗。macOS/Linux 不挂载该设置组或弹窗。
 **导出**：`GameLaunchSettings`、`GameLaunchSettingsModal`。
 **主要依赖**：`react`、`react-i18next`、`@/components/ui/slider`（`Slider`）、`@/components/ui/settings-row`（`SettingsDivider`）、`@/components/ui/modal`（`GlassModalCompound`）、`@/stores/launcherMode`（`getGameBgMode`、`setGameBgMode`、`GameBgMode`）。
 

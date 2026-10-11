@@ -525,7 +525,7 @@ src/components/cards/
 
 - **主窗口**：1200 × 700，无边框、透明、居中、可调整大小，Windows 亚克力效果
 - **托盘面板窗口**：260 × 340，无边框、置顶、不占任务栏、默认隐藏
-- **打包**：NSIS 安装包，当前用户安装，开始菜单目录 `ENDPROTOCOL`，含简中与英文
+- **打包**：Windows NSIS（当前用户安装，含简中与英文）、macOS Intel/Apple Silicon DMG、Linux x64 AppImage
 
 ### 更新系统
 
@@ -539,7 +539,7 @@ src/components/cards/
 | 镜像 | `updates.msk-network.cn/{stable,preview}/latest.json`（Cloudflare R2 同步） |
 | GitHub | `github.com/soldiereleven/endprotocol/releases` |
 
-更新包经 minisign 签名验证后才安装；安装程序以分离进程静默执行（`/S`），完成后应用退出。
+Windows、macOS 与 Linux 均通过 Tauri updater 插件更新，下载包经 minisign 签名验证；预览频道也按当前平台的 updater 包安装。Linux 仅发布 AppImage：应用主动下载签名后的新 AppImage 并替换当前文件，无需依赖发行版包管理器或软件仓库。Windows 使用 NSIS 静默安装，macOS/Linux 安装后由应用重新启动。
 
 ## CI/CD
 
@@ -548,8 +548,9 @@ src/components/cards/
 1. **同步版本号**：去掉标签的 `v` 前缀，写入 `package.json` 与 `src-tauri/tauri.conf.json`
 2. **判定通道**：版本号带后缀 → `preview`，否则 `stable`；并查找同通道的上一个标签
 3. **生成更新日志**：按 Conventional Commits 分类（Features / Bug Fixes / Documentation / Refactoring / Performance / Tests / Chores），写入 `CHANGELOG.md`
-4. **构建**：Node 24 + pnpm 10 + Rust stable，目标 `x86_64-pc-windows-msvc`，产出 NSIS 安装包与 updater 签名产物
-5. **发布**：先创建草稿 Release，再将其公开并标记是否为预发布
+4. **并行构建**：Node 24 + pnpm 10 + Rust stable，构建 Windows x64、Linux x64 AppImage、macOS Intel 与 Apple Silicon 安装包及签名 updater 包
+5. **生成更新清单**：将各平台的 updater 包与 minisign 签名汇总到 Release 的 `latest.json`；GitHub 预览更新通过对应预览 tag 的清单检查
+6. **发布**：先创建草稿 Release，再将其公开并标记是否为预发布
 
 需要配置的 Secrets：`TAURI_SIGNING_PRIVATE_KEY` 与 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`（`GITHUB_TOKEN` 由 Actions 自动提供）。
 

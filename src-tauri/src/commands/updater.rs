@@ -3,10 +3,102 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::Emitter;
+use tauri_plugin_updater::{Updater, UpdaterExt};
 
 use crate::utils::capture;
 
 static DOWNLOAD_CANCELLED: AtomicBool = AtomicBool::new(false);
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateEndpointInfo {
+    version: String,
+    date: Option<String>,
+    body: Option<String>,
+}
+
+fn updater_for_endpoint(app: &tauri::AppHandle, endpoint: &str) -> Result<Updater, String> {
+    const MIRROR_STABLE: &str = "https://updates.msk-network.cn/stable/latest.json";
+    const MIRROR_PREVIEW: &str = "https://updates.msk-network.cn/preview/latest.json";
+    const GITHUB_LATEST: &str =
+        "https://github.com/soldiereleven/endprotocol/releases/latest/download/latest.json";
+    const GITHUB_RELEASE_PREFIX: &str =
+        "https://github.com/soldiereleven/endprotocol/releases/download/";
+
+    let is_github_release = endpoint
+        .strip_prefix(GITHUB_RELEASE_PREFIX)
+        .and_then(|release| release.strip_suffix("/latest.json"))
+        .and_then(|tag| tag.strip_prefix('v'))
+        .is_some_and(|version| {
+            version.starts_with(|c: char| c.is_ascii_digit())
+                && version
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '+'))
+        });
+
+    if endpoint != MIRROR_STABLE
+        && endpoint != MIRROR_PREVIEW
+        && endpoint != GITHUB_LATEST
+        && !is_github_release
+    {
+        return Err("Unsupported updater endpoint".to_string());
+    }
+
+    let endpoint = endpoint
+        .parse()
+        .map_err(|error| format!("Invalid updater endpoint: {error}"))?;
+    app.updater_builder()
+        .endpoints(vec![endpoint])
+        .map_err(|error| format!("Invalid updater endpoint: {error}"))?
+        .build()
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn check_update_endpoint(
+    app: tauri::AppHandle,
+    endpoint: String,
+) -> Result<Option<UpdateEndpointInfo>, String> {
+    let updater = updater_for_endpoint(&app, &endpoint)?;
+    let update = updater.check().await.map_err(|error| error.to_string())?;
+
+    Ok(update.map(|update| UpdateEndpointInfo {
+        version: update.version.to_string(),
+        date: update.date.map(|date| date.to_string()),
+        body: update.body,
+    }))
+}
+
+#[tauri::command]
+pub async fn install_update_endpoint(
+    app: tauri::AppHandle,
+    endpoint: String,
+) -> Result<(), String> {
+    let updater = updater_for_endpoint(&app, &endpoint)?;
+    let update = updater
+        .check()
+        .await
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| "No compatible update is available".to_string())?;
+
+    let mut downloaded = 0_u64;
+    update
+        .download_and_install(
+            |chunk_length, content_length| {
+                downloaded += chunk_length as u64;
+                let _ = app.emit(
+                    "download-progress",
+                    serde_json::json!({
+                        "downloaded": downloaded,
+                        "total": content_length.unwrap_or(0),
+                    }),
+                );
+            },
+            || {},
+        )
+        .await
+        .map_err(|error| error.to_string())
+}
 
 /// Write binary data to a file at the specified path.
 #[tauri::command]
@@ -120,6 +212,7 @@ pub async fn download_file(
 
 /// Spawn an installer file silently (NSIS /S flag) and exit the app.
 /// The installer will replace files and restart the app.
+#[cfg(windows)]
 #[tauri::command]
 pub async fn run_installer(app: tauri::AppHandle, path: String) -> Result<(), String> {
     use std::os::windows::process::CommandExt;
@@ -137,4 +230,11 @@ pub async fn run_installer(app: tauri::AppHandle, path: String) -> Result<(), St
     std::thread::sleep(std::time::Duration::from_secs(2));
     app.exit(0);
     Ok(())
+}
+
+#[cfg(not(windows))]
+#[tauri::command]
+pub async fn run_installer(app: tauri::AppHandle, path: String) -> Result<(), String> {
+    let _ = (app, path);
+    Err("Running downloaded installers is only supported on Windows".to_string())
 }

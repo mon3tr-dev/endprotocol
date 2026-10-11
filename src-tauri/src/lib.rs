@@ -111,6 +111,8 @@ pub fn run() {
             commands::updater::fetch_url,
             commands::updater::download_file,
             commands::updater::run_installer,
+            commands::updater::check_update_endpoint,
+            commands::updater::install_update_endpoint,
             commands::updater::cancel_download,
             commands::updater::reset_download_cancel,
             // Tray commands

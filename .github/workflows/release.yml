@@ -12,9 +12,103 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  build-platforms:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            runner: ubuntu-22.04
+            bundles: appimage
+          - target: x86_64-apple-darwin
+            runner: macos-latest
+            bundles: app,dmg
+          - target: aarch64-apple-darwin
+            runner: macos-latest
+            bundles: app,dmg
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            curl \
+            file \
+            libayatana-appindicator3-dev \
+            libfuse2 \
+            libssl-dev \
+            librsvg2-dev \
+            libwebkit2gtk-4.1-dev \
+            libxdo-dev \
+            patchelf \
+            wget
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Update version from tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          node -e "
+            const fs = require('fs');
+            const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+            pkg.version = '${VERSION}';
+            fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+            const confPath = 'src-tauri/tauri.conf.json';
+            const conf = JSON.parse(fs.readFileSync(confPath, 'utf8'));
+            conf.version = '${VERSION}';
+            fs.writeFileSync(confPath, JSON.stringify(conf, null, 2) + '\n');
+          "
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            src-tauri -> target
+
+      - name: Build bundles and updater artifacts
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: pnpm tauri build --target "${{ matrix.target }}" --bundles "${{ matrix.bundles }}" --ignore-version-mismatches
+
+      - name: Upload platform bundles
+        uses: actions/upload-artifact@v4
+        with:
+          name: platform-bundles-${{ matrix.target }}
+          path: target/${{ matrix.target }}/release/bundle/**/*
+          if-no-files-found: error
+          retention-days: 1
+
   release:
     name: Build and Release Windows x64
     runs-on: windows-latest
+    needs: build-platforms
 
     steps:
       # ==========================================================
@@ -369,7 +463,125 @@ jobs:
           releaseName: "Release ${{ github.ref_name }}"
           releaseDraft: true
           prerelease: ${{ steps.release-type.outputs.prerelease }}
-          args: ${{ steps.tauri_sync.outputs.args || '--target x86_64-pc-windows-msvc' }}
+          uploadUpdaterJson: false
+          args: ${{ steps.tauri_sync.outputs.args || '--target x86_64-pc-windows-msvc' }} --bundles nsis
+
+      - name: Download platform bundles
+        uses: actions/download-artifact@v4
+        with:
+          pattern: platform-bundles-*
+          path: platform-bundles
+          merge-multiple: false
+
+      - name: Create signed multi-platform updater manifest
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          node <<'MANIFEST_EOF'
+          const fs = require('node:fs');
+          const path = require('node:path');
+          const { spawnSync } = require('node:child_process');
+
+          const tag = process.env.GITHUB_REF_NAME;
+          const version = tag.replace(/^v/, '');
+          const repository = process.env.GITHUB_REPOSITORY;
+          const assetsDir = 'release-assets';
+          fs.mkdirSync(assetsDir, { recursive: true });
+
+          function listFiles(directory) {
+            if (!fs.existsSync(directory)) return [];
+            return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+              const entryPath = path.join(directory, entry.name);
+              return entry.isDirectory() ? listFiles(entryPath) : [entryPath];
+            });
+          }
+
+          function copyPlatformAssets(target, sourceDir) {
+            const allowed = /\.(?:exe|msi|dmg|deb|rpm|appimage|nsis\.zip|msi\.zip|appimage\.tar\.gz|app\.tar\.gz)(?:\.sig)?$/i;
+            const files = listFiles(sourceDir).filter((file) => allowed.test(path.basename(file)));
+            if (files.length === 0) throw new Error(`No distributable bundles found for ${target}`);
+            for (const file of files) {
+              const name = `${target}-${path.basename(file)}`;
+              fs.copyFileSync(file, path.join(assetsDir, name));
+            }
+          }
+
+          function findUpdaterBundle(target, sourceDir, suffix) {
+            const bundle = listFiles(sourceDir).find((file) =>
+              path.basename(file).toLowerCase().endsWith(suffix.toLowerCase()),
+            );
+            if (!bundle) throw new Error(`No ${suffix} updater bundle found for ${target}`);
+            const signaturePath = `${bundle}.sig`;
+            if (!fs.existsSync(signaturePath)) {
+              throw new Error(`Updater signature is missing: ${signaturePath}`);
+            }
+            const filename = path.basename(bundle);
+            const assetName = target === 'windows-x86_64'
+              ? filename
+              : `${target}-${filename}`;
+            return {
+              assetName,
+              signature: fs.readFileSync(signaturePath, 'utf8').trim(),
+            };
+          }
+
+          const platformBuilds = [
+            {
+              key: 'linux-x86_64',
+              target: 'x86_64-unknown-linux-gnu',
+              source: 'platform-bundles/platform-bundles-x86_64-unknown-linux-gnu',
+              suffix: '.AppImage',
+            },
+            {
+              key: 'darwin-x86_64',
+              target: 'x86_64-apple-darwin',
+              source: 'platform-bundles/platform-bundles-x86_64-apple-darwin',
+              suffix: '.app.tar.gz',
+            },
+            {
+              key: 'darwin-aarch64',
+              target: 'aarch64-apple-darwin',
+              source: 'platform-bundles/platform-bundles-aarch64-apple-darwin',
+              suffix: '.app.tar.gz',
+            },
+          ];
+          const platforms = {};
+
+          for (const build of platformBuilds) {
+            copyPlatformAssets(build.target, build.source);
+            const updater = findUpdaterBundle(build.target, build.source, build.suffix);
+            platforms[build.key] = {
+              url: `https://github.com/${repository}/releases/download/${tag}/${encodeURIComponent(updater.assetName)}`,
+              signature: updater.signature,
+            };
+          }
+
+          const windowsBundleDir = 'target/x86_64-pc-windows-msvc/release/bundle';
+          const windowsUpdater = findUpdaterBundle('windows-x86_64', windowsBundleDir, '.exe');
+          platforms['windows-x86_64'] = {
+            url: `https://github.com/${repository}/releases/download/${tag}/${encodeURIComponent(windowsUpdater.assetName)}`,
+            signature: windowsUpdater.signature,
+          };
+
+          const manifest = {
+            version,
+            pub_date: new Date().toISOString(),
+            notes: fs.readFileSync('CHANGELOG.md', 'utf8'),
+            platforms,
+          };
+          fs.writeFileSync(path.join(assetsDir, 'latest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
+
+          const upload = spawnSync(
+            'gh',
+            ['release', 'upload', tag, ...fs.readdirSync(assetsDir).map((name) => path.join(assetsDir, name)), '--clobber'],
+            { stdio: 'inherit' },
+          );
+          if (upload.status !== 0) {
+            throw new Error(`Failed to upload platform bundles and updater manifest (gh exit ${upload.status})`);
+          }
+          MANIFEST_EOF
 
       # ==========================================================
       # Upload CHANGELOG.md as release asset

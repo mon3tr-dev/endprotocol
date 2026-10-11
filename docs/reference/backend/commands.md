@@ -42,8 +42,8 @@
 | `get_card_settings` | commands/card_config.rs:9 | `state`、`card_id: String` | `Result<Value, String>` | `ConfigService::get("card_settings.{card_id}")` |
 | `save_card_settings` | commands/card_config.rs:26 | `state`、`card_id: String`、`settings: Value` | `Result<bool, String>` | `ConfigService::get` + 对象浅合并 + `ConfigService::set` |
 | `remove_card_settings` | commands/card_config.rs:66 | `state`、`card_id: String` | `Result<bool, String>` | `ConfigService::remove("card_settings.{card_id}")` |
-| `capture_screen` | commands/color_picker.rs:28 | `window: WebviewWindow` | `Result<ScreenCapture, String>` | `window.minimize/unminimize/set_fullscreen/set_focus` + 本地 `capture_screen_sync`（GDI 截屏） |
-| `finish_screen_pick` | commands/color_picker.rs:47 | `window: WebviewWindow` | `()`（无返回） | `window.set_fullscreen(false)`、`window.set_focus()` |
+| `capture_screen` | commands/color_picker.rs:36 | `window: WebviewWindow` | `Result<ScreenCapture, String>` | Windows：`window` 控制 + GDI 截屏；非 Windows：返回仅支持 Windows 的错误 |
+| `finish_screen_pick` | commands/color_picker.rs:56 | `window: WebviewWindow` | `()`（无返回） | Windows：退出全屏并聚焦；非 Windows：空实现 |
 | `get_config` | commands/config.rs:9 | `state: State<Arc<Mutex<ConfigService>>>`、`key: String` | `Option<Value>` | `ConfigService::get` |
 | `set_config` | commands/config.rs:16 | `state`、`key: String`、`value: Value` | `Result<(), String>` | `ConfigService::set` |
 | `remove_config` | commands/config.rs:27 | `state`、`key: String` | `bool` | `ConfigService::remove` |
@@ -95,13 +95,15 @@
 | `hide_tray_panel` | commands/tray.rs:62 | `app: AppHandle` | `Result<(), String>` | `tray::hide_tray_panel` |
 | `show_main_window` | commands/tray.rs:68 | `app: AppHandle` | `Result<(), String>` | `tray::show_main_window_focus` + `tray::hide_tray_panel` |
 | `app_quit` | commands/tray.rs:77 | `app: AppHandle` | `()`（无返回） | `app.exit(0)` |
-| `write_file` | commands/updater.rs:12 | `path: String`、`data: Vec<u8>` | `Result<(), String>` | `fs::create_dir_all(parent)` + `fs::write` |
-| `get_temp_dir` | commands/updater.rs:24 | 无 | `Result<String, String>` | `std::env::temp_dir` |
-| `fetch_url` | commands/updater.rs:32 | `url: String` | `Result<String, String>` | `capture::send`（reqwest GET）→ `resp.text()` |
-| `cancel_download` | commands/updater.rs:46 | 无 | `()`（无返回） | 模块级 `DOWNLOAD_CANCELLED` AtomicBool 置 true |
-| `reset_download_cancel` | commands/updater.rs:52 | 无 | `()`（无返回） | `DOWNLOAD_CANCELLED` 置 false |
-| `download_file` | commands/updater.rs:60 | `app: AppHandle`、`url: String`、`path: String` | `Result<u64, String>` | `capture::send_stream` 流式下载，每 256KB emit `download-progress` |
-| `run_installer` | commands/updater.rs:123 | `app: AppHandle`、`path: String` | `Result<(), String>` | `Command::new(path).args(["/S"])` + `app.exit(0)` |
+| `write_file` | commands/updater.rs:105 | `path: String`、`data: Vec<u8>` | `Result<(), String>` | `fs::create_dir_all(parent)` + `fs::write` |
+| `get_temp_dir` | commands/updater.rs:117 | 无 | `Result<String, String>` | `std::env::temp_dir` |
+| `fetch_url` | commands/updater.rs:125 | `url: String` | `Result<String, String>` | `capture::send`（reqwest GET）→ `resp.text()` |
+| `cancel_download` | commands/updater.rs:139 | 无 | `()`（无返回） | 模块级 `DOWNLOAD_CANCELLED` AtomicBool 置 true |
+| `reset_download_cancel` | commands/updater.rs:145 | 无 | `()`（无返回） | `DOWNLOAD_CANCELLED` 置 false |
+| `download_file` | commands/updater.rs:153 | `app: AppHandle`、`url: String`、`path: String` | `Result<u64, String>` | `capture::send_stream` 流式下载，每 256KB emit `download-progress` |
+| `check_update_endpoint` | commands/updater.rs:58 | `app: AppHandle`、`endpoint: String` | `Result<Option<UpdateEndpointInfo>, String>` | 限定镜像/GitHub 清单，使用 updater 检查本机平台与版本 |
+| `install_update_endpoint` | commands/updater.rs:73 | `app: AppHandle`、`endpoint: String` | `Result<(), String>` | 使用 updater 验签、下载并安装指定清单中的本机平台更新包；emit `download-progress` |
+| `run_installer` | commands/updater.rs:217 | `app: AppHandle`、`path: String` | `Result<(), String>` | Windows：静默启动 NSIS 安装器并退出应用；非 Windows：返回不支持错误 |
 | `minimize_window` | commands/window.rs:3 | `app: AppHandle<R>` | `()`（无返回） | `app.get_webview_window("main")` → `window.minimize()` |
 | `toggle_maximize_window` | commands/window.rs:10 | `app: AppHandle<R>` | `()`（无返回） | `is_maximized` → `maximize()` / `unmaximize()` |
 | `close_window` | commands/window.rs:21 | `app: AppHandle<R>` | `()`（无返回） | `window.close()` |
@@ -331,13 +333,13 @@
 ---
 
 ## `src-tauri/src/commands/color_picker.rs`
-**职责**：屏幕取色（吸管）流程的窗口控制与 GDI 截屏（151 行 / 2 个命令 + 1 个同步截屏函数）。背景：WebView2 的 `EyeDropper.open()` 静默失效，改为「最小化 → 截取鼠标所在屏幕 → 还原并全屏 → 前端在全屏覆盖层上取色」。
+**职责**：Windows 屏幕取色（吸管）流程的窗口控制与 GDI 截屏；macOS/Linux 使用仅报不支持错误的命令桩，前端不展示屏幕吸管入口。Windows 流程为「最小化 → 截取鼠标所在屏幕 → 还原并全屏 → 前端在全屏覆盖层上取色」。
 
 ### 内部结构
-- 13-20：`ScreenCapture` 结构体（`width`/`height`/`data`，`data` 为 RGBA 的 base64，序列化为 camelCase）。
-- 28-44：`capture_screen` 命令。
-- 47-51：`finish_screen_pick` 命令。
-- 53-151：`capture_screen_sync()` —— Win32 GDI 截屏：`GetCursorPos` → `MonitorFromPoint`/`GetMonitorInfoW` → `GetDC`/`CreateCompatibleDC`/`CreateCompatibleBitmap` → `BitBlt` → `GetDIBits` 取 32 位像素 → BGRA 转 RGBA → base64 编码；每步失败都返回具体错误字符串并释放 GDI 资源。
+- `ScreenCapture`：`width`/`height`/`data`，`data` 为 RGBA 的 base64，序列化为 camelCase。
+- `capture_screen`：Windows 下最小化并等待 400ms，执行 `capture_screen_sync()` 后还原并全屏；非 Windows 返回明确错误。
+- `finish_screen_pick`：Windows 下退出全屏并聚焦；非 Windows 空实现。
+- Windows 专用 `capture_screen_sync()`：Win32 GDI 截屏：`GetCursorPos` → `MonitorFromPoint`/`GetMonitorInfoW` → `GetDC`/`CreateCompatibleDC`/`CreateCompatibleBitmap` → `BitBlt` → `GetDIBits` 取 32 位像素 → BGRA 转 RGBA → base64 编码；每步失败都返回具体错误字符串并释放 GDI 资源。
 
 ### `capture_screen`
 - 位置：color_picker.rs:28，`#[tauri::command]`（async）
@@ -630,35 +632,47 @@
 ---
 
 ## `src-tauri/src/commands/updater.rs`
-**职责**：应用自更新所需的通用原语（下载/写文件/装包，140 行 / 7 个命令）。含模块级静态 `DOWNLOAD_CANCELLED: AtomicBool`（updater.rs:9）作为跨调用的取消开关；进度通过事件 `download-progress` 推送。
+**职责**：应用自更新所需的通用原语（下载/写文件/装包，含 9 个命令）。Tauri updater 插件按本机平台检查、验签、安装；预览/频道切换使用受限的镜像/GitHub 清单端点。另含模块级静态 `DOWNLOAD_CANCELLED: AtomicBool` 作为下载取消开关。
 
 ### `write_file`
-- 位置：updater.rs:12（同步）；参数：`path: String`、`data: Vec<u8>`；返回：`Result<(), String>`；逻辑：`fs::create_dir_all(parent)` 后 `fs::write`，**任意路径皆可写**。
+- 位置：updater.rs:105（同步）；参数：`path: String`、`data: Vec<u8>`；返回：`Result<(), String>`；逻辑：`fs::create_dir_all(parent)` 后 `fs::write`，**任意路径皆可写**。
 
 ### `get_temp_dir`
-- 位置：updater.rs:24（同步）；参数：无；返回：`Result<String, String>`；逻辑：`std::env::temp_dir()` 字符串化。
+- 位置：updater.rs:117（同步）；参数：无；返回：`Result<String, String>`；逻辑：`std::env::temp_dir()` 字符串化。
 
 ### `fetch_url`
-- 位置：updater.rs:32（async）；参数：`url: String`；返回：`Result<String, String>`；逻辑：`capture::send(&client, client.get(&url))` 后 `resp.text()`，**任意 URL 可 GET**。
+- 位置：updater.rs:125（async）；参数：`url: String`；返回：`Result<String, String>`；逻辑：`capture::send(&client, client.get(&url))` 后 `resp.text()`，**任意 URL 可 GET**。
 
 ### `cancel_download`
-- 位置：updater.rs:46（同步）；参数：无；返回：`()`；逻辑：`DOWNLOAD_CANCELLED.store(true, SeqCst)`，`download_file` 循环下次检查时退出并删除半成品文件。
+- 位置：updater.rs:139（同步）；参数：无；返回：`()`；逻辑：`DOWNLOAD_CANCELLED.store(true, SeqCst)`，`download_file` 循环下次检查时退出并删除半成品文件。
 
 ### `reset_download_cancel`
-- 位置：updater.rs:52（同步）；参数：无；返回：`()`；逻辑：`DOWNLOAD_CANCELLED.store(false, SeqCst)`，新下载前调用。
+- 位置：updater.rs:145（同步）；参数：无；返回：`()`；逻辑：`DOWNLOAD_CANCELLED.store(false, SeqCst)`，新下载前调用。
 
 ### `download_file`
-- 位置：updater.rs:60（async）
+- 位置：updater.rs:153（async）
 - 参数：`app: AppHandle`、`url: String`、`path: String`
 - 返回：`Result<u64, String>`（写入的总字节数）
 - 逻辑：开始时重置取消标志 → `capture::send_stream` 取流 → 建父目录与目标文件 → 逐 chunk 写盘，每累计 ≥256KB（或下完）`app.emit("download-progress", {downloaded, total})`；检测到取消标志则删除文件并返回 `Err("Download cancelled")`；结束 `flush` 并返回字节数。
 - 事件：`download-progress`
 
+### `check_update_endpoint`
+- 位置：updater.rs:58（async）
+- 参数：`app: AppHandle`、`endpoint: String`
+- 返回：`Result<Option<UpdateEndpointInfo>, String>`
+- 逻辑：仅允许稳定/预览镜像、GitHub latest 或指定版本 Release 清单；通过 updater builder 检查本机目标与更新版本。
+
+### `install_update_endpoint`
+- 位置：updater.rs:73（async）
+- 参数：`app: AppHandle`、`endpoint: String`
+- 返回：`Result<(), String>`
+- 逻辑：重新检查清单中的本机更新，调用 updater 插件下载、验签并安装，并 emit `download-progress`。
+
 ### `run_installer`
-- 位置：updater.rs:123（async）
+- 位置：updater.rs:217（async）
 - 参数：`app: AppHandle`、`path: String`
 - 返回：`Result<(), String>`
-- 逻辑：以 `CREATE_NO_WINDOW` 标志静默启动安装器并传 `/S`（NSIS 静默参数），`sleep(2s)` 等安装器起来后 `app.exit(0)` 让出文件占用，由安装器替换并重启应用。
+- 逻辑：Windows 下以 `CREATE_NO_WINDOW` 标志静默启动安装器并传 `/S`（NSIS 静默参数），`sleep(2s)` 等安装器起来后 `app.exit(0)` 让出文件占用，由安装器替换并重启应用；非 Windows 返回明确的不支持错误。
 
 ---
 
@@ -691,7 +705,7 @@
 
 ## 汇总
 
-- 命令总数：**100**（account 23、launcher 26、capture 7、gacha 7、tray 7、updater 7、image 6、config 4、window 4、card_config 3、attendance 2、color_picker 2、logs 1、system_resource 1；`mod.rs` 0）。
+- 命令总数：**102**（account 23、launcher 26、capture 7、gacha 7、tray 7、updater 9、image 6、config 4、window 4、card_config 3、attendance 2、color_picker 2、logs 1、system_resource 1；`mod.rs` 0）。
 - 事件 emit：`launcher-progress`（launcher.rs）、`download-progress`（updater.rs）。
 - 关键配置键：`account_token_*`（含 `cred`/`token`/`u8token`/`roles[]`）、`selected_account_id`、`card_settings.{card_id}`、`tray_user_info`，以及前端侧的 `system_resource_defaults` / `todo_lists` / `todo_defaults`（经 config 命令读写）；相关本地文件：`gacha_avatar_map.json`、`total.json`、`backgrounds/bg.webp`。
 - 主要状态（managed state）：`Arc<std::sync::Mutex<ConfigService>>`（config/tray 直接用）、`Arc<tokio::sync::Mutex<AccountService>>`（account/attendance/card_config/gacha）、`Arc<GachaService>`、`Arc<Mutex<GameLauncherService>>`、`Arc<std::sync::Mutex<SystemResourceService>>`（见 `lib.rs` 的 `setup`）。

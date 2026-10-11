@@ -91,7 +91,7 @@
 **color_picker（lib.rs:93-94）**：`capture_screen`、`finish_screen_pick`
 **logs（lib.rs:96）**：`get_backend_logs`
 **capture（lib.rs:98-104）**：`capture_start`、`capture_stop`、`capture_status`、`capture_list_sessions`、`capture_read_entries`、`capture_delete_session`、`capture_dir`
-**updater（lib.rs:106-112）**：`write_file`、`get_temp_dir`、`fetch_url`、`download_file`、`run_installer`、`cancel_download`、`reset_download_cancel`
+**updater（lib.rs:109-117）**：`write_file`、`get_temp_dir`、`fetch_url`、`download_file`、`run_installer`、`check_update_endpoint`、`install_update_endpoint`、`cancel_download`、`reset_download_cancel`
 **tray（lib.rs:114-120）**：`get_tray_user_info`、`set_tray_user`、`update_tray_user_data`、`show_tray_panel`、`hide_tray_panel`、`show_main_window`、`app_quit`
 **launcher（lib.rs:122-147，26 个）**：`launcher_check_status`、`launcher_get_process_read_bytes`、`launcher_install_or_update`、`launcher_verify_and_repair`、`launcher_preload_download`、`launcher_get_remote_version`、`launcher_get_payload_state`、`launcher_cancel_download`、`launcher_has_download_cache`、`launcher_reset_download_cancel`、`launcher_decrypt_file`、`launcher_get_banners`、`launcher_get_announcements`、`launcher_get_notice_content`、`launcher_get_background_image`、`launcher_start_game`、`launcher_browse_folder`、`launcher_check_executable`、`launcher_check_game_running`、`launcher_kill_game`、`launcher_detect_channel`、`launcher_scan_install_dir`、`launcher_get_disk_space`、`launcher_switch_channel`、`launcher_cancel_switch`、`launcher_cancel_all`
 
@@ -173,7 +173,7 @@
 | `dependencies.rsa` | :43 | RSA 加密（登录/凭证） |
 | `dependencies.flate2` | :44 | `zlib` 后端的 gzip 压缩/解压 |
 | `dependencies.base64` / `bytes` / `http` | :45-47 | 编码与 HTTP 基础类型 |
-| `dependencies.windows-sys` | Cargo.toml | `0.61`，features：`Win32_Foundation`、`Win32_Graphics_Gdi`、`Win32_UI_WindowsAndMessaging`、`Win32_System_Com`、`Win32_UI_Shell`、`Win32_System_Threading`（托盘取前台窗口、取色、进程检测）、`Win32_System_Power` / `Win32_System_Performance`（system_resource_service 采集实测 CPU 频率） |
+| `dependencies.windows-sys` | Cargo.toml | `0.61`，仅 `cfg(windows)` 目标依赖；features：`Win32_Foundation`、`Win32_Graphics_Gdi`、`Win32_UI_WindowsAndMessaging`、`Win32_System_Com`、`Win32_UI_Shell`、`Win32_System_Threading`（托盘取前台窗口、取色、进程检测）、`Win32_System_Power` / `Win32_System_Performance`（system_resource_service 采集实测 CPU 频率） |
 | `dependencies.sysinfo` | Cargo.toml | 系统资源采集（CPU/内存/磁盘/网络/温度传感器），见 `services/system_resource_service.rs` |
 | `dependencies.uuid` / `hex` / `rand` | :49-51 | UUID v4、十六进制、随机数 |
 | `dependencies.indexmap` | :52 | 有序 map（带 `serde`） |
@@ -191,7 +191,7 @@
 | 网络 | `reqwest`、`futures-util`、`http`、`urlencoding` |
 | 数据 | `serde`、`serde_json`、`chrono`、`indexmap`、`bytes`、`uuid`、`hex`、`rand` |
 | 加密/签名 | `aes`、`cbc`、`ecb`、`des`、`rsa`、`hmac`、`sha2`、`md-5`、`digest`、`base64`、`flate2` |
-| 系统/IO | `dirs`、`walkdir`、`rfd`、`windows-sys` |
+| 系统/IO | `dirs`、`walkdir`、`rfd`；Windows 专用 `windows-sys` |
 | 日志/错误 | `tracing`、`tracing-subscriber`、`thiserror` |
 
 ---
@@ -216,13 +216,13 @@
 | `app.security.csp` | :46 | `null` — 关闭 CSP（未设置内容安全策略） |
 | `bundle.active` | :50 | `true` — 启用打包 |
 | `bundle.createUpdaterArtifacts` | :51 | `true` — 生成 updater 用的签名产物 |
-| `bundle.targets` | :52 | `["nsis"]` — 仅 Windows NSIS 安装器 |
-| `bundle.icon` | :54-60 | 32/128/256 png、`icon.icns`（macOS 预留）、`icon.ico`（Windows） |
-| `bundle.windows.nsis.installerIcon` / `uninstallerIcon` | :64-65 | 均为 `icons/icon.ico` |
-| `bundle.windows.nsis.installMode` | :67 | `currentUser` — 无需管理员权限的按用户安装 |
-| `bundle.windows.nsis.startMenuFolder` | :69 | `ENDPROTOCOL` |
-| `bundle.windows.nsis.languages` | :71 | `["SimpChinese", "English"]` |
-| `plugins.updater.pubkey` | :77 | minisign 公钥（`dW50cnVzdGVkIGNvbW1lbnQ6...` base64） |
+| `bundle.targets` | 未配置 | 使用 Tauri 当前构建平台的默认打包目标；保留 `bundle.windows.nsis` 的 Windows 安装器配置 |
+| `bundle.icon` | :52-58 | 32/128/256 png、`icon.icns`（macOS）、`icon.ico`（Windows） |
+| `bundle.windows.nsis.installerIcon` / `uninstallerIcon` | :62-63 | 均为 `icons/icon.ico` |
+| `bundle.windows.nsis.installMode` | :65 | `currentUser` — 无需管理员权限的按用户安装 |
+| `bundle.windows.nsis.startMenuFolder` | :67 | `ENDPROTOCOL` |
+| `bundle.windows.nsis.languages` | :69 | `["SimpChinese", "English"]` |
+| `plugins.updater.pubkey` | :75 | minisign 公钥（`dW50cnVzdGVkIGNvbW1lbnQ6...` base64） |
 | `plugins.updater.endpoints` | :78-82 | 三个更新源，按序回退：`https://updates.msk-network.cn/stable/latest.json` → `https://updates.msk-network.cn/preview/latest.json` → `https://github.com/soldiereleven/endprotocol/releases/latest/download/latest.json` |
 
 ---
