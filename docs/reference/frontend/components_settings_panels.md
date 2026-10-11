@@ -225,3 +225,19 @@
 - 250-253 行：`onOpenChange` 直接透传（下载中允许关闭，下载在后台继续）。
 
 **备注**：本文件不直接 `invoke`/`listen`/`emit`，也不直接读写配置键——所有 Tauri 交互（含更新检查/下载/渠道）封装在 `@/utils/updateService`。window 事件：无。涉及的 `localStorage`/事件均由该 service 内部管理。i18n 键：`settings.update.update_available/checking/current_version/latest_version/channel/release_date/changelog_failed/downloading/downloading_install/later/download_update`、`settings.update_channel.stable/preview`。
+
+## `src/components/system-resource-settings.tsx`
+**职责**：全局设置页「系统资源卡片」分区，配置新增系统资源卡片/卡片组时的默认值。
+**导出**：`SystemResourceSettings`。
+**主要依赖**：`@/utils/systemResourceService`（`getSystemResourceDefaults`/`setSystemResourceDefaults`）、`@/types/system-resource`（`METRIC_ORDER`/`METRIC_CATALOG`/`REFRESH_PRESETS`/`DEFAULT_SYSTEM_RESOURCE_DEFAULTS`）、`@/components/cards/system-resource/color-picker`（预设/自定义色）、`@/components/ui/{settings-row,glass}`。
+
+**配置项**：默认刷新频率、默认单位制式、默认精度、**默认自动翻页间隔**、默认告警阈值（warn/critical）、默认是否显示曲线、默认主题色（预设色/自定义色）、默认卡片组模板（指标多选）。任一改动即时 `setSystemResourceDefaults(patch)` 写入配置键 `system_resource_defaults`。（卡片尺寸由卡片自身的三档预设决定，不再作为全局默认值。）
+
+**备注**：新增卡片/卡片组时由 `dashboard.tsx` + `buildDefaultCardSettings` 读取该配置键；卡片级配置可覆盖全局默认值。i18n 键：`settings.system_resource.*`，选项文案复用 `card:system_resource_*`。
+
+## `src/components/todo-settings.tsx`
+**职责**：全局设置页「To-Do 卡片」分区。
+**导出**：`TodoSettings`。
+**主要依赖**：`@/utils/todoDefaults`（`getTodoDefaults`/`setTodoDefaults`）、`@/types/todo`（`DEFAULT_TODO_DEFAULTS`/`TODO_COLORS`/`TODO_ICONS`）、`@/components/cards/todo/todo-icon`（图标标识渲染）、`@/components/ui/{settings-row,glass}`。
+
+**配置项**：默认排序方式、默认是否隐藏已完成、默认优先级体系（是否启用）、默认是否开启截止时间、默认卡片颜色、默认图标；写入配置键 `todo_defaults`。

@@ -140,7 +140,7 @@
 | ├ `selectedAccount` | L235 | `accounts` 中匹配 `roleId` 的项 |
 | ├ `isWeapon` / `active` | L241 / L242 | 分类为 weapon 时取 `weaponSaved`，否则 `saved` |
 | ├ `isCharDraw` | L245 | `all` 分类全收，否则按 `poolKindOf` 匹配当前分类 |
-| ├ `stats` | L248 | 过滤 `kind === "draw"` 且属于当前分类；统计 total/6★/5★/4★、`avgSix`（total/six）、`avgFive`（total/(five+six)）与三个占比 |
+| ├ `stats` | L248 | 过滤 `kind === "draw"` 且属于当前分类；统计 total/6★/5★/4★、`avgSix`（共享 `calculateGachaSixStarIntervals`，逐池计算六星事件间隔后取平均）、`avgFive`（total/(five+six)）与三个占比 |
 | ├ `lastSyncText` | L270 | `lastSyncTime` 按语言本地化格式化 |
 | ├ `poolOptions` | L276 | 按记录出现顺序（新→旧）收集去重卡池，显示名优先 `r.poolName` > pools 元信息 > poolId |
 | ├ `hasActiveFilter` | L292 | 关键字/稀有度/NEW/赠送 任一激活 |

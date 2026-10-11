@@ -344,3 +344,17 @@
 - 监听的 Tauri 事件：`launcher-progress`、`launcher://progress`、`launcher://switch-progress`（注意前两者命名风格不一致，属两套事件源）。
 - 配置键：本文件不读写任何 `configService` 配置键（安装路径、渠道等由调用方传入）。
 - 缓存策略：无前端缓存；远程版本/资源的缓存由后端负责。除 `verifyAndRepair` 外所有函数都**不捕获错误**，异常直接上抛给调用方；`verifyAndRepair` 在业务失败时抛出的是字符串 `result.message` 而非 `Error` 对象。
+
+## `src/utils/systemResourceService.ts`
+**职责**：系统资源采集命令的封装，以及全局「系统资源卡片」默认值的读写。
+**导出**：`SystemResourceService`（静态类）、`SnapshotResult`（interface）、`getSystemResourceDefaults()`、`setSystemResourceDefaults(patch)`，并再导出类型 `SystemSnapshot`。
+**主要依赖**：`@tauri-apps/api/core` 的 `invoke`、`@/utils/logger`、`@/utils/configService`（`getConfig`/`setConfig`）、`@/types/system-resource`。
+
+| 符号 | 说明 |
+| --- | --- |
+| `SystemResourceService.getSnapshot()` | `invoke("get_system_snapshot")`，返回 `{ok:true,data}`；异常转 `{ok:false,error}`（记录 `logWarn`），调用方据此渲染友好提示 |
+| `SystemResourceService.safeSnapshot()` | 仅返回数据或 `null`，供历史曲线等非关键路径使用 |
+| `getSystemResourceDefaults()` | 读配置键 `system_resource_defaults`，与 `DEFAULT_SYSTEM_RESOURCE_DEFAULTS` 合并；首次读取时按 `system_resource_defaults_version` 做一次性迁移（v2：`showSparklines` 默认改为 `true`）并写回 |
+| `setSystemResourceDefaults(patch)` | 读-改-写合并保存 |
+
+**备注**：封装的 invoke 命令：`get_system_snapshot`；配置键：`system_resource_defaults`、`system_resource_defaults_version`（另经 `configService` 间接使用 `get_config`/`set_config`）。

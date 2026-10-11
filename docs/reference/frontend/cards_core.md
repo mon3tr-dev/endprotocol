@@ -4,7 +4,7 @@
 
 ## 每张卡片的目录契约
 
-`src/components/cards/<card-name>/` 下固定包含（9 张卡片 + `_template` 均如此）：
+`src/components/cards/<card-name>/` 下固定包含（11 张卡片 + `_template` 均如此；`system-resource/`、`todo/` 为新增两卡）：
 
 | 文件 | 说明 |
 | --- | --- |
@@ -31,6 +31,8 @@
 | `attendance/` | `src/components/cards/attendance/attendance.meta.json`、`src/components/cards/attendance/index.tsx`、`src/components/cards/attendance/attendance-settings-modal.tsx`、`src/components/cards/attendance/attendance-rewards.tsx`、`src/components/cards/attendance/attendance-rewards-modal.tsx`、`src/components/cards/attendance/locales/zh.json`、`src/components/cards/attendance/locales/en.json` |
 | `domain-info/` | `src/components/cards/domain-info/domain-info.meta.json`、`src/components/cards/domain-info/index.tsx`、`src/components/cards/domain-info/locales/zh.json`、`src/components/cards/domain-info/locales/en.json` |
 | `spaceship/` | `src/components/cards/spaceship/spaceship.meta.json`、`src/components/cards/spaceship/index.tsx`、`src/components/cards/spaceship/locales/zh.json`、`src/components/cards/spaceship/locales/en.json` |
+| `system-resource/` | `system-resource.meta.json`、`index.tsx`、`metrics.ts`、`metric-view.tsx`、`settings-modal.tsx`、`add-modal.tsx`、`locales/{zh,en}.json`（详见 [cards_system_todo.md](cards_system_todo.md)） |
+| `todo/` | `todo.meta.json`、`index.tsx`、`todo-detail.tsx`、`todo-modal.tsx`、`list-settings-modal.tsx`、`quick-add.ts`、`locales/{zh,en}.json`（详见 [cards_system_todo.md](cards_system_todo.md)） |
 
 ## `src/components/cards/registry/types.ts`
 **职责**：卡片系统唯一的类型契约文件，定义卡片元数据、组件 Props、本地化资源与卡片模块的标准结构。
@@ -40,8 +42,8 @@
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
 | `CardTag` | types.ts:2-5 | 卡片标签。字段：`id: string`（标签标识，用于筛选）；`label: Record<string, string>`（多语言文案，如 `{zh, en}`） |
-| `CardMeta` | types.ts:8-17 | 卡片元数据（对应 `*.meta.json`）。字段：`id: string` 卡片类型唯一标识（注册表 Map 的键）；`name: Record<string,string>` 多语言名称；`description: Record<string,string>` 多语言描述；`icon: string` emoji 或图标类名；`defaultSize: {w:number; h:number}` 默认网格尺寸；`version: string` 版本号；`allowMultiple?: boolean` 是否允许多实例（缺省视为 false）；`tags?: CardTag[]` 多语言标签，用于添加卡片时搜索/筛选 |
-| `BaseCardProps` | types.ts:20-25 | 所有卡片组件必须接受的 Props。字段：`roleId: string` 当前角色 ID；`cardId: string` 卡片实例 ID；`settings: any` 卡片配置（由 dashboard 配置持久化）；`isEditMode?: boolean` 仪表盘编辑模式标志 |
+| `CardMeta` | types.ts:8-17 | 卡片元数据（对应 `*.meta.json`）。字段：`id: string` 卡片类型唯一标识（注册表 Map 的键）；`name: Record<string,string>` 多语言名称；`description: Record<string,string>` 多语言描述；`icon: string` 图标名称或图标类名；`defaultSize: {w:number; h:number}` 默认网格尺寸；`version: string` 版本号；`allowMultiple?: boolean` 是否允许多实例（缺省视为 false）；`tags?: CardTag[]` 多语言标签，用于添加卡片时搜索/筛选 |
+| `BaseCardProps` | types.ts | 所有卡片组件必须接受的 Props。字段：`roleId: string` 当前角色 ID；`cardId: string` 卡片实例 ID；`settings: any` 卡片配置（由 dashboard 配置持久化）；`isEditMode?: boolean` 仪表盘编辑模式标志；`w?: number` / `h?: number` 当前网格尺寸（2026-10 新增，由 `CardContainer` 传入，供卡片在设置中显示/修改尺寸） |
 | `CardLocales` | types.ts:28-30 | 本地化资源容器：`[language: string]: Record<string, string>`（语言码 → 键值对） |
 | `CardModule` | types.ts:33-38 | 卡片模块聚合体。字段：`meta: CardMeta`；`component: React.ComponentType<BaseCardProps>` 默认导出组件；`startup?: (roleId: string) => Promise<void>` 启动任务处理器；`locales?: CardLocales` 本地化资源 |
 
@@ -176,7 +178,7 @@
 | 305-342 | 卡片外壳 JSX：`data-card-id`、`highlightCardId` 命中时加 `card-flash-highlight`（:311）；**指针事件路由**：编辑态交由 dnd-kit `listeners`（:317-320、:331-335），非编辑态走长按检测（:322-324、:337-341） |
 | 344-362 | 长按进度环（`GlassProgressCircle` + 百分比文字），仅非编辑态且进度 > 0 时显示 |
 | 365-371 | 拖拽中在卡片上方显示 `Row/Col` 网格坐标角标 |
-| 374-405 | **删除按钮**（编辑态且非拖拽中，右上角 ✕）：`onClick` → `onRemoveCard`，并在 pointer 事件上 `stopPropagation` 防止误触父级 |
+| 374-405 | **删除按钮**（编辑态且非拖拽中，卡片内右上角删除图标，避免被卡片外壳裁切）：`onClick` → `onRemoveCard`，并在 pointer 事件上 `stopPropagation` 防止误触父级 |
 | 407-432 | **卡片渲染**：`loadAllCards()` → `cardRegistry.get(card.type)?.component`（:410-411）；未注册类型渲染 `Unknown card type` 错误占位（:413-421）；命中则以 `roleId/cardId/settings/isEditMode` 实例化组件（:424-430） |
 | 435-442 | 渲染 `<CardContextMenu>`（坐标、菜单项、`onClose`） |
 
@@ -208,7 +210,7 @@
 **备注**：
 - **编辑模式**：由父级通过 `isEditMode`/`onEnterEditMode`/`onExitEditMode` 控制；进入 = 长按卡片（`onLongPress` → :910-913），退出 = 编辑态下点按未拖拽（:113-130）或长按触发的拖拽结束（:706-713）。编辑态下才挂载 dnd-kit `attributes/listeners`（:313）与删除按钮（:374）。
 - **拖拽**：网格吸附拖拽（非自由像素拖拽），1 格 = 100px；拖拽中原卡片隐藏，真实视觉由 `DragOverlay` portal 提供（:921-954）。
-- **右键菜单**：状态与菜单项在 `FreeDragCard` 内（:149-283），渲染走 `CardContextMenu`（:435-442），删除项带二次确认。
+- **右键菜单**：状态与菜单项在 `FreeDragCard` 内，渲染走 `CardContextMenu`，删除项带二次确认。除上表按类型分支外，另有两组：`system_resource` → `system-resource-settings`（打开设置弹窗）/ 派发 `manualRefresh`（立即刷新）；`todo` → `todo-edit`/`todo-open-page`/`todo-rename`/`todo-duplicate`/`todo-sort`/`todo-hide-completed`/`todo-clear-completed`/`todo-color-icon`/`todo-delete-list`，全部经 `cardAction` 事件由卡片自身处理。
 - **尺寸调整**：容器内**没有交互式 resize 手柄**；宽高完全来自 `CardConfig.w/h`（默认 `3×2`），读取与兜底见 :294-295、:497-499、:636-637、:735-736、:927-928；拖拽只改变 `x/y`，`w/h` 仅在 `dragEnd` 的 `updateCardLayout` 中原样回写（:774-779）。
 - **事件**：文件内无 Tauri `invoke` / `emit` / `listen`；对外通信使用 `window.dispatchEvent(new CustomEvent("cardAction", { detail: { cardId, action } }))`，共 8 处（:169、:180、:192、:204、:215、:232、:244、:255），action 取值 `view-list` / `change-role` / `settings` / `select-medals` / `switch-domain`；监听方为各卡片自身的 `window.addEventListener("cardAction", ...)`。另有拖拽期的 `window.addEventListener("mousemove"/"pointermove")`（:556-557）。
 - 持久化统一走 `updateCardLayout(tabId, cardId, layout)`（`src/utils/dashboardConfig.ts:149-164`：改 `x/y/w/h` 后 `saveTabCards`），本文件不直接触碰存储/IPC。
@@ -224,7 +226,7 @@
 | --- | --- | --- |
 | `ContextMenuItem` | card-context-menu.tsx:4-9 | 字段：`key: string`（React key）；`label: string` 显示文案；`danger?: boolean` 危险项样式（红色）；`onPress: () => void` 点击回调 |
 | `CardContextMenuProps`（接口，未导出） | card-context-menu.tsx:11-16 | `x: number`、`y: number` 菜单坐标；`items: ContextMenuItem[]`；`onClose: () => void` |
-| `CardContextMenu()` | card-context-menu.tsx:18-72 | 渲染固定定位菜单容器（`fixed z-[9999] min-w-[160px]`，:47-51），逐项输出 `<button>`（:52-68） |
+| `CardContextMenu()` | card-context-menu.tsx:18-72 | Portal 固定定位菜单；布局后根据实际宽高夹紧至视口内，过高时滚动；菜单项背景内缩并使用圆角 |
 | ─ 关闭逻辑 effect | card-context-menu.tsx:26-44 | `document mousedown` 点击菜单外关闭（:27-31）；`document keydown` Esc 关闭（:32-34）；`window scroll`（capture）关闭（:35）；清理时逐一移除（:39-43） |
 | ─ 菜单项点击 | card-context-menu.tsx:61-64 | `item.onPress()` 后立即 `onClose()` |
 | ─ portal | card-context-menu.tsx:46-71 | `createPortal(..., document.body)` |
@@ -262,7 +264,7 @@
 | `id` | _template.meta.json:2 | `"_template"` —— 全局唯一卡片类型标识，注册表 Map 的键 |
 | `name` | _template.meta.json:3-6 | `{zh: "卡片模板", en: "Card Template"}` 多语言名称 |
 | `description` | _template.meta.json:7-10 | `{zh, en}` 多语言描述 |
-| `icon` | _template.meta.json:11 | `"file"` —— 图标类名（types.ts:12 注释允许 emoji 或图标类名） |
+| `icon` | _template.meta.json:11 | `"file"` —— 图标类名 |
 | `defaultSize` | _template.meta.json:12 | `{ w: 3, h: 2 }` 默认网格尺寸 |
 | `version` | _template.meta.json:13 | `"1.0.0"` |
 | `allowMultiple` | _template.meta.json:14 | `true` —— 允许多实例 |
@@ -275,7 +277,7 @@
 | `id` | `string` | 是 | 卡片类型唯一标识与注册键；缺失会导致 `cards.set(undefined, …)` |
 | `name` | `Record<string,string>` | 是 | 多语言名称（`zh`/`en`），添加卡片列表展示用 |
 | `description` | `Record<string,string>` | 是 | 多语言描述 |
-| `icon` | `string` | 是 | emoji 或图标类名 |
+| `icon` | `string` | 是 | 图标名称或图标类名 |
 | `defaultSize` | `{ w: number, h: number }` | 是 | 新增卡片时的默认网格占位 |
 | `version` | `string` | 是 | 卡片版本号（当前无消费方做校验） |
 | `allowMultiple` | `boolean` | 否（默认 false） | 是否允许多实例 |
@@ -320,4 +322,6 @@
 - **Tauri `invoke("xxx")`**：无。本组文件不含任何 `@tauri-apps/api` 调用；落盘统一经 `updateCardLayout()`（`src/utils/dashboardConfig.ts:149`）间接完成。
 - **Tauri `emit` / `listen`**：无。
 - **`window.dispatchEvent(new CustomEvent("cardAction", { detail: { cardId, action } }))`**（card-container.tsx）：action = `view-list`（:169、:244）、`change-role`（:180、:215、:232）、`settings`（:192）、`select-medals`（:204）、`switch-domain`（:255）。监听方位于各卡片组件（如 `character-list/index.tsx:187`、`achievement/index.tsx:223`、`domain-info/index.tsx:183`、`spaceship/index.tsx:252`、`account-info/index.tsx:142`、`account-progress/index.tsx:121`、`attendance/index.tsx:259`）。
+- **`cardAction` 新增动作（2026-10）**：`system-resource-settings`（system-resource 卡片打开设置弹窗）、`todo-edit`/`todo-open-page`/`todo-rename`/`todo-duplicate`/`todo-sort`/`todo-hide-completed`/`todo-clear-completed`/`todo-color-icon`/`todo-delete-list`（todo 卡片处理）；另有 `manualRefresh` 全局事件用于系统资源卡片的「立即刷新」。详见 [cards_system_todo.md](cards_system_todo.md)。
+- **卡片改尺寸事件（2026-10）**：`CardContainer` 监听 `window` 事件 `cardResize`（detail `{cardId,w,h}`），更新本地 `sortedCards` 并调用 `updateCardLayout(tabId ?? roleId, …)` 落盘，随后广播 `cardLayoutChanged`（`pages/dashboard.tsx` 监听后重新拉取当前标签页配置）。卡片组件自身不持有 `tabId`，因此用事件解耦。
 - **DOM 监听**：card-context-menu.tsx:36-38（`mousedown`/`keydown`/`scroll`）、card-container.tsx:556-557（`mousemove`/`pointermove`）。

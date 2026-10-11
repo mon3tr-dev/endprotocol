@@ -39,9 +39,9 @@ EndProtocol/
 │   ├── App.tsx                    # 路由表与登录态跳转
 │   ├── provider.tsx / i18n.ts     # 全局 Provider / i18n 初始化
 │   ├── tray-panel.tsx             # 托盘面板窗口入口
-│   ├── pages/                     # 9 个页面：dashboard、account、char-select、
+│   ├── pages/                     # 10 个页面：dashboard、account、char-select、
 │   │                              #   characters、gacha-records、attendance、
-│   │                              #   medals、settings、developer
+│   │                              #   medals、todo、settings、developer
 │   ├── layouts/                   # dashboard / default 布局
 │   ├── components/
 │   │   ├── ui/                    # 36 个通用 UI 组件 + glass/
@@ -49,7 +49,8 @@ EndProtocol/
 │   │   │   ├── registry/          #   自动发现与注册（loader/types）
 │   │   │   ├── base/              #   CardWrapper、useCardData
 │   │   │   ├── _template/         #   新卡片模板
-│   │   │   └── <card-name>/       #   9 张卡片（含 locales/、*.meta.json）
+│   │   │   └── <card-name>/       #   11 张卡片（含 locales/、*.meta.json；
+│   │   │                          #   含新增 system-resource/、todo/）
 │   │   └── *.tsx                  # 弹窗/面板/侧栏/图表等大组件
 │   ├── utils/                     # 18 个服务封装与工具（accountService、
 │   │                              #   configService、roleDataService、updateService…）
@@ -57,14 +58,16 @@ EndProtocol/
 │   ├── locales/{zh,en}/           # 国际化资源
 │   ├── styles/globals.css         # 全局样式与主题变量
 │   ├── stores/ hooks/ lib/ config/ cards/  # zustand 风格 store、hooks、工具
+│   │                              #   （含 todoStore.ts：To-Do 单一数据源）
 ├── src-tauri/                     # ===== 后端源码 =====
 │   ├── src/main.rs                # 进程入口
-│   ├── src/lib.rs                 # 插件/状态/菜单/托盘/命令注册（99 个命令）
+│   ├── src/lib.rs                 # 插件/状态/菜单/托盘/命令注册（100 个命令）
 │   ├── src/tray.rs                # 托盘图标与菜单
-│   ├── src/commands/              # 13 个文件：IPC 命令入口
-│   ├── src/services/              # 11 个服务：account、skland、game_launcher、
+│   ├── src/commands/              # 14 个文件：IPC 命令入口
+│   ├── src/services/              # 12 个服务：account、skland、game_launcher、
 │   │                              #   gacha、char_detail、char_wiki、config、
-│   │                              #   avatar_cache、data_query、network
+│   │                              #   avatar_cache、data_query、network、
+│   │                              #   system_resource
 │   ├── src/models/                # 7 个文件：序列化数据结构
 │   ├── src/utils/                 # error、encrypt、hg_crypto、http_client、
 │   │                              #   logger、paths、capture
@@ -95,6 +98,8 @@ EndProtocol/
 - **角色数据**：懒加载策略（`set_lazy_load_enabled`）→ 统一经 `query_role_data` → 首次访问从森空岛获取 → 存入内存并同步本地缓存。
 - **仪表板**：多标签页（`dashboard_tabs`）→ 拖拽/增删卡片 → `dashboardConfig.ts` 计算位置 → `set_config` 落盘；卡片内部设置另存 `card_settings.{cardId}`。
 - **卡片系统**：`registry/loader.ts` 用 `import.meta.glob` 自动发现 `src/components/cards/*/{name}.meta.json + index.tsx`，无需手工注册。
+- **系统资源卡片**：`system-resource/index.tsx` 按 `refreshMs` 轮询 `get_system_snapshot`（`SystemResourceService`，`spawn_blocking` + `sysinfo`/`nvidia-smi`），按 `layout` 渲染单指标或卡片组；默认值存 `system_resource_defaults`。
+- **To-Do**：`todoStore.ts` 是全应用唯一数据源（持久化 `todo_lists`），卡片内联、`pages/todo.tsx` 页面与 `todo-modal.tsx` 弹窗三处共用 `TodoDetail`，经订阅 + `todoChanged` 事件实时同步。
 - **启动器**：`game-action-panel.tsx` → `launcherService.ts` → `commands/launcher.rs` → `GameLauncherService`（下载/校验/切服/进程），进度经事件推送。
 
 ## 6. 本文件与其他文档的关系

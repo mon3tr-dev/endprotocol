@@ -6,11 +6,11 @@
 
 | 目录 | 内容 | 对应 reference 文档 |
 | --- | --- | --- |
-| `src/pages/` | 9 个页面（dashboard、account、char-select、characters、gacha-records、attendance、medals、settings、developer） | [pages_*.md](reference/frontend/pages_core.md) |
+| `src/pages/` | 10 个页面（dashboard、account、char-select、characters、gacha-records、attendance、medals、todo、settings、developer） | [pages_*.md](reference/frontend/pages_core.md) |
 | `src/layouts/` | dashboard / default 布局 | [pages_core.md](reference/frontend/pages_core.md) |
 | `src/components/` | 弹窗、面板、侧栏、图表等大组件（约 28 个 tsx） | [components_dialogs.md](reference/frontend/components_dialogs.md)、[components_settings_panels.md](reference/frontend/components_settings_panels.md)、[components_sidebar_charts.md](reference/frontend/components_sidebar_charts.md)、[components_game_action_panel.md](reference/frontend/components_game_action_panel.md) |
 | `src/components/ui/` | 36 个通用 UI 组件 + `glass/` | [ui_components.md](reference/frontend/ui_components.md) |
-| `src/components/cards/` | 卡片系统：`registry/`、`base/`、`card-container.tsx`、`_template/` 与 9 张卡片 | [cards_core.md](reference/frontend/cards_core.md) 及各 `cards_*.md` |
+| `src/components/cards/` | 卡片系统：`registry/`、`base/`、`card-container.tsx`、`_template/` 与 11 张卡片（含 system-resource、todo） | [cards_core.md](reference/frontend/cards_core.md) 及各 `cards_*.md` |
 | `src/utils/` | 18 个 IPC 封装与工具（account/config/cardConfig/dashboard/role/launcher/update/image/logger…） | [utils_services_a.md](reference/frontend/utils_services_a.md)、[utils_services_b.md](reference/frontend/utils_services_b.md) |
 | `src/types/` | TypeScript 类型 | [types_locales_styles.md](reference/frontend/types_locales_styles.md) |
 | `src/locales/{zh,en}/` | 国际化资源 | 同上 |

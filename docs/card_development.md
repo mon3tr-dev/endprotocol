@@ -1,7 +1,7 @@
 # Card 系统开发指南
 
 > 定位现有实现请查：[reference/frontend/cards_core.md](reference/frontend/cards_core.md)（registry/loader、CardContainer、base 工具的行号级说明），
-> 以及 [cards_character_list.md](reference/frontend/cards_character_list.md)、[cards_account_achievement.md](reference/frontend/cards_account_achievement.md)、[cards_attendance_domain_spaceship.md](reference/frontend/cards_attendance_domain_spaceship.md)（9 张现有卡片的逐文件说明）。
+> 以及 [cards_character_list.md](reference/frontend/cards_character_list.md)、[cards_account_achievement.md](reference/frontend/cards_account_achievement.md)、[cards_attendance_domain_spaceship.md](reference/frontend/cards_attendance_domain_spaceship.md)（9 张原有卡片）、[cards_system_todo.md](reference/frontend/cards_system_todo.md)（系统资源 / To-Do 两类新卡片）的逐文件说明。
 
 ## 概述
 
@@ -32,7 +32,7 @@ src/components/cards/my-new-card/
     "zh": "这是一个示例卡片",
     "en": "This is a sample card"
   },
-  "icon": "🎯",
+  "icon": "Target",
   "defaultSize": { "w": 3, "h": 2 },
   "version": "1.0.0",
   "allowMultiple": true
@@ -44,7 +44,7 @@ src/components/cards/my-new-card/
 - `id`: 卡片唯一标识（小写字母和下划线）
 - `name`: 多语言名称对象，至少包含 `zh` 和 `en`
 - `description`: 多语言描述对象
-- `icon`: Emoji 或图标类名
+- `icon`: 图标名称或图标类名；界面中使用图标组件，禁止使用 Emoji
 - `defaultSize`: 默认网格尺寸 `{ w: 宽度, h: 高度 }`
 - `version`: 卡片版本号（语义化版本）
 - `allowMultiple`: 是否允许多个实例（可选，默认 `false`）
@@ -359,7 +359,7 @@ A: 当前使用 `eager: true` 预加载所有卡片。如果卡片数量很多�
 | id            | string  | ✓    | -      | 卡片唯一标识，小写字母和下划线    |
 | name          | object  | ✓    | -      | 多语言名称，至少包含 zh 和 en     |
 | description   | object  | ✓    | -      | 多语言描述                        |
-| icon          | string  | ✓    | -      | Emoji 或图标类名                  |
+| icon          | string  | ✓    | -      | 图标名称或图标类名                |
 | defaultSize   | object  | ✓    | -      | 默认尺寸 { w: number, h: number } |
 | version       | string  | ✓    | -      | 语义化版本号，如 "1.0.0"          |
 | allowMultiple | boolean | ✗    | false  | 是否允许多个实例                  |

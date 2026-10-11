@@ -18,14 +18,14 @@
 ---
 
 ## `src-tauri/src/lib.rs`
-**职责**：应用核心装配点（252 行）。声明后端模块树、初始化日志、构建 `tauri::Builder`（注册 4 个插件 + 99 个命令），并在 `.setup()` 中按依赖顺序创建并 `.manage()` 全部服务、启动自动刷新定时器、挂载托盘与窗口关闭行为。
+**职责**：应用核心装配点。声明后端模块树、初始化日志、构建 `tauri::Builder`（注册 4 个插件 + 100 个命令），并在 `.setup()` 中按依赖顺序创建并 `.manage()` 全部服务、启动自动刷新定时器、挂载托盘与窗口关闭行为。
 **导出**：`pub fn run()`（唯一公开项）；其余为私有模块声明。
 **主要依赖**：`commands`、`models`、`services`、`tray`、`utils` 模块；`services::{account_service, avatar_cache_service, config_service, gacha_service, game_launcher_service, network_service, skland_service}`；`tauri`、`tokio::sync::Mutex`、`std::sync::Arc`。
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
 | `mod commands/models/services/tray/utils` | lib.rs:5-9 | 后端模块声明（全部私有） |
-| `use services::*` | lib.rs:11-17 | 导入 7 个服务类型（Account/AvatarCache/Config/Gacha/GameLauncher/Network/Skland） |
+| `use services::*` | lib.rs:11-18 | 导入 8 个服务类型（Account/AvatarCache/Config/Gacha/GameLauncher/Network/Skland/SystemResource） |
 | `run` | lib.rs:20 | 应用入口：见下方「内部结构」 |
 
 ### 内部结构
@@ -35,7 +35,7 @@
 | lib.rs:19 | `#[cfg_attr(mobile, tauri::mobile_entry_point)]` 属性 |
 | lib.rs:21-27 | 日志初始化：`utils::logger::init_logger()`（失败仅 `eprintln`，不中断）→ `utils::logger::init_tracing_subscriber()`（tracing 桥接到自定义 Logger；实现见 utils/logger.rs:218 与 :311） |
 | lib.rs:29-33 | `tauri::Builder::default()` + 4 个插件：`tauri_plugin_updater`、`tauri_plugin_process`、`tauri_plugin_opener`、`tauri_plugin_fs` |
-| lib.rs:34-148 | `.invoke_handler(tauri::generate_handler![...])` — 99 个命令（完整清单见下） |
+| lib.rs:34-150 | `.invoke_handler(tauri::generate_handler![...])` — 100 个命令（完整清单见下） |
 | lib.rs:149-249 | `.setup(|app| {...})` — 服务初始化与窗口事件（步骤见下） |
 | lib.rs:250-251 | `.run(tauri::generate_context!())` + `.expect(...)` |
 
@@ -59,8 +59,9 @@
 | 7 | lib.rs:193-196 | `NetworkService::new(skland, avatar_cache)` — 不 manage |
 | 8 | lib.rs:199-208 | `AccountService::new(config, skland, avatar_cache, network, app_handle)` 包进 `Arc<tokio::sync::Mutex<>>`（含异步方法故用 tokio 锁）→ `.manage()`；同时 clone 出 `timer_service`（lib.rs:207） |
 | 9 | lib.rs:211-212 | `Arc::new(Mutex::new(GameLauncherService::new()))` → `.manage()`（tokio Mutex） |
-| 10 | lib.rs:215 | `AccountService::start_auto_refresh(timer_service)` 启动账户自动刷新定时器（此时 tokio runtime 已就绪） |
-| 11 | lib.rs:218-246 | 对 `main` 窗口挂 `on_window_event`：`CloseRequested` 时读配置键 `close_action`（默认 `"ask"`）——`"minimize_to_tray"`/`"ask"` → `api.prevent_close()` + `window.hide()`；`"close"` → 放行默认关闭；其它值 → 隐藏到托盘 |
+| 10 | lib.rs:214-217 | `Arc::new(std::sync::Mutex::new(SystemResourceService::new()))` → `.manage()`（同步锁；`new()` 只初始化 CPU 列表/内存/磁盘/网卡，不枚举进程） |
+| 11 | lib.rs:219 | `AccountService::start_auto_refresh(timer_service)` 启动账户自动刷新定时器（此时 tokio runtime 已就绪） |
+| 12 | lib.rs:222-250 | 对 `main` 窗口挂 `on_window_event`：`CloseRequested` 时读配置键 `close_action`（默认 `"ask"`）——`"minimize_to_tray"`/`"ask"` → `api.prevent_close()` + `window.hide()`；`"close"` → 放行默认关闭；其它值 → 隐藏到托盘 |
 | 12 | lib.rs:250 | `run(tauri::generate_context!())` |
 
 ### `.manage()` 的全部状态（4 个）
@@ -75,7 +76,7 @@
 
 **备注**：`lib.rs` 本身**没有任何 `emit`/`listen`**，也**没有 `.menu()`（无应用菜单）**；托盘只建图标不建右键菜单。
 
-### 命令总表（`.invoke_handler` 完整清单，共 99 个，与 `#[tauri::command]` 定义数 99 一致，无遗漏/无多余）
+### 命令总表（`.invoke_handler` 完整清单，共 100 个，与 `#[tauri::command]` 定义数 100 一致，无遗漏/无多余）
 
 **config（lib.rs:36-39）**：`get_config`、`set_config`、`remove_config`、`get_all_configs`
 **attendance（lib.rs:41-42）**：`get_attendance`、`do_attendance`
@@ -83,6 +84,7 @@
 **gacha 武器池（lib.rs:50-51）**：`sync_weapon_gacha_records`、`get_saved_weapon_gacha_records`
 **account 主体（lib.rs:53-71）**：`get_accounts`、`get_skland_accounts`、`save_skland_account`、`get_skland_account_roles`、`get_skland_user_info`、`get_skland_games`、`add_account`、`logout_account`、`batch_logout`、`refresh_accounts`、`send_verification_code`、`add_account_by_code`、`gen_scan_login`、`scan_status`、`add_account_by_scan`、`save_selected_roles`、`get_selected_account`、`set_selected_account`、`check_and_refresh_cred`
 **card_config（lib.rs:73-75）**：`get_card_settings`、`save_card_settings`、`remove_card_settings`
+**system_resource（lib.rs:77）**：`get_system_snapshot`
 **account 追加（lib.rs:76-79）**：`query_role_data`、`set_lazy_load_enabled`、`is_lazy_load_enabled`、`set_current_role_id`
 **image（lib.rs:81-86）**：`read_image_file`、`get_image_cache_dir`、`download_image`、`get_backgrounds_dir`、`save_background_image`、`delete_background_image`
 **window（lib.rs:88-91）**：`minimize_window`、`toggle_maximize_window`、`close_window`、`minimize_to_tray`
@@ -171,7 +173,8 @@
 | `dependencies.rsa` | :43 | RSA 加密（登录/凭证） |
 | `dependencies.flate2` | :44 | `zlib` 后端的 gzip 压缩/解压 |
 | `dependencies.base64` / `bytes` / `http` | :45-47 | 编码与 HTTP 基础类型 |
-| `dependencies.windows-sys` | :48 | `0.61`，features：`Win32_Foundation`、`Win32_Graphics_Gdi`、`Win32_UI_WindowsAndMessaging`、`Win32_System_Com`、`Win32_UI_Shell`、`Win32_System_Threading`（托盘取前台窗口、取色、进程检测用） |
+| `dependencies.windows-sys` | Cargo.toml | `0.61`，features：`Win32_Foundation`、`Win32_Graphics_Gdi`、`Win32_UI_WindowsAndMessaging`、`Win32_System_Com`、`Win32_UI_Shell`、`Win32_System_Threading`（托盘取前台窗口、取色、进程检测）、`Win32_System_Power` / `Win32_System_Performance`（system_resource_service 采集实测 CPU 频率） |
+| `dependencies.sysinfo` | Cargo.toml | 系统资源采集（CPU/内存/磁盘/网络/温度传感器），见 `services/system_resource_service.rs` |
 | `dependencies.uuid` / `hex` / `rand` | :49-51 | UUID v4、十六进制、随机数 |
 | `dependencies.indexmap` | :52 | 有序 map（带 `serde`） |
 | `dependencies.tauri-plugin-process` | :53 | `2.3.1`，应用重启 |

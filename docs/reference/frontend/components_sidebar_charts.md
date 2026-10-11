@@ -92,14 +92,14 @@
 - `grid`（368）：`left: GRID_LEFT(84)`、`right: GRID_RIGHT(64)`、`top: 0`、`bottom: CHART_BOTTOM_PAD(14)`。
 - `xAxis`（369-377）：`type: "value"`，`min: 0`、`max: maxCount`（363：`max(10, 所有非 header 行的 count)`），轴线/刻度/标签/分隔线全部隐藏。
 - `yAxis`（378-385）：`type: "category"`，`data` 为 `r0..rN`（362），`inverse: true`（首行在顶部），轴元素全隐藏。
-- `tooltip`（386-419）：`trigger: "item"`，玻璃拟态 className，`formatter`（395-418）按 `meta[dataIndex].kind` 区分卡池名 / 六星（含「距上个六星 N 抽」或「赠送十连内第 N 抽」+ 时间）/ 未出六星余量。
+- `tooltip`（386-419）：`trigger: "item"`，玻璃拟态 className，`formatter`（395-418）按 `meta[dataIndex].kind` 区分卡池名 / 六星事件间隔（赠送六星附来源提示）/ 未出六星余量。
 - `graphic`（420-433）：`GRID_LEFT` 处的竖直分隔线，高度 = `meta.length * ROW_H`。
 - `series`（434-594）：`type: "custom"`、`name: "pity"`、`clip: false`，`data` 每项 `value = header ? 0 : count`（439-442），`encode: {x:0,y:1}`；`renderItem`（444-593）：header 行绘制底纹 + 两段横线 + 截断的卡池名（450-495）；数据行依次绘制圆形头像或首字母占位圆（506-535）、圆角柱体（`r:[0,10,10,0]`）+ 线性渐变（六星用 `--primary`，余量用 `--default-400`）（538-560）、右侧计数标签（563-574）、赠送六星的红色「赠」字（577-590）。
 
-**计算逻辑（保底计数公式，`computeSections`，gacha-pity-chart.tsx:41-117）**：
+**计算逻辑（`computeSections`，gacha-pity-chart.tsx:41-117）**：
 - 47-61：按 `poolId` 聚合 `draw` 记录（`weapon`/`all` 分类不过滤，否则用 `poolKindOf` 过滤），组内保持输入的从新到旧顺序。
-- 66-67：变量 `n` = 距上一个**普通**六星的非赠送抽数（卡池区间起点归零）；`giftPos` = 当前赠送十连内的位置。
-- 69-99：从 `rows.length-1` 反向遍历（即**从旧到新**）：`isFree` 时 `giftPos++`，若 `rarity===6` 则产出 `kind:"six"` 行，`count = giftPos`、`inGift: true`（71-82）；非赠送时先 `giftPos = 0`，若 `rarity===6` 产出六星行 `count = n + 1` 后 `n = 0`，否则 `n += 1`（83-98）。
+- 63-70：调用共享 `calculateGachaSixStarIntervals`，按 `seqId` 建立六星事件间隔映射；`n` 仅用于末尾未出六星余量。
+- 72-103：从 `rows.length-1` 反向遍历（即**从旧到新**）；所有六星事件的 `count` 都读取共享间隔映射，普通/赠送六星命中后都重置余量计数 `n`。赠送无六星记录不生成柱子，也不计入事件间隔。
 - 100-108：区间结束后若 `n > 0`，产出 `kind:"leftover"` 行（`count = n`，`gachaTs` 取最新一条记录）。
 - 109-111：空组丢弃。
 - 115：卡池按 `firstSixTs` 降序（最旧六星时间最新者在前；无六星按最近记录时间）。
@@ -114,7 +114,7 @@
 - **异常/注意点**：① `poolKindOf` 与 `cssVar` 与 `gacha-stat-charts.tsx` 完全重复实现。② 282-304 的 effect 依赖写成 `neededIds.join(",")` 并显式 `eslint-disable`（303-304）。③ `ChartRow.name` 类型非可选，但 tooltip 中仍有 `row.name ?? "?"`（404）等防御写法。④ 卡池合并逻辑依赖 `records` 从新到旧的隐含约定（注释 46/68）。⑤ 头像映射按 `roleId` 维度整体请求，缺失 id 由后端在 `total.json` 中按名称补全（注释 248）。
 
 ## `src/components/gacha-stat-charts.tsx`
-**职责**：抽卡统计三联图容器——星级占比环形图、六星间隔折线图（含期望参考线）、累计六星折线图（含期望参考线），全部基于同一份按时间升序的记录派生。
+**职责**：抽卡统计三联图容器——星级占比环形图、按卡池分组的六星间隔折线图（含期望参考线）、六星间隔累积曲线（阶梯图，含期望参考线），间隔算法与统计卡片和保底图共用。
 **导出**：`GachaStatCharts`（default 导出）
 **主要依赖**：`echarts`、`@/components/ui/glass` 的 `GlassCard`、`@/types/gacha`（`GachaCategory`/`GachaPoolKind`/`GachaRecord`）；无任何 Tauri 调用
 
@@ -123,47 +123,47 @@
 | `SIX_STAR_EXPECTATION` | gacha-stat-charts.tsx:7 | 角色六星期望 `35.5` 抽/个 |
 | `WEAPON_SIX_STAR_EXPECTATION` | gacha-stat-charts.tsx:8 | 武器六星期望 `25` 抽/个 |
 | `cssVar` | gacha-stat-charts.tsx:10 | 读 CSS 变量（与 pity 图重复） |
-| `useEchart` | gacha-stat-charts.tsx:16 | Hook：监听 `themeChange` 产生 `themeTick`（18-22），`echarts.init` + `ResizeObserver`（26-38），返回 `{ setOption }`（40-45，`setOption(option, true)`） |
-| `useChronoRecords` | gacha-stat-charts.tsx:49 | 过滤当前分类的 `draw` 记录并按 `Number(gachaTs)` **升序**（55-61）；`weapon`/`all` 不分类过滤，其余用 `poolKindOf` |
-| `poolKindOf` | gacha-stat-charts.tsx:66 | 与 pity 图同名同逻辑的重复实现 |
-| `useStarDistribution` | gacha-stat-charts.tsx:79 | 按 `rarity` 计数 → `{ total, series: [rarity, count][] }`，按稀有度降序（87） |
-| `useSixIntervals` | gacha-stat-charts.tsx:93 | **六星间隔序列**（见下）→ `{ intervals: number[], avg: number \| null }` |
-| `useCumulativeSix` | gacha-stat-charts.tsx:111 | **累计曲线**：`points: [number,number][]` 起点 `[0,0]`，每抽 `draws++`、命中六星 `six++` 后 push `[draws, six]`（115-120，含赠送抽）→ `{ points, totalDraws, totalSix }` |
-| `RARITY_COLORS` | gacha-stat-charts.tsx:125 | 稀有度配色：6 `#ef4444`、5 `#ffd700`、4 `#a855f7`、3 `#94a3b8` |
-| `GachaStatCharts` | gacha-stat-charts.tsx:132 | 主组件，132-376 行 |
+| `tickIntervalFor` | gacha-stat-charts.tsx:20 | **刻度密度控制**：`max(1, ceil((max-min)/10))`，强制 `axis.interval` 使刻度数 ≤ 11（含首尾） |
+| `useEchart` | gacha-stat-charts.tsx:25 | Hook：监听 `themeChange` 产生 `themeTick`（27-31），`echarts.init` + `ResizeObserver`（35-47），返回 `{ setOption }`（49-54，`setOption(option, true)`） |
+| `useChronoRecords` | gacha-stat-charts.tsx:58 | 过滤当前分类的 `draw` 记录（64-68）并按 `Number(gachaTs)` **升序**（69）；`weapon`/`all` 不分类过滤，其余用 `poolKindOf` |
+| `poolKindOf` | gacha-stat-charts.tsx:75 | 与 pity 图同名同逻辑的重复实现 |
+| `useStarDistribution` | gacha-stat-charts.tsx:88 | 按 `rarity` 计数 → `{ total, series: [rarity, count][] }`，按稀有度降序（96） |
+| `calculateGachaSixStarIntervals` | `utils/gachaIntervals.ts` | 共享间隔算法；被统计卡片、保底图与统计图复用 |
+| `useCumulativeSix` | gacha-stat-charts.tsx:140 | **间隔累积曲线**：入参为 `GachaSixStarInterval[]`；取出间隔抽数并**升序排序**，起点 `[0,0]` 后逐个 push `[间隔, 序号+1]` → `{ points, total, maxInterval }`。`points` 语义：横轴 n 处纵轴 = 间隔 ≤ n 抽的六星个数 |
+| `RARITY_COLORS` | gacha-stat-charts.tsx:140 | 稀有度配色：6 `#ef4444`、5 `#ffd700`、4 `#a855f7`、3 `#94a3b8` |
+| `GachaStatCharts` | gacha-stat-charts.tsx:147 | 主组件，147-406 行 |
 
-**Props（132-144）**：`records: GachaRecord[]`、`pools: Record<string, { poolType: string }>`、`category: GachaCategory`、`isWeapon: boolean`、`isZh: boolean`。
+**Props（147-159）**：`records: GachaRecord[]`、`pools: Record<string, { poolType: string }>`、`category: GachaCategory`、`isWeapon: boolean`、`isZh: boolean`。
 
-**输入数据结构**：`GachaRecord` 中的 `kind`、`poolId`、`rarity`、`isFree`、`gachaTs`；`pools` 仅需 `poolType`。派生结构：`{total, series}`（星级分布）、`intervals`（间隔数组）、`points: [累计抽数, 累计六星][]`。
+**输入数据结构**：`GachaRecord` 中的 `kind`、`poolId`、`poolName`、`rarity`、`isFree`、`gachaTs`；`pools` 提供 `poolType` 与卡池名称。派生结构：`{total, series}`（星级分布）、`GachaSixStarInterval[]`（按卡池分组的间隔项）、`points: [间隔抽数, 累计六星数][]`（升序）。
 
 **计算逻辑（行号）**：
-- 期望值选择：145 `expectation = isWeapon ? 25 : 35.5`。
-- **六星间隔公式** `useSixIntervals`（93-108）：遍历升序记录，`isFree` 直接跳过（98，赠送抽不计数、赠送六星不打断计数）；否则 `since += 1`，若 `rarity === 6` 则 `intervals.push(since)` 并 `since = 0`（99-104）；`avg = sum(intervals)/len`（105）。
-- **累计公式** `useCumulativeSix`（111-123）：逐抽累加，含赠送抽。
-- **星级占比** `useStarDistribution`（79-90）：Map 计数 + 总数，percent 在 204-208 计算为 `round(c/total*1000)/10`（保留 1 位小数）。
+- 期望值选择：160 `expectation = isWeapon ? 25 : 35.5`。
+- **六星间隔公式** `calculateGachaSixStarIntervals`（`utils/gachaIntervals.ts`）：**计数器按 poolId 独立维护**，每池从保存记录的第一抽开始。普通抽逐抽计数；赠送抽中没有六星的记录不计数，若赠送抽出了六星，则把此前普通抽数与本次连续赠送组中截至六星的抽数合并为一个事件间隔，并重置该池计数。间隔包含出六星的当抽；六星序号也按池独立。柱状图、折线图、累计图与统计卡片共用此算法。
+- **间隔累积公式** `useCumulativeSix`（150-162）：取出共享算法的间隔抽数，升序排序后生成阶梯累积点。累积图汇总所有卡池的间隔，但每个间隔均先在所属卡池独立计算。
+- **星级占比** `useStarDistribution`（88-99）：Map 计数 + 总数，percent 在 219-223 计算为 `round(c/total*1000)/10`（保留 1 位小数）。
 
-**图表类型与配置**（三个容器均固定高 220px：353/360/372，库为 **ECharts**，各由一个 `useEchart` 实例驱动）：
+**图表类型与配置**（三个容器均固定高 220px：376/383/396，库为 **ECharts**，各由一个 `useEchart` 实例驱动）：
 
-1. **星级分布环形图**（effect 165-213）
-   - `series[0].type: "pie"`，`radius: ["45%","72%"]`、`center: ["50%","44%"]`、`avoidLabelOverlap`（191-193）；label `"{c} ({d}%)"`（194-199），`labelLine` 长度 8/6（200）。
-   - `legend` 置底，数据为 `"6★".."3★"`（181-187）；调色板取自 `RARITY_COLORS`（167）。
-   - tooltip `trigger: "item"`，formatter 输出名称与 `值 (百分比%)`（176-179）。
-2. **六星间隔折线图**（effect 215-283）——标题写作「分布」但 **`series.type: "line"`**（259）
-   - 数据 `lineData = intervals.map((n,i) => [i+1, n])`（217）；`showSymbol: true`、`symbolSize: 6`、`smooth: true`、渐变 `areaStyle`（261-266）。
-   - `xAxis` value：`min: 1`、`max: max(intervals.length,1)`、`minInterval: 1`、无分隔线，name「六星序号 / 6★ #」（236-245）。
-   - `yAxis` value：`min: 0`、`max: maxY + 4`，`maxY = Math.max(expectation, ...intervals, 1)`（218），name「间隔抽数 / pulls」（246-255）。
-   - `markLine`（267-278）：红色虚线 `yAxis: expectation`，label `期望 35.5 抽 / Expected 35.5`（216）。
-   - tooltip `trigger: "axis"`，formatter 输出「第 N 个六星 / 间隔 M 抽」（230-234）。
-3. **累计六星折线图**（effect 285-345）
-   - `series.type: "line"`，`data: cumulative.points`（323），`showSymbol: false`、`smooth`、渐变面积（324-328）。
-   - `xAxis` value `0..max(1,totalDraws)`（286, 304-310）；`yAxis` value `0..max(1,totalSix)`、`minInterval: 1`（287, 311-318）。
-   - `markLine`（329-340）：红色虚线 `xAxis: expectation`（339）——在累计抽数 = 期望值处画竖参考线，label「期望 35.5 抽」（333）。
-   - tooltip `trigger: "axis"`，输出「累计 N 抽 / 六星: M」（299-302）。
+1. **星级分布环形图**（effect 180-228）
+   - `series[0].type: "pie"`，`radius: ["45%","72%"]`、`center: ["50%","44%"]`、`avoidLabelOverlap`（206-208）；label `"{c} ({d}%)"`（209-214），`labelLine` 长度 8/6（215）。
+   - `legend` 置底，数据为 `"6★".."3★"`（196-202）；调色板取自 `RARITY_COLORS`（182）。
+   - tooltip `trigger: "item"`，formatter 输出名称与 `值 (百分比%)`（191-194）。
+2. **按卡池着色的六星间隔折线图**（effect 248-322）
+   - 图表仅有一条 `series.type: "line"`，按六星事件时间顺序连接所有卡池的数据；x 为全局事件序号，y 为共享算法计算的间隔抽数。
+   - 数据点按所属卡池分别着色，图下方显示卡池颜色图例；tooltip 显示卡池名、该池六星序号及间隔。红色虚线 `yAxis: expectation` 标记期望抽数。
+   - `xAxis` 为 value，从第一次六星事件序号 1 起始（范围 `1..max(1, intervals.length)`），按事件数量设置刻度；`yAxis` 为间隔抽数。
+3. **六星间隔累积阶梯图**（effect 302-368）——标题「六星累计（按间隔） / Cumulative 6★ (by interval)」
+   - `series.type: "line"`，`data: cumulative.points`（346），`showSymbol: false`、**`step: "end"`**（348，阶梯线，无 `smooth`）、渐变面积（351）。
+   - `xAxis` value `0..maxX`，`maxX = max(1, maxInterval)`（303, 321-330），name「六星间隔（抽）/ 6★ interval (pulls)」（328）——横轴为数据轴，**不**强制刻度间隔，走 ECharts 自动刻度。
+   - `yAxis` value `0..maxY`，`maxY = max(1, total)`（304），**`interval: tickIntervalFor(0, maxY)`（335）强制纵轴刻度密度（≤ 11 个）**、`minInterval: 1`（336），name「累计六星 / Cumulative 6★」（339）。`grid.top` 为 30（306）以让出轴名。
+   - `markLine`（352-363）：红色虚线 `xAxis: expectation`（362），label `位置 insideEndTop`（359）——含义为「间隔 ≤ 期望抽数」的分界，左侧高度即「期望内出的六星个数」。
+   - tooltip `trigger: "axis"`，输出「N 抽内 / 六星: M」（316-319）。
 
-**渲染（347-375）**：`grid grid-cols-1 lg:grid-cols-3 gap-4` 内嵌三个 `GlassCard`，标题分别为「星级分布」（351）、「六星间隔分布（期望 N 抽）」（357）、「六星累计」（370）；中间卡片在 `intervals.length === 0` 时叠加「暂无六星记录」空态（361-365）。
+**渲染（379-415）**：`grid grid-cols-1 lg:grid-cols-3 gap-4` 内嵌三个 `GlassCard`，标题分别为「星级分布」、「各卡池六星间隔（期望 N 抽）」、「六星累计（按间隔）」；中间为单条连接所有卡池事件、数据点按卡池着色的折线图，右侧为间隔累积阶梯折线图。中间与右侧卡片均在 `intervals.length === 0` 时叠加「暂无六星记录」空态。
 
 **备注**：
 - **invoke 命令**：0 个（未引入 `@tauri-apps/api/core`）。
-- **listen 事件**：无 Tauri `listen`；仅 `window.addEventListener("themeChange")`（gacha-stat-charts.tsx:20，在 `useEchart` 内）。
+- **listen 事件**：无 Tauri `listen`；仅 `window.addEventListener("themeChange")`（gacha-stat-charts.tsx:29，在 `useEchart` 内）。
 - **Props 清单**：`records`、`pools`、`category`、`isWeapon`、`isZh`。
-- **异常/注意点**：① `useSixIntervals` 的 `avg`（105、148）除作为 effect 依赖（283）外从未被渲染使用，属冗余值。② 中间卡片标题为「六星间隔**分布**」，实际是按六星序号排列的折线图而非直方图。③ 累计图的期望参考线画在 `xAxis`（累计抽数）而非斜率上，语义上与「累计六星数」的期望斜率并不等价。④ 环形图未处理空数据空态（仅有中间卡片有）。⑤ `poolKindOf`/`cssVar` 与 `gacha-pity-chart.tsx` 重复。
+- **异常/注意点**：① 间隔计数按 `poolId` 分组，与保底图同口径；每池首个六星的间隔从该池保存记录中的第一抽计起，历史记录不完整时不代表账号全历史。赠送无六星时不计，赠送出六星时将本次赠送组截至六星的抽数计入事件。② “平均六星间隔”按同一批事件求均值，不再使用总抽数÷六星数。③ 累积折线按间隔升序汇总卡池数据，参考线位于 `xAxis: expectation`，表示间隔分界。④ 环形图未处理空数据空态（另两张卡片均有）。⑤ `poolKindOf`/`cssVar` 与 `gacha-pity-chart.tsx` 重复。

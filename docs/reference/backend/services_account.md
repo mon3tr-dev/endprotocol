@@ -143,7 +143,7 @@
 | `get_skland_code`（私有） | 2939 | `hy_token` → `POST https://as.hypergryph.com/user/oauth2/v2/grant`（appCode `4ca99fa6b56cc2ba`, type 0）→ `data.code` → `String` |
 | `get_skland_cred`（私有） | 2996 | `sk_code` → `POST https://zonai.skland.com/api/v1/user/auth/generate_cred_by_code`（kind 1）→ `(cred, token, user_id)` |
 | `get_network_service` | 3071 | 无 → `Arc<NetworkService>` 克隆（当前全仓库无调用方）→ `Arc<NetworkService>` |
-| `query_role_data` | 3076 | `role_id, api_name, paths` → `get_accounts()` 找到该角色（需 cred/token/user_id/server_id 齐全）→ `network_service.query_role_data(...)` → `HashMap<String, Value>`（key 为请求路径）；command `query_role_data`，另被 commands/gacha.rs:357 以 `"wiki_catalog"` 调用 |
+| `query_role_data` | 3076 | `role_id, api_name, paths` → `get_accounts()` 找到该角色（需 cred/token/user_id/server_id 齐全）→ `network_service.query_role_data(...)` → `HashMap<String, Value>`（key 为请求路径）；command `query_role_data`，另被 commands/gacha.rs:479 以 `"wiki_catalog"` 调用 |
 
 ## 关键业务流程
 

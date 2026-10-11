@@ -37,7 +37,7 @@
 app_config.json
 ├── account_token_*          # 账户令牌
 ├── selected_account         # 当前选中账户
-├── card_settings            # ✨ 卡片配置（新增）
+├── card_settings            # 卡片配置（新增）
 │   ├── {cardId_1}           # 卡片1的配置
 │   │   ├── selectedCharIds  # CharacterList 卡片特有
 │   │   └── ...              # 其他配置项
@@ -197,11 +197,11 @@ export default function MyNewCard({ cardId, ... }: BaseCardProps) {
 始终为卡片配置定义 TypeScript 接口：
 
 ```typescript
-// ✅ 好
+// 好
 const settings =
   await CardConfigService.getCardSettings<MyCardSettings>(cardId);
 
-// ❌ 不好
+// 不推荐
 const settings = await CardConfigService.getCardSettings(cardId);
 ```
 
@@ -220,14 +220,14 @@ const myValue = settings.myField ?? defaultValue;
 需要更新多个字段时，使用 `saveCardSettings`：
 
 ```typescript
-// ✅ 好 - 一次写入
+// 好 - 一次写入
 await CardConfigService.saveCardSettings(cardId, {
   field1: value1,
   field2: value2,
   field3: value3,
 });
 
-// ❌ 不好 - 多次写入
+// 不推荐 - 多次写入
 await CardConfigService.updateCardSetting(cardId, "field1", value1);
 await CardConfigService.updateCardSetting(cardId, "field2", value2);
 await CardConfigService.updateCardSetting(cardId, "field3", value3);
@@ -246,7 +246,7 @@ await CardConfigService.removeCardSettings(cardId);
 
 ## 迁移指南
 
-### ⚠️ 重要提示
+### 重要提示
 
 **系统已完全移除对旧格式的兼容**。如果您之前使用过旧版本的配置格式（`selected_char_ids_{cardId}`），需要手动迁移到新格式。
 
@@ -381,3 +381,12 @@ A: 打开 `app_config.json` 文件，查找 `card_settings` 对象。
 | 合并语义 | `save_card_settings` 做对象浅合并后整体写回（`commands/card_config.rs:36`） |
 | 卡片删除时清理 | `src/pages/dashboard.tsx` 的移除逻辑 → `CardConfigService.removeCardSettings(cardId)` |
 | 配置文件位置 | 见上文「迁移指南 → 打开配置文件」各平台路径 |
+
+### 新增卡片与全局默认值（2026-10）
+
+- `CardSettingsMap` 现包含 `system_resource: SystemResourceCardSettings`（`types/system-resource.ts`）与 `todo: TodoCardSettings`（`{ listId }`）。
+- 系统资源卡片的配置（指标列表、布局、刷新频率、阈值…）同样存于 `card_settings.{cardId}`，首次使用按全局默认值生成。
+- 另有两个全局默认值配置键（非 `card_settings` 结构，直接由 `configService` 读写）：
+  - `system_resource_defaults`：默认刷新频率/单位/显示/精度/布局/阈值/曲线/主题色/默认模板（`utils/systemResourceService.ts`）。
+  - `todo_defaults`：默认排序/隐藏已完成/优先级/截止时间/颜色/图标（`utils/todoDefaults.ts`）。
+- To-Do 列表数据独立存于 `todo_lists`（一个列表 = 一张卡片），与卡片的 `{ listId }` 解耦，因此页面/弹窗/卡片三处共享同一份数据。

@@ -4,9 +4,9 @@
 > 覆盖 `src-tauri/src/services/` 下除 `account_service.rs` / `skland_service.rs` / `game_launcher_service.rs` 外的全部文件。
 
 ## `src-tauri/src/services/mod.rs`
-**职责**：服务层的模块声明清单，仅 10 行，把 10 个服务模块公开为 `pub mod`。
+**职责**：服务层的模块声明清单，11 行，把 11 个服务模块公开为 `pub mod`。
 
-**导出**：`account_service`、`avatar_cache_service`、`char_detail_service`、`char_wiki_detail_service`、`config_service`、`data_query`、`game_launcher_service`、`gacha_service`、`network_service`、`skland_service`（全部为模块，无类型/方法）。
+**导出**：`account_service`、`avatar_cache_service`、`char_detail_service`、`char_wiki_detail_service`、`config_service`、`data_query`、`game_launcher_service`、`gacha_service`、`network_service`、`skland_service`、`system_resource_service`（全部为模块，无类型/方法）。
 
 **状态**：不注册任何 Tauri State，仅提供命名空间。
 
@@ -53,7 +53,7 @@
 **备注**：
 - 文件路径：`%LOCALAPPDATA%\cn.msk-network.endprotocol\app_config.json`（`utils/paths.rs:34`）。
 - 已知配置键（散布于调用方）：`capture_autostart`（lib.rs:159）、`close_action`（lib.rs:226）、`tray_user_info`（tray.rs:13/25）、`lazy_load_enabled`（account_service.rs:369）、`account_list`（account_service.rs:1525）、`account_token_{id}` / skland token 键（account_service.rs:128 等）、`did_cache`（skland_service.rs:535）、`skland_games_cache`（account_service.rs:2578）。
-- 调用方：`commands/account.rs:28`、`commands/attendance.rs:19`、`commands/gacha.rs:20`（`get_all()`）；`set/remove` 全部由 `account_service.rs`、`skland_service.rs`、`tray.rs` 调用。
+- 调用方：`commands/account.rs:28`、`commands/attendance.rs:19`、`commands/gacha.rs:25`（`get_all()`）；`set/remove` 全部由 `account_service.rs`、`skland_service.rs`、`tray.rs` 调用。
 
 ---
 
@@ -134,7 +134,7 @@
 
 **备注**：
 - HTTP：全部经 `SklandService::call_skland_api`，基址 `https://zonai.skland.com`；请求头 `cred`、`dId`、`sign`、`timestamp`、`platform: 1`、`vName: 1.45.1`、`Content-Type: application/json`、`Origin/Referer: https://game.skland.com`（签名计算见 skland_service.rs:549，签名输入为 query 串）。角色详情数据源为 `GET https://zonai.skland.com/api/v1/game/endfield/card/detail?roleId=&serverId=&userId=`（skland_service.rs:742 起）。
-- 调用方命令：`commands/account.rs::query_role_data`（:341，经 `account_service.rs:3076`）、`commands/account.rs::set_current_role_id`（:318）；`commands/gacha.rs:357` 经 `account.query_role_data(..., "wiki_catalog", &[])` 间接调用。
+- 调用方命令：`commands/account.rs::query_role_data`（:341，经 `account_service.rs:3076`）、`commands/account.rs::set_current_role_id`（:318）；`commands/gacha.rs:479` 经 `account.query_role_data(..., "wiki_catalog", &[])` 间接调用。
 - 无自有缓存文件；缓存全部下沉到 `CharDetailService`（内存）与 `CharWikiDetailService`（内存+磁盘）。
 
 ---
@@ -188,7 +188,7 @@
 - HTTP 端点：`https://zonai.skland.com/api/v1/game/endfield/card/detail`（带 cred/dId/sign/timestamp 头）、`https://zonai.skland.com/web/v1/wiki/item/catalog?typeMainId=1&typeSubId=7`、任意 `cover_url`（`Referer: https://game.skland.com/`）。
 - 缓存路径：`%LOCALAPPDATA%\cn.msk-network.endprotocol\image_cache\gem_icons\{filename}`（本服务直接写盘处）；其他图片按类型落在 `image_cache/{dir_name}/`。
 - 无配置键；缓存均为进程内 `HashMap`，生命周期随 `NetworkService`。
-- 被调用：`NetworkService`（query_role_data / preload_all_char_details / retain_only_char_detail / set_current_role_id），间接触发命令 `commands/account.rs::query_role_data`、`set_current_role_id`，以及 `commands/gacha.rs:357`（`wiki_catalog` 不走本服务，仅同属 query_role_data）。
+- 被调用：`NetworkService`（query_role_data / preload_all_char_details / retain_only_char_detail / set_current_role_id），间接触发命令 `commands/account.rs::query_role_data`、`set_current_role_id`，以及 `commands/gacha.rs:479`（`wiki_catalog` 不走本服务，仅同属 query_role_data）。
 
 ---
 
@@ -246,7 +246,7 @@
 **导出**：
 - `pub const GACHA_SYNC_PROGRESS_EVENT: &str = "gacha-sync-progress";`（:22）
 - `pub struct GachaService { app_handle: Option<AppHandle> }`
-- 方法：`new`、`get_pool_meta`、`get_records_page`、`get_weapon_records_page`、`fetch_pool_records_all`、`records_file_path`、`load_records`、`load_records_or_empty`、`save_records`、`weapon_records_file_path`、`load_weapon_records`、`load_weapon_records_or_empty`、`save_weapon_records`、`avatar_map_file_path`、`load_avatar_map`、`save_avatar_map`、`total_catalog_file_path`、`load_total_catalog`、`save_total_catalog`、`sync_records`、`sync_weapon_records`、`merge_weapon_records`、`build_weapon_pools_map`、`merge_records`、`build_pools_map`、`pool_type_of_pool_id`、`group_records_by_pool`、`count_by_rarity`、`count_by_char`（`fetch_pool_records_until_overlap`、`read_records_file`、`now_ms`、`emit_progress`、`get_api` 为私有）
+- 方法：`new`、`get_pool_meta`、`get_records_page`、`get_weapon_records_page`、`fetch_pool_records_all`、`records_file_path`、`load_records`、`load_records_or_empty`、`save_records`、`weapon_records_file_path`、`load_weapon_records`、`load_weapon_records_or_empty`、`save_weapon_records`、`avatar_map_file_path`、`load_avatar_map`、`save_avatar_map`、`total_catalog_file_path`、`load_total_catalog`、`save_total_catalog`、`total_catalog_is_stale`、`sync_records`、`sync_weapon_records`、`merge_weapon_records`、`build_weapon_pools_map`、`merge_records`、`build_pools_map`、`pool_type_of_pool_id`、`group_records_by_pool`、`count_by_rarity`、`count_by_char`（`fetch_pool_records_until_overlap`、`read_records_file`、`now_ms`、`emit_progress`、`get_api` 为私有）
 
 **状态**：`lib.rs:189-190` 创建为 `Arc<GachaService>` 并 `app.manage(...)`；命令以 `State<'_, Arc<GachaService>>` 注入。字段 `app_handle` 用于 `emit` 进度事件。
 
@@ -254,54 +254,55 @@
 
 | 区间 | 内容 |
 | --- | --- |
-| 15-22 | 常量：`EF_WEBVIEW_BASE`、`GACHA_USER_AGENT`、`GACHA_SYNC_PROGRESS_EVENT` |
-| 24-34 | 结构体与 `new` |
-| 36-156 | API 层：`get_pool_meta`、`get_records_page`、`get_weapon_records_page`、`fetch_pool_records_all`、`fetch_pool_records_until_overlap` |
-| 158-232 | 角色抽卡记录本地读写（含 legacy 路径回退） |
-| 234-295 | 武器寻访记录本地读写 |
-| 297-329 | 角色 id → 头像映射读写 |
-| 331-385 | 全量 Wiki 目录 `total.json` 读写 |
-| 387-485 | `sync_records`（角色增量同步主流程） |
-| 487-631 | `sync_weapon_records` + 武器合并/池映射 |
-| 633-741 | 工具方法（合并、分组、统计、`now_ms`） |
-| 743-748 | `emit_progress`（进度事件） |
-| 750-801 | `get_api`（统一 GET + code==0 校验） |
+| 16-23 | 常量：`EF_WEBVIEW_BASE`、`GACHA_USER_AGENT`、`GACHA_SYNC_PROGRESS_EVENT` |
+| 25-35 | 结构体与 `new` |
+| 37-157 | API 层：`get_pool_meta`、`get_records_page`、`get_weapon_records_page`、`fetch_pool_records_all`、`fetch_pool_records_until_overlap` |
+| 159-233 | 角色抽卡记录本地读写（含 legacy 路径回退） |
+| 235-296 | 武器寻访记录本地读写 |
+| 298-330 | 角色 id → 头像映射读写 |
+| 332-398 | 全量 Wiki 目录 `total.json` 读写 + 缓存过期判断 |
+| 400-503 | `sync_records`（角色增量同步主流程） |
+| 504-644 | `sync_weapon_records` + 武器合并/池映射 |
+| 646-755 | 工具方法（合并、分组、统计、`now_ms`） |
+| 757-761 | `emit_progress`（进度事件） |
+| 763-816 | `get_api`（统一 GET + code==0 校验） |
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
-| `GachaService::new` | gacha_service.rs:30 | 仅保存 `AppHandle`。 |
-| `get_pool_meta` | gacha_service.rs:39 | 输入 `u8token, server_id`；`GET https://ef-webview.hypergryph.com/api/record/char/meta?lang=zh-cn&token={u8token}&server_id={server_id}`；返回 `GachaMetaData`（Tab 列表）。被 `commands/gacha.rs::get_gacha_pool_meta`(:79) 调用。 |
-| `get_records_page` | gacha_service.rs:50 | 输入 `u8token, server_id, pool_type, pool_id?, seq_id?`；`GET https://ef-webview.hypergryph.com/api/record/char` + `pool_type`/`pool_id`（joint 池需要）/`seq_id`（上一页末条）；返回 `GachaRecordData { list, has_more }`。被内部翻页调用（:122），无直接命令调用。 |
-| `get_weapon_records_page` | gacha_service.rs:71 | 输入 `u8token, server_id, seq_id?`；`GET https://ef-webview.hypergryph.com/api/record/weapon?..&seq_id=`；返回 `GachaWeaponRecordData`。被 `sync_weapon_records`(:532) 调用。 |
-| `fetch_pool_records_all` | gacha_service.rs:86 | 以空 `saved_seq_ids` 调 `fetch_pool_records_until_overlap`（全量拉取）。**无调用方**。 |
-| `fetch_pool_records_until_overlap` | gacha_service.rs:107 | 私有；循环 `get_records_page`，逐条比对本地 `saved_seq_ids` 命中即停（该条不入库），`has_more=false` 或空页停止；每页更新 `GachaSyncProgress` 并 `emit_progress`；下一页 `seq_id` = 本页最后一条。 |
-| `records_file_path` | gacha_service.rs:161 | 委托 `paths::gacha_records_file_path` = `%LOCALAPPDATA%\cn.msk-network.endprotocol\gacha_records\gacha_records_{userId}_{serverId}.json`。 |
-| `load_records` | gacha_service.rs:168 | 读上述文件；不存在时回退旧路径 `gacha_records_{userId}_{serverId}.json`（与 app_config.json 同级，`paths.rs:70`）；都没有返回 `None`。 |
-| `read_records_file` | gacha_service.rs:195 | 私有；读文件 + `serde_json::from_str`。 |
-| `load_records_or_empty` | gacha_service.rs:202 | 不存在则返回空 `SavedGachaData`（`last_sync_time=None`）。调用：`commands/gacha.rs::get_saved_gacha_records`(:158)、`resolve_gacha_avatar_map`(:266)、`get_gacha_record_stats`(:490)。 |
-| `save_records` | gacha_service.rs:219 | 建父目录后 pretty JSON 写盘。调用：`sync_records`(:462)。 |
-| `weapon_records_file_path` | gacha_service.rs:237 | `gacha_records\gacha_weapon_records_{userId}_{serverId}.json`（`paths.rs:52`）。 |
-| `load_weapon_records` / `load_weapon_records_or_empty` | gacha_service.rs:250/265 | 同角色逻辑，无 legacy 回退。调用：`commands/gacha.rs::get_saved_weapon_gacha_records`(:228)、`resolve_gacha_avatar_map`(:272)。 |
-| `save_weapon_records` | gacha_service.rs:282 | pretty JSON 写盘。调用：`sync_weapon_records`(:567)。 |
-| `avatar_map_file_path` | gacha_service.rs:300 | `%LOCALAPPDATA%\cn.msk-network.endprotocol\gacha_avatar_map.json`（`paths.rs:78`）。 |
-| `load_avatar_map` | gacha_service.rs:307 | 读 charId → 头像 URL 映射，任何失败回空 map。调用：`commands/gacha.rs::resolve_gacha_avatar_map`(:335)。 |
-| `save_avatar_map` | gacha_service.rs:318 | 空 map 不写盘；否则 pretty JSON。调用：同命令 :462。 |
-| `total_catalog_file_path` | gacha_service.rs:334 | `gacha_records\total.json`（全局共用，`paths.rs:65`）。 |
-| `load_total_catalog` | gacha_service.rs:342 | 读全量 Wiki 目录缓存；文件缺失/解析失败/`data.catalog[].typeSub[].items` 全为空（早期误用产生的无效数据）时返回 `None`。调用：`resolve_gacha_avatar_map`(:355)。 |
-| `save_total_catalog` | gacha_service.rs:377 | 紧凑 JSON 写盘。调用：同命令 :361。 |
-| `sync_records` | gacha_service.rs:393 | 输入 `user_id, server_id, u8token`。①读本地 `saved_seq_ids`；②`get_pool_meta` 取全部 Tab；③每个 Tab `fetch_pool_records_until_overlap` 增量拉取（每页推送 `gacha-sync-progress`）；④`merge_records` 去重合并 + `build_pools_map` 重建池信息 + 写 `last_sync_time`；⑤`save_records`；⑥`progress.done=true` 再推一次。返回 `GachaSyncResult { user_id, server_id, synced_at, new_records, total_records, per_tab_new }`。被 `commands/gacha.rs::sync_gacha_records`(:111) 调用。 |
-| `sync_weapon_records` | gacha_service.rs:491 | 同上但无 meta：直接从最新按 `seq_id` 翻 `/api/record/weapon` 直到命中已存 `seqId`；`progress.tab_key="weapon"`、`tab_count=1`；合并用 `merge_weapon_records` + `build_weapon_pools_map`；`per_tab_new = {"weapon": n}`。被 `commands/gacha.rs::sync_weapon_gacha_records`(:174) 调用。 |
-| `merge_weapon_records` | gacha_service.rs:593 | 按 `seqId` 去重（新在前），再按 `(seq_id 数值, gacha_ts_ms)` 降序排序，保证全局从新到旧。 |
-| `build_weapon_pools_map` | gacha_service.rs:620 | 从记录提取 `poolId → GachaPoolInfo`，`pool_type` 固定 `E_WeaponGachaPoolType`。 |
-| `merge_records` | gacha_service.rs:636 | 同 `merge_weapon_records` 的角色版（`GachaRecord`）。 |
-| `build_pools_map` | gacha_service.rs:659 | 合并 meta Tab 提供的池（`label` → `pool_name`）与记录中出现的池。 |
-| `pool_type_of_pool_id` | gacha_service.rs:687 | `joint_*` → `E_CharacterGachaPoolType_Joint`；`standard*` → `..._Standard`；其余 → `..._Special`。 |
-| `group_records_by_pool` | gacha_service.rs:698 | 按 `pool_id` 分组（保持原顺序，即从新到旧）。调用：`commands/gacha.rs::get_gacha_record_stats`(:502)。 |
-| `count_by_rarity` | gacha_service.rs:709 | 仅 `is_draw()` 记录，`rarity → count`。调用：同命令 :515。 |
-| `count_by_char` | gacha_service.rs:723 | 仅 `is_draw()` 记录，`char_id → count`。调用：同命令 :516。 |
-| `now_ms` | gacha_service.rs:736 | Unix 毫秒时间戳。 |
-| `emit_progress` | gacha_service.rs:744 | `AppHandle::emit(GACHA_SYNC_PROGRESS_EVENT, progress)`，事件名 `gacha-sync-progress`。 |
-| `get_api` | gacha_service.rs:752 | 私有统一 GET：URL = `{EF_WEBVIEW_BASE}{endpoint}`，`query_pairs_mut` 追加 `lang=zh-cn`、`token={u8token}`、`server_id` 及业务参数（URL 编码，避免 u8token 中 `+`/`/` 被误解析）；请求头 `User-Agent: GACHA_USER_AGENT`（抓包同款 QtWebEngine/Chrome UA，:19）、`Referer: https://ef-webview.hypergryph.com/page/gacha_char?u8_token={enc}&channel=1&lang=zh-cn&platform=Windows&server={enc}&subChannel=1`、`Accept: application/json, text/plain, */*`；`error_for_status` 后反序列化 `GachaApiResponse<T>`，`code != 0` 抛 `AppError::ApiError`，`data` 为 `None` 抛 `"empty data"`。 |
+| `GachaService::new` | gacha_service.rs:31 | 仅保存 `AppHandle`。 |
+| `get_pool_meta` | gacha_service.rs:40 | 输入 `u8token, server_id`；`GET https://ef-webview.hypergryph.com/api/record/char/meta?lang=zh-cn&token={u8token}&server_id={server_id}`；返回 `GachaMetaData`（Tab 列表）。被 `commands/gacha.rs::get_gacha_pool_meta`(:84) 调用。 |
+| `get_records_page` | gacha_service.rs:51 | 输入 `u8token, server_id, pool_type, pool_id?, seq_id?`；`GET https://ef-webview.hypergryph.com/api/record/char` + `pool_type`/`pool_id`（joint 池需要）/`seq_id`（上一页末条）；返回 `GachaRecordData { list, has_more }`。被内部翻页调用（:123），无直接命令调用。 |
+| `get_weapon_records_page` | gacha_service.rs:72 | 输入 `u8token, server_id, seq_id?`；`GET https://ef-webview.hypergryph.com/api/record/weapon?..&seq_id=`；返回 `GachaWeaponRecordData`。被 `sync_weapon_records`(:545) 调用。 |
+| `fetch_pool_records_all` | gacha_service.rs:87 | 以空 `saved_seq_ids` 调 `fetch_pool_records_until_overlap`（全量拉取）。**无调用方**。 |
+| `fetch_pool_records_until_overlap` | gacha_service.rs:108 | 私有；循环 `get_records_page`，逐条比对本地 `saved_seq_ids` 命中即停（该条不入库），`has_more=false` 或空页停止；每页更新 `GachaSyncProgress` 并 `emit_progress`；下一页 `seq_id` = 本页最后一条。 |
+| `records_file_path` | gacha_service.rs:162 | 委托 `paths::gacha_records_file_path` = `%LOCALAPPDATA%\cn.msk-network.endprotocol\gacha_records\gacha_records_{userId}_{serverId}.json`。 |
+| `load_records` | gacha_service.rs:169 | 读上述文件；不存在时回退旧路径 `gacha_records_{userId}_{serverId}.json`（与 app_config.json 同级，`paths.rs:70`）；都没有返回 `None`。 |
+| `read_records_file` | gacha_service.rs:196 | 私有；读文件 + `serde_json::from_str`。 |
+| `load_records_or_empty` | gacha_service.rs:203 | 不存在则返回空 `SavedGachaData`（`last_sync_time=None`）。调用：`commands/gacha.rs::get_saved_gacha_records`(:164)、`resolve_gacha_avatar_map`(:375)、`get_gacha_record_stats`(:534)。 |
+| `save_records` | gacha_service.rs:220 | 建父目录后 pretty JSON 写盘。调用：`sync_records`(:475)。 |
+| `weapon_records_file_path` | gacha_service.rs:238 | `gacha_records\gacha_weapon_records_{userId}_{serverId}.json`（`paths.rs:52`）。 |
+| `load_weapon_records` / `load_weapon_records_or_empty` | gacha_service.rs:251/266 | 同角色逻辑，无 legacy 回退。调用：`commands/gacha.rs::get_saved_weapon_gacha_records`(:234)、`resolve_gacha_avatar_map`(:381)。 |
+| `save_weapon_records` | gacha_service.rs:283 | pretty JSON 写盘。调用：`sync_weapon_records`(:580)。 |
+| `avatar_map_file_path` | gacha_service.rs:301 | `%LOCALAPPDATA%\cn.msk-network.endprotocol\gacha_avatar_map.json`（`paths.rs:78`）。 |
+| `load_avatar_map` | gacha_service.rs:308 | 读 charId → 头像 URL 映射，任何失败回空 map。调用：`commands/gacha.rs::resolve_gacha_avatar_map`(:443)。 |
+| `save_avatar_map` | gacha_service.rs:319 | 空 map 不写盘；否则 pretty JSON。调用：同命令 :506。 |
+| `total_catalog_file_path` | gacha_service.rs:335 | `gacha_records\total.json`（全局共用，`paths.rs:65`）。 |
+| `load_total_catalog` | gacha_service.rs:343 | 读全量 Wiki 目录缓存；文件缺失/解析失败/`data.catalog[].typeSub[].items` 全为空（早期误用产生的无效数据）时返回 `None`。调用：`resolve_gacha_avatar_map`(:462)。 |
+| `save_total_catalog` | gacha_service.rs:378 | 紧凑 JSON 写盘。调用：同命令 :482。 |
+| `total_catalog_is_stale` | gacha_service.rs:390 | 输入 `ttl: Duration`；全量 Wiki 目录缓存文件缺失、无法读取修改时间或修改时间早于 `ttl` 之前时返回 `true`。调用：`resolve_gacha_avatar_map`(:477)，用于判断缓存未覆盖全部缺失头像时是否值得重新拉取目录。 |
+| `sync_records` | gacha_service.rs:406 | 输入 `user_id, server_id, u8token`。①读本地 `saved_seq_ids`；②`get_pool_meta` 取全部 Tab；③每个 Tab `fetch_pool_records_until_overlap` 增量拉取（每页推送 `gacha-sync-progress`）；④`merge_records` 去重合并 + `build_pools_map` 重建池信息 + 写 `last_sync_time`；⑤`save_records`；⑥`progress.done=true` 再推一次。返回 `GachaSyncResult { user_id, server_id, synced_at, new_records, total_records, per_tab_new }`。被 `commands/gacha.rs::sync_gacha_records`(:116) 调用。 |
+| `sync_weapon_records` | gacha_service.rs:504 | 同上但无 meta：直接从最新按 `seq_id` 翻 `/api/record/weapon` 直到命中已存 `seqId`；`progress.tab_key="weapon"`、`tab_count=1`；合并用 `merge_weapon_records` + `build_weapon_pools_map`；`per_tab_new = {"weapon": n}`。被 `commands/gacha.rs::sync_weapon_gacha_records`(:179) 调用。 |
+| `merge_weapon_records` | gacha_service.rs:606 | 按 `seqId` 去重（新在前），再按 `(seq_id 数值, gacha_ts_ms)` 降序排序，保证全局从新到旧。 |
+| `build_weapon_pools_map` | gacha_service.rs:633 | 从记录提取 `poolId → GachaPoolInfo`，`pool_type` 固定 `E_WeaponGachaPoolType`。 |
+| `merge_records` | gacha_service.rs:649 | 同 `merge_weapon_records` 的角色版（`GachaRecord`）。 |
+| `build_pools_map` | gacha_service.rs:672 | 合并 meta Tab 提供的池（`label` → `pool_name`）与记录中出现的池。 |
+| `pool_type_of_pool_id` | gacha_service.rs:700 | `joint_*` → `E_CharacterGachaPoolType_Joint`；`standard*` → `..._Standard`；其余 → `..._Special`。 |
+| `group_records_by_pool` | gacha_service.rs:711 | 按 `pool_id` 分组（保持原顺序，即从新到旧）。调用：`commands/gacha.rs::get_gacha_record_stats`(:545)。 |
+| `count_by_rarity` | gacha_service.rs:722 | 仅 `is_draw()` 记录，`rarity → count`。调用：同命令 :558。 |
+| `count_by_char` | gacha_service.rs:736 | 仅 `is_draw()` 记录，`char_id → count`。调用：同命令 :559。 |
+| `now_ms` | gacha_service.rs:749 | Unix 毫秒时间戳。 |
+| `emit_progress` | gacha_service.rs:757 | `AppHandle::emit(GACHA_SYNC_PROGRESS_EVENT, progress)`，事件名 `gacha-sync-progress`。 |
+| `get_api` | gacha_service.rs:765 | 私有统一 GET：URL = `{EF_WEBVIEW_BASE}{endpoint}`，`query_pairs_mut` 追加 `lang=zh-cn`、`token={u8token}`、`server_id` 及业务参数（URL 编码，避免 u8token 中 `+`/`/` 被误解析）；请求头 `User-Agent: GACHA_USER_AGENT`（抓包同款 QtWebEngine/Chrome UA，:20）、`Referer: https://ef-webview.hypergryph.com/page/gacha_char?u8_token={enc}&channel=1&lang=zh-cn&platform=Windows&server={enc}&subChannel=1`、`Accept: application/json, text/plain, */*`；`error_for_status` 后反序列化 `GachaApiResponse<T>`，`code != 0` 抛 `AppError::ApiError`，`data` 为 `None` 抛 `"empty data"`。 |
 
 **备注**：
 - HTTP 端点（基址 `https://ef-webview.hypergryph.com`）：
@@ -314,5 +315,32 @@
   - `gacha_records\gacha_weapon_records_{userId}_{serverId}.json`
   - `gacha_records\total.json`（全量 Wiki 目录缓存，全局共用）
   - `gacha_avatar_map.json`
+- `total.json` 是历史快照：`commands/gacha.rs::resolve_gacha_avatar_map` 在缓存未能补齐全部缺失头像、且缓存超过 6 小时冷却期时会重新拉取目录并覆盖。目录中「预览」条目（`brief.associate == null`）按所属 `typeSub.id`（`"1"`=干员、`"2"`=武器）归类，名称取 `brief.name`，避免新干员/武器因尚未生成 `associate` 而缺头像。
 - 事件：`gacha-sync-progress`（`GachaSyncProgress`：user_id、server_id、tab_index、tab_count、tab_key、page、tab_fetched、total_fetched、done）。
 - 被命令调用：`commands/gacha.rs` 中 `get_gacha_pool_meta`、`sync_gacha_records`、`get_saved_gacha_records`、`sync_weapon_gacha_records`、`get_saved_weapon_gacha_records`、`resolve_gacha_avatar_map`、`get_gacha_record_stats`（全部以 `State<'_, Arc<GachaService>>` 注入）。u8token 来自同文件 `lookup_u8token` / `ensure_fresh_u8token`（读 `ConfigService` 并按需刷新 cred）。
+
+## `src-tauri/src/services/system_resource_service.rs`
+**职责**：本机系统资源采集（CPU / 内存 / GPU / 磁盘 / 网络），由 `commands/system_resource.rs::get_system_snapshot` 调用。基于 `sysinfo`，GPU 通过 `nvidia-smi` 尽力采集；所有子项失败都降级为「空数据 + `errors` 文案」，不 panic。
+
+**导出（类型）**：`SystemResourceService`、`SystemSnapshot`，以及快照子结构 `CpuInfo`、`CpuCoreInfo`、`TemperatureReading`、`MemoryInfo`、`GpuInfo`、`DiskInfo`、`NetworkInfo`（全部 `serde(rename_all = "camelCase")`，与前端 `types/system-resource.ts` 对应）。
+
+**主要依赖**：`sysinfo`（`System`/`Disks`/`Networks`/`Components`，默认 feature 含 `system/disk/network/component/user`）、`std::process::Command`（nvidia-smi）、`windows-sys`（`Win32_System_Performance` 的 PDH 用于实测 CPU 频率）、`crate::log_debug` / `log_warn`。
+
+| 符号 | 位置 | 说明 |
+| --- | --- | --- |
+| `SystemResourceService` | 结构体 | 有状态采集器：持有 `System`/`Disks`/`Networks`/`Components` 与 `last_tick`，用于计算速率与限制温度/GPU 采集频率 |
+| `SystemResourceService::new()` | `new` | 初始化系统（仅 `refresh_cpu_list` + `refresh_memory`，不枚举进程）、磁盘/网卡列表；`Components::new()` 留待首次采集 |
+| `SystemResourceService::snapshot()` | `snapshot` | 刷新 CPU/内存/磁盘/网卡，计算 `elapsed_secs` 后得到速率，返回 `SystemSnapshot`（含 `errors`） |
+| `collect_cpu` / `collect_temperatures` | 私有 | CPU 总体/单核使用率、品牌、实测频率（见下）；温度传感器每 3s 刷新一次，优先标签含 `cpu/package/tctl/tdie` 的读数 |
+| `spawn_cpu_performance_thread` | 私有（Windows） | 后台线程（每秒）用 PDH 读取 `\Processor Information(_Total)\% Processor Performance`，写入 `Arc<Mutex<Option<f64>>>`；`collect_cpu` 用它 × 标称频率得到**实际频率**（含睿频，>100% 即超过基准），无法读取时回退标称频率并置 `frequency_is_actual=false` |
+| `collect_memory` | 私有 | total/used/available/free/cached(≈available-free)/usage，Swap total/used/usage |
+| `collect_disks` | 私有 | 每分区容量、使用率、读写速率与累计读写（`DiskUsage` 的 `read_bytes`/`written_bytes` ÷ elapsed） |
+| `collect_networks` | 私有 | 每网卡上下行速率（`received()`/`transmitted()` ÷ elapsed）与累计流量，按活跃度排序 |
+| `collect_gpus` | 私有 | 每 2s 调用一次 `probe_nvidia_smi` 并缓存；无 NVIDIA 驱动/GPU 时返回空并记录 `gpu_unavailable` |
+| `probe_nvidia_smi` | 私有 | `nvidia-smi --query-gpu=index,name,utilization.gpu,memory.total,memory.used,temperature.gpu,power.draw,fan.speed --format=csv,noheader,nounits`，`[N/A]` 解析为 `None` |
+
+**备注**：
+- 首次快照的 CPU 使用率可能为 0（sysinfo 需要两次间隔 ≥ `MINIMUM_CPU_UPDATE_INTERVAL` 的刷新），前端轮询 ≥500ms，第二次起数值正常。
+- **CPU 频率**：Windows 上 `sysinfo`/`PROCESSOR_POWER_INFORMATION` 返回的是标称频率（如 3201 MHz），无法反映睿频；本服务改用 PDH `% Processor Performance`（睿频时 >100）× 标称频率得到实测值（实测对应机器 130.5% × 3201 ≈ 4176 MHz）。PDH 句柄非 `Send`，因此整个查询生命周期都放在专属后台线程内，`snapshot()` 只读取缓存值，不阻塞。
+- 速率为「上次刷新以来的字节数 / 间隔秒数」，因此刷新频率会直接影响速率精度；前端默认 1s。
+- 被命令调用：`commands/system_resource.rs::get_system_snapshot`（`State<Arc<std::sync::Mutex<SystemResourceService>>>`，`spawn_blocking` 内执行）。

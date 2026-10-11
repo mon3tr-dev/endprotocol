@@ -5,7 +5,7 @@
 | 类别 | 位置 | 用途 | 何时读 |
 | --- | --- | --- | --- |
 | **开发指南** | `docs/*.md`（6 篇） | 规范、流程、扩展方法（怎么写代码） | 动手改代码之前 |
-| **文件参考** | `docs/reference/**/*.md`（27 篇） | 每个源文件做什么、符号在哪一行（代码在哪） | **找位置时先读这里，不用翻源码** |
+| **文件参考** | `docs/reference/**/*.md`（28 篇） | 每个源文件做什么、符号在哪一行（代码在哪） | **找位置时先读这里，不用翻源码** |
 
 > **给 Agent 的约定**（完整版见仓库根目录 [AGENTS.md](../AGENTS.md)）：需要定位某个功能/命令/类型的实现位置时，先查下面的「快速定位表」和 `reference/` 文档；只有在 reference 与代码不符或需要看完整实现时才打开源码。reference 文档中的行号基于生成时的代码版本，若已发生改动，以源码为准并同步更新文档。**完成改动后必须同步更新受影响的 reference 文档与索引。**
 
@@ -24,10 +24,13 @@
 | 卡片自动发现与注册 | `src/components/cards/registry/loader.ts` | [cards_core.md](reference/frontend/cards_core.md) |
 | 应用启动 Splash 与初始数据加载 | `index.html`、`src/utils/startupProgress.ts` | [entry_and_app.md](reference/frontend/entry_and_app.md)、[utils_services_b.md](reference/frontend/utils_services_b.md) |
 | 卡片内部配置存取 | `src/utils/cardConfigService.ts`、`commands/card_config.rs` | [utils_services_a.md](reference/frontend/utils_services_a.md)、[card_configuration.md](card_configuration.md) |
+| 系统资源卡片（原子/卡片组、指标配置） | `src/components/cards/system-resource/`、`src/utils/systemResourceService.ts`、`commands/system_resource.rs` | [cards_system_todo.md](reference/frontend/cards_system_todo.md)、[services_others.md](reference/backend/services_others.md) |
+| To-Do 卡片 / 页面 / 弹窗 | `src/components/cards/todo/`、`src/stores/todoStore.ts`、`src/pages/todo.tsx` | [cards_system_todo.md](reference/frontend/cards_system_todo.md) |
+| 卡片全局默认值（系统资源 / To-Do） | `src/components/system-resource-settings.tsx`、`src/components/todo-settings.tsx` | [cards_system_todo.md](reference/frontend/cards_system_todo.md) |
 | 仪表板布局 / 标签页（多 Tab） | `src/pages/dashboard.tsx`、`src/utils/dashboardConfig.ts` | [pages_core.md](reference/frontend/pages_core.md)、[utils_services_a.md](reference/frontend/utils_services_a.md) |
 | 每日签到 | `src/components/cards/attendance/index.tsx`、`pages/attendance.tsx`、`commands/attendance.rs` | [cards_attendance_domain_spaceship.md](reference/frontend/cards_attendance_domain_spaceship.md)、[commands.md](reference/backend/commands.md) |
 | 抽卡记录同步与统计 | `src/pages/gacha-records.tsx`、`services/gacha_service.rs` | [pages_game_data.md](reference/frontend/pages_game_data.md)、[services_others.md](reference/backend/services_others.md) |
-| 抽卡图表（保底/间隔） | `src/components/gacha-pity-chart.tsx`、`gacha-stat-charts.tsx` | [components_sidebar_charts.md](reference/frontend/components_sidebar_charts.md) |
+| 抽卡图表与逐池六星间隔统计 | `src/components/gacha-pity-chart.tsx`、`gacha-stat-charts.tsx`、`src/utils/gachaIntervals.ts` | [components_sidebar_charts.md](reference/frontend/components_sidebar_charts.md)、[utils_services_b.md](reference/frontend/utils_services_b.md) |
 | 启动器：下载/校验/切服/进程管理 | `src/components/game-action-panel.tsx`、`src/utils/launcherService.ts` | [components_game_action_panel.md](reference/frontend/components_game_action_panel.md)、[utils_services_a.md](reference/frontend/utils_services_a.md)、[services_launcher.md](reference/backend/services_launcher.md) |
 | 应用自更新 | `src/utils/updateService.ts`、`commands/updater.rs` | [utils_services_b.md](reference/frontend/utils_services_b.md)、[commands.md](reference/backend/commands.md) |
 | 外观设置（主题/背景/取色） | `src/components/appearance-settings.tsx` | [components_settings_panels.md](reference/frontend/components_settings_panels.md) |
@@ -43,7 +46,7 @@
 
 | 需求 | 位置 | 详细参考 |
 | --- | --- | --- |
-| **IPC 命令在哪定义 / 前端谁调用** | 生成的对照表 | [ipc_index.md](reference/ipc_index.md)（99 个命令全表） |
+| **IPC 命令在哪定义 / 前端谁调用** | 生成的对照表 | [ipc_index.md](reference/ipc_index.md)（100 个命令全表） |
 | 新增/修改一个 Tauri 命令 | `src-tauri/src/commands/`、`src-tauri/src/lib.rs` | [commands.md](reference/backend/commands.md)、[bootstrap.md](reference/backend/bootstrap.md)、[backend_development.md](backend_development.md) |
 | 错误类型与转换 | `src-tauri/src/utils/error.rs` | [utils.md](reference/backend/utils.md) |
 | 加密与签名（RSA/AES/DES/HMAC） | `src-tauri/src/utils/encrypt.rs`、`hg_crypto.rs`、`services/skland_service.rs` | [utils.md](reference/backend/utils.md)、[services_skland.md](reference/backend/services_skland.md) |
@@ -73,14 +76,14 @@
 
 ---
 
-## 3. 文件参考（27 篇）
+## 3. 文件参考（28 篇）
 
 ### 3.1 后端 `src-tauri/`
 
 | 文件 | 覆盖范围 |
 | --- | --- |
 | [reference/backend/bootstrap.md](reference/backend/bootstrap.md) | `main.rs`、`lib.rs`（含全部命令注册清单）、`tray.rs`、`build.rs`、`Cargo.toml`、`tauri.conf.json`、`capabilities/*`、`examples/sign_test.rs` |
-| [reference/backend/commands.md](reference/backend/commands.md) | `commands/` 全部 13 个文件、**99 个 `#[tauri::command]`**：参数、返回值、内部调用链 |
+| [reference/backend/commands.md](reference/backend/commands.md) | `commands/` 全部 14 个文件、**100 个 `#[tauri::command]`**：参数、返回值、内部调用链 |
 | [reference/backend/models.md](reference/backend/models.md) | `models/` 全部 7 个文件：79 个结构体/枚举的字段与 serde 映射 |
 | [reference/backend/services_account.md](reference/backend/services_account.md) | `services/account_service.rs`（约 3100 行）：登录、凭证刷新、角色数据、状态中枢 |
 | [reference/backend/services_skland.md](reference/backend/services_skland.md) | `services/skland_service.rs`：森空岛 API 端点总表、签名与加密流程 |
@@ -107,6 +110,7 @@
 | [reference/frontend/cards_character_list.md](reference/frontend/cards_character_list.md) | `character-list/`（含 3300 行的 `char-select-modal.tsx`） |
 | [reference/frontend/cards_account_achievement.md](reference/frontend/cards_account_achievement.md) | `account-info/`、`account-progress/`、`achievement/` |
 | [reference/frontend/cards_attendance_domain_spaceship.md](reference/frontend/cards_attendance_domain_spaceship.md) | `attendance/`、`domain-info/`、`spaceship/` |
+| [reference/frontend/cards_system_todo.md](reference/frontend/cards_system_todo.md) | `system-resource/`、`todo/` 两类新卡片（含 `todoStore`、相关 types/utils/设置分区/`pages/todo.tsx`） |
 | [reference/frontend/utils_services_a.md](reference/frontend/utils_services_a.md) | 账户/配置/卡片配置/仪表板/角色/标签页/启动器等 11 个服务封装（含每个函数对应的命令名） |
 | [reference/frontend/utils_services_b.md](reference/frontend/utils_services_b.md) | 更新、Wiki 解析、图片缓存、技能描述解析、日志、滚动条 |
 | [reference/frontend/ui_components.md](reference/frontend/ui_components.md) | `src/components/ui/` 全部 36 个通用组件 + `primitives`/`icons`/`morph-icon`（含每个组件的 props） |

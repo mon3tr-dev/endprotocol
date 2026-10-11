@@ -198,3 +198,22 @@
 - window 事件：监听 `accountChanged`。
 - i18n key：`sidebar.medals`、`card:ach_no_medals`。
 - 数据流：`getSelectedAccount()` → `roleDataService.getFullCharDetail(id)` → `detail.achieve.achieveMedals` → `MedalBrowser`。注意加载失败不显示错误提示，只会表现为「无勋章」空态（仅日志可见）。
+
+## `src/pages/todo.tsx`
+**职责**：To-Do 独立页面。左侧为列表管理（搜索、新建、拖拽排序、分组、复制、删除、设置），右侧为当前列表的完整编辑器（`TodoDetail`，与卡片/弹窗共用）；支持模板新建与 Markdown/JSON 导入导出；以 URL 查询参数 `?list=<id>` 记录当前列表。
+**导出**：`export default TodoPage`。
+**主要依赖**：`@/stores/todoStore`（`useTodoLists`/`createTodoList`/`deleteTodoList`/`duplicateTodoList`/`reorderTodoLists`/`isOverdue`）、`@/utils/todoDefaults`、`@/utils/todoImportExport`、`@/components/cards/todo/todo-detail`、`@/components/cards/todo/list-settings-modal`、`@/components/ui/{page-header,empty-state,confirm-dialog}`、`@/components/custom-modal`。
+
+| 符号 | 位置 | 说明 |
+| --- | --- | --- |
+| `TodoPage()` | 默认导出 | 页面组件 |
+| `activeListId` | 顶部 | 来自 `useSearchParams().get("list")`；不自动选择列表；选中列表被删除后清除 URL 选择 |
+| `grouped` | useMemo | `groupBy` 开启时按 `list.group` 分组，未分组归入 `todo_page.ungrouped` |
+| `handleCreate` | — | 按 `TODO_TEMPLATES` 选中的模板生成初始事项（标题/事项文案走 `card:` i18n），再跳转到新列表 |
+| `handleImport` | — | 读取文件文本，`.json` 走 `parseJsonList`，否则 `parseMarkdownList`，随后 `createTodoList` |
+| `handleExport` | — | `listToMarkdown` / `listToJson` → `Blob` → `<a download>` |
+
+**备注**：
+- 顶部操作为「导入 / 导出 Markdown / 导出 JSON / 新建列表」。
+- 路由：`/todo`（`App.tsx`，`ROUTES` 已加入 `/todo`），外层 `DashboardLayout`；侧栏入口见 `components/dashboard-sidebar.tsx` 的 `NavKey = "todo"`。
+- 未使用 `invoke`；持久化全部经 `todoStore` → `utils/configService` → `get_config`/`set_config`。

@@ -28,15 +28,16 @@
 - `index.html` 的启动动画遵循 `prefers-reduced-motion`，静态启动文案先按浏览器语言显示，配置读取后切换为应用保存语言。
 
 ## `src/App.tsx`
-**职责**：定义应用的路由表（8 条顶层路由，全部包在 `DashboardLayout` 中），并挂载两个无 UI 的副作用组件：路由恢复（记住/还原 `last_route`）与更新检查。
+**职责**：定义应用的路由表（9 条顶层路由，全部包在 `DashboardLayout` 中），并初始化待办列表/每日重置调度；同时挂载路由恢复（记住/还原 `last_route`）与更新检查副作用。
 **导出**：`export default App`（App.tsx:128）。
-**主要依赖**：`react`（useEffect/useRef）、`react-router-dom`（Route/Routes/useLocation/useNavigate）、页面组件 `@/pages/{dashboard,settings,developer,account,characters,medals,attendance,gacha-records}`、`@/layouts/dashboard`、`@/utils/configService`（getConfig/setConfig）、`@/utils/updateService`（checkAndNotify）。
+**主要依赖**：`react`（useEffect/useRef）、`react-router-dom`（Route/Routes/useLocation/useNavigate）、页面组件 `@/pages/{dashboard,settings,developer,account,characters,medals,attendance,gacha-records,todo}`、`@/layouts/dashboard`、`@/utils/configService`（getConfig/setConfig）、`@/utils/updateService`（checkAndNotify）、`@/stores/todoStore`（ensureTodoLoaded）。
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
-| `ROUTES` | App.tsx:16 | 白名单路由数组 `["/", "/settings", "/account", "/characters", "/medals", "/attendance", "/gacha", "/developer"]`，用于校验可恢复路径 |
+| `ROUTES` | App.tsx:16 | 白名单路由数组 `["/", "/settings", "/account", "/characters", "/medals", "/attendance", "/gacha", "/todo", "/developer"]`，用于校验可恢复路径 |
 | `RouteRestore` | App.tsx:18-39 | 无 UI 组件。首次 effect 读取 `last_route`，若在白名单内且与当前路径不同则 `navigate(savedPath, { replace: true })`；`restored` ref 防止恢复前就覆盖保存；路径变化后写回 `setConfig("last_route", pathname)` |
 | `UpdateChecker` | App.tsx:41-51 | 无 UI 组件。用 `notified` ref 保证 `checkAndNotify()` 仅执行一次 |
+| `App` 初始化 effect | App.tsx:54-56 | 调用 `ensureTodoLoaded()`，使每日列表在启动时可补做当天到期的重置 |
 | `App`（default） | App.tsx:53-126 | 渲染 `<RouteRestore/>`、`<UpdateChecker/>` 与 `<Routes>` |
 | 路由 `/` | App.tsx:59-66 | `DashboardLayout` 包 `DashboardPage` |
 | 路由 `/settings` | App.tsx:67-74 | `DashboardLayout` 包 `SettingsPage` |
@@ -45,10 +46,11 @@
 | 路由 `/medals` | App.tsx:91-98 | `DashboardLayout` 包 `MedalsPage` |
 | 路由 `/attendance` | App.tsx:99-106 | `DashboardLayout` 包 `AttendancePage` |
 | 路由 `/gacha` | App.tsx:107-114 | `DashboardLayout` 包 `GachaRecordsPage` |
+| 路由 `/todo` | App.tsx | `DashboardLayout` 包 `TodoPage`（`@/pages/todo`） |
 | 路由 `/developer` | App.tsx:115-122 | `DashboardLayout` 包 `DeveloperPage` |
 
 **备注**：
-- 路由表（path → 页面）：`/`→dashboard、`/settings`→settings、`/account`→account、`/characters`→characters、`/medals`→medals、`/attendance`→attendance、`/gacha`→gacha-records、`/developer`→developer；无 404/通配路由。
+- 路由表（path → 页面）：`/`→dashboard、`/settings`→settings、`/account`→account、`/characters`→characters、`/medals`→medals、`/attendance`→attendance、`/gacha`→gacha-records、`/todo`→todo、`/developer`→developer；无 404/通配路由。
 - 配置键 `last_route` 由 `RouteRestore` 读写；`ROUTES` 与上述路径必须同步维护。
 
 ## `src/App.css`

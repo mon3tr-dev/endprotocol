@@ -270,3 +270,38 @@
 | `failStartup` | startupProgress.ts:56 | 关闭启动跟踪并在 Splash 中显示初始化错误 |
 
 **备注**：启动进度由 `index.html` 提供纯静态 UI，因此 React 配置初始化之前也不会显示空白页；配置/API 失败时状态文案明确显示，既有调用者仍负责记录与呈现各自错误。
+
+## `src/utils/gachaIntervals.ts`
+**职责**：统一计算角色/武器寻访中每个六星事件的间隔；各卡池独立计数，供统计卡片、六星间隔折线图、累计图与保底图共用。
+
+**导出**：`GachaSixStarInterval`、`calculateGachaSixStarIntervals`。
+
+| 符号 | 说明 |
+| --- | --- |
+| `GachaSixStarInterval` | 六星事件记录，包含原始记录、卡池 id/名称、池内六星序号、间隔抽数与是否来自赠送抽 |
+| `calculateGachaSixStarIntervals` | 按 `gachaTs` 升序处理 draw 记录；普通抽计数；赠送抽若无六星则不计，若出六星则以此前普通抽及本次连续赠送组截至该六星的抽数构成一个事件间隔，并重置该池计数 |
+
+**备注**：计数器以 `poolId` 独立维护。第一条可用记录作为卡池起点；若本地历史不完整，首个间隔不代表卡池完整历史。间隔值包含六星所在的那一抽。
+
+## `src/utils/todoDefaults.ts`
+**职责**：全局「To-Do 卡片」默认值的读写（配置键 `todo_defaults`）。
+**导出**：`getTodoDefaults()`、`setTodoDefaults(patch)`。
+**主要依赖**：`@/utils/configService`、`@/utils/logger`、`@/types/todo`（`DEFAULT_TODO_DEFAULTS`）。
+
+**备注**：`getTodoDefaults` 读取失败回退内置默认；`setTodoDefaults` 为读-改-写合并保存。配置键：`todo_defaults`。
+
+## `src/utils/todoTemplateService.ts`
+**职责**：根据 To-Do 模板和全局默认值创建新列表。
+**导出**：`createTodoListFromTemplate(templateId, translate)`。
+
+## `src/utils/todoImportExport.ts`
+**职责**：To-Do 列表的 Markdown / JSON 导入导出。
+**导出**：`listToMarkdown(list)`、`parseMarkdownList(markdown)`、`listToJson(list)`、`parseJsonList(json)`、类型 `ParsedMarkdownList`。
+
+| 符号 | 说明 |
+| --- | --- |
+| `listToMarkdown` | 输出 `# 标题`、描述与 `- [ ] 内容 !2 @YYYY-MM-DD #tag`；子事项缩进两格 `- [ ]`，备注以 `  > ` 前缀 |
+| `parseMarkdownList` | 解析标题/描述/`- [x]` 事项，复用与 `cards/todo/quick-add.ts` 相同的 `!/@/#` 语法 |
+| `listToJson` / `parseJsonList` | 完整字段 JSON 往返；`parseJsonList` 对缺省字段做规范化，解析失败返回 `null` |
+
+**备注**：无 IPC、无事件；纯字符串处理，供 `pages/todo.tsx` 的导入导出按钮调用。

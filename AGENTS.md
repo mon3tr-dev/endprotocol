@@ -40,6 +40,7 @@ Do **not** start by listing directories or reading source files. Look up the tar
   - Frontend→backend calls: wrap `invoke` in `src/utils/*Service.ts` with types and an explicit failure return.
   - Backend errors: `Result<T, AppError>` (`src-tauri/src/utils/error.rs`); async for anything doing I/O; `tracing`/`log_*` for logs.
   - Styling: Tailwind + the glass components in `src/components/ui/glass`.
+  - Icons: Do not use emoji in the application UI, metadata, or examples; use an icon component from `lucide`/`morphicons` (or an existing SVG icon component) instead. Persist icon identifiers, not emoji characters.
   - State/config: `ConfigService` on the backend (`app_config.json`, dotted keys) — no ad-hoc file writes.
 - Never read or modify: `dist/`, `target/`, `node_modules/`, `src-tauri/gen/` (generated).
 
