@@ -1,0 +1,19 @@
+{
+  "id": "todo",
+  "name": {
+    "zh": "待办事项",
+    "en": "To-Do List"
+  },
+  "description": {
+    "zh": "一个卡片对应一个待办列表，支持卡片内联、独立页面与弹窗编辑三种视图",
+    "en": "One card per to-do list, editable inline, on a dedicated page, or in a modal"
+  },
+  "icon": "file",
+  "defaultSize": { "w": 3, "h": 4 },
+  "version": "1.0.0",
+  "allowMultiple": true,
+  "tags": [
+    { "id": "productivity", "label": { "zh": "效率", "en": "Productivity" } },
+    { "id": "todo", "label": { "zh": "待办", "en": "To-Do" } }
+  ]
+}
