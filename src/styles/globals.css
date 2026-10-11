@@ -249,6 +249,8 @@ body::before {
 @keyframes pulse-soft { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
 .animate-pulse-soft { animation: pulse-soft 2s ease-in-out infinite; }
 @keyframes card-flash { 0%, 100% { border-color: color-mix(in srgb, var(--heroui-primary) 90%, transparent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--heroui-primary) 45%, transparent), 0 0 28px color-mix(in srgb, var(--heroui-primary) 55%, transparent); } 50% { border-color: color-mix(in srgb, var(--heroui-primary) 20%, transparent); box-shadow: 0 0 0 1px color-mix(in srgb, var(--heroui-primary) 10%, transparent), 0 0 8px color-mix(in srgb, var(--heroui-primary) 15%, transparent); } }
+@keyframes resource-page-enter { from { opacity: 0; transform: translateY(5px) scale(0.995); } to { opacity: 1; transform: translateY(0) scale(1); } }
+.animate-resource-page { animation: resource-page-enter 0.24s cubic-bezier(0.2, 0.7, 0.3, 1) both; }
 .card-flash-highlight { animation: card-flash 0.6s ease-in-out 4; border: 2px solid color-mix(in srgb, var(--heroui-primary) 90%, transparent); border-radius: 12px; }
 @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
 
@@ -279,6 +281,10 @@ body::before {
 .animate-list-item:nth-child(6) { animation-delay: 200ms; }
 .animate-list-item:nth-child(7) { animation-delay: 240ms; }
 .animate-list-item:nth-child(8) { animation-delay: 280ms; }
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-resource-page { animation: none; }
+}
 
 /* Scrollbar — overlay floats on top of content, no layout space */
 * { scrollbar-width: none; }

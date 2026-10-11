@@ -45,7 +45,7 @@ flate2 = { version = "1.0", features = ["zlib"] }
 base64 = "0.22"
 bytes = "1"
 http = "1"
-windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_UI_WindowsAndMessaging", "Win32_System_Com", "Win32_UI_Shell", "Win32_System_Threading"] }
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_UI_WindowsAndMessaging", "Win32_System_Com", "Win32_UI_Shell", "Win32_System_Threading", "Win32_System_Power", "Win32_System_Performance"] }
 uuid = { version = "1.6", features = ["v4"] }
 hex = "0.4"
 rand = "0.8"
@@ -53,6 +53,7 @@ indexmap = { version = "2.0", features = ["serde"] }
 tauri-plugin-process = "2.3.1"
 walkdir = "2"
 rfd = "0.15"
+sysinfo = "0.38.4"
 
 [target.x86_64-pc-windows-msvc]
 rustflags = ["-C", "link-arg=-fuse-ld=lld"]

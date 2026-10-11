@@ -8,3 +8,4 @@ pub mod game_launcher_service;
 pub mod gacha_service;
 pub mod network_service;
 pub mod skland_service;
+pub mod system_resource_service;

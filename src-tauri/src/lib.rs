@@ -15,6 +15,7 @@ use services::gacha_service::GachaService;
 use services::game_launcher_service::GameLauncherService;
 use services::network_service::NetworkService;
 use services::skland_service::SklandService;
+use services::system_resource_service::SystemResourceService;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -73,6 +74,8 @@ pub fn run() {
             commands::card_config::get_card_settings,
             commands::card_config::save_card_settings,
             commands::card_config::remove_card_settings,
+            // System resource commands
+            commands::system_resource::get_system_snapshot,
             commands::account::query_role_data,
             commands::account::set_lazy_load_enabled,
             commands::account::is_lazy_load_enabled,
@@ -210,6 +213,11 @@ pub fn run() {
             // 初始化游戏启动器服务
             let game_launcher_service = Arc::new(Mutex::new(GameLauncherService::new()));
             app.manage(game_launcher_service);
+
+            // 初始化系统资源采集服务（CPU/内存/磁盘/网络/GPU）
+            let system_resource_service =
+                Arc::new(std::sync::Mutex::new(SystemResourceService::new()));
+            app.manage(system_resource_service);
 
             // 启动自动刷新定时器（此时 tokio runtime 已启动）
             AccountService::start_auto_refresh(timer_service);

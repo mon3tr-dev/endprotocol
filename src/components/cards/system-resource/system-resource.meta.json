@@ -1,0 +1,20 @@
+{
+  "id": "system_resource",
+  "name": {
+    "zh": "系统资源",
+    "en": "System Resources"
+  },
+  "description": {
+    "zh": "展示本机 CPU / 内存 / GPU / 磁盘 / 网络使用情况，支持单指标与多指标卡片组",
+    "en": "Monitor local CPU / memory / GPU / disk / network, as a single metric or a multi-metric group"
+  },
+  "icon": "chart",
+  "defaultSize": { "w": 3, "h": 3 },
+  "version": "1.0.0",
+  "allowMultiple": true,
+  "tags": [
+    { "id": "system", "label": { "zh": "系统", "en": "System" } },
+    { "id": "monitor", "label": { "zh": "监控", "en": "Monitor" } },
+    { "id": "display", "label": { "zh": "显示", "en": "Display" } }
+  ]
+}
