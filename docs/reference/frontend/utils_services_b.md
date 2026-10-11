@@ -25,7 +25,7 @@
 | `setChannel` | updateService.ts:586 | 切换频道：`invoke("set_config")`（经 `setConfig("update_channel", …)`，见 configService）→ 清空缓存与状态 → `emitChange` → 自动调用 `checkForUpdate()` → 用 `removeMessagesByTag("app-update")`/`addUpdateMessage` 更新消息中心；结束时复位 `channelSwitchDetected` |
 | `initializeChannel` | updateService.ts:646 | 启动时 `Promise.all([getConfig("update_channel"), getConfig("update_source")])` 恢复持久化配置，非法值回退默认（stable/github） |
 | `setSource` | updateService.ts:664 | 切换来源：`setConfig("update_source", source)` → 清缓存 → `emitChange` → 自动 `checkForUpdate()` 并刷新消息 |
-| `checkForUpdate` | updateService.ts:713 | 核心检查入口：置 `status="checking"` → `emitChange()` → `performUpdateCheck()` → 回写 `status` 并广播；返回 `Promise<UpdateCheckResult>`。稳定频道走 `check()`（Tauri updater 插件），预览频道走 `invoke("fetch_url")` 拉取 `latest.json` |
+| `checkForUpdate` | updateService.ts:713 | 核心检查入口：置 `status="checking"` → `emitChange()` → `performUpdateCheck()` → 回写 `status` 并广播；返回 `Promise<UpdateCheckResult>`。稳定频道走 `check()`（Tauri updater 插件）；预览频道先检查稳定版清单，若正式版高于本机版本则提供正式版更新，否则继续检查预览版 `latest.json`；更新日志频道按实际候选版本（稳定/预览）选择 |
 | `getCurrentUpdate` | updateService.ts:725 | 返回缓存的 `Update` 对象（`check` 返回值或手工构造的伪对象） |
 | `getCurrentUpdateInfo` | updateService.ts:729 | 返回最近一次的 `UpdateInfo` |
 | `getStatus` | updateService.ts:733 | 返回 `UpdateStatus` |
@@ -57,7 +57,7 @@
 | 171–195 | GitHub API 抓取（releases 列表 / 按 tag 取单个 release） |
 | 197–226 | changelog 内存缓存（key 前缀 `changelog_cache_`、TTL 30s） |
 | 228–264 | 频道切换判定、镜像 changelog URL 获取（`invoke("fetch_url")`） |
-| 266–439 | `resolveRelease`：预览频道直连端点、稳定频道走插件、频道切换回退到 GitHub release 列表 |
+| 266–439 | `resolveRelease`：预览频道优先检查高于本机版本的稳定版，再直连预览端点；稳定频道走插件；频道切换回退到 GitHub release 列表。正式版发布后将高于同版本号的预览版（如 `0.1.3` 高于 `0.1.3-pre7`） |
 | 441–505 | `fetchChangelog` 三级策略：镜像 notes URL → GitHub Release body → `CHANGELOG.md` 附件 |
 | 507–572 | `performUpdateCheck` 组装 `UpdateCheckResult` |
 | 574–874 | 公共 API：频道/来源设置、检查、下载/取消、对话框事件 |

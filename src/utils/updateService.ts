@@ -304,6 +304,61 @@ async function resolveRelease(): Promise<Update | null> {
 async function resolvePreviewRelease(): Promise<Update | null> {
   const { getVersion } = await import("@tauri-apps/api/app");
   const localVersion = await getVersion();
+  const localParsed = parseSemVer(localVersion);
+  manualDownloadUrl = null;
+
+  if (!localParsed) {
+    logger.error(`Failed to parse local version: ${localVersion}`, "Updater");
+    return null;
+  }
+
+  // Stable releases also supersede previews with the same major/minor/patch.
+  const stableEndpoint = currentSource === "mirror"
+    ? `${MIRROR_BASE}/stable/latest.json`
+    : `https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/latest/download/latest.json`;
+  try {
+    const text = await invoke<string>("fetch_url", { url: stableEndpoint });
+    const stableJson: {
+      version: string;
+      pub_date?: string;
+      notes?: string;
+      platforms?: Record<string, { signature: string; url: string }>;
+    } = JSON.parse(text);
+    const stableVersion = parseSemVer(stableJson.version);
+    const stablePlatform = stableJson.platforms?.["windows-x86_64"];
+
+    if (
+      stableVersion &&
+      stableVersion.prerelease.length === 0 &&
+      compareSemVer(stableVersion, localParsed) > 0
+    ) {
+      if (!stablePlatform?.url) {
+        logger.error(
+          `No download URL for windows-x86_64 in stable latest.json (${stableJson.version})`,
+          "Updater",
+        );
+      } else {
+        logger.info(
+          `Stable update available on preview channel: ${localVersion} → ${stableJson.version}`,
+          "Updater",
+        );
+        manualDownloadUrl = stablePlatform.url;
+        return {
+          version: stableJson.version,
+          currentVersion: localVersion,
+          date: stableJson.pub_date,
+          body: stableJson.notes,
+          download: async () => {},
+          install: async () => {},
+        } as unknown as Update;
+      }
+    }
+  } catch (error) {
+    logger.info(
+      `Stable release check failed on preview channel: ${error}`,
+      "Updater",
+    );
+  }
 
   // Determine preview endpoint based on source
   const endpoint = currentSource === "mirror"
@@ -347,10 +402,9 @@ async function resolvePreviewRelease(): Promise<Update | null> {
   }
 
   // Compare versions
-  const localParsed = parseSemVer(localVersion);
   const remoteParsed = parseSemVer(remoteVersion);
-  if (!localParsed || !remoteParsed) {
-    logger.error(`Failed to parse versions: local=${localVersion}, remote=${remoteVersion}`, "Updater");
+  if (!remoteParsed) {
+    logger.error(`Failed to parse remote version: ${remoteVersion}`, "Updater");
     return null;
   }
 
@@ -554,7 +608,8 @@ async function performUpdateCheck(): Promise<UpdateCheckResult> {
 
   try {
     const tag = `v${update.version}`;
-    const result = await fetchChangelog(channel, update.version, tag);
+    const updateChannel = isPreviewChannel(update.version) ? "preview" : "stable";
+    const result = await fetchChangelog(updateChannel, update.version, tag);
     changelog = result.changelog;
     changelogStatus = result.status;
   } catch (error) {
