@@ -1,7 +1,7 @@
 import clsx from "clsx";
 
 interface EmptyStateProps {
-  /** 图标(任意 ReactNode,通常为 svg/emoji) */
+  /** 图标（任意 ReactNode，通常为 SVG 图标组件） */
   icon?: React.ReactNode;
   title: React.ReactNode;
   description?: React.ReactNode;

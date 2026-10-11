@@ -1,4 +1,5 @@
 import { cn } from "@/lib/cn";
+import { useTranslation } from "react-i18next";
 import { MorphIcon } from "morphicons/react";
 import { ChevronLeft, ChevronRight } from "lucide";
 

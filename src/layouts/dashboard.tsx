@@ -20,6 +20,8 @@ import {
 } from "@/stores/inAppBrowser";
 import { InAppBrowser } from "@/components/in-app-browser";
 import { GameActionPanel } from "@/components/game-action-panel";
+import { MorphIcon } from "morphicons/react";
+import { ChevronLeft, ChevronRight } from "lucide";
 import { trackStartupTask } from "@/utils/startupProgress";
 import {
   type GameChannel,
@@ -286,7 +288,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                         }}
                         className="absolute left-0.5 top-1/2 -translate-y-1/2 w-5 h-14 flex items-center justify-center rounded-full bg-black/50 text-white/80 hover:bg-black/70 hover:text-white transition-colors cursor-pointer z-10"
                       >
-                        ‹
+                        <MorphIcon icon={ChevronLeft} size={16} aria-hidden />
                       </button>
                       <button
                         type="button"
@@ -296,7 +298,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                         }}
                         className="absolute right-0.5 top-1/2 -translate-y-1/2 w-5 h-14 flex items-center justify-center rounded-full bg-black/50 text-white/80 hover:bg-black/70 hover:text-white transition-colors cursor-pointer z-10"
                       >
-                        ›
+                        <MorphIcon icon={ChevronRight} size={16} aria-hidden />
                       </button>
                     </>
                   )}

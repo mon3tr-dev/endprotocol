@@ -27,6 +27,8 @@ import { useImageRequest } from "@/utils/imageCacheManager";
 import { roleDataService } from "@/utils/roleDataService";
 import { getConfig } from "@/utils/configService";
 import { logError } from "@/utils/logger";
+import { MorphIcon } from "morphicons/react";
+import { X } from "lucide";
 
 const SKILL_BG_COLORS: Record<string, string> = {
   skill_property_pulse: "#ffc000",
@@ -1615,7 +1617,7 @@ export function CharSelectModal({
                                           className="w-full h-full object-contain"
                                         />
                                       ) : (
-                                        <span>✕</span>
+                                        <MorphIcon icon={X} size={20} aria-hidden />
                                       )}
                                     </div>
                                     <div
