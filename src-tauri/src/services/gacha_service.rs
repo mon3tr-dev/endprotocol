@@ -2,6 +2,7 @@ use serde::de::DeserializeOwned;
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::PathBuf;
+use std::time::Duration;
 use tauri::{AppHandle, Emitter};
 
 use crate::models::gacha::{
@@ -382,6 +383,18 @@ impl GachaService {
         let content = serde_json::to_string(catalog)?;
         fs::write(&path, content)?;
         Ok(())
+    }
+
+    /// 全量 Wiki 目录缓存是否已过期：文件缺失、无法读取修改时间，或修改时间早于
+    /// `ttl` 之前都视为过期。用于在头像仍未解析时判断是否值得重新拉取目录。
+    pub fn total_catalog_is_stale(&self, ttl: Duration) -> bool {
+        let Ok(path) = self.total_catalog_file_path() else {
+            return true;
+        };
+        let Ok(modified) = fs::metadata(&path).and_then(|meta| meta.modified()) else {
+            return true;
+        };
+        modified.elapsed().map(|age| age >= ttl).unwrap_or(true)
     }
 
     // ---------- 同步 ----------

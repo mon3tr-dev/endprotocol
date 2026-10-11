@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex as SyncMutex};
+use std::time::Duration;
 use tauri::State;
 use tokio::sync::Mutex;
 
@@ -8,6 +9,10 @@ use crate::services::config_service::ConfigService;
 use crate::services::gacha_service::GachaService;
 use crate::utils::AppError;
 use crate::{log_error, log_info, log_warn};
+
+/// 全量 Wiki 目录缓存的最小刷新间隔：缓存新于该时长时不再重复请求，避免个别
+/// 无法匹配的名称导致每次打开抽卡页都重新拉取整份目录。
+const TOTAL_CATALOG_REFRESH_COOLDOWN: Duration = Duration::from_secs(6 * 60 * 60);
 
 /// 根据 roleId 在配置中查找对应的 userId、serverId 和 u8token
 fn lookup_u8token(
@@ -243,11 +248,114 @@ pub async fn get_saved_weapon_gacha_records(
     serde_json::to_value(data).map_err(|e| e.to_string())
 }
 
+/// 从全量 Wiki 目录中按显示名补齐头像映射，返回本次新解析出的数量，
+/// 并把仍未匹配的 id 保留在 `unresolved` 中。
+///
+/// 目录条目优先按 `brief.associate.type`（`char`/`weapon`）归类；新干员/武器在目录中
+/// 可能仍是「预览」条目（`brief.associate` 为 `null`），此时按所属 typeSub 归类
+/// （typeSub `id == "1"` 为干员、`"2"` 为武器），名称回退到 `brief.name` / `item.name`。
+fn resolve_missing_from_catalog(
+    catalog: &serde_json::Value,
+    needed: &HashMap<String, String>,
+    unresolved: &mut Vec<String>,
+    map: &mut HashMap<String, String>,
+) -> usize {
+    let Some(catalog_arr) = catalog
+        .get("data")
+        .and_then(|d| d.get("catalog"))
+        .and_then(|c| c.as_array())
+    else {
+        return 0;
+    };
+
+    // 构建 显示名 -> 图标 映射（角色/武器条目）
+    let mut name_to_icon: HashMap<String, String> = HashMap::new();
+    let mut char_count = 0usize;
+    let mut weapon_count = 0usize;
+    for entry in catalog_arr {
+        let Some(type_subs) = entry.get("typeSub").and_then(|ts| ts.as_array()) else {
+            continue;
+        };
+        for sub in type_subs {
+            let sub_kind = match sub.get("id").and_then(|i| i.as_str()) {
+                Some("1") => Some("char"),
+                Some("2") => Some("weapon"),
+                _ => None,
+            };
+            let Some(items) = sub.get("items").and_then(|i| i.as_array()) else {
+                continue;
+            };
+            for item in items {
+                let brief = item.get("brief");
+                let associate = brief
+                    .and_then(|b| b.get("associate"))
+                    .and_then(|a| a.as_object());
+                let kind = associate
+                    .and_then(|a| a.get("type"))
+                    .and_then(|t| t.as_str())
+                    .filter(|k| *k == "char" || *k == "weapon")
+                    .or(sub_kind);
+                let Some(kind) = kind else {
+                    continue;
+                };
+                let Some(cover) = brief.and_then(|b| b.get("cover")).and_then(|c| c.as_str())
+                else {
+                    continue;
+                };
+                let name = associate
+                    .and_then(|a| a.get("name"))
+                    .and_then(|n| n.as_str())
+                    .or_else(|| brief.and_then(|b| b.get("name")).and_then(|n| n.as_str()))
+                    .or_else(|| item.get("name").and_then(|n| n.as_str()));
+                let Some(name) = name else {
+                    continue;
+                };
+                let name = name.trim();
+                let cover = cover.trim();
+                if name.is_empty() || cover.is_empty() {
+                    continue;
+                }
+                if kind == "char" {
+                    char_count += 1;
+                } else {
+                    weapon_count += 1;
+                }
+                name_to_icon.insert(name.to_string(), cover.to_string());
+            }
+        }
+    }
+    log_info!(
+        "resolve_gacha_avatar_map: catalog chars={} weapons={}",
+        char_count,
+        weapon_count
+    );
+
+    let mut resolved = 0usize;
+    unresolved.retain(|id| {
+        let Some(display_name) = needed.get(id) else {
+            return false;
+        };
+        if display_name.is_empty() {
+            return false;
+        }
+        if let Some(icon) = name_to_icon.get(display_name) {
+            map.insert(id.clone(), icon.clone());
+            resolved += 1;
+            false
+        } else {
+            true
+        }
+    });
+    resolved
+}
+
 /// 解析抽卡记录六星角色/武器的图标：
 /// 1. 优先读取本地映射文件（gacha_avatar_map.json，与 app_config.json 同级）
-/// 2. 缺失的通过全量 Wiki 目录（total.json，即 /web/v1/wiki/item/catalog 无筛选参数）按名称匹配，
-///    角色取 brief.associate.type == "char" 的条目，武器取 "weapon"，图标为 brief.cover
-/// 3. 写回映射文件并返回完整映射
+/// 2. 缺失的先在本地 total.json 目录缓存中按名称匹配；缓存未覆盖全部缺失项且已过冷却期时，
+///    重新拉取 /web/v1/wiki/item/catalog（typeMainId=1&onlyOnline=true）并覆盖缓存
+/// 3. 目录条目按 brief.associate.type（char/weapon）归类，预览条目（associate 为 null）
+///    则按 typeSub（id 1=干员、2=武器）归类，名称回退 brief.name / item.name，图标取 brief.cover
+/// 4. 写回映射文件并返回完整映射
 #[tauri::command]
 pub async fn resolve_gacha_avatar_map(
     account_state: State<'_, Arc<Mutex<AccountService>>>,
@@ -351,16 +459,31 @@ pub async fn resolve_gacha_avatar_map(
         }
 
         // 全量 Wiki 目录（wiki_catalog：typeMainId=1&onlyOnline=true，含干员/武器等全部 typeSub 及 items）；
-        // 优先本地 total.json 缓存（无效缓存会被 load_total_catalog 判空），缺失则拉取并写盘
-        let mut catalog = gacha_state.load_total_catalog();
-        if catalog.is_none() {
+        // 优先本地 total.json 缓存（无效缓存会被 load_total_catalog 判空）解析，
+        // 仍未覆盖的缺失项才按冷却期重新拉取并写盘。
+        let catalog = gacha_state.load_total_catalog();
+        let mut unresolved = missing.clone();
+        let mut resolved = match &catalog {
+            Some(cached) => {
+                resolve_missing_from_catalog(cached, &needed, &mut unresolved, &mut map)
+            }
+            None => 0,
+        };
+
+        // 目录缓存是历史快照：新干员/武器可能在其后才加入（或在目录中仍是预览条目），
+        // 因此缓存未能补齐全部缺失项时刷新一次；冷却期内不重复请求。
+        if !unresolved.is_empty()
+            && (catalog.is_none()
+                || gacha_state.total_catalog_is_stale(TOTAL_CATALOG_REFRESH_COOLDOWN))
+        {
             match account.query_role_data(&role_id, "wiki_catalog", &[]).await {
                 Ok(result) => {
                     if let Some(raw) = result.get("__full__") {
-                        catalog = Some(raw.clone());
                         if let Err(e) = gacha_state.save_total_catalog(raw) {
                             log_warn!("resolve_gacha_avatar_map: save total catalog failed: {}", e);
                         }
+                        resolved +=
+                            resolve_missing_from_catalog(raw, &needed, &mut unresolved, &mut map);
                     }
                 }
                 Err(e) => {
@@ -372,96 +495,16 @@ pub async fn resolve_gacha_avatar_map(
             }
         }
 
-        if let Some(catalog) = catalog {
-            // 构建 显示名 -> 图标 映射（角色/武器条目）
-            let mut name_to_icon: HashMap<String, String> = HashMap::new();
-            let mut char_count = 0usize;
-            let mut weapon_count = 0usize;
-            if let Some(catalog_arr) = catalog
-                .get("data")
-                .and_then(|d| d.get("catalog"))
-                .and_then(|c| c.as_array())
-            {
-                for entry in catalog_arr {
-                    let Some(type_subs) = entry.get("typeSub").and_then(|ts| ts.as_array()) else {
-                        continue;
-                    };
-                    for sub in type_subs {
-                        let Some(items) = sub.get("items").and_then(|i| i.as_array()) else {
-                            continue;
-                        };
-                        for item in items {
-                            let Some(associate) = item
-                                .get("brief")
-                                .and_then(|b| b.get("associate"))
-                                .and_then(|a| a.as_object())
-                            else {
-                                continue;
-                            };
-                            let Some(kind) = associate.get("type").and_then(|t| t.as_str()) else {
-                                continue;
-                            };
-                            if kind != "char" && kind != "weapon" {
-                                continue;
-                            }
-                            let Some(cover) = item
-                                .get("brief")
-                                .and_then(|b| b.get("cover"))
-                                .and_then(|c| c.as_str())
-                            else {
-                                continue;
-                            };
-                            let name = associate
-                                .get("name")
-                                .and_then(|n| n.as_str())
-                                .or_else(|| item.get("name").and_then(|n| n.as_str()));
-                            let Some(name) = name else {
-                                continue;
-                            };
-                            let name = name.trim().to_string();
-                            if name.is_empty() || cover.trim().is_empty() {
-                                continue;
-                            }
-                            if kind == "char" {
-                                char_count += 1;
-                            } else {
-                                weapon_count += 1;
-                            }
-                            name_to_icon.insert(name, cover.trim().to_string());
-                        }
-                    }
-                }
-            }
-            log_info!(
-                "resolve_gacha_avatar_map: catalog chars={} weapons={}",
-                char_count,
-                weapon_count
-            );
+        log_info!(
+            "resolve_gacha_avatar_map: missing={} resolved={} total_map={}",
+            missing.len(),
+            resolved,
+            map.len()
+        );
 
-            let mut resolved = 0usize;
-            for id in &missing {
-                let Some(display_name) = needed.get(id) else {
-                    continue;
-                };
-                if display_name.is_empty() {
-                    continue;
-                }
-                if let Some(icon) = name_to_icon.get(display_name) {
-                    map.insert(id.clone(), icon.clone());
-                    resolved += 1;
-                }
-            }
-            log_info!(
-                "resolve_gacha_avatar_map: missing={} resolved={} total_map={}",
-                missing.len(),
-                resolved,
-                map.len()
-            );
-
-            if resolved > 0 {
-                if let Err(e) = gacha_state.save_avatar_map(&map) {
-                    log_warn!("resolve_gacha_avatar_map: save map failed: {}", e);
-                }
+        if resolved > 0 {
+            if let Err(e) = gacha_state.save_avatar_map(&map) {
+                log_warn!("resolve_gacha_avatar_map: save map failed: {}", e);
             }
         }
     } else {

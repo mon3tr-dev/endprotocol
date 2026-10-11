@@ -3,6 +3,7 @@ import * as echarts from "echarts";
 import { invoke } from "@tauri-apps/api/core";
 import { GlassCard, GlassSelect } from "@/components/ui/glass";
 import { cacheManager, usePinImages } from "@/utils/imageCacheManager";
+import { calculateGachaSixStarIntervals } from "@/utils/gachaIntervals";
 import { logError } from "@/utils/logger";
 import type { GachaCategory, GachaPoolInfo, GachaPoolKind, GachaRecord } from "@/types/gacha";
 
@@ -35,7 +36,7 @@ interface ChartSection {
   rows: ChartRow[];
 }
 
-/** 计算柱状图数据：
+/** 计算水平条形图数据：
  * 卡池按 poolId 合并（先抽 A、再抽 B、最后又回 A 时合并为一个卡池区间），区间内按时间顺序排列六星与余量；
  * 卡池排序以该卡池最先出现的第一个六星时间倒序，无六星的卡池按最近一条记录时间倒序 */
 function computeSections(
@@ -60,34 +61,39 @@ function computeSections(
     sec.rows.push(rec);
   }
 
+  const intervalBySeqId = new Map(
+    calculateGachaSixStarIntervals(
+      [...byPool.values()].flatMap((section) => section.rows),
+      pools,
+    ).map((interval) => [interval.record.seqId, interval]),
+  );
+
   const sections: ChartSection[] = [];
   for (const section of byPool.values()) {
     const out: ChartRow[] = [];
-    let n = 0; // 距上一个普通六星的非赠送抽数（卡池区间起点重置）
-    let giftPos = 0; // 当前赠送十连内位置（从第一抽起）
+    let n = 0; // 自上个六星以来的普通抽数，用于计算未出六星余量
     const rows = section.rows; // 从新到旧
     for (let i = rows.length - 1; i >= 0; i--) {
       const rec = rows[i];
       if (rec.isFree) {
-        giftPos += 1;
         if ((rec.rarity ?? 0) === 6) {
           out.unshift({
             kind: "six",
             id: rec.charId ?? rec.weaponId,
             name: rec.weaponName ?? rec.charName ?? rec.nameText,
-            count: giftPos,
+            count: intervalBySeqId.get(rec.seqId)!.count,
             gachaTs: rec.gachaTs,
             inGift: true,
           });
+          n = 0;
         }
       } else {
-        giftPos = 0;
         if ((rec.rarity ?? 0) === 6) {
           out.unshift({
             kind: "six",
             id: rec.charId ?? rec.weaponId,
             name: rec.weaponName ?? rec.charName ?? rec.nameText,
-            count: n + 1,
+            count: intervalBySeqId.get(rec.seqId)!.count,
             gachaTs: rec.gachaTs,
             inGift: false,
           });
@@ -403,11 +409,8 @@ export default function GachaPityChart({
           if (row.kind === "six") {
             lines.push(`<div style="font-weight:600;font-size:13px">${escapeHtml(row.name ?? "?")}</div>`);
             lines.push(escapeHtml(m.section.poolName));
-            lines.push(
-              row.inGift
-                ? (isZh ? `赠送十连内第 ${row.count} 抽` : `#${row.count} in gift 10-pull`)
-                : (isZh ? `距上个六星 ${row.count} 抽` : `${row.count} pulls since last 6★`),
-            );
+            lines.push(isZh ? `距上个六星/该池首抽 ${row.count} 抽` : `${row.count} pulls since last 6★ / pool start`);
+            if (row.inGift) lines.push(isZh ? "赠送抽出的六星" : "6★ from free pulls");
             if (row.gachaTs) lines.push(formatTime(row.gachaTs, isZh));
           } else {
             lines.push(`<div style="font-weight:600">${isZh ? "未出六星" : "No 6★"}: ${row.count}</div>`);

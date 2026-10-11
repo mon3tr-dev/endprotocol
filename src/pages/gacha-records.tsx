@@ -20,6 +20,7 @@ import { getSelectedAccount, getAccounts, type Account } from "@/utils/accountSe
 import { resolveServerLabel } from "@/types";
 import { logError } from "@/utils/logger";
 import { addMessage } from "@/utils/messageStore";
+import { calculateGachaSixStarIntervals } from "@/utils/gachaIntervals";
 import type {
   GachaCategory,
   GachaPoolKind,
@@ -254,12 +255,15 @@ export default function GachaRecordsPage() {
     const six = filtered.filter((r) => r.rarity === 6).length;
     const five = filtered.filter((r) => r.rarity === 5).length;
     const four = filtered.filter((r) => r.rarity === 4).length;
+    const sixIntervals = calculateGachaSixStarIntervals(filtered, pools);
     return {
       total,
       six,
       five,
       four,
-      avgSix: six > 0 ? total / six : null,
+      avgSix: sixIntervals.length > 0
+        ? sixIntervals.reduce((sum, interval) => sum + interval.count, 0) / sixIntervals.length
+        : null,
       avgFive: five + six > 0 ? total / (five + six) : null,
       ratioSix: total > 0 ? six / total : 0,
       ratioFive: total > 0 ? five / total : 0,

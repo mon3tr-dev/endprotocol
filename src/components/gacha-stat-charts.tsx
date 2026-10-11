@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import * as echarts from "echarts";
 import { GlassCard } from "@/components/ui/glass";
 import type { GachaCategory, GachaPoolKind, GachaRecord } from "@/types/gacha";
+import { calculateGachaSixStarIntervals, type GachaSixStarInterval } from "@/utils/gachaIntervals";
 
 /** 六星期望抽数：武器 25 抽/个，角色 35.5 抽/个 */
 const SIX_STAR_EXPECTATION = 35.5;
@@ -10,6 +11,15 @@ const WEAPON_SIX_STAR_EXPECTATION = 25;
 function cssVar(name: string, fallback: string): string {
   const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
   return v || fallback;
+}
+
+/**
+ * 坐标轴刻度间隔：压缩间隔以塞进尽可能多的刻度，最多 11 个（含首尾）。
+ * ECharts 刻度从 min 起步进 k，且当 max 非 k 整数倍时会额外补一个 max 刻度，
+ * 故按 span/10 取 ceil（而非 /11）才能保证 ≤ 11 个。
+ */
+function tickIntervalFor(min: number, max: number): number {
+  return Math.max(1, Math.ceil((max - min) / 10));
 }
 
 /** 初始化并管理一个 echarts 实例：主题变化时重建，卸载时销毁 */
@@ -89,37 +99,29 @@ function useStarDistribution(chrono: GachaRecord[]) {
   }, [chrono]);
 }
 
-/** 六星间隔序列（仅普通抽；赠送抽不计入，赠送六星不打断计数），按时间顺序 */
-function useSixIntervals(chrono: GachaRecord[]) {
-  return useMemo(() => {
-    const intervals: number[] = [];
-    let since = 0;
-    for (const r of chrono) {
-      if (r.isFree) continue;
-      since += 1;
-      if ((r.rarity ?? 0) === 6) {
-        intervals.push(since);
-        since = 0;
-      }
-    }
-    const avg = intervals.length > 0 ? intervals.reduce((a, b) => a + b, 0) / intervals.length : null;
-    return { intervals, avg };
-  }, [chrono]);
+/** HTML-escape server-provided pool names before interpolating them into ECharts tooltips. */
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (char) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;",
+  })[char]!);
 }
 
-/** 累计六星时间线：x=累计抽数，y=累计六星数（含赠送） */
-function useCumulativeSix(chrono: GachaRecord[]) {
+/** 六星间隔累积曲线：x=间隔抽数（升序），y=间隔≤x 的六星个数 */
+function useCumulativeSix(intervals: GachaSixStarInterval[]) {
   return useMemo(() => {
-    let draws = 0;
-    let six = 0;
+    const sorted = intervals.map(({ count }) => count).sort((a, b) => a - b);
     const points: [number, number][] = [[0, 0]];
-    for (const r of chrono) {
-      draws += 1;
-      if ((r.rarity ?? 0) === 6) six += 1;
-      points.push([draws, six]);
-    }
-    return { points, totalDraws: draws, totalSix: six };
-  }, [chrono]);
+    sorted.forEach((n, i) => points.push([n, i + 1]));
+    return {
+      points,
+      total: sorted.length,
+      maxInterval: sorted.length > 0 ? sorted[sorted.length - 1] : 0,
+    };
+  }, [intervals]);
 }
 
 const RARITY_COLORS: Record<number, string> = {
@@ -145,8 +147,11 @@ export default function GachaStatCharts({
   const expectation = isWeapon ? WEAPON_SIX_STAR_EXPECTATION : SIX_STAR_EXPECTATION;
   const chrono = useChronoRecords(records, pools, category);
   const starDist = useStarDistribution(chrono);
-  const { intervals, avg } = useSixIntervals(chrono);
-  const cumulative = useCumulativeSix(chrono);
+  const intervals = useMemo(
+    () => calculateGachaSixStarIntervals(chrono, pools),
+    [chrono, pools],
+  );
+  const cumulative = useCumulativeSix(intervals);
 
   const pieRef = useRef<HTMLDivElement>(null);
   const histRef = useRef<HTMLDivElement>(null);
@@ -155,6 +160,25 @@ export default function GachaStatCharts({
   const primary = cssVar("--primary", "#6366f1");
   const muted = cssVar("--muted", "#71717a");
   const separator = cssVar("--separator", "#e4e4e7");
+  const lineColors = [primary, "#14b8a6", "#f97316", "#ec4899", "#0ea5e9", "#a855f7", "#84cc16"];
+  const poolsById = useMemo(() => {
+    const grouped = new Map<string, GachaSixStarInterval[]>();
+    for (const interval of intervals) {
+      const poolIntervals = grouped.get(interval.poolId) ?? [];
+      poolIntervals.push(interval);
+      grouped.set(interval.poolId, poolIntervals);
+    }
+    return grouped;
+  }, [intervals]);
+  const poolColors = useMemo(
+    () => new Map(
+      [...poolsById.keys()].map((poolId, index) => [
+        poolId,
+        lineColors[index % lineColors.length],
+      ]),
+    ),
+    [poolsById, primary],
+  );
 
   const pie = useEchart(pieRef);
   const hist = useEchart(histRef);
@@ -214,12 +238,12 @@ export default function GachaStatCharts({
 
   useEffect(() => {
     const expLabel = `${isZh ? "期望" : "Expected"} ${expectation}${isZh ? " 抽" : ""}`;
-    const lineData = intervals.map((n, i) => [i + 1, n] as [number, number]);
-    const maxY = Math.max(expectation, ...intervals, 1);
+    const maxY = Math.max(expectation, ...intervals.map(({ count }) => count), 1);
+    const maxIndex = Math.max(1, intervals.length);
     const histOption: echarts.EChartsOption = {
-      grid: { left: 8, right: 20, top: 30, bottom: 24, containLabel: true },
+      grid: { left: 8, right: 20, top: 30, bottom: 40, containLabel: true },
       tooltip: {
-        trigger: "axis",
+        trigger: "item",
         backgroundColor: "transparent",
         borderColor: "transparent",
         className: "glass-surface-strong rounded-xl shadow-xl",
@@ -228,19 +252,20 @@ export default function GachaStatCharts({
         textStyle: { color: "var(--foreground)", fontSize: 12 },
         axisPointer: { type: "line" },
         formatter: (params: any) => {
-          const p = params[0];
-          const idx = Math.round(p.axisValue);
-          return `<div style="font-weight:600">${isZh ? `第 ${idx} 个六星` : `6★ #${idx}`}</div><div>${isZh ? `间隔 ${p.value} 抽` : `${p.value} pulls`}</div>`;
+          const interval = intervals[params.dataIndex];
+          if (!interval) return "";
+          return `<div style="font-weight:600">${escapeHtml(interval.poolName)}</div><div>${isZh ? `第 ${interval.sixStarIndex} 个六星` : `Pool 6★ #${interval.sixStarIndex}`}</div><div>${isZh ? `间隔 ${interval.count} 抽` : `${interval.count} pulls`}</div>`;
         },
       },
       xAxis: {
         type: "value",
         min: 1,
-        max: Math.max(intervals.length, 1),
+        max: maxIndex,
+        interval: tickIntervalFor(1, maxIndex),
         minInterval: 1,
         splitLine: { show: false },
         axisLabel: { color: muted, fontSize: 10 },
-        name: isZh ? "六星序号" : "6★ #",
+        name: isZh ? "六星事件序号" : "6★ event #",
         nameTextStyle: { color: muted, fontSize: 10 },
       },
       yAxis: {
@@ -257,13 +282,14 @@ export default function GachaStatCharts({
         {
           name: isZh ? "六星间隔" : "6★ interval",
           type: "line",
-          data: lineData,
+          data: intervals.map((interval, index) => ({
+            value: [index + 1, interval.count],
+            itemStyle: { color: poolColors.get(interval.poolId) ?? primary },
+          })),
           showSymbol: true,
-          symbolSize: 6,
+          symbolSize: 7,
           smooth: true,
           lineStyle: { color: primary, width: 2 },
-          itemStyle: { color: primary },
-          areaStyle: { color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [{ offset: 0, color: primary + "35" }, { offset: 1, color: primary + "05" }]) },
           markLine: {
             symbol: "none",
             silent: true,
@@ -280,13 +306,13 @@ export default function GachaStatCharts({
       ],
     };
     hist.setOption(histOption);
-  }, [hist, intervals, avg, expectation, primary, muted, separator, isZh]);
+  }, [hist, intervals, poolsById, poolColors, expectation, primary, muted, separator, isZh]);
 
   useEffect(() => {
-    const maxDraws = Math.max(1, cumulative.totalDraws);
-    const maxSix = Math.max(1, cumulative.totalSix);
+    const maxX = Math.max(1, cumulative.maxInterval);
+    const maxY = Math.max(1, cumulative.total);
     const cumOption: echarts.EChartsOption = {
-      grid: { left: 8, right: 24, top: 18, bottom: 24, containLabel: true },
+      grid: { left: 8, right: 24, top: 30, bottom: 24, containLabel: true },
       tooltip: {
         trigger: "axis",
         backgroundColor: "transparent",
@@ -298,23 +324,29 @@ export default function GachaStatCharts({
         axisPointer: { type: "line" },
         formatter: (params: any) => {
           const p = params[0];
-          return `<div style="font-weight:600">${isZh ? `累计 ${p.axisValue} 抽` : `${p.axisValue} draws`}</div><div>${isZh ? "六星" : "6★"}: ${p.value}</div>`;
+          return `<div style="font-weight:600">${isZh ? `${p.axisValue} 抽内` : `Within ${p.axisValue} pulls`}</div><div>${isZh ? "六星" : "6★"}: ${p.value}</div>`;
         },
       },
       xAxis: {
         type: "value",
         min: 0,
-        max: maxDraws,
+        max: maxX,
+        minInterval: 1,
         splitLine: { lineStyle: { color: separator, opacity: 0.4 } },
         axisLabel: { color: muted, fontSize: 10 },
+        name: isZh ? "六星间隔（抽）" : "6★ interval (pulls)",
+        nameTextStyle: { color: muted, fontSize: 10 },
       },
       yAxis: {
         type: "value",
         min: 0,
-        max: maxSix,
+        max: maxY,
+        interval: tickIntervalFor(0, maxY),
         minInterval: 1,
         splitLine: { lineStyle: { color: separator, opacity: 0.5 } },
         axisLabel: { color: muted, fontSize: 10 },
+        name: isZh ? "累计六星" : "Cumulative 6★",
+        nameTextStyle: { color: muted, fontSize: 10 },
       },
       series: [
         {
@@ -322,7 +354,7 @@ export default function GachaStatCharts({
           type: "line",
           data: cumulative.points,
           showSymbol: false,
-          smooth: true,
+          step: "end",
           lineStyle: { color: primary, width: 2 },
           itemStyle: { color: primary },
           areaStyle: { color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [{ offset: 0, color: primary + "40" }, { offset: 1, color: primary + "05" }]) },
@@ -333,7 +365,7 @@ export default function GachaStatCharts({
               formatter: `${isZh ? "期望" : "Expected"} ${expectation}${isZh ? " 抽" : " pulls"}`,
               color: "#ef4444",
               fontSize: 10,
-              position: "end",
+              position: "insideEndTop",
             },
             lineStyle: { color: "#ef4444", type: "dashed", width: 1 },
             data: [{ xAxis: expectation }],
@@ -354,10 +386,21 @@ export default function GachaStatCharts({
       </GlassCard>
       <GlassCard className="p-4 glass-surface border border-separator/90">
         <h3 className="text-sm font-semibold text-muted mb-2">
-          {isZh ? `六星间隔分布（期望 ${expectation} 抽）` : `6★ Interval Distribution (expected ${expectation})`}
+          {isZh ? `各卡池六星间隔（期望 ${expectation} 抽）` : `6★ Intervals by Pool (expected ${expectation})`}
         </h3>
         <div className="relative">
-          <div ref={histRef} style={{ height: 220 }} />
+          <div ref={histRef} style={{ height: 190 }} />
+          <div className="flex h-[26px] items-center gap-x-3 overflow-x-auto text-[9px] text-muted">
+            {[...poolsById.entries()].map(([poolId, poolIntervals]) => (
+              <span key={poolId} className="inline-flex shrink-0 items-center gap-1">
+                <span
+                  className="h-2 w-2 rounded-full"
+                  style={{ backgroundColor: poolColors.get(poolId) ?? primary }}
+                />
+                {poolIntervals[0].poolName}
+              </span>
+            ))}
+          </div>
           {intervals.length === 0 && (
             <div className="absolute inset-0 flex items-center justify-center text-xs text-muted">
               {isZh ? "暂无六星记录" : "No 6★ yet"}
@@ -367,9 +410,16 @@ export default function GachaStatCharts({
       </GlassCard>
       <GlassCard className="p-4 glass-surface border border-separator/90">
         <h3 className="text-sm font-semibold text-muted mb-2">
-          {isZh ? "六星累计" : "Cumulative 6★"}
+          {isZh ? "六星累计（按间隔）" : "Cumulative 6★ (by interval)"}
         </h3>
-        <div ref={cumRef} style={{ height: 220 }} />
+        <div className="relative">
+          <div ref={cumRef} style={{ height: 220 }} />
+          {intervals.length === 0 && (
+            <div className="absolute inset-0 flex items-center justify-center text-xs text-muted">
+              {isZh ? "暂无六星记录" : "No 6★ yet"}
+            </div>
+          )}
+        </div>
       </GlassCard>
     </div>
   );
