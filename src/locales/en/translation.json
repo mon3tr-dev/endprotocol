@@ -31,6 +31,7 @@
     "medals": "Medals",
     "attendance": "Attendance",
     "gacha": "Gacha Records",
+    "todo": "To-Do",
     "launcher": "Launcher",
     "help": "Help & Feedback"
   },
@@ -141,6 +142,45 @@
       "glass_clarity": "Glass Clarity",
       "glass_clarity_desc": "Higher clarity reduces blur and makes glass surfaces more opaque",
       "bg_image_none": "No background image set"
+    },
+    "system_resource": {
+      "title": "System Resource Card",
+      "refresh": "Default refresh rate",
+      "refresh_desc": "Default refresh interval for new system resource cards",
+      "unit": "Default unit system",
+      "unit_desc": "Default unit for byte / rate metrics",
+      "display": "Default display mode",
+      "display_desc": "Default presentation for a single metric",
+      "rotate": "Default auto rotate",
+      "rotate_desc": "Interval for auto-switching to the next metric on multi-metric cards",
+      "precision": "Default precision",
+      "precision_desc": "Default number of decimal places",
+      "layout": "Default layout",
+      "layout_desc": "Default arrangement for group cards",
+      "thresholds": "Default alert thresholds",
+      "thresholds_desc": "Warn threshold on the left, critical on the right",
+      "sparklines": "Show history curve by default",
+      "sparklines_desc": "Whether new cards show a sparkline by default",
+      "accent": "Default accent color",
+      "accent_desc": "Default accent color for cards",
+      "template": "Default group template",
+      "template_desc": "Metrics included when adding a group card by default",
+      "loading": "Loading…"
+    },
+    "todo": {
+      "title": "To-Do Card",
+      "sort_mode": "Default sort mode",
+      "sort_mode_desc": "Sort mode used when creating a new list",
+      "hide_completed": "Hide completed by default",
+      "hide_completed_desc": "Whether new lists hide completed items by default",
+      "priority": "Default priority system",
+      "priority_desc": "Allow priorities on new items when enabled",
+      "due": "Enable due dates by default",
+      "due_desc": "Allow due dates on new items when enabled",
+      "color": "Default card color",
+      "color_desc": "Default color for new lists",
+      "icon": "Default icon",
+      "icon_desc": "Default icon for new lists"
     },
     "developer": {
       "title": "Developer Mode",
@@ -558,5 +598,24 @@
     "corrupted_files": "Corrupted files",
     "missing_files": "Missing files",
     "existing_files": "Existing files"
+  },
+  "todo_page": {
+    "title": "To-Do",
+    "description": "One list per card, synced across card, page and modal",
+    "import": "Import",
+    "export_md": "Export Markdown",
+    "export_json": "Export JSON",
+    "new_list": "New list",
+    "search_lists": "Search lists…",
+    "list_count": "{{n}} lists",
+    "group_by": "Group",
+    "ungrouped": "Ungrouped",
+    "no_lists": "No lists yet, create one from the top right",
+    "empty_title": "Choose or create a to-do list",
+    "empty_desc": "Choose an existing list on the left, or create a new one to manage your tasks",
+    "settings": "List settings",
+    "duplicate": "Duplicate list",
+    "templates": "Choose a template",
+    "saved": "Saved"
   }
 }

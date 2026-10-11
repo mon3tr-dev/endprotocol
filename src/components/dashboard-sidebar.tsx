@@ -16,6 +16,7 @@ import {
   GithubIcon,
   SearchIcon,
   PlusIcon,
+  BookmarkIcon,
 } from "@/components/icons";
 import { siteConfig } from "@/config/site";
 import { ThemeSwitch } from "@/components/theme-switch";
@@ -71,7 +72,7 @@ interface SidebarProps {
   onNavigate?: () => void;
 }
 
-type NavKey = "dashboard" | "characters" | "medals" | "attendance" | "gacha";
+type NavKey = "dashboard" | "characters" | "medals" | "attendance" | "gacha" | "todo";
 
 const NAV_KEYS: NavKey[] = [
   "dashboard",
@@ -79,6 +80,7 @@ const NAV_KEYS: NavKey[] = [
   "medals",
   "attendance",
   "gacha",
+  "todo",
 ];
 
 function GripHandle({
@@ -625,6 +627,23 @@ export const Sidebar = ({ onNavigate }: SidebarProps = {}) => {
           category: i18n.language === "zh" ? "操作" : "Actions",
           categoryEn: "Actions",
           categoryZh: "操作",
+        },
+
+        // To-Do page content
+        {
+          id: "todo-title",
+          title: t("todo_page.title"),
+          titleEn: "To-Do",
+          titleZh: "待办事项",
+          description:
+            i18n.language === "zh" ? "管理待办列表" : "Manage to-do lists",
+          descriptionEn: "Manage to-do lists",
+          descriptionZh: "管理待办列表",
+          path: "/todo",
+          elementId: "todo-header",
+          category: i18n.language === "zh" ? "导航" : "Navigation",
+          categoryEn: "Navigation",
+          categoryZh: "导航",
         },
 
         // Settings page content
@@ -1584,6 +1603,48 @@ export const Sidebar = ({ onNavigate }: SidebarProps = {}) => {
                         onPointerDown={(e) => startNavDrag("gacha", e)}
                         onDragEnd={endNavDrag}
                         isDragging={draggingNav === "gacha"}
+                      />
+                    </div>
+                  );
+
+                case "todo":
+                  return (
+                    <div
+                      key="todo"
+                      className="relative group"
+                      onMouseEnter={() =>
+                        draggingNav &&
+                        draggingNav !== "todo" &&
+                        swapNav(draggingNav, "todo")
+                      }
+                    >
+                      <Link
+                        to="/todo"
+                        onClick={onNavigate}
+                        className={clsx(
+                          "flex items-center gap-3 pl-3 pr-8 py-2.5 rounded-xl transition-all duration-200",
+                          draggingNav === "todo" ? "opacity-60" : "",
+                          location.pathname === "/todo"
+                            ? "glass-surface-strong text-foreground"
+                            : "text-foreground hover:text-foreground",
+                        )}
+                      >
+                        <BookmarkIcon
+                          className={clsx(
+                            "w-5 h-5 transition-all duration-200",
+                            location.pathname === "/todo"
+                              ? ""
+                              : "group-hover:scale-110 group-hover:rotate-12",
+                          )}
+                        />
+                        <span className="text-sm font-semibold">
+                          {t("sidebar.todo") || "To-Do"}
+                        </span>
+                      </Link>
+                      <GripHandle
+                        onPointerDown={(e) => startNavDrag("todo", e)}
+                        onDragEnd={endNavDrag}
+                        isDragging={draggingNav === "todo"}
                       />
                     </div>
                   );

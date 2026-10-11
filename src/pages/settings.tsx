@@ -9,6 +9,8 @@ import {
 } from "@/components/ui/glass";
 import { GameLaunchSettings } from "@/components/game-launch-settings";
 import { AppearanceSettings } from "@/components/appearance-settings";
+import { SystemResourceSettings } from "@/components/system-resource-settings";
+import { TodoSettings } from "@/components/todo-settings";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { invoke } from "@tauri-apps/api/core";
@@ -760,6 +762,52 @@ export default function SettingsPage() {
             {t("settings.appearance.title")}
           </h2>
           <AppearanceSettings />
+        </GlassCard>
+
+        {/* System Resource Card Defaults */}
+        <GlassCard
+          id="settings-system-resource"
+          className="p-6 glass-surface border border-separator/90"
+        >
+          <h2 className="text-lg font-semibold mb-6 flex items-center gap-3">
+            <div className="w-8 h-8 rounded-xl bg-primary/10 flex items-center justify-center ring-1 ring-primary/20">
+              <svg
+                className="w-4 h-4 text-primary"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                strokeWidth="1.5"
+              >
+                <path d="M3 3v18h18" />
+                <path d="M7 14l3-3 3 3 4-5" />
+              </svg>
+            </div>
+            {t("settings.system_resource.title")}
+          </h2>
+          <SystemResourceSettings />
+        </GlassCard>
+
+        {/* To-Do Card Defaults */}
+        <GlassCard
+          id="settings-todo"
+          className="p-6 glass-surface border border-separator/90"
+        >
+          <h2 className="text-lg font-semibold mb-6 flex items-center gap-3">
+            <div className="w-8 h-8 rounded-xl bg-primary/10 flex items-center justify-center ring-1 ring-primary/20">
+              <svg
+                className="w-4 h-4 text-primary"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                strokeWidth="1.5"
+              >
+                <path d="M9 11l3 3L22 4" />
+                <path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" />
+              </svg>
+            </div>
+            {t("settings.todo.title")}
+          </h2>
+          <TodoSettings />
         </GlassCard>
 
         {/* Developer Mode */}

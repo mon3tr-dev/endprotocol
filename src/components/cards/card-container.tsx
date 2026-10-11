@@ -262,6 +262,51 @@ function FreeDragCard({
       }
     }
 
+    if (card.type === "system_resource") {
+      items.push({
+        key: "sr-settings",
+        label: t("card:system_resource_settings"),
+        onPress: () => {
+          window.dispatchEvent(
+            new CustomEvent("cardAction", {
+              detail: { cardId: card.id, action: "system-resource-settings" },
+            }),
+          );
+        },
+      });
+      items.push({
+        key: "sr-refresh",
+        label: t("card:system_resource_refresh_now"),
+        onPress: () => {
+          window.dispatchEvent(new CustomEvent("manualRefresh"));
+        },
+      });
+    }
+
+    if (card.type === "todo") {
+      const dispatch = (action: string) => {
+        window.dispatchEvent(
+          new CustomEvent("cardAction", {
+            detail: { cardId: card.id, action },
+          }),
+        );
+      };
+      items.push({ key: "todo-edit", label: t("card:todo_edit_modal"), onPress: () => dispatch("todo-edit") });
+      items.push({ key: "todo-open-page", label: t("card:todo_open_page"), onPress: () => dispatch("todo-open-page") });
+      items.push({ key: "todo-rename", label: t("card:todo_rename"), onPress: () => dispatch("todo-rename") });
+      items.push({ key: "todo-duplicate", label: t("card:todo_duplicate"), onPress: () => dispatch("todo-duplicate") });
+      items.push({ key: "todo-sort", label: t("card:todo_sort_mode"), onPress: () => dispatch("todo-sort") });
+      items.push({ key: "todo-hide-completed", label: t("card:todo_hide_completed"), onPress: () => dispatch("todo-hide-completed") });
+      items.push({ key: "todo-clear-completed", label: t("card:todo_clear_completed"), onPress: () => dispatch("todo-clear-completed") });
+      items.push({ key: "todo-color-icon", label: t("card:todo_color_icon"), onPress: () => dispatch("todo-color-icon") });
+      items.push({
+        key: "todo-delete-list",
+        label: t("card:todo_delete_list"),
+        danger: true,
+        onPress: () => dispatch("todo-delete-list"),
+      });
+    }
+
     items.push({
       key: "delete",
       label: t("common.delete"),
@@ -385,7 +430,7 @@ function FreeDragCard({
             // 阻止指针事件传播，避免触发父元素的 onPointerUp
             e.stopPropagation();
           }}
-          className="absolute -top-2 -right-2 z-20 p-1 bg-content1 rounded-full shadow-md hover:bg-danger/10 text-danger"
+          className="absolute top-2 right-2 z-20 p-1 bg-content1 rounded-full shadow-md hover:bg-danger/10 text-danger"
           aria-label="Delete card"
         >
           <svg
@@ -426,6 +471,8 @@ function FreeDragCard({
               cardId={card.id}
               settings={card.settings}
               isEditMode={isEditMode}
+              w={card.w ?? 3}
+              h={card.h ?? 2}
             />
           );
         })()}
@@ -479,6 +526,40 @@ export function CardContainer({
     h: number;
   } | null>(null);
   const [hasCollision, setHasCollision] = useState(false);
+  const sortedCardsRef = useRef<CardConfig[]>(sortedCards);
+
+  useEffect(() => {
+    sortedCardsRef.current = sortedCards;
+  }, [sortedCards]);
+
+  // 卡片自身请求调整尺寸（如系统资源卡片的「卡片尺寸」设置）
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent).detail as
+        | { cardId?: string; w?: number; h?: number }
+        | undefined;
+      if (!detail?.cardId) return;
+      const target = sortedCardsRef.current.find((c) => c.id === detail.cardId);
+      if (!target) return;
+      const w = Math.max(1, Math.min(20, Math.round(detail.w ?? target.w ?? 3)));
+      const h = Math.max(1, Math.min(20, Math.round(detail.h ?? target.h ?? 2)));
+      if (w === (target.w ?? 3) && h === (target.h ?? 2)) return;
+      setSortedCards((prev) =>
+        prev.map((c) => (c.id === detail.cardId ? { ...c, w, h } : c)),
+      );
+      void updateCardLayout(tabId ?? roleId, detail.cardId, {
+        x: target.x ?? 0,
+        y: target.y ?? 0,
+        w,
+        h,
+      });
+      window.dispatchEvent(
+        new CustomEvent("cardLayoutChanged", { detail: { tabId: tabId ?? roleId } }),
+      );
+    };
+    window.addEventListener("cardResize", handler);
+    return () => window.removeEventListener("cardResize", handler);
+  }, [tabId, roleId]);
 
   // Sort and initialize cards
   useEffect(() => {
@@ -944,6 +1025,8 @@ export function CardContainer({
                     cardId={activeCard.id}
                     settings={activeCard.settings}
                     isEditMode={isEditMode}
+                    w={activeCard.w ?? 3}
+                    h={activeCard.h ?? 2}
                   />
                 );
               })()}

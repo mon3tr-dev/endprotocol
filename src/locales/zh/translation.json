@@ -31,6 +31,7 @@
     "medals": "蚀刻章",
     "attendance": "签到",
     "gacha": "抽卡记录",
+    "todo": "待办事项",
     "launcher": "启动器",
     "help": "帮助与反馈"
   },
@@ -141,6 +142,45 @@
       "glass_clarity": "毛玻璃清晰度",
       "glass_clarity_desc": "调高清晰度会减少模糊并提高面板的不透明度",
       "bg_image_none": "未设置背景图片"
+    },
+    "system_resource": {
+      "title": "系统资源卡片",
+      "refresh": "默认刷新频率",
+      "refresh_desc": "新增系统资源卡片时使用的默认刷新间隔",
+      "unit": "默认单位制式",
+      "unit_desc": "字节 / 速率类指标的默认单位",
+      "display": "默认显示模式",
+      "display_desc": "单个指标的默认展示方式",
+      "rotate": "默认自动翻页",
+      "rotate_desc": "多指标卡片自动切换到下一个指标的间隔",
+      "precision": "默认精度",
+      "precision_desc": "数值默认保留的小数位数",
+      "layout": "默认布局方式",
+      "layout_desc": "卡片组的默认排列方式",
+      "thresholds": "默认告警阈值",
+      "thresholds_desc": "左为警告阈值，右为严重阈值",
+      "sparklines": "默认显示历史曲线",
+      "sparklines_desc": "新增卡片时是否默认显示迷你曲线",
+      "accent": "默认主题色",
+      "accent_desc": "卡片默认强调色",
+      "template": "默认卡片组模板",
+      "template_desc": "默认添加卡片组时包含的指标",
+      "loading": "加载中…"
+    },
+    "todo": {
+      "title": "To-Do 卡片",
+      "sort_mode": "默认排序方式",
+      "sort_mode_desc": "新建列表时使用的排序方式",
+      "hide_completed": "默认隐藏已完成",
+      "hide_completed_desc": "新建列表时是否默认隐藏已完成事项",
+      "priority": "默认优先级体系",
+      "priority_desc": "启用后新建事项可使用优先级",
+      "due": "默认开启截止时间",
+      "due_desc": "启用后新建事项默认支持截止时间",
+      "color": "默认卡片颜色",
+      "color_desc": "新建列表的默认颜色",
+      "icon": "默认图标",
+      "icon_desc": "新建列表的默认图标"
     },
     "developer": {
       "title": "开发者模式",
@@ -558,5 +598,24 @@
     "corrupted_files": "损坏文件",
     "missing_files": "缺失文件",
     "existing_files": "已有文件"
+  },
+  "todo_page": {
+    "title": "待办事项",
+    "description": "一个列表对应一张卡片，卡片、页面与弹窗三处实时同步",
+    "import": "导入",
+    "export_md": "导出 Markdown",
+    "export_json": "导出 JSON",
+    "new_list": "新建列表",
+    "search_lists": "搜索列表…",
+    "list_count": "共 {{n}} 个列表",
+    "group_by": "分组",
+    "ungrouped": "未分组",
+    "no_lists": "暂无列表，点击右上角新建",
+    "empty_title": "请选择或新建待办列表",
+    "empty_desc": "从左侧选择已有列表，或创建一个新列表来管理任务",
+    "settings": "列表设置",
+    "duplicate": "复制列表",
+    "templates": "选择模板",
+    "saved": "已保存"
   }
 }

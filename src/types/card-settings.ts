@@ -1,5 +1,7 @@
 // 卡片配置类型定义
 
+import type { SystemResourceCardSettings } from "./system-resource";
+
 export type SortOrder = "rarity" | "name" | "level";
 
 export type CharacterListDisplayMode = "single" | "double" | "triple";
@@ -68,6 +70,13 @@ export interface TestCardSettings {
 }
 
 /**
+ * To-Do 卡片配置：绑定到一个列表
+ */
+export interface TodoCardSettings {
+  listId?: string;
+}
+
+/**
  * 所有卡片配置的联合类型
  */
 export type CardSettingsMap = {
@@ -79,6 +88,8 @@ export type CardSettingsMap = {
   domain_info: DomainInfoCardSettings;
   spaceship: SpaceshipCardSettings;
   test_card: TestCardSettings;
+  system_resource: SystemResourceCardSettings;
+  todo: TodoCardSettings;
   // 未来添加新卡片时在此注册
 };
 

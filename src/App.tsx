@@ -9,11 +9,13 @@ import CharactersPage from "@/pages/characters";
 import MedalsPage from "@/pages/medals";
 import AttendancePage from "@/pages/attendance";
 import GachaRecordsPage from "@/pages/gacha-records";
+import TodoPage from "@/pages/todo";
 import DashboardLayout from "@/layouts/dashboard";
 import { getConfig, setConfig } from "@/utils/configService";
 import { checkAndNotify } from "@/utils/updateService";
+import { ensureTodoLoaded } from "@/stores/todoStore";
 
-const ROUTES = ["/", "/settings", "/account", "/characters", "/medals", "/attendance", "/gacha", "/developer"];
+const ROUTES = ["/", "/settings", "/account", "/characters", "/medals", "/attendance", "/gacha", "/todo", "/developer"];
 
 function RouteRestore() {
   const location = useLocation();
@@ -51,6 +53,10 @@ function UpdateChecker() {
 }
 
 function App() {
+  useEffect(() => {
+    void ensureTodoLoaded();
+  }, []);
+
   return (
     <>
       <RouteRestore />
@@ -111,6 +117,14 @@ function App() {
             </DashboardLayout>
           }
           path="/gacha"
+        />
+        <Route
+          element={
+            <DashboardLayout>
+              <TodoPage />
+            </DashboardLayout>
+          }
+          path="/todo"
         />
         <Route
           element={

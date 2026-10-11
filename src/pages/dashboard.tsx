@@ -6,6 +6,12 @@ import type { Account } from "@/utils/accountService";
 import { CardContainer } from "@/components/cards/card-container";
 import { DashboardFAB } from "@/components/dashboard-fab";
 import { AddCardModal } from "@/components/add-card-modal";
+import {
+  SystemResourceAddModal,
+  type SystemResourceAddPayload,
+} from "@/components/cards/system-resource/add-modal";
+import { TodoAddModal } from "@/components/cards/todo/add-modal";
+import type { TodoAddChoice } from "@/components/cards/todo/add-modal";
 import { CharacterListSizeModal } from "@/components/cards/character-list/character-list-size-modal";
 import { CardTypeId, DashboardConfig, DashboardTab } from "@/types/dashboard";
 import {
@@ -40,6 +46,9 @@ import {
 } from "@/components/custom-modal";
 import { resolveServerLabel } from "@/types";
 import { trackStartupTask } from "@/utils/startupProgress";
+import { buildDefaultCardSettings } from "@/types/system-resource";
+import { getSystemResourceDefaults } from "@/utils/systemResourceService";
+import { createTodoListFromTemplate } from "@/utils/todoTemplateService";
 
 type DashboardView = "loading" | "selector" | "tab";
 
@@ -54,6 +63,8 @@ export default function DashboardPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isEditMode, setIsEditMode] = useState(false);
   const [isAddCardModalOpen, setIsAddCardModalOpen] = useState(false);
+  const [isSystemResourceAddOpen, setIsSystemResourceAddOpen] = useState(false);
+  const [isTodoAddOpen, setIsTodoAddOpen] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isSizeModalOpen, setIsSizeModalOpen] = useState(false);
   const [pendingCardType, setPendingCardType] = useState<string | null>(null);
@@ -123,6 +134,17 @@ export default function DashboardPage() {
     };
   }, []);
 
+  // 卡片在自身设置里调整了尺寸：刷新当前标签页配置，保持内存状态与落盘一致
+  useEffect(() => {
+    const handleCardLayoutChanged = () => {
+      if (!activeTabId) return;
+      void getDashboardConfig(activeTabId).then(setDashboardConfig);
+    };
+    window.addEventListener("cardLayoutChanged", handleCardLayoutChanged);
+    return () =>
+      window.removeEventListener("cardLayoutChanged", handleCardLayoutChanged);
+  }, [activeTabId]);
+
   const handleRefresh = async () => {
     try {
       setIsRefreshing(true);
@@ -145,12 +167,60 @@ export default function DashboardPage() {
 
   const handleAddCard = async (cardType: CardTypeId) => {
     if (!activeTabId) return;
+    if (cardType === "system_resource") {
+      setIsSystemResourceAddOpen(true);
+      return;
+    }
+    if (cardType === "todo") {
+      setIsTodoAddOpen(true);
+      return;
+    }
     if (cardType === "character_list") {
       setPendingCardType(cardType);
       setIsSizeModalOpen(true);
       return;
     }
     await openRoleSelect(cardType);
+  };
+
+  const handleTodoAdd = async (choice: TodoAddChoice) => {
+    if (!activeTabId) return;
+    try {
+      const listId =
+        choice.type === "existing"
+          ? choice.listId
+          : (await createTodoListFromTemplate(choice.templateId, t)).id;
+      const newCardId = await addCard(activeTabId, "todo", {
+        settings: { listId },
+      });
+      const config = await getDashboardConfig(activeTabId);
+      setDashboardConfig(config);
+      if (newCardId) setHighlightedCardId(newCardId);
+    } catch (error) {
+      logError("Failed to add todo card:", error);
+    } finally {
+      setIsTodoAddOpen(false);
+    }
+  };
+
+  const handleSystemResourceAdd = async (payload: SystemResourceAddPayload) => {
+    if (!activeTabId) return;
+    try {
+      const defaults = await getSystemResourceDefaults();
+      const settings = buildDefaultCardSettings(payload.mode, payload.metrics, defaults);
+      const newCardId = await addCard(activeTabId, "system_resource", {
+        w: payload.size.w,
+        h: payload.size.h,
+        settings,
+      });
+      const config = await getDashboardConfig(activeTabId);
+      setDashboardConfig(config);
+      if (newCardId) setHighlightedCardId(newCardId);
+    } catch (error) {
+      logError("Failed to add system resource card:", error);
+    } finally {
+      setIsSystemResourceAddOpen(false);
+    }
   };
 
   const openRoleSelect = async (cardType: CardTypeId) => {
@@ -454,6 +524,18 @@ export default function DashboardPage() {
           setPendingCardType(null);
         }}
         onConfirm={handleSizeConfirm}
+      />
+
+      <SystemResourceAddModal
+        isOpen={isSystemResourceAddOpen}
+        onClose={() => setIsSystemResourceAddOpen(false)}
+        onConfirm={handleSystemResourceAdd}
+      />
+
+      <TodoAddModal
+        isOpen={isTodoAddOpen}
+        onClose={() => setIsTodoAddOpen(false)}
+        onConfirm={(templateId) => void handleTodoAdd(templateId)}
       />
 
       {/* Role Select Modal for Character List Card */}
