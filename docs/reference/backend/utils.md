@@ -1,17 +1,17 @@
 # 后端工具层 — 文件功能参考
 
 > 逐文件精读源码生成。行号基于当前工作区版本，仅用于快速定位。
-> 本文件覆盖：`src-tauri/src/utils/` 下全部 8 个文件（mod / error / encrypt / hg_crypto / http_client / logger / paths / capture）。
+> 本文件覆盖：`src-tauri/src/utils/` 下全部 9 个文件（mod / error / encrypt / hg_crypto / http_client / logger / official_launcher / paths / capture）。
 
 ## `src-tauri/src/utils/mod.rs`
-**职责**：工具层模块清单（9 行）。声明 7 个子模块并统一再导出统一错误类型。
-**导出**：`pub mod capture`、`pub mod encrypt`、`pub mod error`、`pub mod hg_crypto`、`pub mod http_client`、`pub mod logger`、`pub mod paths`；`pub use error::AppError`（mod.rs:9）。
+**职责**：工具层模块清单（10 行）。声明 8 个子模块并统一再导出统一错误类型。
+**导出**：`pub mod capture`、`pub mod encrypt`、`pub mod error`、`pub mod hg_crypto`、`pub mod http_client`、`pub mod logger`、`pub mod official_launcher`、`pub mod paths`；`pub use error::AppError`（mod.rs:10）。
 **主要依赖**：`crate::utils::error`。
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
-| `pub mod capture/encrypt/error/hg_crypto/http_client/logger/paths` | mod.rs:1-7 | 7 个子模块声明，全部 `pub` |
-| `pub use error::AppError` | mod.rs:9 | 别名导出，使调用方写作 `crate::utils::AppError` |
+| `pub mod capture/encrypt/error/hg_crypto/http_client/logger/official_launcher/paths` | mod.rs:1-8 | 8 个子模块声明，全部 `pub` |
+| `pub use error::AppError` | mod.rs:10 | 别名导出，使调用方写作 `crate::utils::AppError` |
 
 **备注**：全 crate 通过 `crate::utils::{capture, paths, http_client, AppError}` 这类分组导入使用（如 services/account_service.rs:20、services/avatar_cache_service.rs:6、services/config_service.rs:8）。
 
@@ -131,11 +131,11 @@
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
 | `static mut GLOBAL_LOGGER: Option<Logger>` | logger.rs:216 | 全局单例，`unsafe` 静态可变量 |
-| `init_logger() -> Result<(), Box<dyn Error>>` | logger.rs:218 | 用 `LoggerConfig::default()` 建实例并写入 `GLOBAL_LOGGER`（`unsafe` 块，logger.rs:221-223），随后 `info("Logger initialized successfully")`；调用方 lib.rs:22（失败仅 `eprintln`，不中断启动） |
+| `init_logger() -> Result<(), Box<dyn Error>>` | logger.rs:218 | 用 `LoggerConfig::default()` 建实例并写入 `GLOBAL_LOGGER`（`unsafe` 块，logger.rs:221-223），随后 `info("Logger initialized successfully")`；调用方 lib.rs:32、utils/official_launcher.rs:1068（提权 helper 进程，失败不中断启动，仅 `eprintln`） |
 | `get_logger() -> &'static Logger` | logger.rs:228 | `GLOBAL_LOGGER.as_ref().expect("Logger not initialized. Call init_logger() first.")`；未初始化即调用会 panic |
 | `struct TracingBridgeLayer` + `impl Layer<S>` | logger.rs:237-269 | `on_event`：取 `metadata.level()/module_path()/target()`，用 `TracingVisitor` 收集字段，拼成 `[{target}] {fields}` 后按 ERROR/WARN/INFO/DEBUG\|TRACE 映射到 `*_with_module`（logger.rs:260-267） |
 | `struct TracingVisitor(String)` + `impl field::Visit` | logger.rs:271-308 | 实现 `record_debug/record_str/record_i64/record_u64/record_bool`，字段以 `name=value` 空格连接（未实现 record_f64 等） |
-| `init_tracing_subscriber()` | logger.rs:311 | `registry().with(TracingBridgeLayer).try_init().ok()`，已初始化则忽略；调用方 lib.rs:27。之后所有 `tracing::info!/debug!`（如 game_launcher_service 的 `tracing::info!`）都汇入本 Logger |
+| `init_tracing_subscriber()` | logger.rs:311 | `registry().with(TracingBridgeLayer).try_init().ok()`，已初始化则忽略；调用方 lib.rs:37。之后所有 `tracing::info!/debug!`（如 game_launcher_service 的 `tracing::info!`）都汇入本 Logger |
 
 ### 导出宏（均 `#[macro_export]`，路径 `$crate::utils::logger::get_logger()`）
 
@@ -149,6 +149,49 @@
 - **输出目标**：stderr（控制台，带 ANSI 色）与日志文件（无色）；内存缓冲同时保留 5000 条供前端 `get_backend_logs` 拉取。
 - **轮转/清理**：仅有「按启动日期命名 `app-YYYY-MM-DD.log`」这一按日分文件的**命名**策略——文件句柄在 `init_logger` 时打开一次，**跨天不会切换文件，也没有任何旧日志删除/轮转逻辑**，历史日志会无限累积（异常项）。
 - 控制台按 `log_level` 过滤，但**文件与内存缓冲不过滤**，Debug 也会落盘。
+
+---
+
+## `src-tauri/src/utils/official_launcher.rs`
+**职责**：官方启动器父进程伪造 —— 在不打开鹰角启动器界面、不注入代码、不修改任何游戏文件的前提下启动《明日方舟：终末地》（1530 行，其中非 Windows 部分为返回错误的桩）。游戏会校验自己的**直接父进程**必须是签名有效的官方 `Games.exe`，本模块以 `CREATE_SUSPENDED` 创建官方启动器并永不恢复它（只有映像与签名存在），再用 `PROC_THREAD_ATTRIBUTE_PARENT_PROCESS` 把它指定为游戏进程的父进程，等待游戏退出后终止该挂起父进程并转发退出码。逻辑逐函数移植自 EndfieldNoLauncher 的 `src/launch.cpp`（AGPL-3.0，上游为 Better Endfield Next 的 `native/loaders/shared/official_launcher.cpp`，commit `514f6d6`），函数名与结构一一对应。
+**导出**：跨平台 —— `HELPER_FLAG`、`exit_code` 模块、`LaunchToken`、`LaunchError`、`ElevatedLaunch`、`HelperOptions`、`quote_argument`、`quote_command_line`、`is_official_publisher`、`version_key`、`parse_helper_options`、`usage`；Windows 专属 —— `launch_via_official_parent`、`shell_execute_game`、`try_run_helper`（其余全部私有）。
+**主要依赖**：`windows-sys`（`Win32_Security*` / `Win32_System_Threading` / `Win32_System_Registry` / `Win32_System_Environment` / `Win32_System_Console` / `Win32_System_Diagnostics_Debug` / `Win32_UI_Shell` / `Win32_UI_WindowsAndMessaging`）、`tracing`、`crate::utils::logger`（helper 写同一份日志文件）、`crate::utils::paths`（调用方算状态文件路径）。
+
+| 符号 | 位置 | 说明 |
+| --- | --- | --- |
+| `HELPER_FLAG` | :50 | `"--endfield-launch-helper"`，提权 helper 的私有首参数 |
+| `PUBLISHER`（私有） | :53 | `"Shanghai Hypergryph Network Technology Co., Ltd."`，签名者证书 `O` 字段期望值（对应 C++ `kPublisher`） |
+| `pub mod exit_code` | :56-66 | `INVALID_ARGUMENTS=2` / `CREATE_FAILED=4` / `NO_VALID_LAUNCHER=7` / `WAIT_FAILED=8` |
+| `LaunchToken` | :69-100 | 失败/提示的机器可读标记（`not_found`/`no_launcher`/`cancelled`/`create`/`wait_failed`/`fallback`/`unknown`），前端据此选 i18n 文案 |
+| `LaunchError` | :102-139 | `{ token, detail }`；`message()` 产出 `"<token>: <detail>"` 契约串；私有 `exit_code()` 把 token 映射回退出码 |
+| `ElevatedLaunch` | :142-146 | `{ helper_pid }`，提权 helper 已建立 |
+| `wide` / `quote_argument` / `quote_command_line` | :151-192 | UTF-16 编码与 `CreateProcessW` 引号转义（对应 `QuoteArgument`：反斜杠仅在引号前与结尾翻倍） |
+| `is_official_publisher` | :194 | `eq_ignore_ascii_case` 版 `_wcsicmp`（对应 `IsOfficialPublisher`） |
+| `version_key` | :201 | 解析 `…\1.6.0\Games.exe` 的父目录名 → `Vec<u64>`；非法名返回空（排序最低，对应 `Version`） |
+| `HelperOptions` / `usage` / `parse_helper_options` | :223-295 | helper 命令行（`--game`/`--parent`/`--status`/`--`，取值选项只允许一次、未知选项报错、只做纯字符串校验以便单测），对应 `Options`/`Usage`/`ParseOptions` |
+| `RegistryKey` / `read_registry` / `subkeys` / `add_root` / `installed_roots` | :448-685 | 发现安装位置（对应 `RegistryKey`/`ReadRegistry`/`Subkeys`/`AddRoot`/`InstalledRoots`） |
+| `OwnedHandle` | :366-394 | RAII 内核句柄（`CloseHandle`），null 与 `INVALID_HANDLE_VALUE` 视为无句柄；`take()` 用于移交所有权 |
+| `windows_error` | :396 | `<操作> (Win32 <码>)` + `FormatMessageW` 本地化文本，740 额外附提权提示（对应 `WindowsError`） |
+| `ensure_console_hidden` | :436 | 仅 `GetConsoleWindow`+`ShowWindow(SW_HIDE)`，**不调用 `FreeConsole`**（原因见备注） |
+| `TrustState` / `verify_official_launcher` / `signer_organization` | :601-814 | 签名校验：独占只读句柄（`FILE_SHARE_READ`）+ `WINTRUST_FILE_INFO.hFile` + `WTD_UI_NONE`/`WTD_CHOICE_FILE`/`WTD_CACHE_ONLY_URL_RETRIEVAL\|WTD_REVOCATION_CHECK_NONE`，再取第 0 个签名者证书链 `pasCertChain[0].pCert` 的 `O` 字段比对（对应 `TrustState`/`VerifyOfficialLauncher`） |
+| `find_official_launcher` | :816-856 | 给定 `--parent` 时只校验它，否则枚举候选并按版本降序取第一个通过者（对应 `FindOfficialLauncher`） |
+| `OfficialParent` + `start` / `create_game` / `Drop` | :858-1025 | 挂起父进程（`CREATE_SUSPENDED\|CREATE_NO_WINDOW` + `SW_HIDE`，关线程句柄但永不 `ResumeThread`）与游戏创建（两段式属性列表 + `PROC_THREAD_ATTRIBUTE_PARENT_PROCESS` + `EXTENDED_STARTUPINFO_PRESENT`，`StartupInfo.cb = size_of::<STARTUPINFOEXW>()`）；`Drop` 只终止自己创建的进程并等 5s（对应 `OfficialParent`） |
+| `wait_for_game` / `write_status_file` | :1027-1052 | 等待游戏退出并读退出码（对应 `WaitForGame`）；创建成功后写 `pid=<n>` 状态文件 |
+| `try_run_helper` / `run_helper` / `launch` | :1054-1146 | helper 入口与完整流程；`launch()` 是唯一持有 RAII 的作用域，析构（终止挂起父进程）完成后调用方才 `process::exit` |
+| `HelperProcess` | :1148-1212 | `ShellExecuteExW` 返回的 helper 进程句柄；`wait_early_exit(2.5s)` 宽限期探测 + `watch_to_completion()` 分离线程收尾 |
+| `shell_execute_elevated` / `helper_parameters` | :1214-1289 | `ShellExecuteExW("runas", 自身 exe, ...)`，`SW_HIDE` + `SEE_MASK_NOCLOSEPROCESS\|NOASYNC\|FLAG_NO_UI\|NO_CONSOLE` |
+| `launch_via_official_parent` | :1291-1340 | 未提权一侧入口：先验签（失败即 `no_launcher`，调用方回退直接启动）→ 提权重启自身 → 宽限期判定 |
+| `shell_execute_game` | :1342-1366 | 回退路径：`ShellExecuteW(SW_SHOWNORMAL)` 直接启动游戏（旧实现的行为） |
+| `mod tests` | :1399-1530 | 12 个单测：引号转义（结尾反斜杠 / 内嵌引号）、组织名比对、版本解析与数值比较、helper 参数解析 |
+
+**备注（提权模型 / 契约 / 限制）**：
+- **两阶段提权（恰好一次 UAC）**：游戏与官方启动器 manifest 都要求管理员，未提权进程创建它们会得到 Win32 740。因此未提权一侧只做「查找 + 验签」，失败时不弹 UAC 就能给出结论；成功则 `runas` 重启自身，提权后的同一 exe 由 `lib.rs:26` 的 `try_run_helper()` 在 logger/Tauri 初始化**之前**截获。
+- **`process::exit` 不跑析构**：helper 的完整流程必须先在一个函数内返回（RAII 析构 → 终止挂起的 `Games.exe`），再由 `lib.rs` 退出进程；若在持有父进程句柄时直接退出，那个 `Games.exe` 会永久残留。
+- **不许 `FreeConsole`**：`utils::logger` 每条日志都 `eprintln!`，std 在写标准流失败时会 panic，所以只隐藏控制台窗口（release 构建本就是 windows 子系统、无控制台）。
+- **签名句柄不跨提权边界**：helper 会重新验签并自己保持 `FILE_SHARE_READ` 句柄直到进程创建完成；未提权一侧的校验只是「不想让用户白弹一次 UAC」的 UX 过滤，**不要**因为「重复」而删掉 helper 里的那次。
+- **有意与上游一致的两处取舍**：`WTD_REVOCATION_CHECK_NONE`（不联网、不查吊销，离线可用）与只比对组织名不比指纹。
+- **状态文件**：`%LOCALAPPDATA%\cn.msk-network.endprotocol\launcher_helper_status`（路径由调用方传入），用于区分「helper 启动阶段失败」与「游戏创建成功但很快退出」——helper 退出码与游戏退出码共用同一段数值区间。
+- 非 Windows 平台：`launch_via_official_parent` 返回 `unknown` 错误、`try_run_helper` 返回 `None`，模块仍可编译（CI 会构建 macOS/Linux）。
 
 ---
 

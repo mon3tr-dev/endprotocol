@@ -152,11 +152,20 @@ impl GameLauncherService {
     // ========== 版本检查 ==========
 
     /// 从 launcher API 获取最新版本和资源地址
-    pub async fn get_latest_package(&self, channel: &GameChannel) -> Result<RemotePackage, String> {
+    ///
+    /// `local_version` 会作为 `version` 字段发给官方接口：
+    /// - 官方客户端始终上报本地版本；只有在带上版本时接口才会返回 `pre_patch`（预下载补丁包）。
+    /// - 全新安装（无本地版本）传 `None`，此时返回的 `pkg.packs` 为完整安装包分卷列表。
+    pub async fn get_latest_package(
+        &self,
+        channel: &GameChannel,
+        local_version: Option<&str>,
+    ) -> Result<RemotePackage, String> {
         tracing::info!(
-            "[api] get_latest_package: channel={}, appcode={}",
+            "[api] get_latest_package: channel={}, appcode={}, local_version={}",
             channel.as_str(),
-            channel.app_code()
+            channel.app_code(),
+            local_version.unwrap_or("")
         );
         let req_body = serde_json::json!({
             "seq": channel.seq(),
@@ -167,7 +176,7 @@ impl GameLauncherService {
                     "launcher_appcode": channel.launcher_app_code(),
                     "channel": channel.channel(),
                     "sub_channel": channel.sub_channel(),
-                    "version": ""
+                    "version": local_version.unwrap_or("")
                 }
             }]
         });
@@ -227,24 +236,42 @@ impl GameLauncherService {
             ));
         }
 
-        let has_preload = game_rsp.preload_version.is_some() && game_rsp.preload_pkg.is_some();
-        let preload_version = game_rsp.preload_version.clone();
-        let preload_resource_url = game_rsp.preload_pkg.as_ref().map(|p| p.file_path.clone());
-
-        if has_preload {
-            tracing::info!(
-                "[api] preload_version={}, preload_url={}",
-                preload_version.as_deref().unwrap_or(""),
-                preload_resource_url.as_deref().unwrap_or("")
-            );
-        }
+        // 预下载补丁包（pre_patch）：官方在正式发版前提供的分卷压缩包
+        let (has_preload, preload_version, preload_parts, preload_total_bytes) =
+            match game_rsp.pre_patch.as_ref() {
+                Some(pre) if !pre.patches.is_empty() => {
+                    for part in &pre.patches {
+                        if !part.url.starts_with("https://") {
+                            return Err(format!(
+                                "Preload part URL must be HTTPS, got: {}",
+                                part.url
+                            ));
+                        }
+                    }
+                    tracing::info!(
+                        "[api] pre_patch: version={}, parts={}, download_bytes={}, expanded_bytes={}",
+                        pre.version,
+                        pre.patches.len(),
+                        pre.total_bytes(),
+                        pre.total_size
+                    );
+                    (
+                        true,
+                        Some(pre.version.clone()),
+                        pre.patches.clone(),
+                        pre.total_bytes(),
+                    )
+                }
+                _ => (false, None, Vec::new(), 0),
+            };
 
         Ok(RemotePackage {
             version: game_rsp.version.clone(),
             resource_base_url,
             has_preload,
             preload_version,
-            preload_resource_url,
+            preload_parts,
+            preload_total_bytes,
         })
     }
 
@@ -271,7 +298,10 @@ impl GameLauncherService {
         }
 
         tracing::info!("[check_status] fetching remote package...");
-        let remote = self.get_latest_package(channel).await?;
+        // 带上本地版本：官方接口只在这种情况下返回 pre_patch（预下载补丁包）
+        let remote = self
+            .get_latest_package(channel, local_version.as_deref())
+            .await?;
         tracing::info!("[check_status] got remote: version={}", remote.version);
         let remote_version = Some(remote.version.clone());
 
@@ -282,8 +312,10 @@ impl GameLauncherService {
                 false
             };
 
-        // Preload detection: preload available when installed, no update pending, and API reports preload
-        let has_preload = is_installed && !has_update && remote.has_preload;
+        // 预下载可用条件：已安装 + 官方提供预下载补丁包 + 本地版本不是预下载目标版本
+        let has_preload = is_installed
+            && remote.has_preload
+            && local_version.as_deref() != remote.preload_version.as_deref();
 
         // Check persisted preload state to see if preload was completed for this version
         let preload_completed = if has_preload {
@@ -307,6 +339,7 @@ impl GameLauncherService {
             remote_version,
             has_preload,
             preload_version: remote.preload_version,
+            preload_total_bytes: remote.preload_total_bytes,
             preload_completed,
             active_operation,
         })
@@ -327,7 +360,7 @@ impl GameLauncherService {
         let channel_detected = has_exe && has_data && has_config;
 
         // 获取远程清单
-        let remote = self.get_latest_package(channel).await?;
+        let remote = self.get_latest_package(channel, None).await?;
         let (manifest, _) = self.fetch_manifest(&remote.resource_base_url).await?;
 
         let total_files = manifest.len();
@@ -803,7 +836,7 @@ impl GameLauncherService {
             verified_bytes: 0,
         });
 
-        let remote = self.get_latest_package(channel).await?;
+        let remote = self.get_latest_package(channel, None).await?;
         tracing::info!(
             "[install] Remote version: {}, resource: {}",
             remote.version,
@@ -1208,7 +1241,7 @@ impl GameLauncherService {
 
         // 1. 获取远程清单
         tracing::info!("[verify] Step 1: Fetching remote package info...");
-        let remote = self.get_latest_package(channel).await?;
+        let remote = self.get_latest_package(channel, None).await?;
         tracing::info!(
             "[verify] Remote package: version={}, resource_base_url={}",
             remote.version,
@@ -1656,60 +1689,88 @@ impl GameLauncherService {
         progress_callback: Arc<dyn Fn(DownloadProgress) + Send + Sync>,
         max_concurrent: usize,
     ) -> Result<String, String> {
-        // 1. 获取远程信息
-        let remote = self.get_latest_package(channel).await?;
+        // 1. 读取本地版本（接口只在上报本地版本时返回 pre_patch）
+        let local_version = self.read_local_version(install_path).ok();
 
-        let preload_url = remote
-            .preload_resource_url
-            .as_ref()
-            .ok_or_else(|| "No preload package available".to_string())?;
+        // 2. 获取远端信息（含预下载分卷列表）
+        let remote = self
+            .get_latest_package(channel, local_version.as_deref())
+            .await?;
+
         let preload_version = remote
             .preload_version
-            .as_ref()
-            .ok_or_else(|| "No preload version".to_string())?;
+            .clone()
+            .ok_or_else(|| "No preload package available".to_string())?;
 
-        // 2. 获取 preload 清单
-        let (manifest, _manifest_sha256) = self.fetch_manifest(preload_url).await?;
+        if remote.preload_parts.is_empty() {
+            return Err("No preload package available".to_string());
+        }
 
-        let total_bytes: u64 = manifest.iter().map(|e| e.size as u64).sum();
-        let file_count = manifest.len();
+        if local_version.as_deref() == Some(preload_version.as_str()) {
+            progress_callback(DownloadProgress {
+                downloaded: 0,
+                total: 0,
+                stage: InstallStage::Completed.as_str().to_string(),
+                current_file: None,
+                file_index: 0,
+                file_count: 0,
+                verified_bytes: 0,
+            });
+            return Ok(format!("Already at version {}", preload_version));
+        }
+
+        let parts = remote.preload_parts;
+        let part_count = parts.len();
+        let total_bytes = remote.preload_total_bytes;
 
         tracing::info!(
-            "[preload] Starting preload: version={}, {} files, {} bytes",
+            "[preload] Starting preload: version={}, {} parts, {} bytes",
             preload_version,
-            file_count,
+            part_count,
             total_bytes
         );
 
-        // 3. 创建 preload staging 目录
-        let preload_staging = format!("{}.staging.preload.{}", install_path, uuid::Uuid::new_v4());
-        let staging_path = PathBuf::from(&preload_staging);
-
-        fs::create_dir_all(&staging_path).map_err(|e| format!("Create staging dir: {}", e))?;
+        // 3. 准备 preload staging 目录：同版本的旧暂存直接复用（续传），异版本先删除
+        let staging_path = match self.preload_staging_dir(install_path) {
+            Some(dir)
+                if Self::preload_staging_version(&dir).as_deref()
+                    == Some(preload_version.as_str()) =>
+            {
+                tracing::info!("[preload] Reusing preload staging dir: {}", dir);
+                PathBuf::from(dir)
+            }
+            Some(dir) => {
+                tracing::info!("[preload] Removing stale preload staging dir: {}", dir);
+                let _ = fs::remove_dir_all(&dir);
+                Self::create_preload_staging(install_path, &preload_version)?
+            }
+            None => Self::create_preload_staging(install_path, &preload_version)?,
+        };
+        let preload_staging = staging_path.to_string_lossy().to_string();
 
         // 4. 初始进度
         progress_callback(DownloadProgress {
             downloaded: 0,
             total: total_bytes,
-            stage: InstallStage::Downloading.as_str().to_string(),
+            stage: InstallStage::Preloading.as_str().to_string(),
             current_file: None,
             file_index: 0,
-            file_count,
+            file_count: part_count,
             verified_bytes: 0,
         });
 
-        // 5. 并行下载所有文件到 staging
+        // 5. 并发下载所有分卷（download_single_file 内部完成单卷 MD5 校验与断点续传）
         let downloaded_bytes = Arc::new(AtomicU64::new(0));
-        let downloaded_count = Arc::new(AtomicUsize::new(0));
-        let semaphore = Arc::new(Semaphore::new(max_concurrent));
+        let finished_parts = Arc::new(AtomicUsize::new(0));
+        let semaphore = Arc::new(Semaphore::new(max_concurrent.clamp(1, 32)));
         let mut join_set = tokio::task::JoinSet::new();
 
         // 后台进度发射器
         let progress_cb_bg = progress_callback.clone();
         let db_bg = downloaded_bytes.clone();
-        let dc_bg = downloaded_count.clone();
+        let fp_bg = finished_parts.clone();
         let total_bg = total_bytes;
-        let fc_bg = file_count;
+        let pc_bg = part_count;
         let progress_handle = tokio::spawn(async move {
             let mut interval = tokio::time::interval(Duration::from_millis(500));
             loop {
@@ -1718,155 +1779,119 @@ impl GameLauncherService {
                     break;
                 }
                 let db = db_bg.load(Ordering::Relaxed);
-                let dc = dc_bg.load(Ordering::Relaxed);
-                if db >= total_bg && total_bg > 0 {
+                let fp = fp_bg.load(Ordering::Relaxed);
+                if (db >= total_bg && total_bg > 0) || fp >= pc_bg {
                     break;
                 }
                 progress_cb_bg(DownloadProgress {
                     downloaded: db,
                     total: total_bg,
-                    stage: InstallStage::Downloading.as_str().to_string(),
+                    stage: InstallStage::Preloading.as_str().to_string(),
                     current_file: None,
-                    file_index: dc,
-                    file_count: fc_bg,
+                    file_index: fp,
+                    file_count: pc_bg,
                     verified_bytes: 0,
                 });
             }
         });
 
-        for entry in &manifest {
-            let local_path = staging_path.join(&entry.path);
-            let entry_path = entry.path.clone();
-            let entry_md5 = entry.md5.clone();
-            let entry_size = entry.size.max(0) as u64;
-            let resource_url = preload_url.clone();
+        for (index, part) in parts.iter().enumerate() {
+            let file_name = Self::preload_part_file_name(&part.url, index);
+            let dest = staging_path.join(&file_name);
+            let dest_str = dest.to_string_lossy().to_string();
+            let part_url = part.url.clone();
+            let part_md5 = part.md5.clone();
+            let part_size = part.size();
             let sem = semaphore.clone();
             let db = downloaded_bytes.clone();
-            let dc = downloaded_count.clone();
+            let fp = finished_parts.clone();
 
             join_set.spawn(async move {
-                let _permit = sem.acquire().await.unwrap();
+                let _permit = match sem.acquire().await {
+                    Ok(permit) => permit,
+                    Err(_) => return Err("Download cancelled".to_string()),
+                };
 
                 if DOWNLOAD_CANCELLED.load(Ordering::Relaxed) {
-                    db.fetch_add(entry_size, Ordering::Relaxed);
-                    dc.fetch_add(1, Ordering::Relaxed);
-                    return;
+                    return Err("Download cancelled".to_string());
                 }
 
-                let dest = local_path
-                    .parent()
-                    .map(|p| p.to_path_buf())
-                    .unwrap_or_default();
-                let _ = fs::create_dir_all(&dest);
-                let dest_str = local_path.to_string_lossy().to_string();
-                let download_url = format!("{}/{}", resource_url, entry_path);
-
-                match download_single_file(
-                    &download_url,
-                    &dest_str,
-                    &entry_md5,
-                    Arc::new(AtomicU64::new(0)),
-                    entry_size,
-                )
-                .await
+                // 续传：已下载且 MD5 一致的分卷直接跳过
+                if Path::new(&dest_str).exists()
+                    && hg_crypto::verify_md5(&dest_str, &part_md5).unwrap_or(false)
                 {
-                    Ok(()) => {}
+                    tracing::info!("[preload] Reusing completed part: {}", file_name);
+                    db.fetch_add(part_size, Ordering::Relaxed);
+                    fp.fetch_add(1, Ordering::Relaxed);
+                    return Ok(());
+                }
+
+                let result =
+                    download_single_file(&part_url, &dest_str, &part_md5, db, part_size).await;
+
+                match result {
+                    Ok(()) => {
+                        fp.fetch_add(1, Ordering::Relaxed);
+                        Ok(())
+                    }
                     Err(e) => {
-                        tracing::error!("[preload] Failed to download {}: {}", entry_path, e);
+                        tracing::error!("[preload] Failed to download {}: {}", file_name, e);
+                        Err(e)
                     }
                 }
-
-                db.fetch_add(entry_size, Ordering::Relaxed);
-                dc.fetch_add(1, Ordering::Relaxed);
             });
         }
 
-        // 等待所有下载完成
-        while let Some(_) = join_set.join_next().await {}
+        // 等待所有分卷下载完成
+        let mut failures: Vec<String> = Vec::new();
+        while let Some(joined) = join_set.join_next().await {
+            match joined {
+                Ok(Ok(())) => {}
+                Ok(Err(e)) => failures.push(e),
+                Err(e) => failures.push(format!("Task failed: {}", e)),
+            }
+        }
         let _ = progress_handle.await;
 
         if DOWNLOAD_CANCELLED.load(Ordering::Relaxed) {
+            progress_callback(DownloadProgress {
+                downloaded: 0,
+                total: 0,
+                stage: InstallStage::Error.as_str().to_string(),
+                current_file: None,
+                file_index: 0,
+                file_count: 0,
+                verified_bytes: 0,
+            });
             let _ = fs::remove_dir_all(&staging_path);
             return Err("Download cancelled".to_string());
         }
 
-        // 6. 验证阶段
-        tracing::info!("[preload] Download complete, starting verification");
-        progress_callback(DownloadProgress {
-            downloaded: total_bytes,
-            total: total_bytes,
-            stage: InstallStage::Verifying.as_str().to_string(),
-            current_file: None,
-            file_index: 0,
-            file_count,
-            verified_bytes: 0,
-        });
-
-        let verified_bytes = Arc::new(AtomicU64::new(0));
-        let checked_count = Arc::new(AtomicUsize::new(0));
-        let sem2 = Arc::new(Semaphore::new(max_concurrent));
-        let mut verify_set = tokio::task::JoinSet::new();
-
-        // 后台进度发射器（验证阶段）
-        let progress_cb_bg2 = progress_callback.clone();
-        let vb_bg = verified_bytes.clone();
-        let cc_bg = checked_count.clone();
-        let total_bg2 = total_bytes;
-        let fc_bg2 = file_count;
-        let verify_progress_handle = tokio::spawn(async move {
-            let mut interval = tokio::time::interval(Duration::from_millis(500));
-            loop {
-                interval.tick().await;
-                if DOWNLOAD_CANCELLED.load(Ordering::Relaxed) {
-                    break;
-                }
-                let vb = vb_bg.load(Ordering::Relaxed);
-                let cc = cc_bg.load(Ordering::Relaxed);
-                if vb >= total_bg2 && total_bg2 > 0 {
-                    break;
-                }
-                progress_cb_bg2(DownloadProgress {
-                    downloaded: total_bg2,
-                    total: total_bg2,
-                    stage: InstallStage::Verifying.as_str().to_string(),
-                    current_file: None,
-                    file_index: cc,
-                    file_count: fc_bg2,
-                    verified_bytes: vb,
-                });
-            }
-        });
-
-        for entry in &manifest {
-            let local_path = staging_path.join(&entry.path);
-            let entry_path = entry.path.clone();
-            let entry_md5 = entry.md5.clone();
-            let entry_size = entry.size.max(0) as u64;
-            let sem = sem2.clone();
-            let vb = verified_bytes.clone();
-            let cc = checked_count.clone();
-
-            verify_set.spawn(async move {
-                let _permit = sem.acquire().await.unwrap();
-
-                let ok = local_path.exists()
-                    && fs::metadata(&local_path)
-                        .map(|m| m.len() as u64 == entry_size)
-                        .unwrap_or(false)
-                    && hg_crypto::verify_md5(local_path.to_str().unwrap_or(""), &entry_md5)
-                        .unwrap_or(false);
-
-                if !ok {
-                    tracing::error!("[preload] Verification failed for {}", entry_path);
-                }
-
-                vb.fetch_add(entry_size, Ordering::Relaxed);
-                cc.fetch_add(1, Ordering::Relaxed);
+        // 6. 有分卷下载/校验失败：保留已下载分卷以备续传，但不标记为已完成
+        if !failures.is_empty() {
+            let _ = self.save_preload_state(channel, &preload_version, false);
+            progress_callback(DownloadProgress {
+                downloaded: 0,
+                total: 0,
+                stage: InstallStage::Error.as_str().to_string(),
+                current_file: None,
+                file_index: 0,
+                file_count: 0,
+                verified_bytes: 0,
             });
+            tracing::error!(
+                "[preload] {} of {} part(s) failed, first error: {}",
+                failures.len(),
+                part_count,
+                failures.first().cloned().unwrap_or_default()
+            );
+            return Err(format!(
+                "Preload failed for {}/{} part(s): {}",
+                failures.len(),
+                part_count,
+                failures.first().cloned().unwrap_or_default()
+            ));
         }
-
-        while let Some(_) = verify_set.join_next().await {}
-        let _ = verify_progress_handle.await;
 
         // 7. 保存预下载状态
         self.save_preload_state(channel, &preload_version, true)?;
@@ -1877,13 +1902,52 @@ impl GameLauncherService {
             total: total_bytes,
             stage: InstallStage::Completed.as_str().to_string(),
             current_file: None,
-            file_index: file_count,
-            file_count,
+            file_index: part_count,
+            file_count: part_count,
             verified_bytes: total_bytes,
         });
 
-        tracing::info!("[preload] Preload completed: version={}", preload_version);
-        Ok(format!("Preload completed: {} files", file_count))
+        tracing::info!(
+            "[preload] Preload completed: version={}, {} parts, {} bytes",
+            preload_version,
+            part_count,
+            total_bytes
+        );
+        Ok(format!(
+            "Preload completed: {} ({} parts, {} bytes)",
+            preload_version, part_count, total_bytes
+        ))
+    }
+
+    /// 从分卷 URL 推断本地文件名（去掉查询串）；文件名非法时回退为 part_###.zip
+    fn preload_part_file_name(url: &str, index: usize) -> String {
+        let path = url.split('?').next().unwrap_or("");
+        let name = path.rsplit('/').next().unwrap_or("");
+        if Self::validate_path(name).is_ok() {
+            name.to_string()
+        } else {
+            format!("part_{:03}.zip", index + 1)
+        }
+    }
+
+    /// 预下载暂存目录内的版本标记文件名
+    const PRELOAD_VERSION_MARKER: &'static str = ".preload_version";
+
+    /// 新建预下载暂存目录并写入目标版本标记
+    fn create_preload_staging(install_path: &str, version: &str) -> Result<PathBuf, String> {
+        let dir = format!("{}.staging.preload.{}", install_path, uuid::Uuid::new_v4());
+        let path = PathBuf::from(&dir);
+        fs::create_dir_all(&path).map_err(|e| format!("Create staging dir: {}", e))?;
+        fs::write(path.join(Self::PRELOAD_VERSION_MARKER), version)
+            .map_err(|e| format!("Write preload marker: {}", e))?;
+        Ok(path)
+    }
+
+    /// 读取预下载暂存目录记录的目标版本
+    fn preload_staging_version(dir: &str) -> Option<String> {
+        let content =
+            fs::read_to_string(Path::new(dir).join(Self::PRELOAD_VERSION_MARKER)).ok()?;
+        Some(content.trim().to_string())
     }
 
     /// 获取预下载 staging 目录路径
@@ -2491,13 +2555,13 @@ impl GameLauncherService {
             return Err("Switch cancelled".to_string());
         }
 
-        let from_remote = self.get_latest_package(from_channel).await?;
+        let from_remote = self.get_latest_package(from_channel, None).await?;
         if SWITCH_CANCELLED.load(Ordering::SeqCst) {
             self.set_active_operation(None).await;
             reset_switch_cancel();
             return Err("Switch cancelled".to_string());
         }
-        let to_remote = self.get_latest_package(to_channel).await?;
+        let to_remote = self.get_latest_package(to_channel, None).await?;
         if SWITCH_CANCELLED.load(Ordering::SeqCst) {
             self.set_active_operation(None).await;
             reset_switch_cancel();

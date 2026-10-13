@@ -19,6 +19,15 @@ use services::system_resource_service::SystemResourceService;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // 提权启动 helper 模式（见 utils/official_launcher.rs）：
+    // 必须在 logger / tracing / Tauri 初始化之前截获 —— 这个进程是被 launcher_start_game
+    // 以 runas 拉起来的第二个实例，只负责「伪造官方父进程 + 启动游戏 + 转发退出码」，
+    // 全程不创建任何窗口；退出码即游戏退出码。
+    if let Some(code) = utils::official_launcher::try_run_helper() {
+        // try_run_helper 内部已完成收尾（挂起的官方启动器已被终止并等待结束）。
+        std::process::exit(code);
+    }
+
     // 初始化日志系统
     if let Err(e) = utils::logger::init_logger() {
         eprintln!("Failed to initialize logger: {}", e);

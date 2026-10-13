@@ -164,6 +164,9 @@ pub struct GameStatus {
     pub remote_version: Option<String>,
     pub has_preload: bool,
     pub preload_version: Option<String>,
+    /// 预下载分卷需下载的总字节数（`has_preload` 为 false 时为 0）
+    #[serde(default)]
+    pub preload_total_bytes: u64,
     pub preload_completed: bool,
     #[serde(default)]
     pub active_operation: Option<ActiveOperation>,
@@ -193,15 +196,65 @@ pub struct GetLatestGameRsp {
     pub version: String,
     #[serde(default)]
     pub pkg: Option<PkgInfo>,
-    #[serde(default, rename = "preload_version")]
-    pub preload_version: Option<String>,
-    #[serde(default, rename = "preload_pkg")]
-    pub preload_pkg: Option<PkgInfo>,
+    /// 预下载补丁包（`pre_patch`）。
+    ///
+    /// 官方只在正式发版前提供，且仅当请求里带上本地版本号时才会返回；
+    /// 请求不带版本（如全新安装）时该字段为 null。
+    #[serde(default)]
+    pub pre_patch: Option<PrePatch>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PkgInfo {
     pub file_path: String,
+}
+
+/// 预下载补丁包（`get_latest_game_rsp.pre_patch`）
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct PrePatch {
+    /// 预下载目标版本（尚未正式发布的新版本）
+    #[serde(default)]
+    pub version: String,
+    /// 官方客户端填写的版本，实测与 `version` 相同
+    #[serde(default)]
+    pub client_version: String,
+    /// 分卷下载总字节数（字符串形式的数字，等于各分卷 `package_size` 之和）
+    #[serde(default)]
+    pub package_size: String,
+    /// 解压后总字节数（字符串形式的数字）
+    #[serde(default)]
+    pub total_size: String,
+    /// 分卷列表（`.zip.001`、`.zip.002` … 顺序拼接为一个 ZIP）
+    #[serde(default)]
+    pub patches: Vec<PatchPart>,
+}
+
+impl PrePatch {
+    /// 各分卷下载字节数之和
+    pub fn total_bytes(&self) -> u64 {
+        self.patches.iter().map(|p| p.size()).sum()
+    }
+}
+
+/// 预下载分卷条目
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct PatchPart {
+    /// CDN 地址（带 `auth_key` 查询串，过期后需重新请求 API）
+    #[serde(default)]
+    pub url: String,
+    /// 分卷文件 MD5
+    #[serde(default)]
+    pub md5: String,
+    /// 分卷字节数（字符串形式的数字）
+    #[serde(default)]
+    pub package_size: String,
+}
+
+impl PatchPart {
+    /// 解析 `package_size`，解析失败按 0 处理
+    pub fn size(&self) -> u64 {
+        self.package_size.parse().unwrap_or(0)
+    }
 }
 
 /// 清单文件条目（解密后的 NDJSON 格式）
@@ -219,7 +272,10 @@ pub struct RemotePackage {
     pub resource_base_url: String,
     pub has_preload: bool,
     pub preload_version: Option<String>,
-    pub preload_resource_url: Option<String>,
+    /// 预下载分卷列表（顺序即拼接顺序）
+    pub preload_parts: Vec<PatchPart>,
+    /// 预下载分卷下载字节数之和
+    pub preload_total_bytes: u64,
 }
 
 /// 下载进度
@@ -262,6 +318,9 @@ pub enum InstallStage {
     Verifying,
     #[serde(rename = "repairing")]
     Repairing,
+    /// 预下载（官方预发布补丁分卷下载）
+    #[serde(rename = "preloading")]
+    Preloading,
     #[serde(rename = "applying")]
     Applying,
     #[serde(rename = "completed")]
@@ -278,6 +337,7 @@ impl InstallStage {
             InstallStage::Downloading => "downloading",
             InstallStage::Verifying => "verifying",
             InstallStage::Repairing => "repairing",
+            InstallStage::Preloading => "preloading",
             InstallStage::Applying => "applying",
             InstallStage::Completed => "completed",
             InstallStage::Error => "error",
@@ -313,6 +373,10 @@ pub struct LauncherResult {
     pub success: bool,
     pub message: String,
     pub version: Option<String>,
+    /// 非致命提示（`<token>: <detail>`，见 utils/official_launcher.rs）。
+    /// 目前只有「未找到签名有效的官方启动器，已回退到直接启动」会用到。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub warning: Option<String>,
 }
 
 // ========== Banner / Announcement / Background ==========

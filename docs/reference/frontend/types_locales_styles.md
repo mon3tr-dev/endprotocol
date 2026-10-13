@@ -153,14 +153,14 @@
 | `tab.*` | 标签页 CRUD、搜索、删除确认 | :388 |
 | `character_detail.*` | 角色详情页 Tab（skills/talents/info）与空态文案 | :413 |
 | `messages.*` | 消息中心：相对时间（分钟/小时/天前）、展开收起、下载状态 | :427 |
-| `launcher.*` | 启动器：安装/更新/校验修复/渠道切换/预下载/磁盘与文件扫描等完整流程（本文件最大分组，约 110 个 key） | :442 |
-| `todo_page.*` | To-Do 页面：标题/描述、导入导出、新建/搜索列表、分组、空态等 | :583 |
+| `launcher.*` | 启动器：安装/更新/校验修复/渠道切换/预下载/预下载中/预下载确认/启动设置/磁盘与文件扫描等完整流程（本文件最大分组，118 个 key） | :442 |
+| `todo_page.*` | To-Do 页面：标题/描述、导入导出、新建/搜索列表、分组、空态等 | :589 |
 
-- **与 en/translation.json 的 key 差异**：无。经脚本对比，zh 与 en 叶子 key 均为 555 个，键集合完全一致（既无 zh 缺键也无 en 缺键），且两文件结构逐行对齐（行号一一对应）。
+- **与 en/translation.json 的 key 差异**：无。经脚本对比，zh 与 en 叶子 key 均为 561 个，键集合完全一致（既无 zh 缺键也无 en 缺键），且两文件结构逐行对齐（行号一一对应）。
 - **异常（两边共有）**：`settings.update` 内存在重复键 —— `latest_version` 同时出现于 :177 与 :187、`release_date` 同时出现于 :179 与 :188。JSON 解析时后者覆盖前者（zh 实际生效值为 :187 的“远端最新版本”、:188 的“发布日期”；en 同理）。建议后续合并为 `latest_version_remote` 之类的独立键。
 
 ## `src/locales/en/translation.json`
-**职责**：英文 i18n 资源，与 zh 文件同为 621 行、555 个叶子 key、15 个顶层命名空间，行号与 zh 完全对应（见上表）。
+**职责**：英文 i18n 资源，与 zh 文件同为 627 行、561 个叶子 key、15 个顶层命名空间，行号与 zh 完全对应（见上表）。
 - 主要差异仅在文案语言，个别本地化选择值得注意：`settings.characters.cultivation_talents` zh 为“基建技能”而 en 为 “O.M.V. Dijiang Skills”（帝江号相关译名）；`settings.logs.level_*` en 使用大写日志级别（DEBUG/INFO/WARN/ERROR），`source_frontend/source_backend` 缩写为 FE/BE。
 - 同样存在 `settings.update` 的 `latest_version` / `release_date` 重复键（:177/:187、:179/:188），与 zh 完全一致。
 

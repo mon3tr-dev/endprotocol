@@ -58,7 +58,18 @@ sysinfo = "0.38.4"
 rustflags = ["-C", "link-arg=-fuse-ld=lld"]
 
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_UI_WindowsAndMessaging", "Win32_System_Com", "Win32_UI_Shell", "Win32_System_Threading", "Win32_System_Power", "Win32_System_Performance"] }
+# 免启动器启动（utils/official_launcher.rs）额外需要的特性：
+#   Win32_Security                      —— CreateProcessW 的 SECURITY_ATTRIBUTES 参数门控
+#   Win32_Security_Cryptography         —— WINTRUST_DATA / CERT_CONTEXT / CertGetNameStringW
+#   Win32_Security_Cryptography_Catalog + _Sip —— WTHelperProvDataFromStateData /
+#                                          WTHelperGetProvSignerFromChain 两个函数同时被这两个特性门控
+#   Win32_Security_WinTrust             —— WinVerifyTrust / WINTRUST_ACTION_GENERIC_VERIFY_V2
+#   Win32_System_Registry               —— Reg* 与 SHELLEXECUTEINFOW（其含 HKEY 字段）
+#   Win32_System_Environment            —— GetEnvironmentVariableW / ExpandEnvironmentStringsW
+#   Win32_System_Console                —— GetConsoleWindow（隐藏 helper 控制台）
+#   Win32_System_Diagnostics_Debug      —— FormatMessageW（Win32 错误文本）
+#   Win32_Storage_FileSystem            —— 文件/句柄相关常量
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_UI_WindowsAndMessaging", "Win32_System_Com", "Win32_UI_Shell", "Win32_System_Threading", "Win32_System_Power", "Win32_System_Performance", "Win32_Security", "Win32_Security_Cryptography", "Win32_Security_Cryptography_Catalog", "Win32_Security_Cryptography_Sip", "Win32_Security_WinTrust", "Win32_System_Registry", "Win32_System_Environment", "Win32_System_Console", "Win32_System_Diagnostics_Debug", "Win32_Storage_FileSystem"] }
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-updater = "2"

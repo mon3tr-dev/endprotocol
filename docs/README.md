@@ -32,6 +32,7 @@
 | 抽卡记录同步与统计 | `src/pages/gacha-records.tsx`、`services/gacha_service.rs` | [pages_game_data.md](reference/frontend/pages_game_data.md)、[services_others.md](reference/backend/services_others.md) |
 | 抽卡图表与逐池六星间隔统计 | `src/components/gacha-pity-chart.tsx`、`gacha-stat-charts.tsx`、`src/utils/gachaIntervals.ts` | [components_sidebar_charts.md](reference/frontend/components_sidebar_charts.md)、[utils_services_b.md](reference/frontend/utils_services_b.md) |
 | 启动器：下载/校验/切服/进程管理 | `src/components/game-action-panel.tsx`、`src/utils/launcherService.ts` | [components_game_action_panel.md](reference/frontend/components_game_action_panel.md)、[utils_services_a.md](reference/frontend/utils_services_a.md)、[services_launcher.md](reference/backend/services_launcher.md) |
+| 启动游戏 / 免启动器启动 / 为什么要 UAC | `src-tauri/src/commands/launcher.rs`（`launcher_start_game`）、`src-tauri/src/utils/official_launcher.rs` | [commands.md](reference/backend/commands.md)、[utils.md](reference/backend/utils.md) |
 | 应用自更新 | `src/utils/updateService.ts`、`commands/updater.rs` | [utils_services_b.md](reference/frontend/utils_services_b.md)、[commands.md](reference/backend/commands.md) |
 | 外观设置（主题/背景/取色） | `src/components/appearance-settings.tsx` | [components_settings_panels.md](reference/frontend/components_settings_panels.md) |
 | 设置页 / 开发者页 | `src/pages/settings.tsx`、`src/pages/developer.tsx` | [pages_settings_developer.md](reference/frontend/pages_settings_developer.md) |

@@ -12,6 +12,8 @@ export interface GameStatus {
   remote_version: string | null;
   has_preload: boolean;
   preload_version: string | null;
+  /** 预下载分卷需下载的总字节数（无预下载时为 0） */
+  preload_total_bytes: number;
   preload_completed: boolean;
   active_operation: ActiveOperation | null;
 }
@@ -50,10 +52,38 @@ export interface BackgroundMedia {
   video_url: string | null;
 }
 
+/**
+ * 后端启动结果里的 `<token>: <detail>` 契约：token 决定用哪条 i18n 文案，
+ * detail 是后端给的技术细节（英文诊断/错误码），不含用户可见文案。
+ */
+export const LAUNCH_TOKEN_KEYS: Record<string, string> = {
+  not_found: "launcher.launch_err_not_found",
+  no_launcher: "launcher.launch_err_no_launcher",
+  cancelled: "launcher.launch_err_cancelled",
+  create: "launcher.launch_err_create",
+  wait_failed: "launcher.launch_err_wait",
+  fallback: "launcher.launch_fallback_body",
+  unknown: "launcher.launch_err_unknown",
+};
+
+export function splitLaunchToken(message: string): {
+  token: string;
+  detail: string;
+} {
+  const separator = message.indexOf(":");
+  if (separator < 0) return { token: "", detail: message.trim() };
+  return {
+    token: message.slice(0, separator).trim(),
+    detail: message.slice(separator + 1).trim(),
+  };
+}
+
 export interface LauncherResult {
   success: boolean;
   message: string;
   version: string | null;
+  /** 非致命提示，格式同 message（`<token>: <detail>`）。 */
+  warning?: string | null;
 }
 
 export interface PayloadState {

@@ -4,6 +4,7 @@ import {
   useLayoutEffect,
   useRef,
   useCallback,
+  type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
@@ -16,6 +17,7 @@ import {
   type GameChannel,
   type GameStatus,
   type ActiveOperation,
+  type DownloadProgress,
   type FileScanResult,
   type DiskSpace,
   ALL_CHANNELS,
@@ -40,6 +42,8 @@ import {
   onSwitchProgress,
   formatBytes,
   CHANNEL_LABELS,
+  LAUNCH_TOKEN_KEYS,
+  splitLaunchToken,
 } from "@/utils/launcherService";
 import { addMessage } from "@/utils/messageStore";
 import { GameLaunchSettingsModal } from "@/components/game-launch-settings";
@@ -48,6 +52,200 @@ const STORAGE_KEY_INSTALL_PATH = "launcher_install_path";
 const STORAGE_KEY_CHANNEL = "launcher_channel";
 const STORAGE_KEY_SKIP_STOP_CONFIRM = "launcher_skip_stop_confirm";
 const STORAGE_KEY_CANCEL_BEHAVIOR = "launcher_cancel_behavior"; // "ask" | "keep" | "delete"
+
+/** 游戏操作面板统一按钮风格（与预下载按钮一致） */
+const PILL_BASE =
+  "inline-flex items-center h-11 rounded-full whitespace-nowrap backdrop-blur-md border border-transparent bg-black/10 dark:bg-white/10 shadow-lg transition-all duration-200 shrink-0";
+const PILL_INTERACTIVE =
+  "cursor-pointer hover:bg-black/15 dark:hover:bg-white/15 hover:text-foreground disabled:opacity-50 disabled:cursor-not-allowed";
+const PILL_TEXT = "text-xs font-medium text-foreground/80";
+
+/** 剩余时间秒数 → `m:ss` / `h:mm:ss` */
+function formatEta(seconds: number): string {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = seconds % 60;
+  return h > 0
+    ? `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`
+    : `${m}:${String(s).padStart(2, "0")}`;
+}
+
+/** 环绕按钮描边显示下载进度，从按钮正上方开始顺时针绘制 */
+function ButtonProgressRing({ progress }: { progress: number }) {
+  const percent = Math.max(0, Math.min(100, progress));
+
+  return (
+    <svg
+      aria-hidden="true"
+      className="absolute inset-0 z-20 h-full w-full pointer-events-none text-primary"
+      viewBox="0 0 100 100"
+      preserveAspectRatio="none"
+    >
+      <ellipse
+        cx="50"
+        cy="50"
+        rx="48"
+        ry="48"
+        fill="none"
+        stroke="currentColor"
+        strokeOpacity="0.2"
+        strokeWidth="2"
+        vectorEffect="non-scaling-stroke"
+      />
+      <ellipse
+        cx="50"
+        cy="50"
+        rx="48"
+        ry="48"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeWidth="2"
+        pathLength="100"
+        strokeDasharray="100"
+        strokeDashoffset={100 - percent}
+        transform="rotate(-90 50 50)"
+        className="transition-[stroke-dashoffset] duration-300"
+        vectorEffect="non-scaling-stroke"
+      />
+    </svg>
+  );
+}
+
+/** 进度浮层外壳（固定 portal，安装/校验/预下载共用同一外观） */
+function ProgressFlyout({
+  pos,
+  children,
+}: {
+  pos: { x: number; y: number };
+  children: ReactNode;
+}) {
+  return createPortal(
+    <div
+      className="fixed z-[200] w-64 rounded-xl glass-surface-strong border border-separator/70 shadow-2xl px-4 py-3 pointer-events-none"
+      style={{
+        left: pos.x,
+        top: pos.y,
+        transform: pos.y < 200 ? "translate(-50%, 0)" : "translate(-50%, -100%)",
+        animation: "switch-flyin 0.15s ease-out",
+      }}
+    >
+      {children}
+    </div>,
+    document.body,
+  );
+}
+
+/** 进度浮层里的下载型内容：已下载/总量 + 进度条 + 速度/剩余时间 + 当前文件 */
+function DownloadProgressBody({
+  downloaded,
+  total,
+  speed,
+  currentFile,
+  calculatingLabel,
+}: {
+  downloaded: number;
+  total: number;
+  speed: number;
+  currentFile?: string | null;
+  calculatingLabel: string;
+}) {
+  return (
+    <>
+      <div className="flex items-center justify-between text-xs text-white/50 mb-1.5">
+        <span>{formatBytes(downloaded)}</span>
+        <span>{formatBytes(total)}</span>
+      </div>
+      <div className="w-full h-1.5 rounded-full bg-white/10 mb-2 overflow-hidden">
+        <div
+          className="h-full rounded-full bg-primary transition-all duration-300"
+          style={{ width: `${total > 0 ? (downloaded / total) * 100 : 0}%` }}
+        />
+      </div>
+      <div className="flex items-center justify-between text-[10px] text-white/40">
+        <span>{speed > 0 ? `${formatBytes(Math.round(speed))}/s` : "—"}</span>
+        <span>
+          {total > downloaded
+            ? speed > 0
+              ? formatEta(Math.round((total - downloaded) / speed))
+              : calculatingLabel
+            : ""}
+        </span>
+      </div>
+      {currentFile && (
+        <div className="mt-1.5 text-[10px] text-white/30 truncate" title={currentFile}>
+          {currentFile.split("/").pop()}
+        </div>
+      )}
+    </>
+  );
+}
+
+/** 磁盘占用三色条（已用 / 需要下载 / 下载后剩余），安装确认与预下载确认共用 */
+function DiskSpaceBar({
+  diskSpace,
+  needBytes,
+  labels,
+}: {
+  diskSpace: DiskSpace;
+  needBytes: number;
+  labels: { used: string; need: string; free: string };
+}) {
+  const diskUsed = diskSpace.total - diskSpace.free;
+  const freeAfter = diskSpace.free - needBytes;
+  const totalSpace = diskSpace.total;
+  const usedPct = totalSpace > 0 ? (diskUsed / totalSpace) * 100 : 0;
+  const needPct = totalSpace > 0 ? (needBytes / totalSpace) * 100 : 0;
+  const freePct = totalSpace > 0 ? (freeAfter / totalSpace) * 100 : 0;
+  const insufficient = freeAfter < 0;
+
+  return (
+    <div className="space-y-2">
+      <div className="w-full h-3 rounded-full bg-white/5 overflow-hidden flex">
+        {usedPct > 0 && (
+          <div
+            className="h-full bg-blue-400/70 transition-all duration-300"
+            style={{ width: `${Math.min(usedPct, 100)}%` }}
+          />
+        )}
+        {needPct > 0 && (
+          <div
+            className={`h-full transition-all duration-300 ${insufficient ? "bg-red-400/70" : "bg-emerald-400/70"}`}
+            style={{ width: `${Math.min(needPct, 100 - usedPct)}%` }}
+          />
+        )}
+        {freePct > 0 && (
+          <div
+            className="h-full bg-white/10 transition-all duration-300"
+            style={{ width: `${Math.min(freePct, 100 - usedPct - needPct)}%` }}
+          />
+        )}
+      </div>
+      <div className="flex items-center gap-4 text-[11px] text-muted">
+        <div className="flex items-center gap-1.5">
+          <div className="w-2 h-2 rounded-sm bg-blue-400/70" />
+          <span>
+            {labels.used}: {formatBytes(diskUsed)}
+          </span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <div
+            className={`w-2 h-2 rounded-sm ${insufficient ? "bg-red-400/70" : "bg-emerald-400/70"}`}
+          />
+          <span>
+            {labels.need}: {formatBytes(needBytes)}
+          </span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <div className="w-2 h-2 rounded-sm bg-white/10" />
+          <span>
+            {labels.free}: {formatBytes(freeAfter > 0 ? freeAfter : 0)}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export function GameActionPanel() {
   const { t, i18n } = useTranslation();
@@ -83,7 +281,19 @@ export function GameActionPanel() {
   const [btnHovered, setBtnHovered] = useState(false);
   const [btnLabelKey, setBtnLabelKey] = useState(0);
   const prevBtnLabelRef = useRef<string>("");
+  /** 预下载进行中的进度（仅驱动预下载按钮，不占用主按钮） */
+  const [preloadProgress, setPreloadProgress] = useState<DownloadProgress | null>(
+    null,
+  );
   const [preloadHovered, setPreloadHovered] = useState(false);
+  const [preloadFlyoutPos, setPreloadFlyoutPos] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
+  const [preloadConfirmOpen, setPreloadConfirmOpen] = useState(false);
+  const [preloadDiskSpace, setPreloadDiskSpace] = useState<DiskSpace | null>(
+    null,
+  );
   const [downloadSpeed, setDownloadSpeed] = useState(0);
   const [channelSelectOpen, setChannelSelectOpen] = useState(false);
   const [pendingInstallPath, setPendingInstallPath] = useState<string | null>(
@@ -99,6 +309,7 @@ export function GameActionPanel() {
   const [verifySpeed, setVerifySpeed] = useState(0);
   const flyoutRef = useRef<HTMLDivElement>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
+  const preloadBtnRef = useRef<HTMLButtonElement>(null);
   const hamburgerRef = useRef<HTMLButtonElement>(null);
   const [progressFlyoutPos, setProgressFlyoutPos] = useState<{
     x: number;
@@ -274,6 +485,22 @@ export function GameActionPanel() {
   // Listen for progress events — update localActiveOp for real-time UI + calculate speed
   useEffect(() => {
     const unlisten = onLauncherProgress((p) => {
+      // 预下载进度单独处理：只更新预下载按钮，不写入 localActiveOp（避免占用主按钮/进度浮层）
+      if (p.stage === "preloading") {
+        if (!cancellingRef.current) setPreloadProgress(p);
+        // 预下载同样统计速度，供悬停浮层显示
+        const now = Date.now();
+        const ref = speedRef.current;
+        const dt = (now - ref.lastTime) / 1000;
+        if (dt > 0.3 && p.downloaded >= ref.lastBytes) {
+          setDownloadSpeed((p.downloaded - ref.lastBytes) / dt);
+          ref.lastBytes = p.downloaded;
+          ref.lastTime = now;
+        }
+        return;
+      }
+      // 收到任何非预下载进度都表示预下载阶段已结束（后端操作串行，二者不会并发）
+      setPreloadProgress(null);
       if (cancellingRef.current) return;
 
       // Update localActiveOp so UI renders immediately
@@ -614,11 +841,39 @@ export function GameActionPanel() {
     }
 
     try {
-      await startGame(installPath, channel);
-    } catch {
-      // error handled by result
+      const result = await startGame(installPath, channel);
+      if (!result.success) {
+        // 后端 message 是 `<token>: <detail>`：token 选文案，detail 是技术细节。
+        const { token, detail } = splitLaunchToken(result.message);
+        addMessage({
+          type: "urgent",
+          title: t("launcher.launch_failed_title"),
+          body: t(LAUNCH_TOKEN_KEYS[token] ?? "launcher.launch_err_unknown", {
+            detail,
+          }),
+          tag: "launch-error",
+        });
+      } else if (result.warning) {
+        // 例如：没找到签名有效的官方启动器，已回退到直接启动。
+        const { token, detail } = splitLaunchToken(result.warning);
+        addMessage({
+          type: "warn",
+          title: t("launcher.launch_fallback_title"),
+          body: t(LAUNCH_TOKEN_KEYS[token] ?? "launcher.launch_fallback_body", {
+            detail,
+          }),
+          tag: "launch-warning",
+        });
+      }
+    } catch (err) {
+      addMessage({
+        type: "urgent",
+        title: t("launcher.launch_failed_title"),
+        body: t("launcher.launch_err_unknown", { detail: String(err) }),
+        tag: "launch-error",
+      });
     }
-  }, [installPath, channel]);
+  }, [installPath, channel, t]);
 
   const handleUpdate = useCallback(async () => {
     if (!installPath) return;
@@ -723,16 +978,69 @@ export function GameActionPanel() {
     refreshStatus();
   }, [installPath, refreshStatus]);
 
+  // 预下载体积（提前声明：handlePreload 的依赖数组需要在渲染期就能取到）
+  const preloadTotalBytes = gameStatus?.preload_total_bytes ?? 0;
+
   const handlePreload = useCallback(async () => {
     if (!installPath) return;
     cancellingRef.current = false;
     await resetDownloadCancel();
+    setPreloadProgress({
+      downloaded: 0,
+      total: preloadTotalBytes,
+      stage: "preloading",
+      current_file: null,
+      file_index: 0,
+      file_count: 0,
+      verified_bytes: 0,
+    });
     try {
       await preloadDownload(channel, installPath);
     } catch {
       // error handled by progress
+    } finally {
+      cancellingRef.current = false;
+      setPreloadProgress(null);
+      refreshStatus();
     }
-  }, [channel, installPath]);
+  }, [channel, installPath, preloadTotalBytes, refreshStatus]);
+
+  // 取消预下载（点预下载按钮触发）：只停预下载，不影响主按钮状态
+  const handlePreloadCancel = useCallback(async () => {
+    cancellingRef.current = true;
+    setDownloadSpeed(0);
+    // 沿用「取消下载行为」设置：keep 保留已下载分卷（下次可续传），其余情况连暂存一起删
+    const behavior = localStorage.getItem(STORAGE_KEY_CANCEL_BEHAVIOR) || "ask";
+    await cancelDownload(behavior === "keep" ? undefined : installPath);
+    refreshStatus();
+  }, [installPath, refreshStatus]);
+
+  // 点预下载按钮：先弹确认框提示将占用的磁盘空间（与安装确认一致）
+  const handlePreloadClick = useCallback(async () => {
+    if (!installPath) return;
+    setPreloadConfirmOpen(true);
+    setPreloadDiskSpace(null);
+    try {
+      setPreloadDiskSpace(await getDiskSpace(installPath));
+    } catch {
+      setPreloadDiskSpace(null);
+    }
+  }, [installPath]);
+
+  // 预下载进度浮层：与主按钮浮层同一套外观/定位逻辑
+  const updatePreloadFlyoutPos = useCallback(() => {
+    if (!preloadBtnRef.current) return;
+    const r = preloadBtnRef.current.getBoundingClientRect();
+    const fw = 256;
+    const fh = 140;
+    let x = r.left + r.width / 2;
+    let y = r.top - 8;
+    if (x - fw / 2 < 8) x = fw / 2 + 8;
+    if (x + fw / 2 > window.innerWidth - 8)
+      x = window.innerWidth - fw / 2 - 8;
+    if (y - fh < 8) y = r.bottom + 8;
+    setPreloadFlyoutPos({ x, y });
+  }, []);
 
   const handleKill = useCallback(async () => {
     await killGame(channel);
@@ -743,6 +1051,18 @@ export function GameActionPanel() {
   const hasUpdate = gameStatus?.has_update ?? false;
   const hasPreload = gameStatus?.has_preload ?? false;
   const preloadCompleted = gameStatus?.preload_completed ?? false;
+  const preloading = preloadProgress !== null;
+  const preloadPercent =
+    preloadProgress && preloadProgress.total > 0
+      ? Math.min(
+          100,
+          Math.floor((preloadProgress.downloaded / preloadProgress.total) * 100),
+        )
+      : 0;
+  const downloadPercent =
+    progress && progress.total > 0
+      ? Math.min(100, (progress.downloaded / progress.total) * 100)
+      : 0;
   const isDownloading = progress?.stage === "downloading";
   const isVerifying = progress?.stage === "verifying";
   const isChecking = progress?.stage === "checking";
@@ -758,6 +1078,8 @@ export function GameActionPanel() {
     isComparing ||
     isRepairing ||
     switching;
+  /** 是否有后端操作正在占用下载/校验通道（预下载期间禁止再发起安装/校验/切服） */
+  const busyWithDownload = isActionRunning || preloading;
 
   // Recalculate progress flyout position when button content changes (label width shift)
   useLayoutEffect(() => {
@@ -772,6 +1094,12 @@ export function GameActionPanel() {
     if (y - fh < 8) y = r.bottom + 8;
     setProgressFlyoutPos({ x, y });
   }, [btnHovered]);
+
+  // 预下载按钮悬停时同样重算浮层位置（「预下载中 N%」↔「取消预下载」宽度不同）
+  useLayoutEffect(() => {
+    if (!preloadHovered || !preloadBtnRef.current) return;
+    updatePreloadFlyoutPos();
+  }, [preloadHovered, preloadProgress, updatePreloadFlyoutPos]);
 
   // Adjust menu flyout position after render to place it above the hamburger
   useLayoutEffect(() => {
@@ -1087,14 +1415,14 @@ export function GameActionPanel() {
 
   return (
     <>
-      <div className="relative inline-flex items-center gap-2" ref={flyoutRef}>
-        {/* Detected channel badge */}
-        {installPath && isInstalled && detectedChannel && (
+      {/* 服务器/渠道指示 —— 右上角（点击可切换渠道） */}
+      {installPath && isInstalled && detectedChannel && (
+        <div className="absolute right-4 top-4 z-20 lg:right-8 lg:top-8">
           <button
             type="button"
             onClick={() => setSwitchOpen(true)}
-            disabled={switching}
-            className="glass-control-surface h-11 px-4 rounded-full border border-separator/70 shadow-lg flex items-center gap-1.5 text-sm text-foreground/80 shrink-0 cursor-pointer hover:brightness-105 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            disabled={switching || busyWithDownload}
+            className={`${PILL_BASE} ${PILL_INTERACTIVE} ${PILL_TEXT} gap-1.5 px-4`}
           >
             <div
               className={`w-1.5 h-1.5 rounded-full ${switching ? "bg-yellow-400/60 animate-pulse" : "bg-emerald-400/80"}`}
@@ -1105,31 +1433,106 @@ export function GameActionPanel() {
                 : CHANNEL_LABELS[detectedChannel][lang]}
             </span>
           </button>
-        )}
+        </div>
+      )}
 
-        {/* Detecting channel indicator */}
-        {installPath && detecting && !detectedChannel && (
-          <div className="h-11 px-4 rounded-full backdrop-blur-md border border-white/10 flex items-center gap-1.5 text-sm text-white/50 shrink-0">
+      {/* 识别渠道中的指示（同一位置，未识别出渠道时显示） */}
+      {installPath && detecting && !detectedChannel && (
+        <div className="absolute right-4 top-4 z-20 lg:right-8 lg:top-8">
+          <div
+            className={`${PILL_BASE} ${PILL_TEXT} gap-1.5 px-4 text-foreground/60`}
+          >
             <div className="w-1.5 h-1.5 rounded-full bg-yellow-400/60 animate-pulse" />
             <span>{t("launcher.detecting_channel")}</span>
           </div>
+        </div>
+      )}
+
+      <div className="relative inline-flex items-center gap-2" ref={flyoutRef}>
+        {/* Preload button：未开始 → 预下载；进行中 → 预下载中（点击取消）；完成后 → 已预下载 */}
+        {hasPreload && isInstalled && preloading && (
+          <button
+            ref={preloadBtnRef}
+            type="button"
+            onClick={handlePreloadCancel}
+            onMouseEnter={() => {
+              setPreloadHovered(true);
+              updatePreloadFlyoutPos();
+            }}
+            onMouseLeave={() => {
+              setPreloadHovered(false);
+              setPreloadFlyoutPos(null);
+            }}
+            className={`${PILL_BASE} ${PILL_INTERACTIVE} ${PILL_TEXT} relative overflow-hidden px-4 gap-2`}
+            title={
+              preloadProgress && preloadProgress.total > 0
+                ? `${t("launcher.preload_cancel")} · ${formatBytes(preloadProgress.downloaded)} / ${formatBytes(preloadProgress.total)}`
+                : t("launcher.preload_cancel")
+            }
+          >
+            <div
+              className={`absolute inset-0 z-0 rounded-full bg-rose-400/20 transition-opacity duration-300 pointer-events-none ${
+                preloadHovered ? "opacity-100" : "opacity-0"
+              }`}
+            />
+            <svg
+              className="relative z-10 w-4 h-4 animate-pulse"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10"
+              />
+            </svg>
+            <span className="relative z-10 whitespace-nowrap">
+              {preloadHovered
+                ? t("launcher.preload_cancel")
+                : `${t("launcher.preloading")} ${preloadPercent}%`}
+            </span>
+            <ButtonProgressRing progress={preloadPercent} />
+          </button>
         )}
 
-        {/* Preload button */}
-        {hasUpdate && hasPreload && !preloadCompleted && isInstalled && (
+        {/* 预下载进度浮层：与安装/校验同一个 flyout 外观 */}
+        {preloadHovered &&
+          preloading &&
+          preloadProgress &&
+          preloadFlyoutPos &&
+          !confirmAction &&
+          !preloadConfirmOpen && (
+            <ProgressFlyout pos={preloadFlyoutPos}>
+              <div className="flex items-center justify-between text-xs text-white/60 mb-1.5">
+                <span>{t("launcher.preloading")}</span>
+                <span>{preloadPercent}%</span>
+              </div>
+              <DownloadProgressBody
+                downloaded={preloadProgress.downloaded}
+                total={preloadProgress.total}
+                speed={downloadSpeed}
+                currentFile={null}
+                calculatingLabel={t("launcher.calculating")}
+              />
+              <div className="mt-2 text-[10px] text-white/40 text-center">
+                {t("launcher.preload_cancel")}
+              </div>
+            </ProgressFlyout>
+          )}
+
+        {hasPreload && isInstalled && !preloading && !preloadCompleted && (
           <button
             type="button"
-            onClick={handlePreload}
-            onMouseEnter={() => setPreloadHovered(true)}
-            onMouseLeave={() => setPreloadHovered(false)}
+            onClick={handlePreloadClick}
             disabled={isActionRunning}
-            className="h-11 px-4 rounded-full text-xs font-medium text-foreground/80
-              backdrop-blur-md border border-transparent bg-black/10 dark:bg-white/10 shadow-lg
-              hover:bg-black/15 dark:hover:bg-white/15 hover:text-foreground
-              disabled:opacity-50 disabled:cursor-not-allowed
-              transition-all duration-200 cursor-pointer
-              flex items-center gap-2"
-            title={t("launcher.preload_tooltip")}
+            className={`${PILL_BASE} ${PILL_INTERACTIVE} ${PILL_TEXT} px-4 gap-2`}
+            title={
+              preloadTotalBytes > 0
+                ? `${t("launcher.preload_tooltip")} · ${formatBytes(preloadTotalBytes)}`
+                : t("launcher.preload_tooltip")
+            }
           >
             <svg
               className="w-4 h-4"
@@ -1149,8 +1552,8 @@ export function GameActionPanel() {
         )}
 
         {/* Preload completed indicator */}
-        {hasUpdate && hasPreload && preloadCompleted && isInstalled && (
-          <div className="h-11 px-3 rounded-full flex items-center gap-1.5 text-xs text-emerald-400/80">
+        {hasPreload && preloadCompleted && isInstalled && !preloading && (
+          <div className={`${PILL_BASE} ${PILL_TEXT} gap-1.5 px-3 text-emerald-400/80`}>
             <svg
               className="w-4 h-4"
               fill="none"
@@ -1193,21 +1596,16 @@ export function GameActionPanel() {
             setBtnHovered(false);
             setProgressFlyoutPos(null);
           }}
-          disabled={!statusReady}
-          className={`glass-control-surface relative h-11 min-w-[120px] px-5 rounded-full text-sm font-semibold text-foreground overflow-hidden
-            border border-separator/70
-            shadow-lg active:scale-95
-            disabled:opacity-50 disabled:cursor-not-allowed
-            transition-all duration-300 cursor-pointer hover:brightness-105
-            inline-flex items-center justify-center gap-2.5 ${
+          disabled={!statusReady || (preloading && hasUpdate)}
+          className={`${PILL_BASE} ${PILL_INTERACTIVE} relative min-w-[120px] px-5 gap-2.5 text-sm font-semibold text-foreground overflow-hidden active:scale-95 justify-center ${
               gameRunning || switching
                 ? "border-danger/60 text-danger"
                 : ""
             }`}
         >
-          {/* Red warning overlay */}
+          {/* Cancellation / stop warning overlay */}
           <div
-            className={`absolute inset-0 bg-red-500/40 transition-opacity duration-300 pointer-events-none ${
+            className={`absolute inset-0 z-0 rounded-full bg-rose-400/20 transition-opacity duration-300 pointer-events-none ${
               (gameRunning ||
                 switching ||
                 preparing ||
@@ -1221,6 +1619,7 @@ export function GameActionPanel() {
                 : "opacity-0"
             }`}
           />
+          {isDownloading && <ButtonProgressRing progress={downloadPercent} />}
           {getButtonIcon()}
           <span
             key={btnLabelKey}
@@ -1243,20 +1642,8 @@ export function GameActionPanel() {
             isRepairing) &&
           progressFlyoutPos &&
           !confirmAction &&
-          createPortal(
-            <div
-              key="progress-flyout"
-              className="fixed z-[200] w-64 rounded-xl glass-surface-strong border border-separator/70 shadow-2xl px-4 py-3 pointer-events-none"
-              style={{
-                left: progressFlyoutPos.x,
-                top: progressFlyoutPos.y,
-                transform:
-                  progressFlyoutPos.y < 200
-                    ? "translate(-50%, 0)"
-                    : "translate(-50%, -100%)",
-                animation: "switch-flyin 0.15s ease-out",
-              }}
-            >
+          (
+            <ProgressFlyout pos={progressFlyoutPos}>
               {preparing && !progress && (
                 <div className="flex items-center gap-2 text-xs text-white/50">
                   <svg
@@ -1528,8 +1915,7 @@ export function GameActionPanel() {
                   )}
                 </>
               )}
-            </div>,
-            document.body,
+            </ProgressFlyout>
           )}
 
         <button
@@ -1554,10 +1940,7 @@ export function GameActionPanel() {
               setMenuFlyoutPos(null);
             }
           }}
-          className="glass-control-surface w-11 h-11 rounded-full flex items-center justify-center
-            border border-separator/70 shadow-lg
-            text-foreground/70 hover:brightness-105
-            transition-all duration-200 cursor-pointer"
+          className={`${PILL_BASE} ${PILL_INTERACTIVE} ${PILL_TEXT} w-11 justify-center`}
         >
           <svg
             className="w-4 h-4"
@@ -1570,42 +1953,6 @@ export function GameActionPanel() {
               strokeLinejoin="round"
               strokeWidth={2}
               d="M4 6h16M4 12h16M4 18h16"
-            />
-          </svg>
-        </button>
-
-        {/* Launch settings — always rightmost */}
-        <button
-          type="button"
-          onClick={() => {
-            setFlyoutOpen(false);
-            setMenuFlyoutPos(null);
-            setLaunchSettingsOpen(true);
-          }}
-          title={t("settings.game_launch.title")}
-          aria-label={t("settings.game_launch.title")}
-          className="glass-control-surface w-11 h-11 rounded-full flex items-center justify-center
-            border border-separator/70 shadow-lg
-            text-foreground/70 hover:brightness-105 hover:text-foreground
-            transition-all duration-200 cursor-pointer"
-        >
-          <svg
-            className="w-4 h-4"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
-            />
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
             />
           </svg>
         </button>
@@ -1658,10 +2005,35 @@ export function GameActionPanel() {
                 onClick={() => {
                   setFlyoutOpen(false);
                   setMenuFlyoutPos(null);
+                  setLaunchSettingsOpen(true);
+                }}
+                className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-foreground/80 hover:bg-white/10 hover:text-foreground transition-colors cursor-pointer"
+              >
+                <svg
+                  className="w-4 h-4 text-foreground/50"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M10.5 6h9.75M10.5 6a1.5 1.5 0 11-3 0m3 0a1.5 1.5 0 10-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-9.75 0h9.75"
+                  />
+                </svg>
+                {t("launcher.launch_settings")}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setFlyoutOpen(false);
+                  setMenuFlyoutPos(null);
                   setConfirmAction("verify-confirm");
                   setConfirmCheckbox(false);
                 }}
-                disabled={isActionRunning}
+                disabled={busyWithDownload}
                 className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-foreground/80 hover:bg-white/10 hover:text-foreground transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <svg
@@ -1687,7 +2059,7 @@ export function GameActionPanel() {
                   setMenuFlyoutPos(null);
                   handleQuickVerify();
                 }}
-                disabled={isActionRunning}
+                disabled={busyWithDownload}
                 className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-foreground/80 hover:bg-white/10 hover:text-foreground transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <svg
@@ -1714,7 +2086,9 @@ export function GameActionPanel() {
                   setConfirmAction("delete-temp");
                   setConfirmCheckbox(false);
                 }}
-                disabled={isActionRunning || !installPath || !hasTempFiles}
+                disabled={
+                  busyWithDownload || !installPath || !hasTempFiles
+                }
                 className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-foreground/80 hover:bg-white/10 hover:text-foreground transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <svg
@@ -2047,77 +2421,17 @@ export function GameActionPanel() {
                   ) : (
                     <div className="space-y-4">
                       {/* Disk space usage bar */}
-                      {diskSpace !== null &&
-                        (() => {
-                          const downloadBytes = scanResult.download_bytes;
-                          const diskUsed = diskSpace.total - diskSpace.free;
-                          const freeAfter = diskSpace.free - downloadBytes;
-                          const totalSpace = diskSpace.total;
-                          const usedPct =
-                            totalSpace > 0 ? (diskUsed / totalSpace) * 100 : 0;
-                          const downloadPct =
-                            totalSpace > 0
-                              ? (downloadBytes / totalSpace) * 100
-                              : 0;
-                          const freePct =
-                            totalSpace > 0 ? (freeAfter / totalSpace) * 100 : 0;
-                          const insufficient = freeAfter < 0;
-                          return (
-                            <div className="space-y-2">
-                              <div className="w-full h-3 rounded-full bg-white/5 overflow-hidden flex">
-                                {usedPct > 0 && (
-                                  <div
-                                    className="h-full bg-blue-400/70 transition-all duration-300"
-                                    style={{
-                                      width: `${Math.min(usedPct, 100)}%`,
-                                    }}
-                                  />
-                                )}
-                                {downloadPct > 0 && (
-                                  <div
-                                    className={`h-full transition-all duration-300 ${insufficient ? "bg-red-400/70" : "bg-emerald-400/70"}`}
-                                    style={{
-                                      width: `${Math.min(downloadPct, 100 - usedPct)}%`,
-                                    }}
-                                  />
-                                )}
-                                {freePct > 0 && (
-                                  <div
-                                    className="h-full bg-white/10 transition-all duration-300"
-                                    style={{
-                                      width: `${Math.min(freePct, 100 - usedPct - downloadPct)}%`,
-                                    }}
-                                  />
-                                )}
-                              </div>
-                              <div className="flex items-center gap-4 text-[11px] text-muted">
-                                <div className="flex items-center gap-1.5">
-                                  <div className="w-2 h-2 rounded-sm bg-blue-400/70" />
-                                  <span>
-                                    {t("launcher.disk_used")}:{" "}
-                                    {formatBytes(diskUsed)}
-                                  </span>
-                                </div>
-                                <div className="flex items-center gap-1.5">
-                                  <div
-                                    className={`w-2 h-2 rounded-sm ${insufficient ? "bg-red-400/70" : "bg-emerald-400/70"}`}
-                                  />
-                                  <span>
-                                    {t("launcher.need_download")}:{" "}
-                                    {formatBytes(downloadBytes)}
-                                  </span>
-                                </div>
-                                <div className="flex items-center gap-1.5">
-                                  <div className="w-2 h-2 rounded-sm bg-white/10" />
-                                  <span>
-                                    {t("launcher.disk_free_space")}:{" "}
-                                    {formatBytes(freeAfter > 0 ? freeAfter : 0)}
-                                  </span>
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        })()}
+                      {diskSpace !== null && (
+                        <DiskSpaceBar
+                          diskSpace={diskSpace}
+                          needBytes={scanResult.download_bytes}
+                          labels={{
+                            used: t("launcher.disk_used"),
+                            need: t("launcher.need_download"),
+                            free: t("launcher.disk_free_space"),
+                          }}
+                        />
+                      )}
                       {diskSpace === null && (
                         <div className="flex items-center justify-between text-sm">
                           <span className="text-muted">
@@ -2179,6 +2493,100 @@ export function GameActionPanel() {
                     {scanResult.download_bytes === 0
                       ? t("launcher.start_game")
                       : t("launcher.confirm_install_btn")}
+                  </GlassButton>
+                </GlassAlertDialog.Footer>
+              </GlassAlertDialog.Dialog>
+            </GlassAlertDialog.Container>
+          </GlassAlertDialog.Backdrop>
+        </GlassAlertDialog>
+      )}
+
+      {/* Preload confirm dialog — 提示将占用的磁盘空间（与安装确认同款三色条） */}
+      {preloadConfirmOpen && (
+        <GlassAlertDialog
+          isOpen
+          onOpenChange={(o) => {
+            if (!o) {
+              setPreloadConfirmOpen(false);
+              setPreloadDiskSpace(null);
+            }
+          }}
+        >
+          <GlassAlertDialog.Backdrop className="z-[300]">
+            <GlassAlertDialog.Container>
+              <GlassAlertDialog.Dialog className="sm:max-w-[400px]">
+                <GlassAlertDialog.CloseTrigger />
+                <GlassAlertDialog.Header>
+                  <GlassAlertDialog.Icon
+                    status={
+                      preloadDiskSpace !== null &&
+                      preloadDiskSpace.free < preloadTotalBytes
+                        ? "danger"
+                        : "info"
+                    }
+                  />
+                  <GlassAlertDialog.Heading>
+                    {t("launcher.preload_confirm_title")}
+                  </GlassAlertDialog.Heading>
+                </GlassAlertDialog.Header>
+                <GlassAlertDialog.Body>
+                  <div className="space-y-4">
+                    <p className="text-sm text-muted">
+                      {t("launcher.preload_confirm_desc", {
+                        size: formatBytes(preloadTotalBytes),
+                      })}
+                    </p>
+                    {preloadDiskSpace !== null ? (
+                      <DiskSpaceBar
+                        diskSpace={preloadDiskSpace}
+                        needBytes={preloadTotalBytes}
+                        labels={{
+                          used: t("launcher.disk_used"),
+                          need: t("launcher.need_download"),
+                          free: t("launcher.disk_free_space"),
+                        }}
+                      />
+                    ) : (
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-muted">
+                          {t("launcher.need_download")}
+                        </span>
+                        <span className="font-medium text-foreground">
+                          {formatBytes(preloadTotalBytes)}
+                        </span>
+                      </div>
+                    )}
+                    {preloadDiskSpace !== null &&
+                      preloadDiskSpace.free < preloadTotalBytes && (
+                        <p className="text-xs text-red-400">
+                          {t("launcher.disk_space_insufficient")}
+                        </p>
+                      )}
+                  </div>
+                </GlassAlertDialog.Body>
+                <GlassAlertDialog.Footer>
+                  <GlassButton
+                    variant="tertiary"
+                    onPress={() => {
+                      setPreloadConfirmOpen(false);
+                      setPreloadDiskSpace(null);
+                    }}
+                  >
+                    {t("launcher.cancel")}
+                  </GlassButton>
+                  <GlassButton
+                    variant="primary"
+                    disabled={
+                      preloadDiskSpace !== null &&
+                      preloadDiskSpace.free < preloadTotalBytes
+                    }
+                    onPress={() => {
+                      setPreloadConfirmOpen(false);
+                      setPreloadDiskSpace(null);
+                      handlePreload();
+                    }}
+                  >
+                    {t("launcher.confirm_preload_btn")}
                   </GlassButton>
                 </GlassAlertDialog.Footer>
               </GlassAlertDialog.Dialog>

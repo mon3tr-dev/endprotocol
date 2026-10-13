@@ -18,7 +18,7 @@
 ---
 
 ## `src-tauri/src/lib.rs`
-**职责**：应用核心装配点。声明后端模块树、初始化日志、构建 `tauri::Builder`（注册 4 个插件 + 100 个命令），并在 `.setup()` 中按依赖顺序创建并 `.manage()` 全部服务、启动自动刷新定时器、挂载托盘与窗口关闭行为。
+**职责**：应用核心装配点。声明后端模块树、初始化日志、构建 `tauri::Builder`（注册 4 个插件 + 100 个命令），并在 `.setup()` 中按依赖顺序创建并 `.manage()` 全部服务、启动自动刷新定时器、挂载托盘与窗口关闭行为。另外在 `run()` 最前面截获「提权启动 helper」模式（`--endfield-launch-helper`），该模式下不初始化任何 UI/日志，跑完游戏启动流程后以游戏退出码退出。
 **导出**：`pub fn run()`（唯一公开项）；其余为私有模块声明。
 **主要依赖**：`commands`、`models`、`services`、`tray`、`utils` 模块；`services::{account_service, avatar_cache_service, config_service, gacha_service, game_launcher_service, network_service, skland_service}`；`tauri`、`tokio::sync::Mutex`、`std::sync::Arc`。
 
@@ -33,11 +33,12 @@
 | 行号区间 | 内容 |
 | --- | --- |
 | lib.rs:19 | `#[cfg_attr(mobile, tauri::mobile_entry_point)]` 属性 |
-| lib.rs:21-27 | 日志初始化：`utils::logger::init_logger()`（失败仅 `eprintln`，不中断）→ `utils::logger::init_tracing_subscriber()`（tracing 桥接到自定义 Logger；实现见 utils/logger.rs:218 与 :311） |
-| lib.rs:29-33 | `tauri::Builder::default()` + 4 个插件：`tauri_plugin_updater`、`tauri_plugin_process`、`tauri_plugin_opener`、`tauri_plugin_fs` |
-| lib.rs:34-150 | `.invoke_handler(tauri::generate_handler![...])` — 100 个命令（完整清单见下） |
-| lib.rs:149-249 | `.setup(|app| {...})` — 服务初始化与窗口事件（步骤见下） |
-| lib.rs:250-251 | `.run(tauri::generate_context!())` + `.expect(...)` |
+| lib.rs:22-29 | **提权启动 helper 截获**：`utils::official_launcher::try_run_helper()` 命中 `--endfield-launch-helper` 时以游戏退出码 `std::process::exit`，**不做** logger/Tauri 初始化（详见 utils/official_launcher.rs） |
+| lib.rs:31-37 | 日志初始化：`utils::logger::init_logger()`（失败仅 `eprintln`，不中断）→ `utils::logger::init_tracing_subscriber()`（tracing 桥接到自定义 Logger；实现见 utils/logger.rs:218 与 :311） |
+| lib.rs:39-43 | `tauri::Builder::default()` + 4 个插件：`tauri_plugin_updater`、`tauri_plugin_process`、`tauri_plugin_opener`、`tauri_plugin_fs` |
+| lib.rs:44-160 | `.invoke_handler(tauri::generate_handler![...])` — 100 个命令（完整清单见下） |
+| lib.rs:159-259 | `.setup(|app| {...})` — 服务初始化与窗口事件（步骤见下） |
+| lib.rs:260-261 | `.run(tauri::generate_context!())` + `.expect(...)` |
 
 **插件注册**（lib.rs:30-33）：
 | 插件 | 行 | 对应 capability |
@@ -173,7 +174,7 @@
 | `dependencies.rsa` | :43 | RSA 加密（登录/凭证） |
 | `dependencies.flate2` | :44 | `zlib` 后端的 gzip 压缩/解压 |
 | `dependencies.base64` / `bytes` / `http` | :45-47 | 编码与 HTTP 基础类型 |
-| `dependencies.windows-sys` | Cargo.toml | `0.61`，仅 `cfg(windows)` 目标依赖；features：`Win32_Foundation`、`Win32_Graphics_Gdi`、`Win32_UI_WindowsAndMessaging`、`Win32_System_Com`、`Win32_UI_Shell`、`Win32_System_Threading`（托盘取前台窗口、取色、进程检测）、`Win32_System_Power` / `Win32_System_Performance`（system_resource_service 采集实测 CPU 频率） |
+| `dependencies.windows-sys` | Cargo.toml | `0.61`，仅 `cfg(windows)` 目标依赖；features：`Win32_Foundation`、`Win32_Graphics_Gdi`、`Win32_UI_WindowsAndMessaging`、`Win32_System_Com`、`Win32_UI_Shell`、`Win32_System_Threading`（托盘取前台窗口、取色、进程检测）、`Win32_System_Power` / `Win32_System_Performance`（system_resource_service 采集实测 CPU 频率）；**免启动器启动**额外需要：`Win32_Security`（`CreateProcessW` 的 `SECURITY_ATTRIBUTES` 参数门控）、`Win32_Security_Cryptography` + `Win32_Security_Cryptography_Catalog` + `Win32_Security_Cryptography_Sip`（`WinVerifyTrust` 数据结构与两个 `WTHelper*` 函数）、`Win32_Security_WinTrust`、`Win32_System_Registry`（Reg* 与 `SHELLEXECUTEINFOW`）、`Win32_System_Environment`、`Win32_System_Console`、`Win32_System_Diagnostics_Debug`、`Win32_Storage_FileSystem`（见 utils/official_launcher.rs） |
 | `dependencies.sysinfo` | Cargo.toml | 系统资源采集（CPU/内存/磁盘/网络/温度传感器），见 `services/system_resource_service.rs` |
 | `dependencies.uuid` / `hex` / `rand` | :49-51 | UUID v4、十六进制、随机数 |
 | `dependencies.indexmap` | :52 | 有序 map（带 `serde`） |

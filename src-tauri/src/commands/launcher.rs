@@ -6,6 +6,7 @@ use tokio::sync::Mutex;
 
 use crate::models::game::*;
 use crate::services::game_launcher_service::GameLauncherService;
+use crate::utils::official_launcher::{LaunchError, LaunchToken};
 
 /// Return the process-level bytes read counter used by Task Manager's disk rate.
 #[tauri::command]
@@ -83,6 +84,7 @@ pub async fn launcher_install_or_update(
                 success: true,
                 message: format!("Update to {} completed", version),
                 version: Some(version),
+                warning: None,
             })
         }
         Err(e) => {
@@ -91,6 +93,7 @@ pub async fn launcher_install_or_update(
                 success: false,
                 message: e,
                 version: None,
+                warning: None,
             })
         }
     }
@@ -133,11 +136,13 @@ pub async fn launcher_verify_and_repair(
             success: true,
             message: msg,
             version: None,
+            warning: None,
         }),
         Err(e) => Ok(LauncherResult {
             success: false,
             message: e,
             version: None,
+            warning: None,
         }),
     }
 }
@@ -150,7 +155,7 @@ pub async fn launcher_get_remote_version(
 ) -> Result<RemotePackage, String> {
     let ch = parse_channel(&channel)?;
     let svc = service.lock().await;
-    svc.get_latest_package(&ch).await
+    svc.get_latest_package(&ch, None).await
 }
 
 /// 预下载游戏更新资源
@@ -178,11 +183,13 @@ pub async fn launcher_preload_download(
             success: true,
             message: msg,
             version: None,
+            warning: None,
         }),
         Err(e) => Ok(LauncherResult {
             success: false,
             message: e,
             version: None,
+            warning: None,
         }),
     }
 }
@@ -288,7 +295,46 @@ pub async fn launcher_get_background_image(
     svc.get_background_image(&ch).await
 }
 
-/// 启动游戏（UseShellExecute）
+/// 组装给前端的失败消息：`<token>: <detail>`（见 utils/official_launcher.rs 的契约）。
+fn launch_message(token: LaunchToken, detail: impl Into<String>) -> String {
+    LaunchError::new(token, detail).message()
+}
+
+/// 同一时刻只允许一次启动：避免重复点击弹出两次 UAC、留下两套挂起的官方父进程。
+#[cfg(target_os = "windows")]
+static LAUNCH_IN_FLIGHT: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+/// 直接启动游戏（旧行为）：交给 shell，靠 exe 自身的 manifest 自动提权。
+/// 只在找不到签名有效的官方启动器时作为回退使用。
+#[cfg(target_os = "windows")]
+fn direct_launch(exe_path: &std::path::Path) -> Result<LauncherResult, String> {
+    let exe_name = exe_path
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    match crate::utils::official_launcher::shell_execute_game(exe_path) {
+        Ok(()) => Ok(LauncherResult {
+            success: true,
+            message: format!("{exe_name} launched"),
+            version: None,
+            warning: None,
+        }),
+        Err(detail) => Ok(LauncherResult {
+            success: false,
+            message: launch_message(LaunchToken::Create, detail),
+            version: None,
+            warning: None,
+        }),
+    }
+}
+
+/// 启动游戏。
+///
+/// 游戏会校验自己的**直接父进程**必须是签名有效的官方 `Games.exe`，因此这里优先走
+/// 「官方启动器父进程伪造」（见 `utils/official_launcher.rs`）：以提权 helper 创建一个
+/// 挂起且永不运行的官方启动器，再把它指定为游戏的父进程。找不到签名有效的官方启动器时
+/// 回退到直接启动（旧行为），并通过 `warning` 让界面提示原因。
 #[tauri::command]
 pub async fn launcher_start_game(
     install_path: String,
@@ -301,8 +347,12 @@ pub async fn launcher_start_game(
     if !exe_path.exists() {
         return Ok(LauncherResult {
             success: false,
-            message: format!("{} not found in {}", exe_name, install_path),
+            message: launch_message(
+                LaunchToken::NotFound,
+                format!("{exe_name} not found in {install_path}"),
+            ),
             version: None,
+            warning: None,
         });
     }
 
@@ -314,42 +364,80 @@ pub async fn launcher_start_game(
 
     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
 
-    // Use ShellExecuteW (UseShellExecute = true equivalent)
     #[cfg(target_os = "windows")]
     {
-        use std::ffi::OsStr;
-        use std::os::windows::ffi::OsStrExt;
+        use std::sync::atomic::Ordering;
 
-        let exe_wide: Vec<u16> = exe_path
-            .as_os_str()
-            .encode_wide()
-            .chain(std::iter::once(0))
-            .collect();
-        let dir_wide: Vec<u16> = OsStr::new(&install_path)
-            .encode_wide()
-            .chain(std::iter::once(0))
-            .collect();
+        if LAUNCH_IN_FLIGHT.swap(true, Ordering::SeqCst) {
+            return Ok(LauncherResult {
+                success: false,
+                message: launch_message(LaunchToken::Unknown, "a launch is already in progress"),
+                version: None,
+                warning: None,
+            });
+        }
 
-        unsafe {
-            let result = windows_sys::Win32::UI::Shell::ShellExecuteW(
-                std::ptr::null_mut(),
-                std::ptr::null(),
-                exe_wide.as_ptr(),
-                std::ptr::null(),
-                dir_wide.as_ptr(),
-                windows_sys::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL,
-            );
-            if result as isize > 32 {
-                Ok(LauncherResult {
-                    success: true,
-                    message: format!("{} launched", exe_name),
-                    version: None,
+        let game = exe_path.clone();
+        // 状态文件用于区分「helper 在启动阶段就失败了」与「游戏创建成功但很快退出」。
+        let status_file = crate::utils::paths::app_data_dir()
+            .ok()
+            .map(|dir| dir.join("launcher_helper_status"));
+        // 查找、WinVerifyTrust 与进程创建都是阻塞调用，不占用 tokio 工作线程。
+        let attempt = tokio::task::spawn_blocking(move || {
+            crate::utils::official_launcher::launch_via_official_parent(
+                &game,
+                None,
+                &[],
+                status_file.as_deref(),
+            )
+        })
+        .await;
+        LAUNCH_IN_FLIGHT.store(false, Ordering::SeqCst);
+
+        match attempt {
+            Err(join_error) => Ok(LauncherResult {
+                success: false,
+                message: launch_message(
+                    LaunchToken::Unknown,
+                    format!("launch task failed: {join_error}"),
+                ),
+                version: None,
+                warning: None,
+            }),
+            // 没有签名有效的官方启动器：回退到直接启动，并让界面说明为什么可能失败。
+            Ok(Err(error)) if error.token == LaunchToken::NoLauncher => {
+                tracing::warn!(
+                    "[launcher] {} — falling back to a direct launch",
+                    error.message()
+                );
+                direct_launch(&exe_path).map(|mut result| {
+                    // 用 `fallback` token 而不是原错误：前端据此显示「已直接启动」的提示，
+                    // 而不是把它当成启动失败。
+                    result.warning = Some(
+                        LaunchError::new(LaunchToken::Fallback, error.detail.clone()).message(),
+                    );
+                    result
                 })
-            } else {
+            }
+            Ok(Err(error)) => {
+                tracing::error!("[launcher] {}", error.message());
                 Ok(LauncherResult {
                     success: false,
-                    message: format!("ShellExecuteW failed with code {}", result as isize),
+                    message: error.message(),
                     version: None,
+                    warning: None,
+                })
+            }
+            Ok(Ok(elevated)) => {
+                tracing::info!(
+                    "[launcher] game created through the official launcher parent (helper pid {})",
+                    elevated.helper_pid
+                );
+                Ok(LauncherResult {
+                    success: true,
+                    message: format!("{exe_name} launched"),
+                    version: None,
+                    warning: None,
                 })
             }
         }
@@ -365,11 +453,16 @@ pub async fn launcher_start_game(
                 success: true,
                 message: format!("{} launched", exe_name),
                 version: None,
+                warning: None,
             }),
             Err(e) => Ok(LauncherResult {
                 success: false,
-                message: format!("Failed to launch {}: {}", exe_name, e),
+                message: launch_message(
+                    LaunchToken::Unknown,
+                    format!("failed to launch {exe_name}: {e}"),
+                ),
                 version: None,
+                warning: None,
             }),
         }
     }

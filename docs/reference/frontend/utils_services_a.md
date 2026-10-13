@@ -295,49 +295,49 @@
 
 ## `src/utils/launcherService.ts`
 **职责**：游戏启动器（安装/更新/校验修复/预下载/渠道切换/启动/进程控制/公告背景资源）的全部 Tauri IPC 封装 + 三个进度事件监听 + 渠道/阶段标签与字节格式化工具。
-**导出**：类型 `GameChannel`、`GameStatus`、`ActiveOperation`、`RemotePackage`、`DownloadProgress`、`BackgroundMedia`、`LauncherResult`、`PayloadState`、`BannerItem`、`AnnouncementItem`、`LauncherNoticeContent`、`FileScanResult`、`DiskSpace`；函数 `checkGameStatus`、`installOrUpdate`、`verifyAndRepair`、`getProcessReadBytes`、`getRemoteVersion`、`getPayloadState`、`cancelDownload`、`preloadDownload`、`resetDownloadCancel`、`hasDownloadCache`、`getBanners`、`getAnnouncements`、`getNoticeContent`、`getBackgroundImage`、`startGame`、`browseFolder`、`checkExecutable`、`checkGameRunning`、`killGame`、`detectChannel`、`scanInstallDir`、`getDiskSpace`、`switchChannel`、`cancelSwitch`、`cancelAll`、`onLauncherProgress`、`onProgress`、`onSwitchProgress`、`formatBytes`；常量 `CHANNEL_LABELS`、`ALL_CHANNELS`、`STAGE_LABELS`。
+**导出**：类型 `GameChannel`、`GameStatus`、`ActiveOperation`、`RemotePackage`、`DownloadProgress`、`BackgroundMedia`、`LauncherResult`、`PayloadState`、`BannerItem`、`AnnouncementItem`、`LauncherNoticeContent`、`FileScanResult`、`DiskSpace`；函数 `checkGameStatus`、`installOrUpdate`、`verifyAndRepair`、`getProcessReadBytes`、`getRemoteVersion`、`getPayloadState`、`cancelDownload`、`preloadDownload`、`resetDownloadCancel`、`hasDownloadCache`、`getBanners`、`getAnnouncements`、`getNoticeContent`、`getBackgroundImage`、`startGame`、`browseFolder`、`checkExecutable`、`checkGameRunning`、`killGame`、`detectChannel`、`scanInstallDir`、`getDiskSpace`、`switchChannel`、`cancelSwitch`、`cancelAll`、`onLauncherProgress`、`onProgress`、`onSwitchProgress`、`formatBytes`；常量 `CHANNEL_LABELS`、`ALL_CHANNELS`、`STAGE_LABELS`、`LAUNCH_TOKEN_KEYS`；函数 `splitLaunchToken`（解析 `<token>: <detail>` 契约串）。
 **主要依赖**：`@tauri-apps/api/core` 的 `invoke`、`@tauri-apps/api/event` 的 `listen` / 类型 `UnlistenFn`。
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
-| `checkGameStatus` | launcherService.ts:107 | invoke `launcher_check_status`，参数 `{channel, installPath}`，返回 `GameStatus`；无本地错误处理（错误上抛） |
-| `installOrUpdate` | launcherService.ts:114 | invoke `launcher_install_or_update`，参数 `{channel, installPath}`，返回 `LauncherResult`；无本地错误处理 |
-| `verifyAndRepair` | launcherService.ts:124 | invoke `launcher_verify_and_repair`，参数 `{channel, installPath, maxConcurrent ?? null, quick ?? false}`；**若 `result.success === false` 则 `throw result.message`**（抛字符串），否则返回 `LauncherResult` |
-| `getProcessReadBytes` | launcherService.ts:142 | invoke `launcher_get_process_read_bytes`，无参，返回 `number`（进程已读字节） |
-| `getRemoteVersion` | launcherService.ts:146 | invoke `launcher_get_remote_version`，参数 `{channel}`，返回 `RemotePackage` |
-| `getPayloadState` | launcherService.ts:152 | invoke `launcher_get_payload_state`，参数 `{channel}`，返回 `PayloadState \| null` |
-| `cancelDownload` | launcherService.ts:158 | invoke `launcher_cancel_download`，参数 `{installPath ?? null}`，返回 `void` |
-| `preloadDownload` | launcherService.ts:162 | invoke `launcher_preload_download`，参数 `{channel, installPath, maxConcurrent ?? null}`，返回 `LauncherResult` |
-| `resetDownloadCancel` | launcherService.ts:174 | invoke `launcher_reset_download_cancel`，无参，返回 `void` |
-| `hasDownloadCache` | launcherService.ts:178 | invoke `launcher_has_download_cache`，参数 `{installPath}`，返回 `boolean` |
-| `getBanners` | launcherService.ts:182 | invoke `launcher_get_banners`，参数 `{channel}`，返回 `BannerItem[]` |
-| `getAnnouncements` | launcherService.ts:188 | invoke `launcher_get_announcements`，参数 `{channel}`，返回 `AnnouncementItem[]` |
-| `getNoticeContent` | launcherService.ts:194 | invoke `launcher_get_notice_content`，参数 `{channel}`，返回 `LauncherNoticeContent`（横幅+公告合并结构） |
-| `getBackgroundImage` | launcherService.ts:202 | invoke `launcher_get_background_image`，参数 `{channel}`，返回 `BackgroundMedia \| null` |
-| `startGame` | launcherService.ts:210 | invoke `launcher_start_game`，参数 `{installPath, channel}`，返回 `LauncherResult` |
-| `browseFolder` | launcherService.ts:220 | invoke `launcher_browse_folder`，无参，返回 `string \| null`（用户选择的目录） |
-| `checkExecutable` | launcherService.ts:224 | invoke `launcher_check_executable`，参数 `{installPath, channel}`，返回 `boolean` |
-| `checkGameRunning` | launcherService.ts:234 | invoke `launcher_check_game_running`，参数 `{channel}`，返回 `boolean` |
-| `killGame` | launcherService.ts:242 | invoke `launcher_kill_game`，参数 `{channel}`，返回 `boolean` |
-| `detectChannel` | launcherService.ts:250 | invoke `launcher_detect_channel`，参数 `{installPath}`，返回 `GameChannel \| null` |
-| `scanInstallDir` | launcherService.ts:256 | invoke `launcher_scan_install_dir`，参数 `{channel, installPath}`，返回 `FileScanResult`（损坏/缺失文件清单与字节统计） |
-| `getDiskSpace` | launcherService.ts:266 | invoke `launcher_get_disk_space`，参数 `{path}`，返回 `DiskSpace {total, free}` |
-| `switchChannel` | launcherService.ts:270 | invoke `launcher_switch_channel`，参数 `{fromChannel, toChannel, installPath}`，返回 `string`（结果消息） |
-| `cancelSwitch` | launcherService.ts:282 | invoke `launcher_cancel_switch`，无参，返回 `void` |
-| `cancelAll` | launcherService.ts:286 | invoke `launcher_cancel_all`，无参，返回 `void` |
-| `onLauncherProgress` | launcherService.ts:292 | `listen<DownloadProgress>('launcher-progress', ...)`，参数为回调，返回 `Promise<UnlistenFn>`；**事件名为 `launcher-progress`（无 `://`）** |
-| `onProgress` | launcherService.ts:300 | `listen<ActiveOperation>('launcher://progress', ...)`，返回 `Promise<UnlistenFn>` |
-| `onSwitchProgress` | launcherService.ts:308 | `listen<DownloadProgress>('launcher://switch-progress', ...)`，返回 `Promise<UnlistenFn>` |
-| `formatBytes` | launcherService.ts:333 | 纯函数：1024 进制格式化为 `B/KB/MB/GB/TB`（保留 2 位小数），`0` 返回 `"0 B"` |
+| `checkGameStatus` | launcherService.ts:109 | invoke `launcher_check_status`，参数 `{channel, installPath}`，返回 `GameStatus`；无本地错误处理（错误上抛） |
+| `installOrUpdate` | launcherService.ts:116 | invoke `launcher_install_or_update`，参数 `{channel, installPath}`，返回 `LauncherResult`；无本地错误处理 |
+| `verifyAndRepair` | launcherService.ts:126 | invoke `launcher_verify_and_repair`，参数 `{channel, installPath, maxConcurrent ?? null, quick ?? false}`；**若 `result.success === false` 则 `throw result.message`**（抛字符串），否则返回 `LauncherResult` |
+| `getProcessReadBytes` | launcherService.ts:144 | invoke `launcher_get_process_read_bytes`，无参，返回 `number`（进程已读字节） |
+| `getRemoteVersion` | launcherService.ts:148 | invoke `launcher_get_remote_version`，参数 `{channel}`，返回 `RemotePackage` |
+| `getPayloadState` | launcherService.ts:154 | invoke `launcher_get_payload_state`，参数 `{channel}`，返回 `PayloadState \| null` |
+| `cancelDownload` | launcherService.ts:160 | invoke `launcher_cancel_download`，参数 `{installPath ?? null}`，返回 `void` |
+| `preloadDownload` | launcherService.ts:164 | invoke `launcher_preload_download`，参数 `{channel, installPath, maxConcurrent ?? null}`，返回 `LauncherResult` |
+| `resetDownloadCancel` | launcherService.ts:176 | invoke `launcher_reset_download_cancel`，无参，返回 `void` |
+| `hasDownloadCache` | launcherService.ts:180 | invoke `launcher_has_download_cache`，参数 `{installPath}`，返回 `boolean` |
+| `getBanners` | launcherService.ts:184 | invoke `launcher_get_banners`，参数 `{channel}`，返回 `BannerItem[]` |
+| `getAnnouncements` | launcherService.ts:190 | invoke `launcher_get_announcements`，参数 `{channel}`，返回 `AnnouncementItem[]` |
+| `getNoticeContent` | launcherService.ts:196 | invoke `launcher_get_notice_content`，参数 `{channel}`，返回 `LauncherNoticeContent`（横幅+公告合并结构） |
+| `getBackgroundImage` | launcherService.ts:204 | invoke `launcher_get_background_image`，参数 `{channel}`，返回 `BackgroundMedia \| null` |
+| `startGame` | launcherService.ts:240 | invoke `launcher_start_game`，参数 `{installPath, channel}`，返回 `LauncherResult`；失败时 `message` 为 `<token>: <detail>`（token 见 `LAUNCH_TOKEN_KEYS`），回退直接启动时该提示在 `warning` 字段 |
+| `browseFolder` | launcherService.ts:222 | invoke `launcher_browse_folder`，无参，返回 `string \| null`（用户选择的目录） |
+| `checkExecutable` | launcherService.ts:226 | invoke `launcher_check_executable`，参数 `{installPath, channel}`，返回 `boolean` |
+| `checkGameRunning` | launcherService.ts:236 | invoke `launcher_check_game_running`，参数 `{channel}`，返回 `boolean` |
+| `killGame` | launcherService.ts:244 | invoke `launcher_kill_game`，参数 `{channel}`，返回 `boolean` |
+| `detectChannel` | launcherService.ts:252 | invoke `launcher_detect_channel`，参数 `{installPath}`，返回 `GameChannel \| null` |
+| `scanInstallDir` | launcherService.ts:258 | invoke `launcher_scan_install_dir`，参数 `{channel, installPath}`，返回 `FileScanResult`（损坏/缺失文件清单与字节统计） |
+| `getDiskSpace` | launcherService.ts:268 | invoke `launcher_get_disk_space`，参数 `{path}`，返回 `DiskSpace {total, free}` |
+| `switchChannel` | launcherService.ts:272 | invoke `launcher_switch_channel`，参数 `{fromChannel, toChannel, installPath}`，返回 `string`（结果消息） |
+| `cancelSwitch` | launcherService.ts:284 | invoke `launcher_cancel_switch`，无参，返回 `void` |
+| `cancelAll` | launcherService.ts:288 | invoke `launcher_cancel_all`，无参，返回 `void` |
+| `onLauncherProgress` | launcherService.ts:294 | `listen<DownloadProgress>('launcher-progress', ...)`，参数为回调，返回 `Promise<UnlistenFn>`；**事件名为 `launcher-progress`（无 `://`）** |
+| `onProgress` | launcherService.ts:302 | `listen<ActiveOperation>('launcher://progress', ...)`，返回 `Promise<UnlistenFn>` |
+| `onSwitchProgress` | launcherService.ts:310 | `listen<DownloadProgress>('launcher://switch-progress', ...)`，返回 `Promise<UnlistenFn>` |
+| `formatBytes` | launcherService.ts:335 | 纯函数：1024 进制格式化为 `B/KB/MB/GB/TB`（保留 2 位小数），`0` 返回 `"0 B"` |
 
 **内部结构**：
 
 | 区间 | 内容 |
 | --- | --- |
-| launcherService.ts:6-103 | 全部类型定义（渠道、状态、进度、包信息、公告、扫描结果、磁盘空间） |
-| launcherService.ts:107-288 | IPC 封装函数（24 个命令包装） |
-| launcherService.ts:292-314 | 三个事件监听器 |
-| launcherService.ts:318-349 | 常量 `CHANNEL_LABELS`（4 渠道中英标签）、`ALL_CHANNELS`、`formatBytes`、`STAGE_LABELS`（8 个阶段中英标签） |
+| launcherService.ts:8-105 | 全部类型定义（渠道、状态、进度、包信息、公告、扫描结果、磁盘空间） |
+| launcherService.ts:109-290 | IPC 封装函数（24 个命令包装） |
+| launcherService.ts:294-316 | 三个事件监听器 |
+| launcherService.ts:320-351 | 常量 `CHANNEL_LABELS`（4 渠道中英标签）、`ALL_CHANNELS`、`formatBytes`、`STAGE_LABELS`（8 个阶段中英标签） |
 
 **备注**：
 - 封装的 invoke 命令：`launcher_check_status`、`launcher_install_or_update`、`launcher_verify_and_repair`、`launcher_get_process_read_bytes`、`launcher_get_remote_version`、`launcher_get_payload_state`、`launcher_cancel_download`、`launcher_preload_download`、`launcher_reset_download_cancel`、`launcher_has_download_cache`、`launcher_get_banners`、`launcher_get_announcements`、`launcher_get_notice_content`、`launcher_get_background_image`、`launcher_start_game`、`launcher_browse_folder`、`launcher_check_executable`、`launcher_check_game_running`、`launcher_kill_game`、`launcher_detect_channel`、`launcher_scan_install_dir`、`launcher_get_disk_space`、`launcher_switch_channel`、`launcher_cancel_switch`、`launcher_cancel_all`（共 25 个）。
