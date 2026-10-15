@@ -1,9 +1,10 @@
 use std::fs;
-use std::io::Write;
+use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
+use std::{collections::HashSet, fs::File, io};
 
 use futures_util::StreamExt;
 use reqwest::Client;
@@ -110,6 +111,96 @@ pub fn has_download_cache(install_path: &str) -> bool {
     false
 }
 
+struct MultipartZipReader {
+    files: Vec<File>,
+    offsets: Vec<u64>,
+    len: u64,
+    position: u64,
+}
+
+impl MultipartZipReader {
+    fn new(paths: &[PathBuf]) -> io::Result<Self> {
+        let mut files = Vec::with_capacity(paths.len());
+        let mut offsets = Vec::with_capacity(paths.len());
+        let mut len = 0u64;
+
+        for path in paths {
+            offsets.push(len);
+            let file = File::open(path)?;
+            len = len
+                .checked_add(file.metadata()?.len())
+                .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "Archive too large"))?;
+            files.push(file);
+        }
+
+        if files.is_empty() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "No archive parts",
+            ));
+        }
+
+        Ok(Self {
+            files,
+            offsets,
+            len,
+            position: 0,
+        })
+    }
+}
+
+impl Read for MultipartZipReader {
+    fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+        let mut total_read = 0;
+        while total_read < buffer.len() && self.position < self.len {
+            let file_index = self
+                .offsets
+                .partition_point(|offset| *offset <= self.position)
+                .saturating_sub(1);
+            let part_end = self
+                .offsets
+                .get(file_index + 1)
+                .copied()
+                .unwrap_or(self.len);
+            let part_remaining = (part_end - self.position) as usize;
+            let read_len = (buffer.len() - total_read).min(part_remaining);
+
+            self.files[file_index]
+                .seek(SeekFrom::Start(self.position - self.offsets[file_index]))?;
+            let read =
+                self.files[file_index].read(&mut buffer[total_read..total_read + read_len])?;
+            if read == 0 {
+                return Err(io::Error::new(
+                    io::ErrorKind::UnexpectedEof,
+                    "Unexpected end of archive part",
+                ));
+            }
+
+            self.position += read as u64;
+            total_read += read;
+        }
+        Ok(total_read)
+    }
+}
+
+impl Seek for MultipartZipReader {
+    fn seek(&mut self, position: SeekFrom) -> io::Result<u64> {
+        let next = match position {
+            SeekFrom::Start(position) => i128::from(position),
+            SeekFrom::End(offset) => i128::from(self.len) + i128::from(offset),
+            SeekFrom::Current(offset) => i128::from(self.position) + i128::from(offset),
+        };
+        if next < 0 || next > i128::from(u64::MAX) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "Invalid archive seek position",
+            ));
+        }
+        self.position = next as u64;
+        Ok(self.position)
+    }
+}
+
 pub struct GameLauncherService {
     http_client: Client,
     download_client: Client,
@@ -161,6 +252,16 @@ impl GameLauncherService {
         channel: &GameChannel,
         local_version: Option<&str>,
     ) -> Result<RemotePackage, String> {
+        self.get_latest_package_with_cd_key(channel, local_version)
+            .await
+            .map(|(remote, _)| remote)
+    }
+
+    async fn get_latest_package_with_cd_key(
+        &self,
+        channel: &GameChannel,
+        local_version: Option<&str>,
+    ) -> Result<(RemotePackage, Option<String>), String> {
         tracing::info!(
             "[api] get_latest_package: channel={}, appcode={}, local_version={}",
             channel.as_str(),
@@ -237,42 +338,56 @@ impl GameLauncherService {
         }
 
         // 预下载补丁包（pre_patch）：官方在正式发版前提供的分卷压缩包
-        let (has_preload, preload_version, preload_parts, preload_total_bytes) =
-            match game_rsp.pre_patch.as_ref() {
-                Some(pre) if !pre.patches.is_empty() => {
-                    for part in &pre.patches {
-                        if !part.url.starts_with("https://") {
-                            return Err(format!(
-                                "Preload part URL must be HTTPS, got: {}",
-                                part.url
-                            ));
-                        }
-                    }
-                    tracing::info!(
-                        "[api] pre_patch: version={}, parts={}, download_bytes={}, expanded_bytes={}",
-                        pre.version,
-                        pre.patches.len(),
-                        pre.total_bytes(),
-                        pre.total_size
-                    );
-                    (
-                        true,
-                        Some(pre.version.clone()),
-                        pre.patches.clone(),
-                        pre.total_bytes(),
-                    )
-                }
-                _ => (false, None, Vec::new(), 0),
-            };
-
-        Ok(RemotePackage {
-            version: game_rsp.version.clone(),
-            resource_base_url,
+        let (
             has_preload,
             preload_version,
             preload_parts,
             preload_total_bytes,
-        })
+            preload_expanded_bytes,
+        ) = match game_rsp.pre_patch.as_ref() {
+            Some(pre) if !pre.patches.is_empty() => {
+                for part in &pre.patches {
+                    if !part.url.starts_with("https://") {
+                        return Err(format!("Preload part URL must be HTTPS, got: {}", part.url));
+                    }
+                }
+                tracing::info!(
+                    "[api] pre_patch: version={}, parts={}, download_bytes={}, expanded_bytes={}",
+                    pre.version,
+                    pre.patches.len(),
+                    pre.total_bytes(),
+                    pre.total_size
+                );
+                (
+                    true,
+                    Some(pre.version.clone()),
+                    pre.patches.clone(),
+                    pre.total_bytes(),
+                    pre.total_size.parse().unwrap_or(0),
+                )
+            }
+            _ => (false, None, Vec::new(), 0, 0),
+        };
+
+        let cd_key = pkg
+            .cd_key
+            .as_deref()
+            .map(str::trim)
+            .filter(|key| !key.is_empty())
+            .map(str::to_string);
+
+        Ok((
+            RemotePackage {
+                version: game_rsp.version.clone(),
+                resource_base_url,
+                has_preload,
+                preload_version,
+                preload_parts,
+                preload_total_bytes,
+                preload_expanded_bytes,
+            },
+            cd_key,
+        ))
     }
 
     /// 检查游戏安装状态
@@ -299,8 +414,8 @@ impl GameLauncherService {
 
         tracing::info!("[check_status] fetching remote package...");
         // 带上本地版本：官方接口只在这种情况下返回 pre_patch（预下载补丁包）
-        let remote = self
-            .get_latest_package(channel, local_version.as_deref())
+        let (remote, preload_cd_key) = self
+            .get_latest_package_with_cd_key(channel, local_version.as_deref())
             .await?;
         tracing::info!("[check_status] got remote: version={}", remote.version);
         let remote_version = Some(remote.version.clone());
@@ -316,6 +431,7 @@ impl GameLauncherService {
         let has_preload = is_installed
             && remote.has_preload
             && local_version.as_deref() != remote.preload_version.as_deref();
+        let preload_installable = has_preload && preload_cd_key.is_some();
 
         // Check persisted preload state to see if preload was completed for this version
         let preload_completed = if has_preload {
@@ -334,11 +450,12 @@ impl GameLauncherService {
 
         Ok(GameStatus {
             is_installed,
-            has_update,
+            has_update: has_update || preload_installable,
             local_version,
             remote_version,
             has_preload,
             preload_version: remote.preload_version,
+            preload_installable,
             preload_total_bytes: remote.preload_total_bytes,
             preload_completed,
             active_operation,
@@ -1693,8 +1810,8 @@ impl GameLauncherService {
         let local_version = self.read_local_version(install_path).ok();
 
         // 2. 获取远端信息（含预下载分卷列表）
-        let remote = self
-            .get_latest_package(channel, local_version.as_deref())
+        let (remote, _cd_key) = self
+            .get_latest_package_with_cd_key(channel, local_version.as_deref())
             .await?;
 
         let preload_version = remote
@@ -1746,8 +1863,6 @@ impl GameLauncherService {
             }
             None => Self::create_preload_staging(install_path, &preload_version)?,
         };
-        let preload_staging = staging_path.to_string_lossy().to_string();
-
         // 4. 初始进度
         progress_callback(DownloadProgress {
             downloaded: 0,
@@ -1917,6 +2032,400 @@ impl GameLauncherService {
             "Preload completed: {} ({} parts, {} bytes)",
             preload_version, part_count, total_bytes
         ))
+    }
+
+    /// Install an official preload patch, downloading it first when needed.
+    pub async fn install_preload(
+        &self,
+        channel: &GameChannel,
+        install_path: &str,
+        progress_callback: Arc<dyn Fn(DownloadProgress) + Send + Sync>,
+        max_concurrent: usize,
+    ) -> Result<String, String> {
+        if self.has_active_operation().await {
+            return Err("Another operation is in progress".to_string());
+        }
+
+        let local_version = self.read_local_version(install_path).ok();
+        let (remote, cd_key) = self
+            .get_latest_package_with_cd_key(channel, local_version.as_deref())
+            .await?;
+        let preload_version = remote
+            .preload_version
+            .as_deref()
+            .filter(|version| !version.is_empty())
+            .ok_or_else(|| "No preload package available".to_string())?;
+        if !remote.has_preload || remote.preload_parts.is_empty() {
+            return Err("No preload package available".to_string());
+        }
+        if local_version.as_deref() == Some(preload_version) {
+            return Err(format!(
+                "Preload version {} is already installed",
+                preload_version
+            ));
+        }
+        let cd_key = cd_key
+            .as_deref()
+            .ok_or_else(|| "Preload package cannot be installed: no decryption key".to_string())?
+            .to_string();
+
+        progress_callback(DownloadProgress {
+            stage: InstallStage::Checking.as_str().to_string(),
+            ..Default::default()
+        });
+
+        let download_progress = progress_callback.clone();
+        let preload_progress = Arc::new(move |progress: DownloadProgress| {
+            if progress.stage != InstallStage::Completed.as_str() {
+                download_progress(progress);
+            }
+        });
+
+        let result = async {
+            self.preload_download(channel, install_path, preload_progress, max_concurrent)
+                .await?;
+
+            let staging_dir = self
+                .preload_staging_dir(install_path)
+                .ok_or_else(|| "Preload staging directory disappeared".to_string())?;
+            if Self::preload_staging_version(&staging_dir).as_deref() != Some(preload_version) {
+                return Err("Preload staging version does not match the requested update".into());
+            }
+
+            let staging_path = PathBuf::from(&staging_dir);
+            let preload_total_bytes = remote.preload_total_bytes;
+            progress_callback(DownloadProgress {
+                total: preload_total_bytes,
+                stage: InstallStage::Verifying.as_str().to_string(),
+                file_count: remote.preload_parts.len(),
+                ..Default::default()
+            });
+            let part_checks = remote
+                .preload_parts
+                .iter()
+                .enumerate()
+                .map(|(index, part)| {
+                    (
+                        staging_path.join(Self::preload_part_file_name(&part.url, index)),
+                        part.md5.clone(),
+                    )
+                })
+                .collect::<Vec<_>>();
+            let part_count = part_checks.len();
+            let verify_progress = progress_callback.clone();
+            let part_paths = tokio::task::spawn_blocking(move || {
+                let mut paths = Vec::with_capacity(part_count);
+                let mut verified_bytes = 0u64;
+                for (index, (part_path, expected_md5)) in part_checks.into_iter().enumerate() {
+                    if DOWNLOAD_CANCELLED.load(Ordering::Relaxed) {
+                        return Err("Preload installation cancelled".to_string());
+                    }
+                    let part_path_str = part_path.to_string_lossy();
+                    if !part_path.is_file()
+                        || !hg_crypto::verify_md5_with_cancel(
+                            &part_path_str,
+                            &expected_md5,
+                            Some(&DOWNLOAD_CANCELLED),
+                        )
+                        .map_err(|e| format!("Failed to verify preload part: {}", e))?
+                    {
+                        return Err(format!(
+                            "Preload part failed integrity verification: {}",
+                            part_path.file_name().unwrap_or_default().to_string_lossy()
+                        ));
+                    }
+                    verified_bytes = verified_bytes.saturating_add(
+                        fs::metadata(&part_path)
+                            .map_err(|e| format!("Read preload part metadata: {}", e))?
+                            .len(),
+                    );
+                    paths.push(part_path);
+                    verify_progress(DownloadProgress {
+                        downloaded: verified_bytes,
+                        total: preload_total_bytes,
+                        stage: InstallStage::Verifying.as_str().to_string(),
+                        file_index: index + 1,
+                        file_count: part_count,
+                        verified_bytes,
+                        ..Default::default()
+                    });
+                }
+                Ok(paths)
+            })
+            .await
+            .map_err(|e| format!("Preload verification task failed: {}", e))??;
+
+            let extracted_dir = staging_path.join(".extracted");
+            if extracted_dir.exists() {
+                fs::remove_dir_all(&extracted_dir)
+                    .map_err(|e| format!("Remove previous extraction: {}", e))?;
+            }
+            fs::create_dir_all(&extracted_dir)
+                .map_err(|e| format!("Create extraction directory: {}", e))?;
+
+            let key_for_extract = cd_key.clone();
+            let extract_progress = progress_callback.clone();
+            let extracted_dir_for_task = extracted_dir.clone();
+            let expanded_bytes = remote.preload_expanded_bytes;
+            tokio::task::spawn_blocking(move || {
+                Self::extract_preload_archive(
+                    &part_paths,
+                    &key_for_extract,
+                    &extracted_dir_for_task,
+                    expanded_bytes,
+                    extract_progress,
+                )
+            })
+            .await
+            .map_err(|e| format!("Preload extraction task failed: {}", e))??;
+
+            self.apply_preload_files(&extracted_dir, Path::new(install_path), &progress_callback)?;
+
+            let verify_progress = progress_callback.clone();
+            let verify_callback = Arc::new(move |progress: DownloadProgress| {
+                if progress.stage != InstallStage::Completed.as_str() {
+                    verify_progress(progress);
+                }
+            });
+            let verify_result = self
+                .verify_and_repair(
+                    channel,
+                    install_path,
+                    verify_callback,
+                    max_concurrent,
+                    false,
+                )
+                .await?;
+            Self::ensure_verification_succeeded(&verify_result)?;
+
+            let installed_package = self.get_latest_package(channel, None).await?;
+            let (manifest, manifest_sha256) = self
+                .fetch_manifest(&installed_package.resource_base_url)
+                .await?;
+            self.save_payload_state(
+                channel,
+                &installed_package.version,
+                &manifest_sha256,
+                &manifest,
+            )?;
+            self.cleanup_preload_staging(install_path);
+
+            Ok(installed_package.version)
+        }
+        .await;
+
+        match result {
+            Ok(version) => {
+                progress_callback(DownloadProgress {
+                    stage: InstallStage::Completed.as_str().to_string(),
+                    ..Default::default()
+                });
+                Ok(version)
+            }
+            Err(error) => {
+                progress_callback(DownloadProgress {
+                    stage: InstallStage::Error.as_str().to_string(),
+                    ..Default::default()
+                });
+                Err(error)
+            }
+        }
+    }
+
+    fn extract_preload_archive(
+        part_paths: &[PathBuf],
+        cd_key: &str,
+        output_dir: &Path,
+        expected_bytes: u64,
+        progress_callback: Arc<dyn Fn(DownloadProgress) + Send + Sync>,
+    ) -> Result<(), String> {
+        let reader = MultipartZipReader::new(part_paths)
+            .map_err(|e| format!("Open preload archive parts: {}", e))?;
+        let mut archive =
+            zip::ZipArchive::new(reader).map_err(|e| format!("Open preload archive: {}", e))?;
+        let file_count = archive.len();
+        let mut total_bytes = 0u64;
+
+        for index in 0..file_count {
+            let file = archive
+                .by_index_decrypt(index, cd_key.as_bytes())
+                .map_err(|e| format!("Decrypt preload archive entry: {}", e))?;
+            if !file.is_dir() {
+                total_bytes = total_bytes
+                    .checked_add(file.size())
+                    .ok_or_else(|| "Preload archive is too large".to_string())?;
+            }
+        }
+        if expected_bytes > 0 {
+            total_bytes = total_bytes.max(expected_bytes);
+        }
+
+        let mut extracted_bytes = 0u64;
+        let mut extracted_files = 0usize;
+        let mut seen_paths = HashSet::new();
+        let mut buffer = vec![0u8; 1024 * 1024];
+
+        for index in 0..file_count {
+            if DOWNLOAD_CANCELLED.load(Ordering::Relaxed) {
+                return Err("Preload installation cancelled".to_string());
+            }
+            let entry_name = archive
+                .name_for_index(index)
+                .ok_or_else(|| "Invalid path in preload archive".to_string())?
+                .to_string();
+            let safe_name = entry_name.trim_end_matches(['/', '\\']);
+            GameLauncherService::validate_path(safe_name)?;
+
+            let mut entry = archive
+                .by_index_decrypt(index, cd_key.as_bytes())
+                .map_err(|e| format!("Decrypt preload archive entry: {}", e))?;
+            let relative = entry
+                .enclosed_name()
+                .ok_or_else(|| format!("Unsafe path in preload archive: {}", entry_name))?
+                .to_path_buf();
+            let normalized = relative.to_string_lossy().replace('\\', "/").to_lowercase();
+            if !seen_paths.insert(normalized) {
+                return Err(format!("Duplicate path in preload archive: {}", entry_name));
+            }
+
+            let destination = output_dir.join(relative);
+            if entry.is_dir() {
+                fs::create_dir_all(&destination)
+                    .map_err(|e| format!("Create extracted directory: {}", e))?;
+                continue;
+            }
+            if let Some(parent) = destination.parent() {
+                fs::create_dir_all(parent)
+                    .map_err(|e| format!("Create extracted directory: {}", e))?;
+            }
+            let mut output =
+                File::create(&destination).map_err(|e| format!("Create extracted file: {}", e))?;
+            let current_file = entry_name;
+            loop {
+                if DOWNLOAD_CANCELLED.load(Ordering::Relaxed) {
+                    return Err("Preload installation cancelled".to_string());
+                }
+                let read = entry
+                    .read(&mut buffer)
+                    .map_err(|e| format!("Read extracted file {}: {}", current_file, e))?;
+                if read == 0 {
+                    break;
+                }
+                output
+                    .write_all(&buffer[..read])
+                    .map_err(|e| format!("Write extracted file {}: {}", current_file, e))?;
+                extracted_bytes = extracted_bytes.saturating_add(read as u64);
+                progress_callback(DownloadProgress {
+                    downloaded: extracted_bytes,
+                    total: total_bytes,
+                    stage: InstallStage::Applying.as_str().to_string(),
+                    current_file: Some(current_file.clone()),
+                    file_index: extracted_files,
+                    file_count,
+                    verified_bytes: 0,
+                });
+            }
+            extracted_files += 1;
+        }
+
+        if extracted_files == 0 {
+            return Err("Preload archive contains no installable files".to_string());
+        }
+        Ok(())
+    }
+
+    fn apply_preload_files(
+        &self,
+        extracted_dir: &Path,
+        install_dir: &Path,
+        progress_callback: &Arc<dyn Fn(DownloadProgress) + Send + Sync>,
+    ) -> Result<(), String> {
+        let files = WalkDir::new(extracted_dir)
+            .into_iter()
+            .map(|entry| entry.map_err(|e| format!("Read extracted files: {}", e)))
+            .collect::<Result<Vec<_>, _>>()?
+            .into_iter()
+            .filter(|entry| entry.file_type().is_file())
+            .collect::<Vec<_>>();
+        let total_bytes = files.iter().try_fold(0u64, |total, entry| {
+            let size = entry
+                .metadata()
+                .map_err(|e| format!("Read extracted file metadata: {}", e))?
+                .len();
+            total
+                .checked_add(size)
+                .ok_or_else(|| "Extracted preload is too large".to_string())
+        })?;
+        let mut copied_bytes = 0u64;
+
+        for (index, entry) in files.iter().enumerate() {
+            if DOWNLOAD_CANCELLED.load(Ordering::Relaxed) {
+                return Err("Preload installation cancelled".to_string());
+            }
+            let relative = entry
+                .path()
+                .strip_prefix(extracted_dir)
+                .map_err(|e| format!("Resolve extracted file path: {}", e))?;
+            let destination = install_dir.join(relative);
+            if let Some(parent) = destination.parent() {
+                fs::create_dir_all(parent)
+                    .map_err(|e| format!("Create install directory: {}", e))?;
+            }
+
+            let mut source =
+                File::open(entry.path()).map_err(|e| format!("Open extracted file: {}", e))?;
+            let mut output =
+                File::create(&destination).map_err(|e| format!("Apply extracted file: {}", e))?;
+            let mut buffer = vec![0u8; 1024 * 1024];
+            loop {
+                if DOWNLOAD_CANCELLED.load(Ordering::Relaxed) {
+                    return Err("Preload installation cancelled".to_string());
+                }
+                let read = source
+                    .read(&mut buffer)
+                    .map_err(|e| format!("Read extracted file: {}", e))?;
+                if read == 0 {
+                    break;
+                }
+                output
+                    .write_all(&buffer[..read])
+                    .map_err(|e| format!("Write installed file: {}", e))?;
+                copied_bytes = copied_bytes.saturating_add(read as u64);
+                progress_callback(DownloadProgress {
+                    downloaded: copied_bytes,
+                    total: total_bytes,
+                    stage: InstallStage::Applying.as_str().to_string(),
+                    current_file: Some(relative.to_string_lossy().to_string()),
+                    file_index: index,
+                    file_count: files.len(),
+                    verified_bytes: 0,
+                });
+            }
+        }
+        Ok(())
+    }
+
+    fn ensure_verification_succeeded(result: &str) -> Result<(), String> {
+        if result == "All files verified OK" {
+            return Ok(());
+        }
+        let summary: serde_json::Value = serde_json::from_str(result)
+            .map_err(|e| format!("Invalid integrity verification result: {}", e))?;
+        let failed = summary
+            .get("failed")
+            .and_then(serde_json::Value::as_u64)
+            .ok_or_else(|| "Integrity verification result is missing failed count".to_string())?;
+        let repaired = summary
+            .get("repaired")
+            .and_then(serde_json::Value::as_u64)
+            .ok_or_else(|| "Integrity verification result is missing repaired count".to_string())?;
+        if repaired < failed {
+            return Err(format!(
+                "Integrity verification could not repair all files ({}/{} repaired)",
+                repaired, failed
+            ));
+        }
+        Ok(())
     }
 
     /// 从分卷 URL 推断本地文件名（去掉查询串）；文件名非法时回退为 part_###.zip

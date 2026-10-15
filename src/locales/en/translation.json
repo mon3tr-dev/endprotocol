@@ -492,6 +492,7 @@
     "local_version": "Local",
     "remote_version": "Latest",
     "update_available": "Update Available",
+    "update_failed_title": "Update Failed",
     "install": "Install",
     "update": "Update",
     "verify_repair": "Verify & Repair",

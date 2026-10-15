@@ -194,6 +194,42 @@ pub async fn launcher_preload_download(
     }
 }
 
+/// 安装可解密的官方预下载补丁
+#[tauri::command]
+pub async fn launcher_install_preload(
+    app: tauri::AppHandle,
+    service: tauri::State<'_, Arc<Mutex<GameLauncherService>>>,
+    channel: String,
+    install_path: String,
+    max_concurrent: Option<usize>,
+) -> Result<LauncherResult, String> {
+    let ch = parse_channel(&channel)?;
+    let svc = service.lock().await;
+
+    let app_handle = app.clone();
+    let progress_cb = Arc::new(move |progress: DownloadProgress| {
+        let _ = app_handle.emit("launcher-progress", &progress);
+    });
+
+    match svc
+        .install_preload(&ch, &install_path, progress_cb, max_concurrent.unwrap_or(8))
+        .await
+    {
+        Ok(version) => Ok(LauncherResult {
+            success: true,
+            message: format!("Preload installed and verified: {}", version),
+            version: Some(version),
+            warning: None,
+        }),
+        Err(error) => Ok(LauncherResult {
+            success: false,
+            message: error,
+            version: None,
+            warning: None,
+        }),
+    }
+}
+
 /// 获取 payload 状态（上次安装/更新的版本信息）
 #[tauri::command]
 pub async fn launcher_get_payload_state(

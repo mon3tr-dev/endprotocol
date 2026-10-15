@@ -164,6 +164,8 @@ pub struct GameStatus {
     pub remote_version: Option<String>,
     pub has_preload: bool,
     pub preload_version: Option<String>,
+    #[serde(default)]
+    pub preload_installable: bool,
     /// 预下载分卷需下载的总字节数（`has_preload` 为 false 时为 0）
     #[serde(default)]
     pub preload_total_bytes: u64,
@@ -207,6 +209,8 @@ pub struct GetLatestGameRsp {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PkgInfo {
     pub file_path: String,
+    #[serde(default, skip_serializing)]
+    pub cd_key: Option<String>,
 }
 
 /// 预下载补丁包（`get_latest_game_rsp.pre_patch`）
@@ -276,6 +280,8 @@ pub struct RemotePackage {
     pub preload_parts: Vec<PatchPart>,
     /// 预下载分卷下载字节数之和
     pub preload_total_bytes: u64,
+    /// 预下载包解压后的总字节数
+    pub preload_expanded_bytes: u64,
 }
 
 /// 下载进度

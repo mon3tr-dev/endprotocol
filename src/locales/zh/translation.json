@@ -492,6 +492,7 @@
     "local_version": "本地版本",
     "remote_version": "最新版本",
     "update_available": "有更新",
+    "update_failed_title": "更新失败",
     "install": "安装",
     "update": "更新",
     "verify_repair": "校验修复",

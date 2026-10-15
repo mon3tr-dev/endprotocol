@@ -1,7 +1,7 @@
 # Tauri 命令层（IPC 入口）— 文件功能参考
 
 > 逐文件精读源码生成。行号基于当前工作区版本，仅用于快速定位。
-> 覆盖范围：`src-tauri/src/commands/` 下 13 个文件，共 **99 个** `#[tauri::command]`，全部在 `src-tauri/src/lib.rs:34-148` 的 `generate_handler!` 中注册（无遗漏、无多余）。
+> 覆盖范围：`src-tauri/src/commands/` 下 13 个文件，当前参考表收录 **103 个不同命令名**；源码含 106 处命令注解（其中有同名定义）。注册入口见 `src-tauri/src/lib.rs:44` 的 `generate_handler!`。
 
 ## 命令速查表
 
@@ -67,26 +67,27 @@
 | `launcher_verify_and_repair` | commands/launcher.rs:104 | `app`、`service`、`channel`、`install_path`、`max_concurrent: Option<usize>`、`quick: Option<bool>` | `Result<LauncherResult, String>` | `GameLauncherService::verify_and_repair`，emit `launcher-progress` |
 | `launcher_get_remote_version` | commands/launcher.rs:152 | `service`、`channel` | `Result<RemotePackage, String>` | `GameLauncherService::get_latest_package` |
 | `launcher_preload_download` | commands/launcher.rs:163 | `app`、`service`、`channel`、`install_path`、`max_concurrent: Option<usize>` | `Result<LauncherResult, String>` | `GameLauncherService::preload_download`，emit `launcher-progress` |
-| `launcher_get_payload_state` | commands/launcher.rs:199 | `service`、`channel` | `Result<Option<PayloadState>, String>` | `GameLauncherService::get_payload_state` |
-| `launcher_cancel_download` | commands/launcher.rs:210 | `install_path: Option<String>` | `Result<(), String>` | `game_launcher_service::cancel_download`、`cleanup_staging_files`（静态函数） |
-| `launcher_has_download_cache` | commands/launcher.rs:223 | `install_path: String` | `Result<bool, String>` | `game_launcher_service::has_download_cache` |
-| `launcher_reset_download_cancel` | commands/launcher.rs:231 | 无 | `Result<(), String>` | `game_launcher_service::reset_download_cancel` |
-| `launcher_cancel_switch` | commands/launcher.rs:237 | 无 | `Result<(), String>` | `game_launcher_service::cancel_switch` |
-| `launcher_cancel_all` | commands/launcher.rs:243 | 无 | `Result<(), String>` | `game_launcher_service::cancel_download` + `cancel_switch` |
-| `launcher_decrypt_file` | commands/launcher.rs:250 | `file_path: String` | `Result<String, String>` | `utils::hg_crypto::decrypt_file_to_string` |
-| `launcher_get_banners` | commands/launcher.rs:256 | `service`、`channel` | `Result<Vec<BannerItem>, String>` | `GameLauncherService::get_banners` |
-| `launcher_get_announcements` | commands/launcher.rs:267 | `service`、`channel` | `Result<Vec<AnnouncementItem>, String>` | `GameLauncherService::get_announcements` |
-| `launcher_get_notice_content` | commands/launcher.rs:278 | `service`、`channel` | `Result<LauncherNoticeContent, String>` | `GameLauncherService::get_notice_content` |
-| `launcher_get_background_image` | commands/launcher.rs:289 | `service`、`channel` | `Result<Option<BackgroundMedia>, String>` | `GameLauncherService::get_background_image` |
-| `launcher_start_game` | commands/launcher.rs:339 | `install_path: String`、`channel: String` | `Result<LauncherResult, String>` | `parse_channel`、`taskkill /F /IM`、`official_launcher::launch_via_official_parent`（提权 helper 伪造官方父进程）/ 回退 `direct_launch` → `shell_execute_game` |
-| `launcher_browse_folder` | commands/launcher.rs:468 | 无 | `Result<Option<String>, String>` | `rfd::FileDialog::pick_folder` |
-| `launcher_get_disk_space` | commands/launcher.rs:485 | `path: String` | `Result<DiskSpace, String>` | 调用 `powershell Get-PSDrive` 子进程解析 used/free |
-| `launcher_scan_install_dir` | commands/launcher.rs:544 | `service`、`channel`、`install_path` | `Result<FileScanResult, String>` | `GameLauncherService::scan_install_dir` |
-| `launcher_detect_channel` | commands/launcher.rs:556 | `install_path: String` | `Result<Option<String>, String>` | 纯本地特征文件探测（hgsdk.dll / PCGameSDK.dll / gfsdk.dll 等） |
-| `launcher_check_executable` | commands/launcher.rs:607 | `install_path: String`、`channel: String` | `Result<bool, String>` | `parse_channel` + `GameChannel::executable_name` + `Path::exists` |
-| `launcher_check_game_running` | commands/launcher.rs:615 | `channel: String` | `Result<bool, String>` | 异步执行隐藏控制台的 `tasklist /FI IMAGENAME eq …`；游戏面板每 3 秒轮询 |
-| `launcher_kill_game` | commands/launcher.rs:631 | `channel: String` | `Result<bool, String>` | 隐藏控制台执行 `taskkill /T /F /IM`（两次）→ `wmic process … terminate` 兜底 |
-| `launcher_switch_channel` | commands/launcher.rs:680 | `service`、`from_channel`、`to_channel`、`install_path`、`app: AppHandle` | `Result<String, String>` | `GameLauncherService::switch_channel` |
+| `launcher_install_preload` | commands/launcher.rs:199 | `app`、`service`、`channel`、`install_path`、`max_concurrent: Option<usize>` | `Result<LauncherResult, String>` | `GameLauncherService::install_preload`：校验并下载分卷、解密安装、完整性校验，emit `launcher-progress` |
+| `launcher_get_payload_state` | commands/launcher.rs:235 | `service`、`channel` | `Result<Option<PayloadState>, String>` | `GameLauncherService::get_payload_state` |
+| `launcher_cancel_download` | commands/launcher.rs:246 | `install_path: Option<String>` | `Result<(), String>` | `game_launcher_service::cancel_download`、`cleanup_staging_files`（静态函数） |
+| `launcher_has_download_cache` | commands/launcher.rs:259 | `install_path: String` | `Result<bool, String>` | `game_launcher_service::has_download_cache` |
+| `launcher_reset_download_cancel` | commands/launcher.rs:267 | 无 | `Result<(), String>` | `game_launcher_service::reset_download_cancel` |
+| `launcher_cancel_switch` | commands/launcher.rs:273 | 无 | `Result<(), String>` | `game_launcher_service::cancel_switch` |
+| `launcher_cancel_all` | commands/launcher.rs:279 | 无 | `Result<(), String>` | `game_launcher_service::cancel_download` + `cancel_switch` |
+| `launcher_decrypt_file` | commands/launcher.rs:286 | `file_path: String` | `Result<String, String>` | `utils::hg_crypto::decrypt_file_to_string` |
+| `launcher_get_banners` | commands/launcher.rs:292 | `service`、`channel` | `Result<Vec<BannerItem>, String>` | `GameLauncherService::get_banners` |
+| `launcher_get_announcements` | commands/launcher.rs:303 | `service`、`channel` | `Result<Vec<AnnouncementItem>, String>` | `GameLauncherService::get_announcements` |
+| `launcher_get_notice_content` | commands/launcher.rs:314 | `service`、`channel` | `Result<LauncherNoticeContent, String>` | `GameLauncherService::get_notice_content` |
+| `launcher_get_background_image` | commands/launcher.rs:325 | `service`、`channel` | `Result<Option<BackgroundMedia>, String>` | `GameLauncherService::get_background_image` |
+| `launcher_start_game` | commands/launcher.rs:375 | `install_path: String`、`channel: String` | `Result<LauncherResult, String>` | `parse_channel`、`taskkill /F /IM`、`official_launcher::launch_via_official_parent`（提权 helper 伪造官方父进程）/ 回退 `direct_launch` → `shell_execute_game` |
+| `launcher_browse_folder` | commands/launcher.rs:509 | 无 | `Result<Option<String>, String>` | `rfd::FileDialog::pick_folder` |
+| `launcher_get_disk_space` | commands/launcher.rs:526 | `path: String` | `Result<DiskSpace, String>` | 调用 `powershell Get-PSDrive` 子进程解析 used/free |
+| `launcher_scan_install_dir` | commands/launcher.rs:585 | `service`、`channel`、`install_path` | `Result<FileScanResult, String>` | `GameLauncherService::scan_install_dir` |
+| `launcher_detect_channel` | commands/launcher.rs:597 | `install_path: String` | `Result<Option<String>, String>` | 纯本地特征文件探测（hgsdk.dll / PCGameSDK.dll / gfsdk.dll 等） |
+| `launcher_check_executable` | commands/launcher.rs:648 | `install_path: String`、`channel: String` | `Result<bool, String>` | `parse_channel` + `GameChannel::executable_name` + `Path::exists` |
+| `launcher_check_game_running` | commands/launcher.rs:656 | `channel: String` | `Result<bool, String>` | 异步执行隐藏控制台的 `tasklist /FI IMAGENAME eq …`；游戏面板每 3 秒轮询 |
+| `launcher_kill_game` | commands/launcher.rs:672 | `channel: String` | `Result<bool, String>` | 隐藏控制台执行 `taskkill /T /F /IM`（两次）→ `wmic process … terminate` 兜底 |
+| `launcher_switch_channel` | commands/launcher.rs:721 | `service`、`from_channel`、`to_channel`、`install_path`、`app: AppHandle` | `Result<String, String>` | `GameLauncherService::switch_channel` |
 | `get_backend_logs` | commands/logs.rs:4 | 无 | `Vec<LogEntry>` | `utils::logger::get_logger().get_recent_logs()` |
 | `get_tray_user_info` | commands/tray.rs:8 | `config_service: State<Arc<Mutex<ConfigService>>>` | `Result<TrayUserInfo, String>` | `ConfigService::get::<TrayUserInfo>("tray_user_info")` |
 | `set_tray_user` | commands/tray.rs:17 | `app: AppHandle`、`config_service`、`role_id: String` | `Result<(), String>` | `ConfigService::set("tray_user_info", …)`、`tray::update_tray_menu` |
@@ -468,20 +469,17 @@
 ---
 
 ## `src-tauri/src/commands/launcher.rs`
-**职责**：游戏启动器（下载/校验/渠道切换/启动进程）的 IPC 层（710 行 / 26 个命令）。多数命令持有 `State<Arc<tokio::sync::Mutex<GameLauncherService>>>`；涉及渠道的先经 `parse_channel` 把字符串转成 `GameChannel` 枚举；耗时操作通过回调 emit `launcher-progress` 事件推送进度。
+**职责**：游戏启动器（下载/校验/渠道切换/启动进程）的 IPC 层（751 行 / 27 个命令）。多数命令持有 `State<Arc<tokio::sync::Mutex<GameLauncherService>>>`；涉及渠道的先经 `parse_channel` 把字符串转成 `GameChannel` 枚举；耗时操作通过回调 emit `launcher-progress` 事件推送进度。
 
 ### 内部结构
 - 1-9：导入（`models::game::*`、`GameLauncherService`、`Emitter`、`utils::official_launcher`）。
 - 11-29：`launcher_get_process_read_bytes`（Win32 IO 计数器）。
-- 31-50：`launcher_check_status`；52-102：`launcher_install_or_update`；104-150：`launcher_verify_and_repair`；152-161：`launcher_get_remote_version`；163-197：`launcher_preload_download`；199-208：`launcher_get_payload_state`。
-- 210-254：下载控制与解密（`cancel_download`/`has_download_cache`/`reset_download_cancel`/`cancel_switch`/`cancel_all`/`decrypt_file`）。
-- 256-297：内容获取（banners / announcements / notice content / background media）。
-- 299-330：启动辅助（`launch_message` token 契约串、`LAUNCH_IN_FLIGHT` 并发闸、`direct_launch` 回退）。
-- 332-465：`launcher_start_game`（taskkill + 提权 helper 伪造官方父进程 + 回退直启）。
-- 467-476：`launcher_browse_folder`；478-483：`DiskSpace` 结构体；485-542：`launcher_get_disk_space`。
-- 544-554：`launcher_scan_install_dir`；556-605：`launcher_detect_channel`（纯本地探测）。
-- 607-613：`launcher_check_executable`；615-629：`launcher_check_game_running`；631-678：`launcher_kill_game`。
-- 680-697：`launcher_switch_channel`；699-710：`parse_channel`（`official|cn`、`bilibili|b服|bili`、`global|国际服`、`google_play|play|gp`，其余报错）。
+- 31-50：`launcher_check_status`；52-102：`launcher_install_or_update`；104-150：`launcher_verify_and_repair`；152-161：`launcher_get_remote_version`；163-197：`launcher_preload_download`；199-233：`launcher_install_preload`；235-244：`launcher_get_payload_state`。
+- 246-290：下载控制、切服取消与解密。
+- 292-373：内容获取（banners / announcements / notice content / background media）。
+- 375-508：`launcher_start_game`（taskkill + 提权 helper 伪造官方父进程 + 回退直启）。
+- 526-583：`launcher_get_disk_space`；585-654：扫描安装目录与渠道探测。
+- 656-719：游戏运行检测与进程终止；721 起：`launcher_switch_channel`。
 
 ### `launcher_get_process_read_bytes`
 - 位置：launcher.rs:13（同步）；参数：无；返回：`Result<u64, String>`；逻辑：Windows 下 `GetCurrentProcess` + `GetProcessIoCounters` 取 `ReadTransferCount`（任务管理器磁盘速率用），非 Windows 返回 `Ok(0)`。
@@ -511,45 +509,52 @@
 - 返回：`Result<LauncherResult, String>`
 - 逻辑：`GameLauncherService::preload_download(..., max_concurrent.unwrap_or(8))` 预下载官方预发布补丁分卷（服务内自行读本地版本以取 `pre_patch`），进度 emit `launcher-progress`。
 
+### `launcher_install_preload`
+- 位置：launcher.rs:199（async）
+- 参数：`app`、`service`、`channel`、`install_path`、`max_concurrent: Option<usize>`
+- 返回：`Result<LauncherResult, String>`
+- 逻辑：调用 `GameLauncherService::install_preload`；复用已下载分卷或先下载并 MD5 校验，使用官方 `pkg.cd_key` 解压到暂存区、应用文件，再执行完整性校验与修复。解压密码只保留在后端。
+- 事件：`launcher-progress`
+
 ### `launcher_get_payload_state`
-- 位置：launcher.rs:199（async）；参数：`service`、`channel`；返回：`Result<Option<PayloadState>, String>`；逻辑：`GameLauncherService::get_payload_state(&ch)`，返回上次安装/更新的 payload 状态。
+- 位置：launcher.rs:271（async）；参数：`service`、`channel`；返回：`Result<Option<PayloadState>, String>`；逻辑：`GameLauncherService::get_payload_state(&ch)`，返回上次安装/更新的 payload 状态。
 
 ### `launcher_cancel_download`
-- 位置：launcher.rs:210（async）；参数：`install_path: Option<String>`；返回：`Result<(), String>`；逻辑：调模块静态函数 `game_launcher_service::cancel_download()` 置取消标志；若给了非空路径再 `cleanup_staging_files(&path)` 清暂存文件。**不加 service 锁**。
+- 位置：launcher.rs:246（async）；参数：`install_path: Option<String>`；返回：`Result<(), String>`；逻辑：调模块静态函数 `game_launcher_service::cancel_download()` 置取消标志；若给了非空路径再 `cleanup_staging_files(&path)` 清暂存文件。**不加 service 锁**。
 
 ### `launcher_has_download_cache`
-- 位置：launcher.rs:223（async）；参数：`install_path: String`；返回：`Result<bool, String>`；逻辑：`game_launcher_service::has_download_cache(&path)` 判断是否有暂存目录或 `.download` 文件。
+- 位置：launcher.rs:259（async）；参数：`install_path: String`；返回：`Result<bool, String>`；逻辑：`game_launcher_service::has_download_cache(&path)` 判断是否有暂存目录或 `.download` 文件。
 
 ### `launcher_reset_download_cancel`
-- 位置：launcher.rs:231（async）；参数：无；返回：`Result<(), String>`；逻辑：`game_launcher_service::reset_download_cancel()`。
+- 位置：launcher.rs:267（async）；参数：无；返回：`Result<(), String>`；逻辑：`game_launcher_service::reset_download_cancel()`。
 
 ### `launcher_cancel_switch`
-- 位置：launcher.rs:237（async）；参数：无；返回：`Result<(), String>`；逻辑：`game_launcher_service::cancel_switch()` 取消渠道切换。
+- 位置：launcher.rs:273（async）；参数：无；返回：`Result<(), String>`；逻辑：`game_launcher_service::cancel_switch()` 取消渠道切换。
 
 ### `launcher_cancel_all`
-- 位置：launcher.rs:243（async）；参数：无；返回：`Result<(), String>`；逻辑：依次 `cancel_download()` + `cancel_switch()`。
+- 位置：launcher.rs:279（async）；参数：无；返回：`Result<(), String>`；逻辑：依次 `cancel_download()` + `cancel_switch()`。
 
 ### `launcher_decrypt_file`
-- 位置：launcher.rs:250（async）；参数：`file_path: String`；返回：`Result<String, String>`；逻辑：`utils::hg_crypto::decrypt_file_to_string(&file_path)` 解密游戏资源文件并返回文本。
+- 位置：launcher.rs:286（async）；参数：`file_path: String`；返回：`Result<String, String>`；逻辑：`utils::hg_crypto::decrypt_file_to_string(&file_path)` 解密游戏资源文件并返回文本。
 
 ### `launcher_get_banners`
-- 位置：launcher.rs:256（async）；参数：`service`、`channel`；返回：`Result<Vec<BannerItem>, String>`；逻辑：`GameLauncherService::get_banners(&ch)`。
+- 位置：launcher.rs:292（async）；参数：`service`、`channel`；返回：`Result<Vec<BannerItem>, String>`；逻辑：`GameLauncherService::get_banners(&ch)`。
 
 ### `launcher_get_announcements`
-- 位置：launcher.rs:267（async）；参数：`service`、`channel`；返回：`Result<Vec<AnnouncementItem>, String>`；逻辑：`GameLauncherService::get_announcements(&ch)`。
+- 位置：launcher.rs:303（async）；参数：`service`、`channel`；返回：`Result<Vec<AnnouncementItem>, String>`；逻辑：`GameLauncherService::get_announcements(&ch)`。
 
 ### `launcher_get_notice_content`
-- 位置：launcher.rs:278（async）；参数：`service`、`channel`；返回：`Result<LauncherNoticeContent, String>`；逻辑：`GameLauncherService::get_notice_content(&ch)`（Banner + 公告合并内容）。
+- 位置：launcher.rs:314（async）；参数：`service`、`channel`；返回：`Result<LauncherNoticeContent, String>`；逻辑：`GameLauncherService::get_notice_content(&ch)`（Banner + 公告合并内容）。
 
 ### `launcher_get_background_image`
-- 位置：launcher.rs:289（async）；参数：`service`、`channel`；返回：`Result<Option<BackgroundMedia>, String>`；逻辑：`GameLauncherService::get_background_image(&ch)`。
+- 位置：launcher.rs:325（async）；参数：`service`、`channel`；返回：`Result<Option<BackgroundMedia>, String>`；逻辑：`GameLauncherService::get_background_image(&ch)`。
 
 ### `launcher_start_game`
-- 位置：launcher.rs:339（async）
+- 位置：launcher.rs:375（async）
 - 参数：`install_path: String`、`channel: String`
 - 返回：`Result<LauncherResult, String>`
 - 逻辑：用 `ch.executable_name()` 拼 exe 路径，不存在直接返回 `success:false`；先 `taskkill /F /IM <exe>` 杀残留进程并 `sleep(500ms)`；随后（Windows）在 `spawn_blocking` 中调用 `official_launcher::launch_via_official_parent` —— **游戏会校验自己的直接父进程必须是签名有效的官方 `Games.exe`**，该函数先查找 + 验签官方启动器（失败即 `no_launcher`），再用 `ShellExecuteExW("runas")` 以 `--endfield-launch-helper` 提权重启自身，由提权实例创建「挂起且永不运行的官方启动器 + 以其为父进程的游戏进程」；命令侧用 2.5s 宽限期 + 状态文件判断 helper 是启动阶段失败还是游戏已创建。找不到签名有效的官方启动器时回退 `direct_launch`（`ShellExecuteW(SW_SHOWNORMAL)`，即旧行为）并把原因放进 `LauncherResult.warning`。非 Windows 走 `Command::spawn`。
-- 并发保护：`static LAUNCH_IN_FLIGHT`（launcher.rs:305）保证同一时刻只有一次启动，避免重复点击弹出两次 UAC / 留下两套挂起的父进程。
+- 并发保护：`static LAUNCH_IN_FLIGHT`（launcher.rs:341）保证同一时刻只有一次启动，避免重复点击弹出两次 UAC / 留下两套挂起的父进程。
 
 #### `launcher_start_game` 的 `message` / `warning` token 契约
 
@@ -566,34 +571,34 @@
 | `unknown` | 其它（含 helper 提前退出的未知码、启动中重复点击） | 兜底 |
 
 ### `launcher_browse_folder`
-- 位置：launcher.rs:468（同步）；参数：无；返回：`Result<Option<String>, String>`；逻辑：`rfd::FileDialog::new().set_title("Select Game Directory").pick_folder()`，取消返回 `None`。
+- 位置：launcher.rs:509（同步）；参数：无；返回：`Result<Option<String>, String>`；逻辑：`rfd::FileDialog::new().set_title("Select Game Directory").pick_folder()`，取消返回 `None`。
 
 ### `launcher_get_disk_space`
-- 位置：launcher.rs:485（async）
+- 位置：launcher.rs:526（async）
 - 参数：`path: String`
 - 返回：`Result<DiskSpace, String>`（`{total, free}` 字节）
 - 逻辑：沿 `ancestors()` 找第一个存在的根路径，Windows 下起 `powershell -NoProfile -Command "Get-PSDrive …"` 解析 `Used|Free` 并相加得 total；非 Windows 返回 `u64::MAX` 占位。
 
 ### `launcher_scan_install_dir`
-- 位置：launcher.rs:544（async）；参数：`service`、`channel`、`install_path`；返回：`Result<FileScanResult, String>`；逻辑：`GameLauncherService::scan_install_dir(&ch, &install_path)` 扫描已有文件完整性。
+- 位置：launcher.rs:585（async）；参数：`service`、`channel`、`install_path`；返回：`Result<FileScanResult, String>`；逻辑：`GameLauncherService::scan_install_dir(&ch, &install_path)` 扫描已有文件完整性。
 
 ### `launcher_detect_channel`
-- 位置：launcher.rs:556（async）；参数：`install_path: String`；返回：`Result<Option<String>, String>`；逻辑：先校验 `Endfield.exe`+`Endfield_Data`+`config.ini` 齐全否则 `None`；再按特征 DLL 判定：`glextra.dll`+`play_pc_sdk.dll`+`manifest.xml` → `google_play`，`gfsdk.dll`+`glfoundation.dll` → `global`，`PCGameSDK.dll` → `bilibili`，`hgsdk.dll` → `official`，否则 `None`。纯本地，不联网。
+- 位置：launcher.rs:597（async）；参数：`install_path: String`；返回：`Result<Option<String>, String>`；逻辑：先校验 `Endfield.exe`+`Endfield_Data`+`config.ini` 齐全否则 `None`；再按特征 DLL 判定：`glextra.dll`+`play_pc_sdk.dll`+`manifest.xml` → `google_play`，`gfsdk.dll`+`glfoundation.dll` → `global`，`PCGameSDK.dll` → `bilibili`，`hgsdk.dll` → `official`，否则 `None`。纯本地，不联网。
 
 ### `launcher_check_executable`
-- 位置：launcher.rs:607（同步）；参数：`install_path: String`、`channel: String`；返回：`Result<bool, String>`；逻辑：`parse_channel` → `Path::exists` 判断渠道对应 exe 是否存在。
+- 位置：launcher.rs:648（同步）；参数：`install_path: String`、`channel: String`；返回：`Result<bool, String>`；逻辑：`parse_channel` → `Path::exists` 判断渠道对应 exe 是否存在。
 
 ### `launcher_check_game_running`
-- 位置：launcher.rs:615（异步）；参数：`channel: String`；返回：`Result<bool, String>`；逻辑：隐藏控制台异步执行 `tasklist /FI "IMAGENAME eq <process_name>" /NH`，stdout 包含进程名即认为在运行。前端游戏面板每 3 秒调用，避免同步子进程阻塞 Tauri 主线程。
+- 位置：launcher.rs:656（异步）；参数：`channel: String`；返回：`Result<bool, String>`；逻辑：隐藏控制台异步执行 `tasklist /FI "IMAGENAME eq <process_name>" /NH`，stdout 包含进程名即认为在运行。前端游戏面板每 3 秒调用，避免同步子进程阻塞 Tauri 主线程。
 
 ### `launcher_kill_game`
-- 位置：launcher.rs:631（async）
+- 位置：launcher.rs:672（async）
 - 参数：`channel: String`
 - 返回：`Result<bool, String>`（恒 `Ok(true)`）
 - 逻辑：三级兜底杀进程：`taskkill /T /F /IM <process_name>` → 失败改用 `<exe_name>` → 仍失败用 `wmic process where name like '%Endfield%' call terminate`；**无论是否成功都返回 `true`**。
 
 ### `launcher_switch_channel`
-- 位置：launcher.rs:680（async）
+- 位置：launcher.rs:721（async）
 - 参数：`service`、`from_channel: String`、`to_channel: String`、`install_path: String`、`app: AppHandle`
 - 返回：`Result<String, String>`（成功消息）
 - 逻辑：两个 channel 都经 `parse_channel` 校验，然后 `GameLauncherService::switch_channel(&from, &to, &install_path, app).await`（service 内部可用 app emit 进度/事件）。

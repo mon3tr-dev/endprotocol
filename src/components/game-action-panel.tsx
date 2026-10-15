@@ -28,6 +28,7 @@ import {
   resetDownloadCancel,
   hasDownloadCache,
   preloadDownload,
+  installPreload,
   startGame,
   browseFolder,
   checkGameRunning,
@@ -880,11 +881,28 @@ export function GameActionPanel() {
     cancellingRef.current = false;
     await resetDownloadCancel();
     try {
-      await installOrUpdate(channel, installPath);
-    } catch {
-      // error handled by progress
+      const result = gameStatus?.preload_installable
+        ? await installPreload(channel, installPath)
+        : await installOrUpdate(channel, installPath);
+      if (!result.success) {
+        addMessage({
+          type: "urgent",
+          title: t("launcher.update_failed_title"),
+          body: result.message,
+          tag: "update-error",
+        });
+      } else {
+        refreshStatus();
+      }
+    } catch (error) {
+      addMessage({
+        type: "urgent",
+        title: t("launcher.update_failed_title"),
+        body: String(error),
+        tag: "update-error",
+      });
     }
-  }, [channel, installPath]);
+  }, [channel, gameStatus?.preload_installable, installPath, refreshStatus, t]);
 
   // 解析校验结果 JSON，构建本地化消息
   const formatVerifyResult = useCallback(
@@ -1051,6 +1069,7 @@ export function GameActionPanel() {
   const hasUpdate = gameStatus?.has_update ?? false;
   const hasPreload = gameStatus?.has_preload ?? false;
   const preloadCompleted = gameStatus?.preload_completed ?? false;
+  const preloadInstallable = gameStatus?.preload_installable ?? false;
   const preloading = preloadProgress !== null;
   const preloadPercent =
     preloadProgress && preloadProgress.total > 0
@@ -1552,7 +1571,11 @@ export function GameActionPanel() {
         )}
 
         {/* Preload completed indicator */}
-        {hasPreload && preloadCompleted && isInstalled && !preloading && (
+        {hasPreload &&
+          preloadCompleted &&
+          !preloadInstallable &&
+          isInstalled &&
+          !preloading && (
           <div className={`${PILL_BASE} ${PILL_TEXT} gap-1.5 px-3 text-emerald-400/80`}>
             <svg
               className="w-4 h-4"

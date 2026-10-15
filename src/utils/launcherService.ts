@@ -12,6 +12,7 @@ export interface GameStatus {
   remote_version: string | null;
   has_preload: boolean;
   preload_version: string | null;
+  preload_installable: boolean;
   /** 预下载分卷需下载的总字节数（无预下载时为 0） */
   preload_total_bytes: number;
   preload_completed: boolean;
@@ -195,6 +196,18 @@ export async function preloadDownload(
   maxConcurrent?: number,
 ): Promise<LauncherResult> {
   return invoke<LauncherResult>("launcher_preload_download", {
+    channel,
+    installPath,
+    maxConcurrent: maxConcurrent ?? null,
+  });
+}
+
+export async function installPreload(
+  channel: GameChannel,
+  installPath: string,
+  maxConcurrent?: number,
+): Promise<LauncherResult> {
+  return invoke<LauncherResult>("launcher_install_preload", {
     channel,
     installPath,
     maxConcurrent: maxConcurrent ?? null,

@@ -723,12 +723,13 @@ derive 均为 `Serialize, Deserialize, Clone, Debug` + 容器 `rename_all = "cam
 | `remote_version` | `Option<String>` | — | 远端最新版本 |
 | `has_preload` | `bool` | — | 是否有预下载资源 |
 | `preload_version` | `Option<String>` | — | 预下载版本 |
+| `preload_installable` | `bool` | `default` | 有 cd_key 且补丁可用于安装；此时 `has_update` 也为 true |
 | `preload_total_bytes` | `u64` | `default` | 预下载分卷需下载的总字节数（无预下载时为 0） |
 | `preload_completed` | `bool` | — | 预下载是否完成 |
 | `active_operation` | `Option<ActiveOperation>` | `default` | 当前活跃操作（无则为 None） |
 
 ### `struct BatchProxyResponse`
-- 位置：game.rs:177
+- 位置：game.rs:179
 - derive：同上
 - 用途：启动器 `batch_proxy` 接口的顶层响应。
 - 字段：
@@ -738,7 +739,7 @@ derive 均为 `Serialize, Deserialize, Clone, Debug` + 容器 `rename_all = "cam
 | `proxy_rsps` | `Vec<ProxyResponse>` | — | 各子请求的响应集合 |
 
 ### `struct ProxyResponse`
-- 位置：game.rs:182
+- 位置：game.rs:184
 - derive：同上
 - 用途：单个子请求响应，按 `kind` 分派到对应 `*_rsp` 字段。
 - 字段：
@@ -752,7 +753,7 @@ derive 均为 `Serialize, Deserialize, Clone, Debug` + 容器 `rename_all = "cam
 | `get_main_bg_image_rsp` | `Option<MainBgImageRsp>` | `rename`（同名） + `skip_serializing_if = "Option::is_none"` | 主界面背景图响应 |
 
 ### `struct GetLatestGameRsp`
-- 位置：game.rs:195
+- 位置：game.rs:197
 - derive：同上
 - 用途：最新游戏包信息（含预下载补丁包 `pre_patch`）。
 - 字段：
@@ -763,10 +764,10 @@ derive 均为 `Serialize, Deserialize, Clone, Debug` + 容器 `rename_all = "cam
 | `pkg` | `Option<PkgInfo>` | `default` | 正式包信息 |
 | `pre_patch` | `Option<PrePatch>` | `default` | 预下载补丁包（官方在正式发版前提供，只有请求里带上本地版本时才返回） |
 
-**备注**：接口实际响应还包含 `action` / `request_version` / `patch` / `state` / `launcher_action` / `client_version` / `pkg.packs` 等字段，本结构只反序列化用得到的部分（多余字段被忽略）。
+**备注**：接口实际响应还包含 `action` / `request_version` / `patch` / `state` / `launcher_action` / `client_version` / `pkg.packs` 等字段；`pkg.cd_key` 会被读取供后端解密预下载包，不会通过前端 IPC 返回。
 
 ### `struct PkgInfo`
-- 位置：game.rs:208
+- 位置：game.rs:210
 - derive：同上
 - 用途：包地址信息（`pkg.file_path` 指向资源根目录，清单由 `{file_path}/game_files` 取得）。
 - 字段：
@@ -774,9 +775,10 @@ derive 均为 `Serialize, Deserialize, Clone, Debug` + 容器 `rename_all = "cam
 | 字段 | 类型 | serde | 含义 |
 | --- | --- | --- | --- |
 | `file_path` | `String` | — | 包文件下载路径/URL |
+| `cd_key` | `Option<String>` | `default` + `skip_serializing` | 官方预下载 ZIP 的解压密码，仅后端使用 |
 
 ### `struct PrePatch`
-- 位置：game.rs:214
+- 位置：game.rs:218
 - derive：`Debug, Clone, Serialize, Deserialize, Default`
 - 用途：预下载补丁包元数据（待发布版本的分卷压缩包）。
 - 字段：
@@ -789,10 +791,10 @@ derive 均为 `Serialize, Deserialize, Clone, Debug` + 容器 `rename_all = "cam
 | `total_size` | `String` | `default` | 解压后总字节数（字符串数字） |
 | `patches` | `Vec<PatchPart>` | `default` | 分卷列表（`.zip.001`、`.zip.002` … 顺序拼接为一个 ZIP） |
 
-**备注**：`impl PrePatch` — game.rs:232；方法 `total_bytes(&self) -> u64` — game.rs:234，累加各分卷 `size()`。
+**备注**：`impl PrePatch` — game.rs:236；方法 `total_bytes(&self) -> u64` — game.rs:238，累加各分卷 `size()`。
 
 ### `struct PatchPart`
-- 位置：game.rs:241
+- 位置：game.rs:245
 - derive：`Debug, Clone, Serialize, Deserialize, Default`
 - 用途：预下载分卷条目。
 - 字段：
@@ -803,10 +805,10 @@ derive 均为 `Serialize, Deserialize, Clone, Debug` + 容器 `rename_all = "cam
 | `md5` | `String` | `default` | 分卷文件 MD5 |
 | `package_size` | `String` | `default` | 分卷字节数（字符串数字） |
 
-**备注**：`impl PatchPart` — game.rs:253；方法 `size(&self) -> u64` — game.rs:255，解析 `package_size`，失败按 0。
+**备注**：`impl PatchPart` — game.rs:257；方法 `size(&self) -> u64` — game.rs:259，解析 `package_size`，失败按 0。
 
 ### `struct ManifestFile`
-- 位置：game.rs:262
+- 位置：game.rs:266
 - derive：同上
 - 用途：清单文件条目（解密后的 NDJSON 每行一条）。
 - 字段：
@@ -818,7 +820,7 @@ derive 均为 `Serialize, Deserialize, Clone, Debug` + 容器 `rename_all = "cam
 | `size` | `i64` | — | 文件字节数 |
 
 ### `struct RemotePackage`
-- 位置：game.rs:270
+- 位置：game.rs:274
 - derive：同上
 - 用途：远端游戏包信息（版本 + 资源地址，含预下载）。
 - 字段：
@@ -831,9 +833,10 @@ derive 均为 `Serialize, Deserialize, Clone, Debug` + 容器 `rename_all = "cam
 | `preload_version` | `Option<String>` | — | 预下载版本 |
 | `preload_parts` | `Vec<PatchPart>` | — | 预下载分卷列表（顺序即拼接顺序） |
 | `preload_total_bytes` | `u64` | — | 预下载分卷下载字节数之和 |
+| `preload_expanded_bytes` | `u64` | — | API 提供的预下载解压后总字节数 |
 
 ### `struct DownloadProgress`
-- 位置：game.rs:283
+- 位置：game.rs:289
 - derive：同上
 - 用途：下载进度（与 `OperationProgress` 字段基本一致）。
 - 字段：
@@ -848,10 +851,10 @@ derive 均为 `Serialize, Deserialize, Clone, Debug` + 容器 `rename_all = "cam
 | `file_count` | `usize` | — | 文件总数 |
 | `verified_bytes` | `u64` | `default` | 已校验字节 |
 
-**备注**：手动实现 `impl Default for DownloadProgress` — game.rs:294，全字段置 0/空（stage 为 `String::new()`，current_file 为 `None`）。
+**备注**：手动实现 `impl Default for DownloadProgress` — game.rs:300，全字段置 0/空（stage 为 `String::new()`，current_file 为 `None`）。
 
 ### `enum InstallStage`
-- 位置：game.rs:310
+- 位置：game.rs:316
 - derive：`Debug, Clone, Serialize, Deserialize, PartialEq, Eq`
 - 用途：安装/更新阶段枚举，序列化为小写字符串。
 - 变体（均带 `#[serde(rename)]`，rename 值与 `as_str` 一致）：
@@ -868,10 +871,10 @@ derive 均为 `Serialize, Deserialize, Clone, Debug` + 容器 `rename_all = "cam
 | `Completed` | `completed` | 完成 |
 | `Error` | `error` | 出错 |
 
-**备注**：impl InstallStage — game.rs:332；`pub fn as_str(&self) -> &'static str` — game.rs:333，返回上表字符串。
+**备注**：impl InstallStage — game.rs:338；`pub fn as_str(&self) -> &'static str` — game.rs:339，返回上表字符串。
 
 ### `struct FilePlan`
-- 位置：game.rs:350
+- 位置：game.rs:356
 - derive：`#[derive(Debug, Clone)]` —— **不带 serde，不能直接序列化**
 - 用途：清单比较结果，标记需要下载的文件及其可复用的本地来源。
 - 字段：
@@ -882,7 +885,7 @@ derive 均为 `Serialize, Deserialize, Clone, Debug` + 容器 `rename_all = "cam
 | `source_path` | `Option<String>` | 无 | 本地已有且 MD5 匹配的文件路径（可复用） |
 
 ### `struct PayloadState`
-- 位置：game.rs:357
+- 位置：game.rs:363
 - derive：`Debug, Clone, Serialize, Deserialize`
 - 用途：持久化的资源包状态（写入本地状态文件）。
 - 字段：
@@ -899,7 +902,7 @@ derive 均为 `Serialize, Deserialize, Clone, Debug` + 容器 `rename_all = "cam
 | `preload_completed` | `bool` | `default` | 预下载是否完成 |
 
 ### `struct LauncherResult`
-- 位置：game.rs:372
+- 位置：game.rs:378
 - derive：同上
 - 用途：安装/更新操作结果（命令返回值）。
 - 字段：
@@ -912,7 +915,7 @@ derive 均为 `Serialize, Deserialize, Clone, Debug` + 容器 `rename_all = "cam
 | `warning` | `Option<String>` | `default` + `skip_serializing_if` | 非致命提示，格式同 `message`。目前只有「未找到签名有效的官方启动器、已回退到直接启动」（token `fallback`）会带上 |
 
 ### `struct BannerItem`
-- 位置：game.rs:382
+- 位置：game.rs:392
 - derive：同上
 - 用途：本地聚合后的 Banner 条目（给前端）。
 - 字段：
@@ -923,7 +926,7 @@ derive 均为 `Serialize, Deserialize, Clone, Debug` + 容器 `rename_all = "cam
 | `jump_url` | `String` | — | 跳转链接 |
 
 ### `struct AnnouncementItem`
-- 位置：game.rs:389
+- 位置：game.rs:399
 - derive：同上
 - 用途：本地聚合后的公告条目。
 - 字段：
@@ -936,7 +939,7 @@ derive 均为 `Serialize, Deserialize, Clone, Debug` + 容器 `rename_all = "cam
 | `jump_url` | `String` | — | 跳转链接 |
 
 ### `struct LauncherNoticeContent`
-- 位置：game.rs:398
+- 位置：game.rs:408
 - derive：同上
 - 用途：公告页聚合内容（Banner + 公告列表）。
 - 字段：
@@ -947,7 +950,7 @@ derive 均为 `Serialize, Deserialize, Clone, Debug` + 容器 `rename_all = "cam
 | `announcements` | `Vec<AnnouncementItem>` | — | 公告列表 |
 
 ### `struct BannerRsp`
-- 位置：game.rs:405
+- 位置：game.rs:415
 - derive：同上
 - 用途：Banner API 响应体。
 - 字段：
@@ -957,7 +960,7 @@ derive 均为 `Serialize, Deserialize, Clone, Debug` + 容器 `rename_all = "cam
 | `banners` | `Vec<BannerRspItem>` | `default` | Banner 列表 |
 
 ### `struct BannerRspItem`
-- 位置：game.rs:411
+- 位置：game.rs:421
 - derive：同上
 - 用途：Banner API 原始条目。
 - 字段：
@@ -968,7 +971,7 @@ derive 均为 `Serialize, Deserialize, Clone, Debug` + 容器 `rename_all = "cam
 | `jump_url` | `String` | — | 跳转链接 |
 
 ### `struct AnnouncementRsp`
-- 位置：game.rs:418
+- 位置：game.rs:428
 - derive：同上
 - 用途：公告 API 响应体。
 - 字段：
@@ -978,7 +981,7 @@ derive 均为 `Serialize, Deserialize, Clone, Debug` + 容器 `rename_all = "cam
 | `tabs` | `Vec<AnnouncementTab>` | `default` + `alias = "tab_list"` | 公告 Tab 列表（兼容 `tab_list` 键） |
 
 ### `struct AnnouncementTab`
-- 位置：game.rs:424
+- 位置：game.rs:434
 - derive：同上
 - 用途：公告 API 中的分类 Tab。
 - 字段：
@@ -989,7 +992,7 @@ derive 均为 `Serialize, Deserialize, Clone, Debug` + 容器 `rename_all = "cam
 | `announcements` | `Vec<AnnouncementApiItem>` | `default` | 该 Tab 下的公告 |
 
 ### `struct AnnouncementApiItem`
-- 位置：game.rs:432
+- 位置：game.rs:442
 - derive：同上
 - 用途：公告 API 原始条目（字段宽松，多为 Option）。
 - 字段：
@@ -1002,7 +1005,7 @@ derive 均为 `Serialize, Deserialize, Clone, Debug` + 容器 `rename_all = "cam
 | `jump_url` | `Option<String>` | `default` + `alias = "jumpUrl"` + `alias = "jump_url"` | 跳转链接 |
 
 ### `struct MainBgImageRsp`
-- 位置：game.rs:445
+- 位置：game.rs:455
 - derive：同上
 - 用途：主界面背景图 API 响应体。
 - 字段：
@@ -1012,7 +1015,7 @@ derive 均为 `Serialize, Deserialize, Clone, Debug` + 容器 `rename_all = "cam
 | `main_bg_image` | `Option<MainBgImageData>` | `rename = "main_bg_image"`（同名） + `default` | 背景图数据 |
 
 ### `struct MainBgImageData`
-- 位置：game.rs:451
+- 位置：game.rs:461
 - derive：同上
 - 用途：背景图数据（可含视频）。
 - 字段：
@@ -1023,7 +1026,7 @@ derive 均为 `Serialize, Deserialize, Clone, Debug` + 容器 `rename_all = "cam
 | `video_url` | `Option<String>` | `default` | 视频地址 |
 
 ### `struct BackgroundImage`
-- 位置：game.rs:459
+- 位置：game.rs:469
 - derive：同上
 - 用途：简版背景图信息（仅图片地址）。
 - 字段：
@@ -1033,7 +1036,7 @@ derive 均为 `Serialize, Deserialize, Clone, Debug` + 容器 `rename_all = "cam
 | `url` | `String` | — | 背景图地址 |
 
 ### `struct BackgroundMedia`
-- 位置：game.rs:465
+- 位置：game.rs:475
 - derive：同上
 - 用途：启动器背景媒体，图片与视频一起返回，由前端按设置选择。
 - 字段：
@@ -1044,7 +1047,7 @@ derive 均为 `Serialize, Deserialize, Clone, Debug` + 容器 `rename_all = "cam
 | `video_url` | `Option<String>` | `default` | 背景视频地址 |
 
 ### `struct FileScanResult`
-- 位置：game.rs:474
+- 位置：game.rs:484
 - derive：同上
 - 用途：安装目录扫描结果（校验本地文件完整性统计）。
 - 字段：

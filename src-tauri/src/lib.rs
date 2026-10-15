@@ -138,6 +138,7 @@ pub fn run() {
             commands::launcher::launcher_install_or_update,
             commands::launcher::launcher_verify_and_repair,
             commands::launcher::launcher_preload_download,
+            commands::launcher::launcher_install_preload,
             commands::launcher::launcher_get_remote_version,
             commands::launcher::launcher_get_payload_state,
             commands::launcher::launcher_cancel_download,

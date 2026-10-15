@@ -53,6 +53,7 @@ tauri-plugin-process = "2.3.1"
 walkdir = "2"
 rfd = "0.15"
 sysinfo = "0.38.4"
+zip = { version = "4.6.1", default-features = false, features = ["aes-crypto", "deflate-flate2"] }
 
 [target.x86_64-pc-windows-msvc]
 rustflags = ["-C", "link-arg=-fuse-ld=lld"]
