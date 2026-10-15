@@ -84,3 +84,26 @@ docs/
     ├── frontend/  (18 docs)
     └── backend/   (8 docs)
 ```
+
+## 6. Commit rules
+
+Every commit message must follow [Conventional Commits](https://www.conventionalcommits.org/) and **carry a prefix**:
+
+```
+<type>(<scope>): <lowercase imperative summary, no trailing period>
+
+<optional body: one bullet per coherent change>
+
+<optional trailers, e.g. Co-authored-by: ...>
+```
+
+- **Types**: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`.
+- **Scope** is optional but recommended when the change belongs to one area, e.g. `feat(launcher)`, `fix(updater)`, `docs(agents)`.
+- Plain prefixes are also valid when the change spans areas, e.g. `feat: enable cross-platform builds and updates`.
+
+**Splitting is allowed (and preferred over mega-commits).** Keep one coherent change per commit:
+
+- code + its required doc-index updates (§4) → one commit;
+- unrelated work in the same working tree (e.g. repo meta docs, tooling, formatting) → separate commit with its own prefix.
+
+Before committing, run the verification in §3 (`npm run build`, `cargo check`) and make sure the indexes in §4 are updated. Never commit without a prefix, and never mix an unrelated feature into an existing commit unless explicitly asked to amend.
