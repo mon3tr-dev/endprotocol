@@ -343,34 +343,3 @@ export function QuickLaunchModal({ onClose }: { onClose: () => void }) {
     </GlassModal>
   );
 }
-
-/**
- * 游戏模式下右下角设置按钮弹出的「游戏启动设置」毛玻璃面板。
- */
-export function GameLaunchSettingsModal({ onClose }: { onClose: () => void }) {
-  const { t } = useTranslation();
-
-  return (
-    <GlassModal isOpen onOpenChange={(open) => !open && onClose()}>
-      <GlassModal.Backdrop isDismissable className="z-[200] backdrop-blur-md">
-        <GlassModal.Container size="lg">
-          <GlassModal.Dialog className="glass-surface-strong border border-separator/70 shadow-2xl">
-            <GlassModal.Header>
-              <div className="flex items-center justify-between px-5 py-4 border-b border-separator/50">
-                <GlassModal.Heading className="text-sm">
-                  {t("settings.game_launch.title")}
-                </GlassModal.Heading>
-                <GlassModal.CloseTrigger />
-              </div>
-            </GlassModal.Header>
-            <GlassModal.Body>
-              <div className="px-5 py-4 space-y-6">
-                <GameLaunchSettings />
-              </div>
-            </GlassModal.Body>
-          </GlassModal.Dialog>
-        </GlassModal.Container>
-      </GlassModal.Backdrop>
-    </GlassModal>
-  );
-}

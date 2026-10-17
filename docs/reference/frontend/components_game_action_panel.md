@@ -7,7 +7,7 @@
 **导出**：`GameActionPanel`（无 props 的函数组件，行 52）。
 
 **主要依赖**：
-- 项目内：`@/components/ui/modal`（`GlassAlertDialogCompound`、`GlassModalCompound`）、`@/components/ui/button`（`GlassButton`）、`@/utils/launcherService`（全部 Tauri 后端调用与事件订阅的封装）、`@/utils/messageStore`（`addMessage`）、`@/components/game-launch-settings`（`GameLaunchSettingsModal`）。
+- 项目内：`@/components/ui/modal`（`GlassAlertDialogCompound`、`GlassModalCompound`）、`@/components/ui/button`（`GlassButton`）、`@/utils/launcherService`（全部 Tauri 后端调用与事件订阅的封装）、`@/utils/messageStore`（`addMessage`）、`@/components/game-launch-settings`（`QuickLaunchModal`）。
 - 第三方：React（`useState`/`useEffect`/`useLayoutEffect`/`useRef`/`useCallback`）、`react-dom`（`createPortal`）、`react-i18next`（`useTranslation`）。Tauri API 不直接引用，全部经 `launcherService` 间接调用。
 
 ## 内部结构总览
@@ -31,7 +31,7 @@
 | 1554–1880 | 主按钮进度浮层（Portal）：准备/下载/校验/比较/修复/应用/切换 7 类进度展示 |
 | 1882–1884 | 汉堡菜单按钮（启动设置入口已并入菜单，不再单独占位） |
 | 1882–2060 | 汉堡菜单浮层（Portal）：游戏设置、启动设置、校验完整性、快速校验、清理临时文件、定位游戏 |
-| 2062–2079 | `GameLaunchSettingsModal`、`GameSettingsModal` 条件挂载 |
+| 2062–2081 | `QuickLaunchModal`、`GameSettingsModal` 条件挂载（quickLaunchOpen 状态） |
 | 2081–2423 | 通用确认对话框（5 种 confirmAction 分支 + 「不再提示」复选框） |
 | 2426–2517 | **预下载确认对话框**：提示将占用的磁盘空间（复用 `DiskSpaceBar`），空间不足禁用确认 |
 | 2520–2597 | 渠道选择对话框（首次安装、无法自动检测时） |
@@ -120,7 +120,7 @@
 下载阶段主按钮周围显示从正上方开始顺时针环绕的百分比进度环；悬停取消下载或关闭游戏时，主按钮背景显示透明浅红。按钮 hover 时计算 `progressFlyoutPos`（另见按钮定位 effect）；浮层经 `ProgressFlyout`（`createPortal` 到 `document.body`）挂出，按 `preparing`/`isDownloading`/`isVerifying`/`isComparing`/`isRepairing`/`isApplying`/`switching` 分支渲染进度条、速度、ETA、当前文件与切换阶段文案（阶段 → 文案映射）。预下载**不进入**该浮层，而是用自己的浮层实例（同为 `ProgressFlyout`，锚在预下载按钮上）。
 
 **菜单与设置入口（1882–2060）**
-汉堡按钮切换菜单浮层并即时 `hasDownloadCache` 刷新 `hasTempFiles`；菜单项：游戏设置（打开 `GameSettingsModal`，安装路径）、启动设置（打开 `GameLaunchSettingsModal`，校验线程数/游戏界面背景）、校验完整性（`verify-confirm`）、快速校验、清理临时文件（`delete-temp`，需 `hasTempFiles`）、定位游戏。启动设置入口原先是最右侧的独立 ⚙ 按钮，现已并入该菜单；菜单里的校验/快速校验/清理项以 `busyWithDownload` 禁用（预下载进行中不可发起）。
+汉堡按钮切换菜单浮层并即时 `hasDownloadCache` 刷新 `hasTempFiles`；菜单项：游戏设置（打开 `GameSettingsModal`，安装路径）、启动设置（直接打开独立的 `QuickLaunchModal`：静默启动命令 + 复制 + 创建快捷方式，不再先套完整启动设置面板）、校验完整性（`verify-confirm`）、快速校验、清理临时文件（`delete-temp`，需 `hasTempFiles`）、定位游戏。启动设置入口原先是最右侧的独立 ⚙ 按钮，现已并入该菜单；菜单里的校验/快速校验/清理项以 `busyWithDownload` 禁用（预下载进行中不可发起）。
 
 **对话框族（2081–2901）**
 通用确认框（2081，5 分支 + footer 按钮组合各不相同）、**预下载确认框（2426，`preload_confirm_title/desc` + `DiskSpaceBar`，空间不足禁用「开始预下载」）**、渠道选择框（2520，`ALL_CHANNELS` 列表 + `scanning` 指示）、扫描结果框（2600，同样用 `DiskSpaceBar` 画三色磁盘占用条，空间不足时禁用确认按钮并显示红色提示）、切换选择框（2781，当前渠道禁用并标注）、切换确认框（2861，`switch_confirm_desc` 插入 from/to 渠道名）。
@@ -152,7 +152,7 @@
 3. **props 清单**：
    - `GameActionPanel()`：无 props。
    - `GameSettingsModal`：`initialPath: string`（初始安装路径）、`onClose: () => void`（关闭）、`onSave: (path: string) => void`（保存并触发状态刷新）。
-   - `GameLaunchSettingsModal`：`onClose: () => void`。
+   - `GameLaunchSettingsModal`：已从库中删除，「启动设置」入口直接挂 `QuickLaunchModal`（props 见 components_settings_panels.md）。
    - `GlassAlertDialog` / `GlassModal` / `GlassButton` 为其复合子组件提供的 `isOpen`、`onOpenChange`、`onPress`、`className`、`variant`、`status` 等 UI 属性。
 4. **状态管理要点**：全部为组件内 `useState`，无全局 store；`localActiveOp`（事件实时）优先于 `gameStatus.active_operation`（轮询）；`cancellingRef` 在取消期间屏蔽后续进度事件；游戏运行态 3 秒轮询；持久化键为 `launcher_install_path`、`launcher_channel`、`launcher_skip_stop_confirm`、`launcher_cancel_behavior`，另直接读 `launcher_verify_threads`（691–694、716–719）；`confirmAction` 为五值联合（`cancel-download`｜`stop-game`｜`resume-install`｜`delete-temp`｜`verify-confirm`）；880–884 在渲染期间比较文案并 `setBtnLabelKey` 以驱动 `animate-fade-in`。
 5. **异常/待关注**：

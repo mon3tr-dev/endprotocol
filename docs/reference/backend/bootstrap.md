@@ -175,7 +175,6 @@
 | `dependencies.rsa` | :43 | RSA 加密（登录/凭证） |
 | `dependencies.flate2` | :44 | `zlib` 后端的 gzip 压缩/解压 |
 | `dependencies.base64` / `bytes` / `http` | :45-47 | 编码与 HTTP 基础类型 |
-| `dependencies.icoextract_rs` | Cargo.toml | `0.1`，仅 `cfg(windows)` 目标依赖；跨平台 PE 图标提取（Rust 版 `icoextract`），用于 `create_game_shortcut` 从游戏 `Endfield.exe` 提取图标写入 `.ico`（见 commands/startup.rs） |
 | `dependencies.windows-sys` | Cargo.toml | `0.61`，仅 `cfg(windows)` 目标依赖；features：`Win32_Foundation`、`Win32_Graphics_Gdi`、`Win32_UI_WindowsAndMessaging`、`Win32_System_Com`、`Win32_UI_Shell`、`Win32_System_Threading`（托盘取前台窗口、取色、进程检测）、`Win32_System_Power` / `Win32_System_Performance`（system_resource_service 采集实测 CPU 频率）；**免启动器启动**额外需要：`Win32_Security`（`CreateProcessW` 的 `SECURITY_ATTRIBUTES` 参数门控）、`Win32_Security_Cryptography` + `Win32_Security_Cryptography_Catalog` + `Win32_Security_Cryptography_Sip`（`WinVerifyTrust` 数据结构与两个 `WTHelper*` 函数）、`Win32_Security_WinTrust`、`Win32_System_Registry`（Reg* 与 `SHELLEXECUTEINFOW`）、`Win32_System_Environment`、`Win32_System_Console`、`Win32_System_Diagnostics_Debug`、`Win32_Storage_FileSystem`（见 utils/official_launcher.rs） |
 | `dependencies.sysinfo` | Cargo.toml | 系统资源采集（CPU/内存/磁盘/网络/温度传感器），见 `services/system_resource_service.rs` |
 | `dependencies.uuid` / `hex` / `rand` | :49-51 | UUID v4、十六进制、随机数 |

@@ -57,7 +57,6 @@ sysinfo = "0.38.4"
 zip = { version = "4.6.1", default-features = false, features = ["aes-crypto", "deflate-flate2"] }
 
 [target.'cfg(windows)'.dependencies]
-icoextract_rs = "0.1"
 # 免启动器启动（utils/official_launcher.rs）额外需要的特性：
 #   Win32_Security                      —— CreateProcessW 的 SECURITY_ATTRIBUTES 参数门控
 #   Win32_Security_Cryptography         —— WINTRUST_DATA / CERT_CONTEXT / CertGetNameStringW

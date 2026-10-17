@@ -125,8 +125,8 @@
 **备注**：`invoke`：无；`listen`：无；Tauri `emit`：`theme-changed`（63、77）；window 事件：监听 `themeChange`（53）、派发 `themeChange`（76）；配置键 `theme_mode`（读 36/48，写 75）。未使用的 `btnRef` 仅绑定在按钮上。
 
 ## `src/components/game-launch-settings.tsx`
-**职责**：游戏启动相关设置组（取消下载行为 / 校验线程数 / 启动界面背景媒体）；静默启动命令与 Windows `.lnk` 创建移入独立弹窗 `QuickLaunchModal`；另提供游戏模式右下角弹出的毛玻璃设置弹窗。
-**导出**：`GameLaunchSettings`、`QuickLaunchModal`、`GameLaunchSettingsModal`。
+**职责**：游戏启动相关设置组（取消下载行为 / 校验线程数 / 启动界面背景媒体）；静默启动命令与 Windows `.lnk` 创建在独立弹窗 `QuickLaunchModal`（设置页与游戏行动面板「启动设置」入口都直接打开它，`GameLaunchSettingsModal` 已删除）。
+**导出**：`GameLaunchSettings`、`QuickLaunchModal`。
 **主要依赖**：`react`、`react-i18next`、`@/components/ui/glass`（`GlassButton`）、`@/components/ui/slider`（`Slider`）、`@/components/ui/settings-row`（`SettingsDivider`）、`@/components/ui/modal`（`GlassModalCompound`）、`@/stores/launcherMode`、`@/utils/launcherService`（静默启动 IPC）、`@/utils/platform`。
 
 | 符号 | 位置 | 说明 |
@@ -139,14 +139,13 @@
 | `persist(key, value)` | 40-45 | 写 localStorage 并广播 `SYNC_EVENT` |
 | `GameLaunchSettings`（export） | 51 | 设置组主体，无 props；`quickLaunchOpen` 控制静默启动弹窗 |
 | 静默启动区块 | 194-211 | 仅剩标题/描述与「查看命令与创建快捷方式…」按钮，点击打开 `QuickLaunchModal` |
-| `QuickLaunchModal`（export） | 223 | **新独立弹窗**；props：`onClose: () => void`；打开时同步游戏配置并加载命令 |
+| `QuickLaunchModal`（export） | 223 | 独立弹窗；props：`onClose: () => void`；打开时同步游戏配置并加载命令 |
 | 命令加载 effect | 231-250 | 同步 localStorage 的游戏路径/渠道到 app config，再取得完整启动命令 |
 | `handleCopyCommand` | 252-263 | 复制当前命令到剪贴板，并显示成功/错误反馈 |
 | `handleCreateShortcut` | 265-285 | 同步游戏配置后调用 Windows 快捷方式保存命令；显示成功路径或具体错误及命令行回退方式 |
-| `GameLaunchSettingsModal`（export） | 350 | 弹窗包装；props：`onClose: () => void`（`isOpen` 恒为 true） |
 
 **内部结构**：
-- 三项既有设置继续用 localStorage 与 `SYNC_EVENT` 同步；静默启动命令展示与快捷方式创建从设置组抽离到 `QuickLaunchModal`（backdrop `z-[300]`，容器 `size="md"`），可从设置页或 `GameLaunchSettingsModal` 内打开（作为嵌套弹窗叠于其上）。
+- 三项既有设置继续用 localStorage 与 `SYNC_EVENT` 同步；静默启动命令展示与快捷方式创建从设置组抽离到 `QuickLaunchModal`（backdrop `z-[300]`，容器 `size="md"`）。两个打开入口：设置页「静默启动」区块内按钮，以及游戏行动面板汉堡菜单的「启动设置」项；原 `GameLaunchSettingsModal` 包装层（`size="lg"` 弹窗内嵌完整设置面板）已随入口直开 `QuickLaunchModal` 删除。
 - `.lnk` 目标命令为主程序路径及 `--silent --launch-game`；游戏目录与渠道同步到后端 `ConfigService`。
 
 **备注**：通过 `launcherService` 调用 `get_game_launch_command` / `create_game_shortcut` 并用 `set_config` 同步 `launcher_install_path` / `launcher_channel`；剪贴板使用浏览器 Clipboard API。localStorage 键：`launcher_cancel_behavior`、`launcher_verify_threads`、`launcher_install_path`、`launcher_channel`；window 事件：`game-launch-settings-sync`。文案位于 `settings.game_launch.*` 与 `launcher.*`。

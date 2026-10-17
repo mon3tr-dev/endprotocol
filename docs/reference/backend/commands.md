@@ -119,9 +119,9 @@
 **职责**：纯模块声明文件，导出 `account`、`attendance`、`capture`、`card_config`、`color_picker`、`config`、`gacha`、`image`、`launcher`、`logs`、`startup`、`system_resource`、`tray`、`updater`、`window` 共 15 个子模块。无命令定义，无逻辑。
 
 ## `src-tauri/src/commands/startup.rs`
-**职责**：静默游戏启动命令的配置、命令行文本与 Windows `.lnk` 创建入口（含游戏 exe 图标提取）。
+**职责**：静默游戏启动命令的配置、命令行文本与 Windows `.lnk` 创建入口（不在磁盘上生成图标文件）。
 **导出**：`refresh_main_exe_path`（启动初始化辅助函数）、Tauri 命令 `get_game_launch_command`、`create_game_shortcut`。
-**主要依赖**：`ConfigService`、`rfd::FileDialog`、`icoextract_rs`（Windows：提取 PE 图标）、Windows PowerShell `WScript.Shell` COM。
+**主要依赖**：`ConfigService`、`rfd::FileDialog`、Windows PowerShell `WScript.Shell` COM。
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
@@ -130,9 +130,9 @@
 | `refresh_main_exe_path` | startup.rs:52 | 应用初始化时同步 exe 路径 |
 | `get_game_launch_command` | startup.rs:57 | 返回带引号的当前 exe 路径及 `--silent --launch-game` |
 | `create_game_shortcut` | startup.rs:63 | 读取 `launcher_install_path` / `launcher_channel`，用户选择保存路径后创建 Windows `.lnk`；取消选择返回 `None` |
-| `write_game_shortcut_icon`（私有，仅 Windows） | startup.rs:195 | 用 `icoextract_rs::IconExtractor` 从游戏主文件 `Endfield.exe`（`GameChannel::executable_name()`，与渠道无关）提取第 0 组图标，写成与 `.lnk` 同名的 `.ico`（`with_extension("ico")`）；返回图标路径供 COM `IconLocation` 使用。exe 缺失/无图标/写入失败返回 `None`，快捷方式仍创建但无自定义图标 |
+| `powershell_literal`（私有，仅 Windows） | startup.rs:189 | 单引号转义（`'` → `''`），用于嵌入脚本路径串 |
 
-**备注**：配置文件仍为 `%LOCALAPPDATA%\\cn.msk-network.endprotocol\\app_config.json`；键为 `main_exe_path`、`launcher_install_path`、`launcher_channel`。`main_exe_path` 不含 `\\?\` 前缀。快捷方式目标为主程序 exe，工作目录为 exe 所在目录；图标通过 PowerShell 脚本里的 `$shortcut.IconLocation = '<ico>,0'` 设置，`.ico` 与 `.lnk` 同目录同名。
+**备注**：配置文件仍为 `%LOCALAPPDATA%\\cn.msk-network.endprotocol\\app_config.json`；键为 `main_exe_path`、`launcher_install_path`、`launcher_channel`。`main_exe_path` 不含 `\\?\` 前缀。快捷方式目标为主程序 exe，工作目录为 exe 所在目录；`Endfield.exe` 存在时其内嵌图标直接通过 `$shortcut.IconLocation = '<Endfield.exe>,0'` 引用（`executable_name()` 与渠道无关），不再提取/落盘 `.ico`；exe 缺失则不设置图标。
 
 ---
 

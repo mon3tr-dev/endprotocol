@@ -49,7 +49,7 @@ import {
   splitLaunchToken,
 } from "@/utils/launcherService";
 import { addMessage } from "@/utils/messageStore";
-import { GameLaunchSettingsModal } from "@/components/game-launch-settings";
+import { QuickLaunchModal } from "@/components/game-launch-settings";
 
 const STORAGE_KEY_INSTALL_PATH = "launcher_install_path";
 const STORAGE_KEY_CHANNEL = "launcher_channel";
@@ -279,7 +279,7 @@ export function GameActionPanel() {
   const [flyoutOpen, setFlyoutOpen] = useState(false);
   const [hasTempFiles, setHasTempFiles] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [launchSettingsOpen, setLaunchSettingsOpen] = useState(false);
+  const [quickLaunchOpen, setQuickLaunchOpen] = useState(false);
   const [gameRunning, setGameRunning] = useState(false);
   const [btnHovered, setBtnHovered] = useState(false);
   const [btnLabelKey, setBtnLabelKey] = useState(0);
@@ -2092,7 +2092,7 @@ export function GameActionPanel() {
                 onClick={() => {
                   setFlyoutOpen(false);
                   setMenuFlyoutPos(null);
-                  setLaunchSettingsOpen(true);
+                  setQuickLaunchOpen(true);
                 }}
                 className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-foreground/80 hover:bg-white/10 hover:text-foreground transition-colors cursor-pointer"
               >
@@ -2223,10 +2223,8 @@ export function GameActionPanel() {
           )}
       </div>
 
-      {launchSettingsOpen && (
-        <GameLaunchSettingsModal
-          onClose={() => setLaunchSettingsOpen(false)}
-        />
+      {quickLaunchOpen && (
+        <QuickLaunchModal onClose={() => setQuickLaunchOpen(false)} />
       )}
 
       {settingsOpen && (

@@ -116,13 +116,14 @@ pub fn create_game_shortcut(
 
         let game_exe = PathBuf::from(&install_path)
             .join(crate::models::game::GameChannel::Official.executable_name());
-        let icon_assignment = match write_game_shortcut_icon(&game_exe, &shortcut_path) {
-            Some(icon_path) => format!(
+        let icon_assignment = if game_exe.is_file() {
+            format!(
                 "$shortcut.IconLocation = '{}'; \
                  ",
-                format!("{},0", powershell_literal(&icon_path.to_string_lossy()))
-            ),
-            None => String::new(),
+                format!("{},0", powershell_literal(&game_exe.to_string_lossy()))
+            )
+        } else {
+            String::new()
         };
 
         let script = format!(
@@ -189,24 +190,4 @@ pub fn create_game_shortcut(
 #[cfg(target_os = "windows")]
 fn powershell_literal(value: &str) -> String {
     value.replace('\'', "''")
-}
-
-#[cfg(target_os = "windows")]
-fn write_game_shortcut_icon(game_exe: &Path, shortcut_path: &Path) -> Option<PathBuf> {
-    if !game_exe.is_file() {
-        return None;
-    }
-    let extractor = icoextract_rs::IconExtractor::from_path(game_exe).ok()?;
-    let icon = extractor
-        .get_icon(icoextract_rs::IconSelector::Index(0))
-        .ok()?;
-    let bytes = icon.to_ico_bytes().ok()?;
-    let icon_path = shortcut_path.with_extension("ico");
-    match std::fs::write(&icon_path, bytes) {
-        Ok(()) => Some(icon_path),
-        Err(_) => {
-            let _ = std::fs::remove_file(&icon_path);
-            None
-        }
-    }
 }
