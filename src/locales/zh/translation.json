@@ -121,7 +121,20 @@
       "bg_media": "游戏界面背景",
       "bg_media_desc": "选择游戏界面背景显示视频还是静态图片，默认为视频",
       "bg_media_video": "视频",
-      "bg_media_image": "图片"
+      "bg_media_image": "图片",
+      "silent_launch_title": "静默启动游戏",
+      "silent_launch_desc": "此命令不会打开完整界面；可复制到命令行，或选择保存位置创建 Windows 快捷方式。",
+      "quick_launch_open": "查看命令与创建快捷方式…",
+      "command_loading": "正在读取命令…",
+      "command_error": "读取启动命令失败",
+      "copy_command": "复制命令",
+      "command_copied": "命令已复制到剪贴板",
+      "command_copy_error": "复制失败",
+      "create_shortcut": "创建快捷方式…",
+      "shortcut_creating": "正在创建…",
+      "shortcut_created": "快捷方式已创建",
+      "shortcut_error": "创建快捷方式失败",
+      "command_fallback": "您仍可复制上方命令并通过命令行启动游戏。"
     },
     "appearance": {
       "title": "外观",

@@ -20,6 +20,7 @@ import {
   type DownloadProgress,
   type FileScanResult,
   type DiskSpace,
+  type LauncherResult,
   ALL_CHANNELS,
   checkGameStatus,
   installOrUpdate,
@@ -32,6 +33,7 @@ import {
   startGame,
   browseFolder,
   checkGameRunning,
+  restoreLaunchConfig,
   killGame,
   detectChannel,
   scanInstallDir,
@@ -380,6 +382,29 @@ export function GameActionPanel() {
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY_CHANNEL, channel);
   }, [channel]);
+
+  // 后端 config 才是启动游戏的真正依据（静默启动、快捷方式都直接读它）；
+  // WebView 的 localStorage 可能因换构建产物或清缓存丢失，这里把后端值回灌一次，
+  // 避免托盘打开完整版后游戏面板误显示「定位游戏」。
+  useEffect(() => {
+    let cancelled = false;
+    void restoreLaunchConfig().then(() => {
+      if (cancelled) return;
+      const backendPath = localStorage.getItem(STORAGE_KEY_INSTALL_PATH);
+      if (backendPath && backendPath !== installPath) {
+        setInstallPath(backendPath);
+      }
+      const backendChannel = localStorage.getItem(STORAGE_KEY_CHANNEL);
+      if (backendChannel && ALL_CHANNELS.includes(backendChannel as GameChannel)) {
+        setChannel(backendChannel as GameChannel);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+    // 仅挂载时回灌一次
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Check game status
   const checkStatus = useCallback(async () => {
@@ -876,34 +901,6 @@ export function GameActionPanel() {
     }
   }, [installPath, channel, t]);
 
-  const handleUpdate = useCallback(async () => {
-    if (!installPath) return;
-    cancellingRef.current = false;
-    await resetDownloadCancel();
-    try {
-      const result = gameStatus?.preload_installable
-        ? await installPreload(channel, installPath)
-        : await installOrUpdate(channel, installPath);
-      if (!result.success) {
-        addMessage({
-          type: "urgent",
-          title: t("launcher.update_failed_title"),
-          body: result.message,
-          tag: "update-error",
-        });
-      } else {
-        refreshStatus();
-      }
-    } catch (error) {
-      addMessage({
-        type: "urgent",
-        title: t("launcher.update_failed_title"),
-        body: String(error),
-        tag: "update-error",
-      });
-    }
-  }, [channel, gameStatus?.preload_installable, installPath, refreshStatus, t]);
-
   // 解析校验结果 JSON，构建本地化消息
   const formatVerifyResult = useCallback(
     (msg: string): { type: "info" | "warn"; body: string } => {
@@ -937,6 +934,73 @@ export function GameActionPanel() {
     },
     [t],
   );
+
+  const handleUpdate = useCallback(async () => {
+    if (!installPath) return;
+    cancellingRef.current = false;
+    await resetDownloadCancel();
+    let result: LauncherResult;
+    try {
+      result = gameStatus?.preload_installable
+        ? await installPreload(channel, installPath)
+        : await installOrUpdate(channel, installPath);
+    } catch (error) {
+      addMessage({
+        type: "urgent",
+        title: t("launcher.update_failed_title"),
+        body: String(error),
+        tag: "update-error",
+      });
+      refreshStatus();
+      return;
+    }
+    if (!result.success) {
+      addMessage({
+        type: "urgent",
+        title: t("launcher.update_failed_title"),
+        body: result.message,
+        tag: "update-error",
+      });
+      refreshStatus();
+      return;
+    }
+
+    try {
+      const threads = parseInt(
+        localStorage.getItem("launcher_verify_threads") || "12",
+        10,
+      );
+      const verification = await verifyAndRepair(
+        channel,
+        installPath,
+        threads,
+        true,
+      );
+      const { type, body } = formatVerifyResult(verification.message);
+      addMessage({
+        type,
+        title: t("launcher.quick_verify_result_title"),
+        body,
+        tag: "verify-result",
+      });
+    } catch (error) {
+      addMessage({
+        type: "urgent",
+        title: t("launcher.verify_failed_title"),
+        body: `${t("launcher.verify_failed_body")} ${String(error)}`,
+        tag: "verify-error",
+      });
+    } finally {
+      refreshStatus();
+    }
+  }, [
+    channel,
+    formatVerifyResult,
+    gameStatus?.preload_installable,
+    installPath,
+    refreshStatus,
+    t,
+  ]);
 
   const handleVerify = useCallback(async () => {
     if (!installPath) return;

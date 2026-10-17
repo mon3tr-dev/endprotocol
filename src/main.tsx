@@ -17,6 +17,7 @@ import { roleDataService } from "@/utils/roleDataService";
 import { getAccounts } from "@/utils/accountService";
 import { invoke } from "@tauri-apps/api/core";
 import { loadBackgroundSettings } from "@/utils/backgroundSettings";
+import { syncSilentLaunchConfig } from "@/utils/launcherService";
 import {
   beginStartupTracking,
   failStartup,
@@ -146,6 +147,9 @@ function applyThemeMode(mode: ThemeMode) {
 
 // Initialize language and theme from config service before rendering
 setStartupPhase(12, i18n.t("startup.loadingSettings"));
+void syncSilentLaunchConfig().catch((error: unknown) => {
+  logger.warn("Failed to sync game launch config: " + error, "Main");
+});
 Promise.all([
   getConfig<string>("app.language"),
   getConfig<ThemeMode>("theme_mode"),

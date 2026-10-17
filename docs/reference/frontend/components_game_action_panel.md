@@ -52,7 +52,7 @@
 | `ProgressFlyout` | 72–94 | 内部组件：进度浮层外壳（`createPortal` + 玻璃样式 + 边界翻转），安装/校验/预下载共用 |
 | `DownloadProgressBody` | 96–139 | 内部组件：浮层里的下载型内容（已下载/总量、进度条、速度、剩余时间、当前文件） |
 | `DiskSpaceBar` | 141–204 | 内部组件：磁盘占用三色条（已用/需要下载/下载后剩余），安装确认与预下载确认共用 |
-| `GameActionPanel` | 206–2728 | 导出组件主体（无 props） |
+| `GameActionPanel` | 206–2787 | 导出组件主体（无 props） |
 | `checkStatus` | 173–196 | `useCallback`：查询游戏状态并置 `statusReady` |
 | `refreshStatus` | 241–252 | `useCallback`：静默刷新，供进度完成后调用 |
 | `checkRunning` | 259–266 | `useCallback`：查询游戏是否在运行 |
@@ -63,16 +63,16 @@
 | `handleSwitchChannel` | 719–727 | 记录切换目标，转确认态 |
 | `handleConfirmSwitch` | 729–774 | 定位进度浮层坐标并执行渠道切换，失败发 urgent 消息 |
 | `handleStart` | 820–876 | 启动游戏（无路径时先定位并检测渠道）；把 `startGame` 的返回结果按 `<token>: <detail>` 契约转成 `addMessage` 提示（失败 → urgent，回退 → warn） |
-| `handleUpdate` | 806–816 | 更新；当 `preload_installable` 为 true 时改调 `installPreload`，否则走普通 `installOrUpdate`，失败发 urgent 消息 |
-| `formatVerifyResult` | 818–849 | 解析校验结果 JSON，生成 i18n 文本与 info/warn 级别 |
-| `handleVerify` | 851–874 | 完整校验（线程数取 `launcher_verify_threads`，默认 12） |
-| `handleQuickVerify` | 876–899 | 快速校验（`quick=true`） |
-| `handleCancel` | 901–910 | 取消当前下载/校验 |
-| `handlePreload` | 912–935 | 预下载官方预发布补丁分卷（**由确认框确认后调用**）：先置 `preloadProgress`（0/总量）并重置取消标志，调 `preloadDownload`；`finally` 清 `preloadProgress` + 刷新状态 |
-| `handlePreloadCancel` | 937–945 | 取消预下载（点「预下载中/取消预下载」按钮触发）：按「取消下载行为」决定保留/删除分卷，不动主按钮状态 |
-| `handlePreloadClick` | 947–956 | 点「预下载」按钮：拉取 `getDiskSpace` 并打开预下载确认框 |
-| `updatePreloadFlyoutPos` | 959–971 | 依 `preloadBtnRef` 计算预下载进度浮层坐标（与主按钮同一套边界处理） |
-| `handleKill` | 973–976 | 杀掉游戏进程并刷新运行态 |
+| `formatVerifyResult` | 881–908 | 解析校验结果 JSON，生成 i18n 文本与 info/warn 级别 |
+| `handleUpdate` | 914–979 | 更新；优先安装官方补丁，成功后执行快速校验；失败分别提示更新或校验错误 |
+| `handleVerify` | 981–1004 | 完整校验（线程数取 `launcher_verify_threads`，默认 12） |
+| `handleQuickVerify` | 1006–1029 | 快速校验（`quick=true`） |
+| `handleCancel` | 1031–1040 | 取消当前下载/校验 |
+| `handlePreload` | 1042–1065 | 预下载官方预发布补丁分卷（**由确认框确认后调用**）：先置 `preloadProgress`（0/总量）并重置取消标志，调 `preloadDownload`；`finally` 清 `preloadProgress` + 刷新状态 |
+| `handlePreloadCancel` | 1067–1075 | 取消预下载（点「预下载中/取消预下载」按钮触发）：按「取消下载行为」决定保留/删除分卷，不动主按钮状态 |
+| `handlePreloadClick` | 1077–1087 | 点「预下载」按钮：拉取 `getDiskSpace` 并打开预下载确认框 |
+| `updatePreloadFlyoutPos` | 1089–1101 | 依 `preloadBtnRef` 计算预下载进度浮层坐标（与主按钮同一套边界处理） |
+| `handleKill` | 1103–1105 | 杀掉游戏进程并刷新运行态 |
 | `getButtonLabel` | 1050–1075 | 依状态返回主按钮文案（hover 时切为取消类文案；预下载不参与） |
 | `getButtonIcon` | 1084–1254 | 依状态返回 SVG 图标（旋转/暂停/下载/刷新/播放） |
 | `handleButtonClick` | 1256–1299 | 主按钮统一分发：取消切换/停止/取消校验/取消下载/安装/更新/启动 |
@@ -86,7 +86,7 @@
 4 个 localStorage 键常量 + 统一按钮风格常量 `PILL_BASE`/`PILL_INTERACTIVE`/`PILL_TEXT`（54–58，面板内所有胶囊按钮共用，与预下载按钮同风格）；状态包括：`channel`、`gameStatus`、`localActiveOp`、`installPath`、`detectedChannel`、`detecting`、`statusReady`、`flyoutOpen`、`hasTempFiles`、`settingsOpen`、`launchSettingsOpen`、`gameRunning`、`btnHovered`、`btnLabelKey`、`preloadProgress`、`downloadSpeed`、`channelSelectOpen`、`pendingInstallPath`、`scanResult`、`scanOpen`、`scanning`、`diskSpace`、`switchOpen`、`switchConfirmTarget`、`verifySpeed`、`progressFlyoutPos`、`menuFlyoutPos`、`confirmAction`、`confirmCheckbox`；refs：`prevBtnLabelRef`、`flyoutRef`、`btnRef`、`hamburgerRef`、`speedRef`、`verifySpeedRef`、`cancellingRef`、`menuFlyoutRef`。派生值 `activeOp`（132，本地事件优先于轮询值）、`progress`（133–147）、`preparing`（148）、`switching`（151）、`switchProgress`（152–164）、`switchTarget`（165）；安装相关派生值 `isInstalled`/`hasUpdate`/`hasPreload`/`preloadCompleted`（782–785）、`preloadTotalBytes`（744，提前声明供 `handlePreload` 依赖数组使用）、`preloading`/`preloadPercent`（787–795）、`busyWithDownload = isActionRunning || preloading`（811，用于禁用渠道徽章与菜单项）。
 
 **状态查询与渠道自动检测（168–272）**
-渠道写入 localStorage（168–170）；`checkStatus` 触发 effect（254–256）；`detectChannel` effect（199–238，带取消标记与缓存命中短路，检测到不同渠道时回写 state 与 localStorage）；`checkGameRunning` 每 3 秒轮询（268–272）。
+渠道写入 localStorage（168–170）；挂载时经 `restoreLaunchConfig` 从 app config 反向回灌 `launcher_install_path`/`launcher_channel` 到 localStorage 与 state（仅挂载一次，路径需存在才写——修复静默命令行启动后从托盘打开完整版时游戏面板显示「定位游戏」的问题）；`checkStatus` 触发 effect（254–256）；`detectChannel` effect（199–238，带取消标记与缓存命中短路，检测到不同渠道时回写 state 与 localStorage）；`checkGameRunning` 每 3 秒轮询（268–272）。
 
 **进度事件与速度计算（441–545）**
 `onLauncherProgress`：`stage === "preloading"` 时只写 `preloadProgress` 并用 `speedRef` 差分算预下载速度；其余事件先清 `preloadProgress`，再写入 `localActiveOp`（`downloading`/`repairing` 算下载速度、`verifying` 用 `getProcessReadBytes` 差分算校验速度、`completed`/`error` 清空并 500ms 后 `refreshStatus`）。`onSwitchProgress`：切换阶段同理。清理时解除两订阅。
@@ -100,8 +100,8 @@
 **启动 / 停止（776–804, 973–976, 1256–1299）**
 `handleStart` → `startGame`（成功且带 `warning` 时提示 `launcher.launch_fallback_body`；失败时按 token 映射 `launcher.launch_err_*`）；运行中点击主按钮：`launcher_skip_stop_confirm === "1"` 直接 `handleKill`，否则弹 `stop-game` 确认框（可勾选不再提示）。
 
-**校验 / 修复 / 预载（818–910, 912–971, 2426–2517）**
-`handleVerify`（完整）、`handleQuickVerify`（快速，菜单直连）、`startInstall` 成功后自动 quick 校验；结果经 `formatVerifyResult` 转 `verify-result` 消息。
+**校验 / 修复 / 预载（881–1101, 2458–2549）**
+`handleVerify`（完整）、`handleQuickVerify`（快速，菜单直连）、`startInstall` 与 `handleUpdate` 成功后自动 quick 校验；结果经 `formatVerifyResult` 转 `verify-result` 消息。官方补丁安装直接应用后进入快速校验，不先执行额外的全量 MD5 扫描。
 
 预下载按钮（`hasPreload && isInstalled` 时显示）有三种形态，全部使用 `PILL_BASE`：
 
@@ -111,9 +111,9 @@
 
 预下载进度由 `launcher-progress` 事件里 `stage === "preloading"` 的事件写入 `preloadProgress`，**不写入 `localActiveOp`**：所以预下载期间主按钮保持「启动游戏」、主按钮浮层不弹出；收到任何非 `preloading` 的进度事件即清空 `preloadProgress`（后端操作串行，不会与安装/校验并发）。预下载期间 `busyWithDownload` 为真，渠道徽章、菜单里的校验/快速校验/清理临时文件被禁用，主按钮仅在「有更新（要发起安装）」时禁用。
 
-当 `GameStatus.preload_installable` 为 true 时，后端将 `has_update` 置为 true。点击主更新按钮调用 `launcher_install_preload`：复用或下载并校验分卷、后端使用 API 提供的 cd_key 解压并应用文件，随后执行完整性校验与修复；分卷未下载时同样自动先下载。
+当 `GameStatus.preload_installable` 为 true 时，后端将 `has_update` 置为 true。点击主更新按钮调用 `launcher_install_preload`：取到最新补丁信息后直接进入分卷下载阶段，并将同一份信息复用于安装流程，避免重复查询导致停留在「准备中」；复用或下载并校验分卷、后端使用 API 提供的 cd_key 解压并应用文件；安装完成后前端再执行快速校验与修复。分卷未下载时同样自动先下载。
 
-**下载取消策略（1256–1373, 2081–2423）**
+**下载取消策略（1288–1405, 2113–2455）**
 `launcher_cancel_behavior`：`keep` → 不带路径 `cancelDownload()`（保留文件）、`delete` → 带路径删除临时文件、`ask` → 弹 `cancel-download` 对话框（保留/删除两按钮）。预下载的取消按钮直接读同一设置（`keep` 保留分卷供续传，其余删除），不弹对话框。
 
 **主按钮与进度浮层**

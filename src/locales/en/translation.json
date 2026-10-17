@@ -121,7 +121,20 @@
       "bg_media": "Game Background",
       "bg_media_desc": "Choose whether the game screen background shows a video or a static image (video by default)",
       "bg_media_video": "Video",
-      "bg_media_image": "Image"
+      "bg_media_image": "Image",
+      "silent_launch_title": "Launch game silently",
+      "silent_launch_desc": "This command starts the game without opening the full app. Copy it to a command line or choose where to save a Windows shortcut.",
+      "quick_launch_open": "View command & create shortcut…",
+      "command_loading": "Loading command…",
+      "command_error": "Failed to load launch command",
+      "copy_command": "Copy command",
+      "command_copied": "Command copied to clipboard",
+      "command_copy_error": "Copy failed",
+      "create_shortcut": "Create shortcut…",
+      "shortcut_creating": "Creating…",
+      "shortcut_created": "Shortcut created",
+      "shortcut_error": "Failed to create shortcut",
+      "command_fallback": "You can still copy the command above and launch the game from a command line."
     },
     "appearance": {
       "title": "Appearance",

@@ -295,7 +295,7 @@
 
 ## `src/utils/launcherService.ts`
 **职责**：游戏启动器（安装/更新/校验修复/预下载/渠道切换/启动/进程控制/公告背景资源）的全部 Tauri IPC 封装 + 三个进度事件监听 + 渠道/阶段标签与字节格式化工具。
-**导出**：类型 `GameChannel`、`GameStatus`、`ActiveOperation`、`RemotePackage`、`DownloadProgress`、`BackgroundMedia`、`LauncherResult`、`PayloadState`、`BannerItem`、`AnnouncementItem`、`LauncherNoticeContent`、`FileScanResult`、`DiskSpace`；函数 `checkGameStatus`、`installOrUpdate`、`verifyAndRepair`、`getProcessReadBytes`、`getRemoteVersion`、`getPayloadState`、`cancelDownload`、`preloadDownload`、`installPreload`、`resetDownloadCancel`、`hasDownloadCache`、`getBanners`、`getAnnouncements`、`getNoticeContent`、`getBackgroundImage`、`startGame`、`browseFolder`、`checkExecutable`、`checkGameRunning`、`killGame`、`detectChannel`、`scanInstallDir`、`getDiskSpace`、`switchChannel`、`cancelSwitch`、`cancelAll`、`onLauncherProgress`、`onProgress`、`onSwitchProgress`、`formatBytes`；常量 `CHANNEL_LABELS`、`ALL_CHANNELS`、`STAGE_LABELS`、`LAUNCH_TOKEN_KEYS`；函数 `splitLaunchToken`（解析 `<token>: <detail>` 契约串）。
+**导出**：类型 `GameChannel`、`GameStatus`、`ActiveOperation`、`RemotePackage`、`DownloadProgress`、`BackgroundMedia`、`LauncherResult`、`PayloadState`、`BannerItem`、`AnnouncementItem`、`LauncherNoticeContent`、`FileScanResult`、`DiskSpace`；函数 `checkGameStatus`、`installOrUpdate`、`verifyAndRepair`、`getProcessReadBytes`、`getRemoteVersion`、`getPayloadState`、`cancelDownload`、`preloadDownload`、`installPreload`、`resetDownloadCancel`、`hasDownloadCache`、`getBanners`、`getAnnouncements`、`getNoticeContent`、`getBackgroundImage`、`startGame`、`syncSilentLaunchConfig`、`restoreLaunchConfig`、`getGameLaunchCommand`、`createGameShortcut`、`browseFolder`、`checkExecutable`、`checkGameRunning`、`killGame`、`detectChannel`、`scanInstallDir`、`getDiskSpace`、`switchChannel`、`cancelSwitch`、`cancelAll`、`onLauncherProgress`、`onProgress`、`onSwitchProgress`、`formatBytes`；常量 `CHANNEL_LABELS`、`ALL_CHANNELS`、`STAGE_LABELS`、`LAUNCH_TOKEN_KEYS`；函数 `splitLaunchToken`（解析 `<token>: <detail>` 契约串）。
 **主要依赖**：`@tauri-apps/api/core` 的 `invoke`、`@tauri-apps/api/event` 的 `listen` / 类型 `UnlistenFn`。
 
 | 符号 | 位置 | 说明 |
@@ -316,6 +316,10 @@
 | `getNoticeContent` | launcherService.ts:196 | invoke `launcher_get_notice_content`，参数 `{channel}`，返回 `LauncherNoticeContent`（横幅+公告合并结构） |
 | `getBackgroundImage` | launcherService.ts:204 | invoke `launcher_get_background_image`，参数 `{channel}`，返回 `BackgroundMedia \| null` |
 | `startGame` | launcherService.ts:240 | invoke `launcher_start_game`，参数 `{installPath, channel}`，返回 `LauncherResult`；失败时 `message` 为 `<token>: <detail>`（token 见 `LAUNCH_TOKEN_KEYS`），回退直接启动时该提示在 `warning` 字段 |
+| `syncSilentLaunchConfig` | launcherService.ts:268 | 从 localStorage 将 `launcher_install_path`、`launcher_channel` 通过 `set_config` 写入 app config |
+| `restoreLaunchConfig` | launcherService.ts:282 | **反向同步**：invoke `get_config` 读取 app config 中非空的 `launcher_install_path`、`launcher_channel` 回写 localStorage；后端不可用时静默保留 localStorage 现状。修复静默命令行启动后打开完整版时游戏面板因 localStorage 缺失而显示「定位游戏」的问题 |
+| `getGameLaunchCommand` | launcherService.ts:282 | invoke `get_game_launch_command`，返回包含 exe 路径与 `--silent --launch-game` 的完整命令 |
+| `createGameShortcut` | launcherService.ts:286 | invoke `create_game_shortcut`，弹出用户选定保存位置的对话框，返回 `.lnk` 路径或 `null`（取消） |
 | `browseFolder` | launcherService.ts:222 | invoke `launcher_browse_folder`，无参，返回 `string \| null`（用户选择的目录） |
 | `checkExecutable` | launcherService.ts:226 | invoke `launcher_check_executable`，参数 `{installPath, channel}`，返回 `boolean` |
 | `checkGameRunning` | launcherService.ts:236 | invoke `launcher_check_game_running`，参数 `{channel}`，返回 `boolean` |

@@ -254,10 +254,56 @@ export async function startGame(
   installPath: string,
   channel: GameChannel,
 ): Promise<LauncherResult> {
+  await invoke("set_config", {
+    key: "launcher_install_path",
+    value: installPath,
+  });
+  await invoke("set_config", { key: "launcher_channel", value: channel });
   return invoke<LauncherResult>("launcher_start_game", {
     installPath,
     channel,
   });
+}
+
+export async function syncSilentLaunchConfig(): Promise<void> {
+  const installPath = localStorage.getItem("launcher_install_path");
+  const channel = localStorage.getItem("launcher_channel");
+  if (installPath) {
+    await invoke("set_config", {
+      key: "launcher_install_path",
+      value: installPath,
+    });
+  }
+  if (channel) {
+    await invoke("set_config", { key: "launcher_channel", value: channel });
+  }
+}
+
+export async function restoreLaunchConfig(): Promise<void> {
+  try {
+    const installPath = await invoke<string | null>("get_config", {
+      key: "launcher_install_path",
+    });
+    if (installPath) {
+      localStorage.setItem("launcher_install_path", installPath);
+    }
+    const channel = await invoke<string | null>("get_config", {
+      key: "launcher_channel",
+    });
+    if (channel) {
+      localStorage.setItem("launcher_channel", channel);
+    }
+  } catch {
+    // 后端不可用时保留 localStorage 现状
+  }
+}
+
+export async function getGameLaunchCommand(): Promise<string> {
+  return invoke<string>("get_game_launch_command");
+}
+
+export async function createGameShortcut(): Promise<string | null> {
+  return invoke<string | null>("create_game_shortcut");
 }
 
 export async function browseFolder(): Promise<string | null> {
