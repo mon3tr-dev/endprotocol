@@ -104,15 +104,6 @@ impl GameChannel {
     pub fn process_name(&self) -> &'static str {
         "Endfield.exe"
     }
-
-    pub fn display_name(&self) -> &'static str {
-        match self {
-            GameChannel::Official => "终末地 官服",
-            GameChannel::Bilibili => "终末地 B服",
-            GameChannel::Global => "Endfield Global",
-            GameChannel::GooglePlay => "Endfield Google Play",
-        }
-    }
 }
 
 /// 活跃操作（统一管理安装/校验/切服状态）
@@ -471,12 +462,6 @@ pub struct MainBgImageData {
     pub url: String,
     #[serde(default)]
     pub video_url: Option<String>,
-}
-
-/// 背景图信息
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct BackgroundImage {
-    pub url: String,
 }
 
 /// 启动器背景媒体（图片与视频地址一起返回，由前端按设置选择）

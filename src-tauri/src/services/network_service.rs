@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use crate::services::avatar_cache_service::AvatarCacheService;
 use crate::services::char_detail_service::CharDetailService;
 use crate::services::char_wiki_detail_service::CharWikiDetailService;
 use crate::services::data_query::{self, DataApi};
@@ -21,31 +20,17 @@ pub struct NetworkService {
 }
 
 impl NetworkService {
-    pub fn new(
-        skland_service: Arc<SklandService>,
-        avatar_cache_service: Arc<AvatarCacheService>,
-    ) -> Self {
+    pub fn new(skland_service: Arc<SklandService>) -> Self {
         Self {
-            char_detail_service: CharDetailService::new(
-                skland_service.clone(),
-                avatar_cache_service,
-            ),
+            char_detail_service: CharDetailService::new(skland_service.clone()),
             char_wiki_detail_service: Arc::new(CharWikiDetailService::new(skland_service.clone())),
             skland_service,
             current_role_id: Arc::new(Mutex::new(None)),
         }
     }
 
-    pub fn skland_service(&self) -> &Arc<SklandService> {
-        &self.skland_service
-    }
-
     pub fn char_detail_service(&self) -> &CharDetailService {
         &self.char_detail_service
-    }
-
-    pub fn char_wiki_detail_service(&self) -> &Arc<CharWikiDetailService> {
-        &self.char_wiki_detail_service
     }
 
     pub fn get_current_role_id(&self) -> Option<String> {

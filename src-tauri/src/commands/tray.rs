@@ -1,5 +1,5 @@
 use std::sync::Arc;
-use tauri::{Emitter, Manager, Runtime, State};
+use tauri::{Runtime, State};
 
 use crate::services::config_service::ConfigService;
 use crate::tray::{update_tray_menu, TrayUserInfo};

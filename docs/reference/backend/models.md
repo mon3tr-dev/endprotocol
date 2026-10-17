@@ -248,7 +248,7 @@
 
 **备注**：自定义反序列化器：
 - `fn deserialize_string_to_i64` — char_detail.rs:50：先把值读成 `serde_json::Value`，Number 直接取 i64，String 则 `parse::<i64>()`，其他类型报错。
-- `fn deserialize_chars_fallback` — char_detail.rs:71：`Vec::<CharacterItem>::deserialize` 失败时 `eprintln!` 警告并返回空数组，避免整包解析失败。
+- `fn deserialize_chars_fallback` — char_detail.rs:71：`Vec::<CharacterItem>::deserialize` 失败时经 `safe_eprintln!`（有控制台才写 stderr）警告并返回空数组，避免整包解析失败。
 
 ### `struct BaseInfo`
 - 位置：char_detail.rs:96
@@ -442,7 +442,7 @@ derive 均为 `Serialize, Deserialize, Clone, Debug` + 容器 `rename_all = "cam
 ---
 
 ## `src-tauri/src/models/gacha.rs`
-**职责**：抽卡（寻访）数据模型——ef-webview 抽卡记录 API 的响应结构、本地持久化记录文件结构、同步结果与进度事件。文件共 222 行。
+**职责**：抽卡（寻访）数据模型——ef-webview 抽卡记录 API 的响应结构、本地持久化记录文件结构、同步结果与进度事件。文件共 217 行。
 **导出**：`GachaApiResponse`、`GachaMetaData`、`GachaTab`、`GachaRecordData`、`GachaRecord`、`GachaWeaponRecordData`、`GachaWeaponRecord`、`SavedWeaponGachaData`、`SavedGachaData`、`GachaPoolInfo`、`GachaSyncResult`、`GachaSyncProgress`；impl `GachaTab`、impl `GachaRecord`、impl `GachaWeaponRecord`。依赖 `std::collections::HashMap`（:2）。
 
 ### `struct GachaApiResponse<T>`
@@ -482,8 +482,7 @@ derive 均为 `Serialize, Deserialize, Clone, Debug` + 容器 `rename_all = "cam
 | `pool_id` | `Option<String>` | `default` | 请求记录时的 `pool_id` 参数（仅 joint 等有） |
 
 **备注**：impl GachaTab（gacha.rs:37）
-- `pub fn kind(&self) -> &str` — gacha.rs:39：按 `:` 切分 `key` 取首段，得到 special/joint/normal 简称。
-- `pub fn request_pool_id(&self) -> Option<&str>` — gacha.rs:44：返回 `pool_id.as_deref()`。
+- `pub fn request_pool_id(&self) -> Option<&str>` — gacha.rs:39：返回 `pool_id.as_deref()`。
 
 ### `struct GachaRecordData`
 - 位置：gacha.rs:52
@@ -631,8 +630,8 @@ derive 均为 `Serialize, Deserialize, Clone, Debug` + 容器 `rename_all = "cam
 ---
 
 ## `src-tauri/src/models/game.rs`
-**职责**：游戏启动器侧模型——渠道枚举与各渠道 API/参数映射、安装/校验/修复/切服进度、启动器 API 响应结构、清单与下载相关结构、公告/Banner/背景图结构。是 models 中最大的文件（435 行），**注意此文件多数结构体没有 `rename_all = "camelCase"`**（字段本身即 snake_case，或用显式 rename/alias 处理）。
-**导出**：枚举 `GameChannel`、`ActiveOperation`、`InstallStage`；结构体 `OperationProgress`、`SwitchProgress`、`GameStatus`、`BatchProxyResponse`、`ProxyResponse`、`GetLatestGameRsp`、`PkgInfo`、`ManifestFile`、`RemotePackage`、`DownloadProgress`、`FilePlan`、`PayloadState`、`LauncherResult`、`BannerItem`、`AnnouncementItem`、`LauncherNoticeContent`、`BannerRsp`、`BannerRspItem`、`AnnouncementRsp`、`AnnouncementTab`、`AnnouncementApiItem`、`MainBgImageRsp`、`MainBgImageData`、`BackgroundImage`、`BackgroundMedia`、`FileScanResult`。
+**职责**：游戏启动器侧模型——渠道枚举与各渠道 API/参数映射、安装/校验/修复/切服进度、启动器 API 响应结构、清单与下载相关结构、公告/Banner/背景图结构。是 models 中最大的文件（499 行），**注意此文件多数结构体没有 `rename_all = "camelCase"`**（字段本身即 snake_case，或用显式 rename/alias 处理）。
+**导出**：枚举 `GameChannel`、`ActiveOperation`、`InstallStage`；结构体 `OperationProgress`、`SwitchProgress`、`GameStatus`、`BatchProxyResponse`、`ProxyResponse`、`GetLatestGameRsp`、`PkgInfo`、`ManifestFile`、`RemotePackage`、`DownloadProgress`、`FilePlan`、`PayloadState`、`LauncherResult`、`BannerItem`、`AnnouncementItem`、`LauncherNoticeContent`、`BannerRsp`、`BannerRspItem`、`AnnouncementRsp`、`AnnouncementTab`、`AnnouncementApiItem`、`MainBgImageRsp`、`MainBgImageData`、`BackgroundMedia`、`FileScanResult`。
 
 ### `enum GameChannel`
 - 位置：game.rs:5
@@ -661,7 +660,6 @@ derive 均为 `Serialize, Deserialize, Clone, Debug` + 容器 `rename_all = "cam
 | `seq` | game.rs:91 | 国服 5，国际服 3 |
 | `executable_name` | game.rs:99 | 恒为 `"Endfield.exe"` |
 | `process_name` | game.rs:104 | 恒为 `"Endfield.exe"`（tasklist/taskkill 用） |
-| `display_name` | game.rs:108 | 中文/英文展示名（终末地 官服 / B服 / Endfield Global / Endfield Google Play） |
 
 ### `enum ActiveOperation`
 - 位置：game.rs:121
@@ -1025,18 +1023,8 @@ derive 均为 `Serialize, Deserialize, Clone, Debug` + 容器 `rename_all = "cam
 | `url` | `String` | — | 图片地址 |
 | `video_url` | `Option<String>` | `default` | 视频地址 |
 
-### `struct BackgroundImage`
-- 位置：game.rs:469
-- derive：同上
-- 用途：简版背景图信息（仅图片地址）。
-- 字段：
-
-| 字段 | 类型 | serde | 含义 |
-| --- | --- | --- | --- |
-| `url` | `String` | — | 背景图地址 |
-
 ### `struct BackgroundMedia`
-- 位置：game.rs:475
+- 位置：game.rs:469
 - derive：同上
 - 用途：启动器背景媒体，图片与视频一起返回，由前端按设置选择。
 - 字段：
@@ -1130,8 +1118,8 @@ derive 均为 `Serialize, Deserialize, Clone, Debug` + 容器 `rename_all = "cam
 ---
 
 ## `src-tauri/src/models/role.rs`
-**职责**：角色/绑定相关模型——森空岛绑定列表与角色详情的 API 响应结构、本地配置用的角色绑定与展示结构。文件共 110 行。
-**导出**：`GameBinding`、`BindingInfo`、`RoleInfo`、`BindingResponse`、`BindingData`、`RoleDetailResponse`、`RoleDetailData`、`RoleDetail`、`RoleBaseInfo`、`RoleBinding`、`RoleDisplayInfo`。
+**职责**：角色/绑定相关模型——森空岛绑定列表的 API 响应结构、本地配置用的角色展示结构。文件共 71 行。
+**导出**：`GameBinding`、`BindingInfo`、`RoleInfo`、`BindingResponse`、`BindingData`、`RoleDisplayInfo`。
 
 ### `struct GameBinding`
 - 位置：role.rs:6
@@ -1207,65 +1195,8 @@ derive 均为 `Serialize, Deserialize, Clone, Debug` + 容器 `rename_all = "cam
 | `list` | `Vec<GameBinding>` | — | 游戏绑定列表 |
 | `server_default_binding` | `serde_json::Value` | — | 服务器默认绑定（未建模，原样保留） |
 
-### `struct RoleDetailResponse`
-- 位置：role.rs:64
-- derive：同上
-- 用途：角色详情接口的顶层响应。
-- 字段：
-
-| 字段 | 类型 | serde | 含义 |
-| --- | --- | --- | --- |
-| `code` | `i32` | — | 业务状态码 |
-| `message` | `String` | — | 状态信息 |
-| `timestamp` | `String` | — | 响应时间戳 |
-| `data` | `RoleDetailData` | — | 数据体 |
-
-### `struct RoleDetailData`
-- 位置：role.rs:73
-- derive：同上
-- 用途：角色详情数据包装。
-- 字段：
-
-| 字段 | 类型 | serde | 含义 |
-| --- | --- | --- | --- |
-| `detail` | `RoleDetail` | — | 详情对象 |
-
-### `struct RoleDetail`
-- 位置：role.rs:79
-- derive：同上
-- 用途：角色详情（仅含 base 一层）。
-- 字段：
-
-| 字段 | 类型 | serde | 含义 |
-| --- | --- | --- | --- |
-| `base` | `RoleBaseInfo` | — | 基础信息 |
-
-### `struct RoleBaseInfo`
-- 位置：role.rs:85
-- derive：同上
-- 用途：角色基础展示信息（详情接口的 `data.detail.base`）。
-- 字段：
-
-| 字段 | 类型 | serde | 含义 |
-| --- | --- | --- | --- |
-| `avatar_url` | `String` | — | 头像地址 |
-| `name` | `String` | — | 角色名 |
-| `level` | `i32` | — | 等级 |
-
-### `struct RoleBinding`
-- 位置：role.rs:94
-- derive：同上
-- 用途：角色绑定三元组，用于**本地配置存储**（关联 user/server/role）。
-- 字段：
-
-| 字段 | 类型 | serde | 含义 |
-| --- | --- | --- | --- |
-| `user_id` | `String` | — | 森空岛 user_id |
-| `server_id` | `String` | — | 服务器 ID |
-| `role_id` | `String` | — | 角色 ID |
-
 ### `struct RoleDisplayInfo`
-- 位置：role.rs:103
+- 位置：role.rs:64
 - derive：同上
 - 用途：面向前端的角色展示信息（被 `account.rs::AccountLoginResult.available_roles` 复用）。
 - 字段：

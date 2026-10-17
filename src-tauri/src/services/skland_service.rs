@@ -1,27 +1,23 @@
-use aes::cipher::{BlockEncryptMut, KeyIvInit};
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
 use chrono::Utc;
 use digest::Digest;
-use flate2::Compression;
-use flate2::GzBuilder;
 use hmac::{Hmac, Mac};
 use md5::Md5;
 use rsa::pkcs8::DecodePublicKey;
 use rsa::{Pkcs1v15Encrypt, RsaPublicKey};
 use serde_json::json;
 use sha2::Sha256;
-use std::io::Write;
 use uuid::Uuid;
 
 use crate::models::account::{
     SklandBackground, SklandGameInfo, SklandPendant, SklandUserInfo, SklandUserStats,
 };
 use crate::models::char_detail::CharDetailResponse;
-use crate::models::role::{BindingInfo, BindingResponse, GameBinding, RoleDisplayInfo, RoleInfo};
+use crate::models::role::{BindingResponse, GameBinding};
 use crate::services::config_service::ConfigService;
 use crate::utils::{capture, http_client, AppError};
-use crate::{log_debug, log_error, log_info, log_warn};
+use crate::{log_debug, log_info, log_warn};
 
 type HmacSha256 = Hmac<Sha256>;
 
@@ -70,28 +66,6 @@ impl SklandService {
         }
 
         Ok(new_did)
-    }
-
-    /// 获取新的 dId（带重试）
-    async fn fetch_new_did_with_retry(&self) -> Result<String, AppError> {
-        // 第一次尝试
-        match self.fetch_new_did().await {
-            Ok(did) => Ok(did),
-            Err(_) => {
-                // 第一次失败，清除缓存后重试
-                {
-                    let mut config =
-                        self.config_service
-                            .lock()
-                            .map_err(|e| AppError::ConfigError {
-                                message: format!("Lock failed: {}", e),
-                            })?;
-                    config.remove("did_cache");
-                }
-                // 第二次尝试
-                self.fetch_new_did().await
-            }
-        }
     }
 
     /// 获取新的 dId - 1:1 复刻 Python 脚本
@@ -578,7 +552,6 @@ impl SklandService {
 
             let elapsed = start_time.elapsed();
             let status = response.status();
-            let resp_headers = response.headers().clone();
             let resp_text = response.text().await.map_err(|e| AppError::AuthError {
                 message: format!("Failed to read response text: {}", e),
             })?;

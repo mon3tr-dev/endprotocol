@@ -629,7 +629,6 @@ pub async fn launcher_detect_channel(install_path: String) -> Result<Option<Stri
     let has_gl_extra = path.join("glextra.dll").exists();
     let has_play_pc_sdk = path.join("play_pc_sdk.dll").exists();
     let has_manifest_xml = path.join("manifest.xml").exists();
-    let has_eld_db = path.join("eld_Endfield.db").exists();
 
     // 渠道识别逻辑：
     // Google Play: glextra.dll + play_pc_sdk.dll + manifest.xml

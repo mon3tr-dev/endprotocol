@@ -58,45 +58,6 @@ pub struct BindingData {
     pub server_default_binding: serde_json::Value,
 }
 
-/// 角色详情响应
-#[derive(Serialize, Deserialize, Clone, Debug)]
-#[serde(rename_all = "camelCase")]
-pub struct RoleDetailResponse {
-    pub code: i32,
-    pub message: String,
-    pub timestamp: String,
-    pub data: RoleDetailData,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug)]
-#[serde(rename_all = "camelCase")]
-pub struct RoleDetailData {
-    pub detail: RoleDetail,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug)]
-#[serde(rename_all = "camelCase")]
-pub struct RoleDetail {
-    pub base: RoleBaseInfo,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug)]
-#[serde(rename_all = "camelCase")]
-pub struct RoleBaseInfo {
-    pub avatar_url: String,
-    pub name: String,
-    pub level: i32,
-}
-
-/// 角色绑定信息（用于配置存储）
-#[derive(Serialize, Deserialize, Clone, Debug)]
-#[serde(rename_all = "camelCase")]
-pub struct RoleBinding {
-    pub user_id: String,
-    pub server_id: String,
-    pub role_id: String,
-}
-
 /// 角色展示信息（用于前端显示）
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]

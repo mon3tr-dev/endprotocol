@@ -51,7 +51,7 @@
 | **IPC 命令在哪定义 / 前端谁调用** | 生成的对照表 | [ipc_index.md](reference/ipc_index.md)（105 个命令全表） |
 | 新增/修改一个 Tauri 命令 | `src-tauri/src/commands/`、`src-tauri/src/lib.rs` | [commands.md](reference/backend/commands.md)、[bootstrap.md](reference/backend/bootstrap.md)、[backend_development.md](backend_development.md) |
 | 错误类型与转换 | `src-tauri/src/utils/error.rs` | [utils.md](reference/backend/utils.md) |
-| 加密与签名（RSA/AES/DES/HMAC） | `src-tauri/src/utils/encrypt.rs`、`hg_crypto.rs`、`services/skland_service.rs` | [utils.md](reference/backend/utils.md)、[services_skland.md](reference/backend/services_skland.md) |
+| 加密与签名（RSA/AES/DES/HMAC） | `src-tauri/src/utils/hg_crypto.rs`、`services/skland_service.rs` | [utils.md](reference/backend/utils.md)、[services_skland.md](reference/backend/services_skland.md) |
 | HTTP 客户端与超时 | `src-tauri/src/utils/http_client.rs` | [utils.md](reference/backend/utils.md) |
 | 日志（前端/后端） | `src/utils/logger.ts`、`src-tauri/src/utils/logger.rs` | [utils_services_b.md](reference/frontend/utils_services_b.md)、[utils.md](reference/backend/utils.md) |
 | 数据模型（结构体定义） | `src-tauri/src/models/` | [models.md](reference/backend/models.md) |

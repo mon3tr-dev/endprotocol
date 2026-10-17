@@ -37,7 +37,6 @@ fn now_unix_secs() -> i64 {
 struct AsyncAccountService {
     config_service: Arc<Mutex<ConfigService>>,
     skland_service: Arc<SklandService>,
-    avatar_cache_service: Arc<AvatarCacheService>,
 }
 
 impl AsyncAccountService {
@@ -88,10 +87,9 @@ impl AsyncAccountService {
             None => return Ok(None),
         };
 
-        let token = match token {
-            Some(t) => t,
-            None => return Ok(None),
-        };
+        if token.is_none() {
+            return Ok(None);
+        }
 
         // 检查 cred 是否有效
         match self.skland_service.check_cred(&cred).await {
@@ -351,11 +349,6 @@ impl AccountService {
         &self.avatar_cache_service
     }
 
-    /// 获取网络数据服务引用
-    pub fn network_service(&self) -> &Arc<NetworkService> {
-        &self.network_service
-    }
-
     /// 设置懒加载开关
     pub async fn set_lazy_load_enabled(&self, enabled: bool) -> Result<(), AppError> {
         {
@@ -610,7 +603,6 @@ impl AccountService {
         AsyncAccountService {
             config_service: self.config_service.clone(),
             skland_service: self.skland_service.clone(),
-            avatar_cache_service: self.avatar_cache_service.clone(),
         }
     }
 
@@ -1411,7 +1403,7 @@ impl AccountService {
         login_request: LoginRequest,
     ) -> Result<AccountLoginResult, AppError> {
         // Step 1: 密码 → Hypergryph Token (+ deviceToken)
-        let (hy_token, device_token, hgld) = match self
+        let (hy_token, device_token, _hgld) = match self
             .get_hypergryph_token(&login_request.phone, &login_request.password)
             .await
         {
@@ -2215,7 +2207,7 @@ impl AccountService {
         scan_code: String,
     ) -> Result<AccountLoginResult, AppError> {
         // Step 1: 用 scanCode 换取 Hypergryph Token (+ deviceToken + hgld)
-        let (hy_token, device_token, hgld) = match self.token_by_scan_code(&scan_code).await {
+        let (hy_token, device_token, _hgld) = match self.token_by_scan_code(&scan_code).await {
             Ok((token, device_token, hgld)) => {
                 log_debug!(
                     "add_account_by_scan: hgld={:?}, device_token_len={}",
@@ -3066,11 +3058,6 @@ impl AccountService {
                 message: format!("Skland API error: {}", msg),
             })
         }
-    }
-
-    /// 获取网络数据服务（供调试等场景直接发起请求）
-    pub fn get_network_service(&self) -> Arc<NetworkService> {
-        self.network_service.clone()
     }
 
     /// 统一数据查询入口

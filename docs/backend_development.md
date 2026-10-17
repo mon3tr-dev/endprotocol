@@ -9,7 +9,7 @@
 | `src-tauri/src/commands/` | 13 个文件、**106 处 `#[tauri::command]` 注解**，处理前端 Invoke 请求 | [commands.md](reference/backend/commands.md) |
 | `src-tauri/src/services/` | 11 个服务：`account_service`（状态中枢）、`skland_service`（API 客户端）、`game_launcher_service`、`gacha_service`、`char_detail_service`、`char_wiki_detail_service`、`config_service`、`avatar_cache_service`、`data_query`、`network_service` | [services_account.md](reference/backend/services_account.md)、[services_skland.md](reference/backend/services_skland.md)、[services_launcher.md](reference/backend/services_launcher.md)、[services_others.md](reference/backend/services_others.md) |
 | `src-tauri/src/models/` | 7 个文件、79 个结构体/枚举（序列化与状态存储） | [models.md](reference/backend/models.md) |
-| `src-tauri/src/utils/` | `error`、`encrypt`、`hg_crypto`、`http_client`、`logger`、`official_launcher`（免启动器启动/提权 helper）、`paths`、`capture` | [utils.md](reference/backend/utils.md) |
+| `src-tauri/src/utils/` | `error`、`hg_crypto`、`http_client`、`logger`、`official_launcher`（免启动器启动/提权 helper）、`paths`、`capture` | [utils.md](reference/backend/utils.md) |
 | `src-tauri/src/{main,lib,tray}.rs` | 进程入口、插件/状态/命令注册、托盘 | [bootstrap.md](reference/backend/bootstrap.md) |
 | `src-tauri/{Cargo.toml,tauri.conf.json,capabilities/}` | 依赖、窗口与打包配置、权限 | [bootstrap.md](reference/backend/bootstrap.md) |
 
@@ -21,7 +21,7 @@
   - 全局状态通过 Tauri `State` 注册（`lib.rs` 的 `.manage(...)`）：`Arc<Mutex<AccountService>>`、`Arc<Mutex<ConfigService>>`、`Arc<GachaService>` 等。
   - **注意**：`NetworkService`、`AvatarCacheService`、`CharWikiDetailService` 未单独 `manage`，需通过 `AccountService` 持有字段访问（详见 [services_others.md](reference/backend/services_others.md)）。
   - 敏感信息（Token/Cred）严禁硬编码，必须通过 `ConfigService` 或 `AccountService` 内存态存取。
-- **日志记录**: 使用 `tracing` 宏（`info!`/`error!`/`debug!`）或 `utils/logger.rs` 封装的 `log_*` 宏；禁止 `eprintln!` 调试残留。
+- **日志记录**: 使用 `tracing` 宏（`info!`/`error!`/`debug!`）或 `utils/logger.rs` 封装的 `log_*` 宏；禁止裸 `eprintln!` 调试残留（应用现为 Windows GUI 子系统，进程可能无控制台，确需写 stderr 时必须用 `logger::safe_eprintln!`，它会在无控制台时静默跳过）。
 - **配置读写**: 一律走 `ConfigService`（`src-tauri/src/services/config_service.rs`），键名用点号路径（如 `card_settings.{cardId}`、`account_token_{userId}.user_info`）。
 - **静默启动**：应用入口解析 `--silent` 与 `--launch-game`。静默分支只注册单实例插件及启动相关命令，不创建窗口、不启动完整服务；游戏启动必须复用 `commands::launcher::launcher_start_game`，不得另写启动流程。
 
@@ -65,9 +65,9 @@
 
 | 用途 | 位置 | 说明 |
 | --- | --- | --- |
-| 森空岛 API 签名 | `services/skland_service.rs:422` `calculate_sign` | `HMAC-SHA256(token, path + body + timestamp + header_json)` 后取 MD5；由 `call_skland_api`（`:505`）统一注入请求头 |
-| 设备标识 `dId` | `services/skland_service.rs:98` `fetch_new_did` | 向数美接口获取设备指纹（`:76` 的 `fetch_new_did_with_retry` 目前无调用方） |
-| AES/RSA/DES 等 | `utils/hg_crypto.rs`、`utils/encrypt.rs`、`services/skland_service.rs` 内联 | **注意**：`utils/encrypt.rs` 的三个 pub 函数当前无调用方，实际逻辑被内联到 `skland_service.rs`（详见 [utils.md](reference/backend/utils.md)、[services_skland.md](reference/backend/services_skland.md)） |
+| 森空岛 API 签名 | `services/skland_service.rs:396` `calculate_sign` | `HMAC-SHA256(token, path + body + timestamp + header_json)` 后取 MD5；由 `call_skland_api`（`:479`）统一注入请求头 |
+| 设备标识 `dId` | `services/skland_service.rs:72` `fetch_new_did` | 向数美接口获取设备指纹（原 `fetch_new_did_with_retry` 无调用方，已删除） |
+| AES/RSA/DES 等 | `utils/hg_crypto.rs`、`services/skland_service.rs` 内联 | **注意**：`utils/encrypt.rs`（原三个 pub 函数无调用方）已删除，实际逻辑内联在 `services/skland_service.rs`（详见 [services_skland.md](reference/backend/services_skland.md)） |
 | 自更新签名校验 | minisign（见 README「更新系统」） | 前端 `src/utils/updateService.ts` |
 
 ## 6. 改代码后的文档同步

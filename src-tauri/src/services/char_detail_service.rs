@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 
 use crate::models::char_detail::CharDetailData;
 use crate::services::avatar_cache_service::{
-    register_url_subdir, AvatarCacheService, ImageCacheService, ImageType,
+    register_url_subdir, ImageCacheService, ImageType,
 };
 use crate::services::skland_service::SklandService;
 use crate::utils::{capture, AppError};
@@ -32,30 +32,17 @@ pub struct PreloadRoleInfo {
 
 pub struct CharDetailService {
     skland_service: Arc<SklandService>,
-    avatar_cache_service: Arc<AvatarCacheService>,
     cache: Arc<Mutex<HashMap<String, CharDetailData>>>,
     processed_cache: Arc<Mutex<HashMap<String, serde_json::Value>>>,
 }
 
 impl CharDetailService {
-    pub fn new(
-        skland_service: Arc<SklandService>,
-        avatar_cache_service: Arc<AvatarCacheService>,
-    ) -> Self {
+    pub fn new(skland_service: Arc<SklandService>) -> Self {
         Self {
             skland_service,
-            avatar_cache_service,
             cache: Arc::new(Mutex::new(HashMap::new())),
             processed_cache: Arc::new(Mutex::new(HashMap::new())),
         }
-    }
-
-    pub fn cache(&self) -> &Arc<Mutex<HashMap<String, CharDetailData>>> {
-        &self.cache
-    }
-
-    pub fn processed_cache(&self) -> &Arc<Mutex<HashMap<String, serde_json::Value>>> {
-        &self.processed_cache
     }
 
     /// 获取角色详情（带缓存）

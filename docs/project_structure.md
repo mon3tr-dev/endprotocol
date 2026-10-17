@@ -69,7 +69,7 @@ EndProtocol/
 │   │                              #   avatar_cache、data_query、network、
 │   │                              #   system_resource
 │   ├── src/models/                # 7 个文件：序列化数据结构
-│   ├── src/utils/                 # error、encrypt、hg_crypto、http_client、
+│   ├── src/utils/                 # error、hg_crypto、http_client、
 │   │                              #   logger、official_launcher、paths、capture
 │   ├── capabilities/  tauri.conf.json  Cargo.toml
 │   └── gen/                       # Tauri 自动生成（勿手改）

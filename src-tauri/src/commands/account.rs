@@ -22,7 +22,7 @@ pub async fn get_accounts(
     let service = state.lock().await;
 
     // 尝试从缓存获取 (根据懒加载状态自动选择精简版或完整版)
-    let all_accounts = {
+    {
         let config_service = service.get_config_service();
         let config = config_service.lock().unwrap();
         let all_config = config.get_all();
@@ -54,9 +54,7 @@ pub async fn get_accounts(
             );
             return Ok(all_accounts);
         }
-
-        all_accounts
-    }; // MutexGuard 在这里释放
+    } // MutexGuard 在这里释放
 
     // 否则调用 API 获取最新数据
     log_debug!("[get_accounts] Cache miss, fetching from API");

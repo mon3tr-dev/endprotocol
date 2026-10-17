@@ -1,5 +1,4 @@
 pub mod capture;
-pub mod encrypt;
 pub mod error;
 pub mod hg_crypto;
 pub mod http_client;

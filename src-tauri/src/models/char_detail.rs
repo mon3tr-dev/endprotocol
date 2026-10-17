@@ -72,8 +72,6 @@ fn deserialize_chars_fallback<'de, D>(deserializer: D) -> Result<Vec<CharacterIt
 where
     D: serde::Deserializer<'de>,
 {
-    use serde::de::Error;
-
     // 尝试解析为 Vec<CharacterItem>
     let result: Result<Vec<CharacterItem>, _> = Vec::deserialize(deserializer);
 

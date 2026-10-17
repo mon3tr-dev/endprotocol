@@ -1,17 +1,17 @@
 # 后端工具层 — 文件功能参考
 
 > 逐文件精读源码生成。行号基于当前工作区版本，仅用于快速定位。
-> 本文件覆盖：`src-tauri/src/utils/` 下全部 9 个文件（mod / error / encrypt / hg_crypto / http_client / logger / official_launcher / paths / capture）。
+> 本文件覆盖：`src-tauri/src/utils/` 下全部 8 个文件（mod / error / hg_crypto / http_client / logger / official_launcher / paths / capture）。
 
 ## `src-tauri/src/utils/mod.rs`
-**职责**：工具层模块清单（10 行）。声明 8 个子模块并统一再导出统一错误类型。
-**导出**：`pub mod capture`、`pub mod encrypt`、`pub mod error`、`pub mod hg_crypto`、`pub mod http_client`、`pub mod logger`、`pub mod official_launcher`、`pub mod paths`；`pub use error::AppError`（mod.rs:10）。
+**职责**：工具层模块清单（9 行）。声明 7 个子模块并统一再导出统一错误类型。
+**导出**：`pub mod capture`、`pub mod error`、`pub mod hg_crypto`、`pub mod http_client`、`pub mod logger`、`pub mod official_launcher`、`pub mod paths`；`pub use error::AppError`（mod.rs:9）。
 **主要依赖**：`crate::utils::error`。
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
-| `pub mod capture/encrypt/error/hg_crypto/http_client/logger/official_launcher/paths` | mod.rs:1-8 | 8 个子模块声明，全部 `pub` |
-| `pub use error::AppError` | mod.rs:10 | 别名导出，使调用方写作 `crate::utils::AppError` |
+| `pub mod capture/error/hg_crypto/http_client/logger/official_launcher/paths` | mod.rs:1-7 | 7 个子模块声明，全部 `pub` |
+| `pub use error::AppError` | mod.rs:9 | 别名导出，使调用方写作 `crate::utils::AppError` |
 
 **备注**：全 crate 通过 `crate::utils::{capture, paths, http_client, AppError}` 这类分组导入使用（如 services/account_service.rs:20、services/avatar_cache_service.rs:6、services/config_service.rs:8）。
 
@@ -36,27 +36,6 @@
 - 三个 `#[from]` 是 `thiserror` 生成的 `From` 实现的全部来源；其余三个变体只能显式构造。
 - 调用面覆盖 account / avatar_cache / char_detail / char_wiki_detail / config / attendance 等 service 与 command；`AppError` 不实现 `serde::Serialize`，因此 `#[tauri::command]` 层通常把它转成 `String` 再返回。
 - 存在对 `AppError` 的模式匹配工具函数，如 `account_service::is_new_device_verification_error(&AppError)`（services/account_service.rs:2929）。
-
----
-
-## `src-tauri/src/utils/encrypt.rs`
-**职责**：对齐 Python 参考实现的三种对称/非对称加密原语（87 行），用于森空岛/数美（Shumei）设备指纹 `dId` 获取流程的字段混淆与载荷加密。
-**导出**：`des_encrypt_3des_ecb`、`aes_encrypt_cbc`、`rsa_pkcs1v15_encrypt`。
-**主要依赖**：`aes`、`des`、`rsa`、`base64`（STANDARD 引擎）、`hex`、`rand`。
-
-| 符号 | 位置 | 说明 |
-| --- | --- | --- |
-| `des_encrypt_3des_ecb(key: &str, data: &str) -> String` | encrypt.rs:12 | 算法：名义 3DES-ECB，实际 `Des::new_from_slice(key.as_bytes())` **单 DES**（encrypt.rs:22，注释说明 Python 传 8 字节 key 时 TripleDES 退化为单 DES）；Zero Padding 补到 8 字节倍数（encrypt.rs:16-19，`pad_len<8` 才补，长度已对齐时不追加）；逐 8 字节块 `encrypt_block_b2b`；输出 **BASE64（STANDARD）** 字符串。输入 `data` 为 UTF-8 明文。对应 Python `_DES_encrypt`（encrypt.rs:10）。用途：数美指纹 JSON 各字段（`ua`/`smid`/`svm`/`trees` 等按 `des_rules` 表）逐字段加密后改名为 `xx`/`pj`/`qr` 等混淆键。**调用方：无**（见备注） |
-| `aes_encrypt_cbc(data: &[u8], key: &[u8]) -> String` | encrypt.rs:35 | 算法：AES-128-CBC，**IV 硬编码** `b"0102030405060708"`（encrypt.rs:49）；填充为特殊逻辑——先无条件 `push(0x00)`（encrypt.rs:43，复刻 Python 多加的一个 `\x00`），再补 0 到 16 字节倍数（encrypt.rs:44-47，已对齐时不补）；手写 CBC（逐块 XOR 前一密文块 + `encrypt_block`）；输出 **hex** 小写字符串（encrypt.rs:72）。key 为 16 字节（数美流程中取 `pri_id` 的 ASCII 字节）。对应 Python `_AES_encrypt`。用途：对「gzip 压缩后 base64 的指纹 JSON」做最终加密，密文以 `hex` 放入数美 `data` 字段。**调用方：无** |
-| `rsa_pkcs1v15_encrypt(public_key_der: &[u8], data: &[u8]) -> Result<Vec<u8>, String>` | encrypt.rs:77 | 算法：RSA PKCS#1 v1.5（`Pkcs1v15Encrypt`），公钥以 **DER SubjectPublicKeyInfo** 解析（`RsaPublicKey::from_public_key_der`，encrypt.rs:78），随机源 `rand::thread_rng()`；返回原始密文字节（调用方自行 base64）。错误以 `String` 返回（`Failed to parse RSA public key: ...` / `RSA encryption failed: ...`）。对应 Python `PK.encrypt(uid, padding.PKCS1v15())`（encrypt.rs:76）。用途：数美接口的 `ep` 字段——用数美平台公钥加密随机 `uid`。**调用方：无** |
-
-**备注**：
-- **当前代码库中这三个 pub 函数没有任何调用方**（全仓 grep `des_encrypt|aes_encrypt|rsa_pkcs1v15` 仅命中本文件定义与 skland_service 中同名但独立的私有实现）。等价逻辑被内联在 `services/skland_service.rs::fetch_new_did`（数美设备指纹流程）中：
-  - RSA：skland_service.rs:107-124（先 base64 解码常量 `PUB_KEY_DER`，加密 `uid` 后 base64 得 `ep`）；
-  - AES-128-CBC：skland_service.rs:286-322（key=`pri_id.as_bytes()`、IV 同为 `0102030405060708`、同样先 `\x00` 再补零、结果 `hex::encode`）；
-  - 单 DES：私有函数 `des_encrypt_3des`（skland_service.rs:1191-1215），算法与本文件 `des_encrypt_3des_ecb` 完全一致（Zero Padding + 单 DES + base64），仅把 `expect` 换成 `AppError::AuthError`。
-- 加密产物最终 POST 到数美接口 `https://fp-it.portal101.cn/deviceprofile/v4`（skland_service.rs:341-347），换取 `deviceId`，再加前缀 `B` 作为森空岛请求头 `dId`（skland_service.rs:418）；森空岛业务请求本身使用 HMAC-SHA256+MD5 签名（skland_service.rs:422-449），不走本文件。
-- 结论：encrypt.rs 是「参考实现/预留工具层」，与 skland_service 内联实现构成重复代码（异常项）。
 
 ---
 
@@ -96,53 +75,61 @@
 ---
 
 ## `src-tauri/src/utils/logger.rs`
-**职责**：自研日志系统（377 行）：控制台彩色输出 + 按日期文件落盘 + 内存环形缓冲（供前端读取），并提供 `tracing` 桥接层与 8 个导出宏。
-**导出**：`LogLevel`、`LogEntry`、`LoggerConfig`、`Logger`、`init_logger`、`get_logger`、`init_tracing_subscriber`、宏 `log_debug!` / `log_info!` / `log_warn!` / `log_error!` / `log_debug_module!` / `log_info_module!` / `log_warn_module!` / `log_error_module!`。私有项：`TracingBridgeLayer`、`TracingVisitor`、`GLOBAL_LOGGER`。
+**职责**：自研日志系统（387 行）：控制台彩色输出 + 按日期文件落盘 + 内存环形缓冲（供前端读取），并提供 `tracing` 桥接层与 9 个导出宏。
+**导出**：`LogLevel`、`LogEntry`、`LoggerConfig`、`Logger`、`console_available`、`eprint_console`、`init_logger`、`get_logger`、`init_tracing_subscriber`、宏 `log_debug!` / `log_info!` / `log_warn!` / `log_error!` / `log_debug_module!` / `log_info_module!` / `log_warn_module!` / `log_error_module!` / `safe_eprintln!`。私有项：`TracingBridgeLayer`、`TracingVisitor`、`GLOBAL_LOGGER`。
 **主要依赖**：`chrono`（Local 时间）、`serde::Serialize`、`tracing` / `tracing-subscriber`、`super::paths`、`std::sync::Mutex`。
 
 ### 日志级别与条目
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
-| `enum LogLevel { Debug, Info, Warn, Error }` | logger.rs:13 | 派生 `Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize`；派生序使 `level >= config.log_level` 可直接比较（logger.rs:142） |
-| `LogLevel::as_str` | logger.rs:21 | → `"DEBUG"`/`"INFO"`/`"WARN"`/`"ERROR"`（私有） |
-| `LogLevel::color_code` | logger.rs:30 | ANSI 颜色：Debug `\x1b[36m` 青、Info `\x1b[32m` 绿、Warn `\x1b[33m` 黄、Error `\x1b[31m` 红（私有） |
-| `struct LogEntry` | logger.rs:42 | 字段 `timestamp`(String) / `level`(LogLevel) / `module`(String) / `message`(String) / `source`(String，后端固定写 `"backend"`，logger.rs:121)；`Serialize` 供前端 |
-| `struct LoggerConfig` | logger.rs:51 | `log_to_console` / `log_to_file` / `log_level` / `log_dir: PathBuf` / `max_memory_entries`（私有字段外均为 pub） |
-| `impl Default for LoggerConfig` | logger.rs:59-70 | 默认：控制台开、文件开、级别 Debug、`log_dir = paths::log_dir()`（失败回退 `current_dir()/logs` 且 `current_dir().unwrap()`，logger.rs:65-66）、内存上限 5000 条 |
+| `enum LogLevel { Debug, Info, Warn, Error }` | logger.rs:40 | 派生 `Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize`；派生序使 `level >= config.log_level` 可直接比较（logger.rs:169） |
+| `LogLevel::as_str` | logger.rs:48 | → `"DEBUG"`/`"INFO"`/`"WARN"`/`"ERROR"`（私有） |
+| `LogLevel::color_code` | logger.rs:57 | ANSI 颜色：Debug `\x1b[36m` 青、Info `\x1b[32m` 绿、Warn `\x1b[33m` 黄、Error `\x1b[31m` 红（私有） |
+| `struct LogEntry` | logger.rs:69 | 字段 `timestamp`(String) / `level`(LogLevel) / `module`(String) / `message`(String) / `source`(String，后端固定写 `"backend"`，logger.rs:148)；`Serialize` 供前端 |
+| `struct LoggerConfig` | logger.rs:78 | `log_to_console` / `log_to_file` / `log_level` / `log_dir: PathBuf` / `max_memory_entries`（私有字段外均为 pub） |
+| `impl Default for LoggerConfig` | logger.rs:86-97 | 默认：控制台开、文件开、级别 Debug、`log_dir = paths::log_dir()`（失败回退 `current_dir()/logs` 且 `current_dir().unwrap()`，logger.rs:92-93）、内存上限 5000 条 |
+
+### 控制台可用性（GUI 子系统保护）
+
+| 符号 | 位置 | 说明 |
+| --- | --- | --- |
+| `console_available() -> bool` | logger.rs:13、20 | Windows 实现 `GetConsoleWindow() != null`；非 Windows 恒真。`main.rs` 无条件使用 GUI 子系统后，进程可能根本没有控制台，此时 std 的 stderr 句柄不可用，直接 `eprintln!` 会 panic |
+| `eprint_console(fmt: Arguments)` | logger.rs:25 | `console_available()` 为真才 `eprintln!`；`safe_eprintln!` 宏的落点 |
+| `safe_eprintln!` 宏（`#[macro_export]`） | logger.rs:31 | 展开为 `$crate::utils::logger::eprint_console(format_args!(...))`；全 crate 的裸 `eprintln!` 均应替换为它（lib.rs、models/char_detail.rs、services/game_launcher_service.rs 已替换） |
 
 ### Logger 实例
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
-| `struct Logger` | logger.rs:73 | 持有 `config`、`log_file: Mutex<Option<File>>`、`memory_buffer: Mutex<VecDeque<LogEntry>>` |
-| `Logger::new(config) -> Result<Self, Box<dyn Error>>` | logger.rs:80 | `log_to_file` 为真时调用 `init_log_file`（logger.rs:87-89） |
-| `init_log_file` | logger.rs:94 | `create_dir_all(log_dir)` → 文件名 `app-%Y-%m-%d.log`（logger.rs:96-97）→ `create(true).append(true)` 打开并存入 Mutex |
-| `format_timestamp` | logger.rs:106 | `%Y-%m-%d %H:%M:%S%.3f`（本地时间，毫秒精度） |
-| `format_message` | logger.rs:110 | 私有，格式 `[ts] [LEVEL] [module] msg`；**全文件无调用（死代码）**，实际格式化在 `write_log` 内联（logger.rs:133-139） |
-| `write_log(level, module, message)` | logger.rs:115 | 核心写入：①构造 `LogEntry` 入内存 `VecDeque`，超 `max_memory_entries` 则 `pop_front` 淘汰（logger.rs:124-131）；②控制台：仅当 `log_to_console && level >= config.log_level`，`eprintln!` 带颜色 + `\x1b[0m` 复位（logger.rs:142-146）；③文件：`writeln!` 后立即 `flush()`，**无颜色**（logger.rs:149-156） |
-| `get_recent_logs() -> Vec<LogEntry>` | logger.rs:160 | 克隆整个内存缓冲；调用方 commands/logs.rs:6（`get_backend_logs` 命令） |
-| `debug/info/warn/error(&self, message: &str)` | logger.rs:165、169、173、177 | module 固定 `"backend"` |
-| `debug_fmt/info_fmt/warn_fmt/error_fmt(fmt: Arguments)` | logger.rs:181、185、189、193 | 接收 `format_args!`，供同名宏使用 |
-| `debug_with_module/info_with_module/warn_with_module/error_with_module(module, message)` | logger.rs:198、202、206、210 | 指定 module（tracing 桥接与带模块宏使用） |
+| `struct Logger` | logger.rs:100 | 持有 `config`、`log_file: Mutex<Option<File>>`、`memory_buffer: Mutex<VecDeque<LogEntry>>` |
+| `Logger::new(config) -> Result<Self, Box<dyn Error>>` | logger.rs:107 | `log_to_file` 为真时调用 `init_log_file`（logger.rs:114-116） |
+| `init_log_file` | logger.rs:121 | `create_dir_all(log_dir)` → 文件名 `app-%Y-%m-%d.log`（logger.rs:123-124）→ `create(true).append(true)` 打开并存入 Mutex |
+| `format_timestamp` | logger.rs:133 | `%Y-%m-%d %H:%M:%S%.3f`（本地时间，毫秒精度） |
+| `write_log(level, module, message)` | logger.rs:137 | 核心写入：①构造 `LogEntry` 入内存 `VecDeque`，超 `max_memory_entries` 则 `pop_front` 淘汰（logger.rs:146-153）；②控制台：仅当 `log_to_console && level >= config.log_level` **且 `console_available()` 为真**，`eprintln!` 带颜色 + `\x1b[0m` 复位（logger.rs:163-171，GUI 无控制台时静默跳过而不是 panic）；③文件：`writeln!` 后立即 `flush()`，**无颜色**（logger.rs:174-181） |
+| `get_recent_logs() -> Vec<LogEntry>` | logger.rs:185 | 克隆整个内存缓冲；调用方 commands/logs.rs:6（`get_backend_logs` 命令） |
+| `info(&self, message: &str)` | logger.rs:190 | module 固定 `"backend"`（同名便捷方法 `debug`/`warn`/`error` 为死代码，已删除） |
+| `debug_fmt/info_fmt/warn_fmt/error_fmt(fmt: Arguments)` | logger.rs:194、198、202、206 | 接收 `format_args!`，供同名宏使用 |
+| `debug_with_module/info_with_module/warn_with_module/error_with_module(module, message)` | logger.rs:211、215、219、223 | 指定 module（tracing 桥接与带模块宏使用） |
 
 ### 全局实例与初始化
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
-| `static mut GLOBAL_LOGGER: Option<Logger>` | logger.rs:216 | 全局单例，`unsafe` 静态可变量 |
-| `init_logger() -> Result<(), Box<dyn Error>>` | logger.rs:218 | 用 `LoggerConfig::default()` 建实例并写入 `GLOBAL_LOGGER`（`unsafe` 块，logger.rs:221-223），随后 `info("Logger initialized successfully")`；调用方 lib.rs:32、utils/official_launcher.rs:1068（提权 helper 进程，失败不中断启动，仅 `eprintln`） |
-| `get_logger() -> &'static Logger` | logger.rs:228 | `GLOBAL_LOGGER.as_ref().expect("Logger not initialized. Call init_logger() first.")`；未初始化即调用会 panic |
-| `struct TracingBridgeLayer` + `impl Layer<S>` | logger.rs:237-269 | `on_event`：取 `metadata.level()/module_path()/target()`，用 `TracingVisitor` 收集字段，拼成 `[{target}] {fields}` 后按 ERROR/WARN/INFO/DEBUG\|TRACE 映射到 `*_with_module`（logger.rs:260-267） |
-| `struct TracingVisitor(String)` + `impl field::Visit` | logger.rs:271-308 | 实现 `record_debug/record_str/record_i64/record_u64/record_bool`，字段以 `name=value` 空格连接（未实现 record_f64 等） |
-| `init_tracing_subscriber()` | logger.rs:311 | `registry().with(TracingBridgeLayer).try_init().ok()`，已初始化则忽略；调用方 lib.rs:37。之后所有 `tracing::info!/debug!`（如 game_launcher_service 的 `tracing::info!`）都汇入本 Logger |
+| `static GLOBAL_LOGGER: OnceLock<Logger>` | logger.rs:229 | 全局单例，`std::sync::OnceLock`（线程安全，无 `unsafe`） |
+| `init_logger() -> Result<(), Box<dyn Error>>` | logger.rs:231 | 用 `LoggerConfig::default()` 建实例并 `GLOBAL_LOGGER.set(logger)`（重复初始化返回 `Err("Logger already initialized")`），随后 `info("Logger initialized successfully")`；调用方 lib.rs:99、utils/official_launcher.rs:1081（提权 helper 进程，失败不中断启动，仅 `eprintln`） |
+| `get_logger() -> &'static Logger` | logger.rs:241 | `GLOBAL_LOGGER.get().expect("Logger not initialized. Call init_logger() first.")`；未初始化即调用会 panic |
+| `struct TracingBridgeLayer` + `impl Layer<S>` | logger.rs:247-279 | `on_event`：取 `metadata.level()/module_path()/target()`，用 `TracingVisitor` 收集字段，拼成 `[{target}] {fields}` 后按 ERROR/WARN/INFO/DEBUG\|TRACE 映射到 `*_with_module`（logger.rs:270-277） |
+| `struct TracingVisitor(String)` + `impl field::Visit` | logger.rs:281-318 | 实现 `record_debug/record_str/record_i64/record_u64/record_bool`，字段以 `name=value` 空格连接（未实现 record_f64 等） |
+| `init_tracing_subscriber()` | logger.rs:322 | `registry().with(TracingBridgeLayer).try_init().ok()`，已初始化则忽略；调用方 lib.rs:104。之后所有 `tracing::info!/debug!`（如 game_launcher_service 的 `tracing::info!`）都汇入本 Logger |
 
 ### 导出宏（均 `#[macro_export]`，路径 `$crate::utils::logger::get_logger()`）
 
 | 宏 | 位置 | 展开到 |
 | --- | --- | --- |
-| `log_debug!` / `log_info!` / `log_warn!` / `log_error!` | logger.rs:323、330、337、344 | `get_logger().*_fmt(format_args!(...))`，module=`backend` |
-| `log_debug_module!` / `log_info_module!` / `log_warn_module!` / `log_error_module!` | logger.rs:352、359、366、373 | `get_logger().*_with_module($module, &format_args!(...).to_string())` |
+| `log_debug!` / `log_info!` / `log_warn!` / `log_error!` | logger.rs:334、341、348、355 | `get_logger().*_fmt(format_args!(...))`，module=`backend` |
+| `log_debug_module!` / `log_info_module!` / `log_warn_module!` / `log_error_module!` | logger.rs:363、370、377、384 | `get_logger().*_with_module($module, &format_args!(...).to_string())` |
+| `safe_eprintln!` | logger.rs:31 | `console_available()` 为真才写 stderr（见上表）；供非 logger 系统的裸 `eprintln!` 使用 |
 
 **备注（格式 / 目标 / 轮转）**：
 - **单行格式**：`[YYYY-MM-DD HH:MM:SS.mmm] [LEVEL] [module] message`（logger.rs:133-139）。
@@ -172,7 +159,7 @@
 | `RegistryKey` / `read_registry` / `subkeys` / `add_root` / `installed_roots` | :448-685 | 发现安装位置（对应 `RegistryKey`/`ReadRegistry`/`Subkeys`/`AddRoot`/`InstalledRoots`） |
 | `OwnedHandle` | :366-394 | RAII 内核句柄（`CloseHandle`），null 与 `INVALID_HANDLE_VALUE` 视为无句柄；`take()` 用于移交所有权 |
 | `windows_error` | :396 | `<操作> (Win32 <码>)` + `FormatMessageW` 本地化文本，740 额外附提权提示（对应 `WindowsError`） |
-| `ensure_console_hidden` | :436 | 仅 `GetConsoleWindow`+`ShowWindow(SW_HIDE)`，**不调用 `FreeConsole`**（原因见备注） |
+| `ensure_console_hidden` | :436 | 仅 `GetConsoleWindow`+`ShowWindow(SW_HIDE)`，**不调用 `FreeConsole`**（原因见备注）；`main.rs` 全构建改用 GUI 子系统后，正常路径下本函数已是 no-op（无控制台可隐藏），纯防御性保留 |
 | `TrustState` / `verify_official_launcher` / `signer_organization` | :601-814 | 签名校验：独占只读句柄（`FILE_SHARE_READ`）+ `WINTRUST_FILE_INFO.hFile` + `WTD_UI_NONE`/`WTD_CHOICE_FILE`/`WTD_CACHE_ONLY_URL_RETRIEVAL\|WTD_REVOCATION_CHECK_NONE`，再取第 0 个签名者证书链 `pasCertChain[0].pCert` 的 `O` 字段比对（对应 `TrustState`/`VerifyOfficialLauncher`） |
 | `find_official_launcher` | :816-856 | 给定 `--parent` 时只校验它，否则枚举候选并按版本降序取第一个通过者（对应 `FindOfficialLauncher`） |
 | `OfficialParent` + `start` / `create_game` / `Drop` | :858-1025 | 挂起父进程（`CREATE_SUSPENDED\|CREATE_NO_WINDOW` + `SW_HIDE`，关线程句柄但永不 `ResumeThread`）与游戏创建（两段式属性列表 + `PROC_THREAD_ATTRIBUTE_PARENT_PROCESS` + `EXTENDED_STARTUPINFO_PRESENT`，`StartupInfo.cb = size_of::<STARTUPINFOEXW>()`）；`Drop` 只终止自己创建的进程并等 5s（对应 `OfficialParent`） |
@@ -187,7 +174,7 @@
 **备注（提权模型 / 契约 / 限制）**：
 - **两阶段提权（恰好一次 UAC）**：游戏与官方启动器 manifest 都要求管理员，未提权进程创建它们会得到 Win32 740。因此未提权一侧只做「查找 + 验签」，失败时不弹 UAC 就能给出结论；成功则 `runas` 重启自身，提权后的同一 exe 由 `lib.rs:26` 的 `try_run_helper()` 在 logger/Tauri 初始化**之前**截获。
 - **`process::exit` 不跑析构**：helper 的完整流程必须先在一个函数内返回（RAII 析构 → 终止挂起的 `Games.exe`），再由 `lib.rs` 退出进程；若在持有父进程句柄时直接退出，那个 `Games.exe` 会永久残留。
-- **不许 `FreeConsole`**：`utils::logger` 每条日志都 `eprintln!`，std 在写标准流失败时会 panic，所以只隐藏控制台窗口（release 构建本就是 windows 子系统、无控制台）。
+- **不许 `FreeConsole`**：万一进程真的附有控制台（非正常路径），`FreeConsole` 会让之后所有 stderr 写入直接失败、且 logger 里的 `console_available()` 检查也无济于事（句柄已失效）；因此只隐藏窗口、不卸载控制台（`main.rs` 全构建 GUI 子系统后，正常路径本就无控制台，裸 `eprintln!` 也已统一走 `safe_eprintln!`）。
 - **签名句柄不跨提权边界**：helper 会重新验签并自己保持 `FILE_SHARE_READ` 句柄直到进程创建完成；未提权一侧的校验只是「不想让用户白弹一次 UAC」的 UX 过滤，**不要**因为「重复」而删掉 helper 里的那次。
 - **有意与上游一致的两处取舍**：`WTD_REVOCATION_CHECK_NONE`（不联网、不查吊销，离线可用）与只比对组织名不比指纹。
 - **状态文件**：`%LOCALAPPDATA%\cn.msk-network.endprotocol\launcher_helper_status`（路径由调用方传入），用于区分「helper 启动阶段失败」与「游戏创建成功但很快退出」——helper 退出码与游戏退出码共用同一段数值区间。
@@ -308,9 +295,8 @@
 
 ## 本文件发现的异常
 
-1. **encrypt.rs 三个 pub 函数全部无调用方（死代码）**：等价实现被内联复制到 `services/skland_service.rs`（RSA skland_service.rs:107-124、AES skland_service.rs:286-322、DES 私有 `des_encrypt_3des` skland_service.rs:1191-1215），构成双份维护风险。
-2. **logger.rs 无日志轮转/清理**：仅按启动日期命名 `app-YYYY-MM-DD.log`，文件句柄常驻不跨天切换，旧日志永不删除；同时文件与内存缓冲不做级别过滤（Debug 全量落盘）。
-3. **logger.rs 使用 `static mut GLOBAL_LOGGER` + `unsafe` 读写**（logger.rs:216、221-232），非线程安全的现代写法（应为 `OnceLock`/`LazyLock`）；`LoggerConfig::default()` 中 `current_dir().unwrap()`（logger.rs:66）在 cwd 不可用时会 panic；私有 `format_message`（logger.rs:110）为死代码。
-4. **HTTP 客户端超时策略不统一**：`http_client::create_client`（30s）仅被 3 个 service 使用，多处仍直接 `reqwest::Client::new()`（无显式超时），game_launcher_service 另建自定义 client。
-5. **hg_crypto 的测试 `test_decrypt_roundtrip_key_iv` 只断言常量长度**（hg_crypto.rs:126-130），并未真正验证解密逻辑；AES key/IV 为明文硬编码（逆向常量）。
-6. **`read_entries` 为全文件顺序扫描**（capture.rs:256-267），大会话下分页读取开销 O(文件行数)；单行 JSON 解析失败会被静默丢弃，可能导致 `total` 与前端可见条目不一致。
+1. **logger.rs 无日志轮转/清理**：仅按启动日期命名 `app-YYYY-MM-DD.log`，文件句柄常驻不跨天切换，旧日志永不删除；同时文件与内存缓冲不做级别过滤（Debug 全量落盘）。
+2. **`LoggerConfig::default()` 中 `current_dir().unwrap()`**（logger.rs:66）在 cwd 不可用时会 panic。
+3. **HTTP 客户端超时策略不统一**：`http_client::create_client`（30s）仅被 3 个 service 使用，多处仍直接 `reqwest::Client::new()`（无显式超时），game_launcher_service 另建自定义 client。
+4. **hg_crypto 的测试 `test_decrypt_roundtrip_key_iv` 只断言常量长度**（hg_crypto.rs:126-130），并未真正验证解密逻辑；AES key/IV 为明文硬编码（逆向常量）。
+5. **`read_entries` 为全文件顺序扫描**（capture.rs:256-267），大会话下分页读取开销 O(文件行数）；单行 JSON 解析失败会被静默丢弃，可能导致 `total` 与前端可见条目不一致。

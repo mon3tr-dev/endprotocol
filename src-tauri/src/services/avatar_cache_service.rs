@@ -208,31 +208,6 @@ impl ImageCacheService {
     pub async fn get_or_download_avatar(&self, url: &str) -> Result<String, AppError> {
         self.get_or_download_image(url, ImageType::Avatar).await
     }
-
-    /// 清除所有缓存的图片
-    pub fn clear_cache(&self) -> Result<(), AppError> {
-        if self.cache_dir.exists() {
-            fs::remove_dir_all(&self.cache_dir)?;
-            fs::create_dir_all(&self.cache_dir)?;
-
-            // 重新创建所有子目录
-            for image_type in [
-                ImageType::Avatar,
-                ImageType::SkillIcon,
-                ImageType::WeaponIcon,
-                ImageType::EquipIcon,
-                ImageType::Illustration,
-                ImageType::AttendanceIcon,
-                ImageType::GemIcon,
-                ImageType::ItemIcon,
-                ImageType::AchievementIcon,
-            ] {
-                let type_dir = self.cache_dir.join(image_type.dir_name());
-                fs::create_dir_all(&type_dir)?;
-            }
-        }
-        Ok(())
-    }
 }
 
 // 为了向后兼容，保留旧的类型别名

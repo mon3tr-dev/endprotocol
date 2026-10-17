@@ -35,11 +35,6 @@ pub struct GachaTab {
 }
 
 impl GachaTab {
-    /// 从 key 提取卡池类型简称（special/joint/normal）
-    pub fn kind(&self) -> &str {
-        self.key.split(':').next().unwrap_or("")
-    }
-
     /// 拉取该 Tab 记录时附带的 pool_id 参数
     pub fn request_pool_id(&self) -> Option<&str> {
         self.pool_id.as_deref()

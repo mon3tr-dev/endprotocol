@@ -83,25 +83,6 @@ impl GachaService {
             .await
     }
 
-    /// 拉取某个 Tab 的完整历史（从最新翻到最旧，hasMore=false 结束）
-    pub async fn fetch_pool_records_all(
-        &self,
-        u8token: &str,
-        server_id: &str,
-        pool_type: &str,
-        pool_id: Option<&str>,
-    ) -> Result<Vec<GachaRecord>, AppError> {
-        self.fetch_pool_records_until_overlap(
-            u8token,
-            server_id,
-            pool_type,
-            pool_id,
-            &HashSet::new(),
-            None,
-        )
-        .await
-    }
-
     /// 从最新向前翻页拉取记录，遇到本地已保存的 seqId 即停止（不包含该条）
     /// progress 传入时，每拉取一页都会更新进度并通过 gacha-sync-progress 事件推送；
     /// baseline 为本 Tab 开始前已累计拉取的记录数（用于计算 total_fetched）

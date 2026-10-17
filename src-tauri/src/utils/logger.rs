@@ -134,11 +134,6 @@ impl Logger {
         Local::now().format("%Y-%m-%d %H:%M:%S%.3f").to_string()
     }
 
-    fn format_message(level: LogLevel, module: &str, message: &str) -> String {
-        let ts = Self::format_timestamp();
-        format!("[{}] [{}] [{}] {}", ts, level.as_str(), module, message)
-    }
-
     fn write_log(&self, level: LogLevel, module: &str, message: &str) {
         let entry = LogEntry {
             timestamp: Self::format_timestamp(),
@@ -192,20 +187,8 @@ impl Logger {
         buf.iter().cloned().collect()
     }
 
-    pub fn debug(&self, message: &str) {
-        self.write_log(LogLevel::Debug, "backend", message);
-    }
-
     pub fn info(&self, message: &str) {
         self.write_log(LogLevel::Info, "backend", message);
-    }
-
-    pub fn warn(&self, message: &str) {
-        self.write_log(LogLevel::Warn, "backend", message);
-    }
-
-    pub fn error(&self, message: &str) {
-        self.write_log(LogLevel::Error, "backend", message);
     }
 
     pub fn debug_fmt(&self, fmt: std::fmt::Arguments) {
@@ -243,24 +226,22 @@ impl Logger {
 }
 
 /// 全局日志实例
-static mut GLOBAL_LOGGER: Option<Logger> = None;
+static GLOBAL_LOGGER: std::sync::OnceLock<Logger> = std::sync::OnceLock::new();
 
 pub fn init_logger() -> Result<(), Box<dyn std::error::Error>> {
     let config = LoggerConfig::default();
     let logger = Logger::new(config)?;
-    unsafe {
-        GLOBAL_LOGGER = Some(logger);
-    }
+    GLOBAL_LOGGER
+        .set(logger)
+        .map_err(|_| -> Box<dyn std::error::Error> { "Logger already initialized".into() })?;
     get_logger().info("Logger initialized successfully");
     Ok(())
 }
 
 pub fn get_logger() -> &'static Logger {
-    unsafe {
-        GLOBAL_LOGGER
-            .as_ref()
-            .expect("Logger not initialized. Call init_logger() first.")
-    }
+    GLOBAL_LOGGER
+        .get()
+        .expect("Logger not initialized. Call init_logger() first.")
 }
 
 /// tracing 层：将 tracing 事件桥接到自定义 Logger
