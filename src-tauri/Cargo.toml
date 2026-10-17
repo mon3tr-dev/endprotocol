@@ -50,6 +50,7 @@ hex = "0.4"
 rand = "0.8"
 indexmap = { version = "2.0", features = ["serde"] }
 tauri-plugin-process = "2.3.1"
+tauri-plugin-single-instance = "2"
 walkdir = "2"
 rfd = "0.15"
 sysinfo = "0.38.4"
@@ -59,6 +60,7 @@ zip = { version = "4.6.1", default-features = false, features = ["aes-crypto", "
 rustflags = ["-C", "link-arg=-fuse-ld=lld"]
 
 [target.'cfg(windows)'.dependencies]
+icoextract_rs = "0.1"
 # 免启动器启动（utils/official_launcher.rs）额外需要的特性：
 #   Win32_Security                      —— CreateProcessW 的 SECURITY_ATTRIBUTES 参数门控
 #   Win32_Security_Cryptography         —— WINTRUST_DATA / CERT_CONTEXT / CertGetNameStringW

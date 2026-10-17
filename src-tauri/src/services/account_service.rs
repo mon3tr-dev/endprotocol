@@ -2442,9 +2442,10 @@ impl AccountService {
     fn read_skland_credentials(&self, user_id: &str) -> Result<(String, String), AppError> {
         let config = self.config_service.lock().unwrap();
         let token_key = format!("account_token_{}", user_id);
-        let data: serde_json::Value = config.get(&token_key).ok_or_else(|| AppError::AuthError {
-            message: "Skland account was not found".to_string(),
-        })?;
+        let data: serde_json::Value =
+            config.get(&token_key).ok_or_else(|| AppError::AuthError {
+                message: "Skland account was not found".to_string(),
+            })?;
         let cred = data
             .get("cred")
             .and_then(|value| value.as_str())

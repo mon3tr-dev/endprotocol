@@ -230,11 +230,7 @@ impl SystemResourceService {
         };
 
         // 标称频率 ×「% Processor Performance」= 当前实际频率（含睿频）
-        let perf = self
-            .cpu_perf_percent
-            .lock()
-            .ok()
-            .and_then(|guard| *guard);
+        let perf = self.cpu_perf_percent.lock().ok().and_then(|guard| *guard);
         let (frequency_mhz, frequency_is_actual) = match perf {
             Some(percent) if nominal_mhz > 0 && percent > 0.0 => (
                 ((nominal_mhz as f64) * percent / 100.0).round() as u64,
@@ -496,12 +492,19 @@ fn pick_cpu_temperature(readings: &[TemperatureReading]) -> Option<f32> {
     }
     let cpu = readings.iter().find(|r| {
         let label = r.label.to_lowercase();
-        label.contains("cpu") || label.contains("package") || label.contains("tctl") || label.contains("tdie")
+        label.contains("cpu")
+            || label.contains("package")
+            || label.contains("tctl")
+            || label.contains("tdie")
     });
     let chosen = cpu.unwrap_or_else(|| {
         readings
             .iter()
-            .max_by(|a, b| a.celsius.partial_cmp(&b.celsius).unwrap_or(std::cmp::Ordering::Equal))
+            .max_by(|a, b| {
+                a.celsius
+                    .partial_cmp(&b.celsius)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
             .unwrap()
     });
     Some(chosen.celsius)
@@ -515,15 +518,16 @@ fn pick_cpu_temperature(readings: &[TemperatureReading]) -> Option<f32> {
 #[cfg(windows)]
 fn spawn_cpu_performance_thread(cache: Arc<Mutex<Option<f64>>>) {
     use windows_sys::Win32::System::Performance::{
-        PdhAddEnglishCounterW, PdhCloseQuery, PdhCollectQueryData,
-        PdhGetFormattedCounterValue, PdhOpenQueryW, PDH_FMT_COUNTERVALUE, PDH_FMT_DOUBLE,
-        PDH_HCOUNTER, PDH_HQUERY,
+        PdhAddEnglishCounterW, PdhCloseQuery, PdhCollectQueryData, PdhGetFormattedCounterValue,
+        PdhOpenQueryW, PDH_FMT_COUNTERVALUE, PDH_FMT_DOUBLE, PDH_HCOUNTER, PDH_HQUERY,
     };
 
     std::thread::spawn(move || unsafe {
         let mut query: PDH_HQUERY = std::ptr::null_mut();
         if PdhOpenQueryW(std::ptr::null(), 0, &mut query) != 0 {
-            crate::log_warn!("[system_resource] PdhOpenQuery failed, CPU frequency falls back to nominal");
+            crate::log_warn!(
+                "[system_resource] PdhOpenQuery failed, CPU frequency falls back to nominal"
+            );
             return;
         }
         let path: Vec<u16> = "\\Processor Information(_Total)\\% Processor Performance\0"

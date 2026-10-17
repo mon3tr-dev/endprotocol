@@ -39,7 +39,7 @@
 - `pub fn get_all(&self) -> HashMap<String, Value>`
 - `fn save(&self)`（私有）
 
-**状态**：在 `lib.rs:151-154` 创建为 `Arc<std::sync::Mutex<ConfigService>>` 并 `app.manage(...)`；同时注入 `SklandService`、`AccountService`（经 `AccountService::get_config_service()` 暴露）和 `tray::setup_tray`。因写方法需要 `&mut self`，调用方一律先 `lock()`。
+**状态**：在 `lib.rs:311-315` 创建为 `Arc<std::sync::Mutex<ConfigService>>` 并 `app.manage(...)`；完整/静默模式均使用该配置状态。完整模式还注入 `SklandService`、`AccountService` 和托盘。
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
@@ -52,7 +52,7 @@
 
 **备注**：
 - 文件路径：`%LOCALAPPDATA%\cn.msk-network.endprotocol\app_config.json`（`utils/paths.rs:34`）。
-- 已知配置键（散布于调用方）：`capture_autostart`（lib.rs:159）、`close_action`（lib.rs:226）、`tray_user_info`（tray.rs:13/25）、`lazy_load_enabled`（account_service.rs:369）、`account_list`（account_service.rs:1525）、`account_token_{id}` / skland token 键（account_service.rs:128 等）、`did_cache`（skland_service.rs:535）、`skland_games_cache`（account_service.rs:2578）。
+- 已知配置键（散布于调用方）：`main_exe_path`（startup.rs:8）、`launcher_install_path` / `launcher_channel`（startup.rs:9-10）、`capture_autostart`、`close_action`、`tray_user_info`、`lazy_load_enabled`、`account_list`、`account_token_{id}` / skland token 键、`did_cache`、`skland_games_cache`。
 - 调用方：`commands/account.rs:28`、`commands/attendance.rs:19`、`commands/gacha.rs:25`（`get_all()`）；`set/remove` 全部由 `account_service.rs`、`skland_service.rs`、`tray.rs` 调用。
 
 ---

@@ -2,7 +2,7 @@ use std::sync::Arc;
 use tauri::{Emitter, Manager, Runtime, State};
 
 use crate::services::config_service::ConfigService;
-use crate::tray::{TrayUserInfo, update_tray_menu};
+use crate::tray::{update_tray_menu, TrayUserInfo};
 
 /// Get the tray user info from config
 #[tauri::command]
@@ -10,7 +10,9 @@ pub fn get_tray_user_info(
     config_service: State<'_, Arc<std::sync::Mutex<ConfigService>>>,
 ) -> Result<TrayUserInfo, String> {
     let config = config_service.lock().map_err(|e| e.to_string())?;
-    Ok(config.get::<TrayUserInfo>("tray_user_info").unwrap_or_default())
+    Ok(config
+        .get::<TrayUserInfo>("tray_user_info")
+        .unwrap_or_default())
 }
 
 /// Set the selected user ID for tray display (role_id only)
@@ -22,10 +24,15 @@ pub fn set_tray_user<R: Runtime>(
 ) -> Result<(), String> {
     let user_info = {
         let mut config = config_service.lock().map_err(|e| e.to_string())?;
-        let mut info = config.get::<TrayUserInfo>("tray_user_info").unwrap_or_default();
+        let mut info = config
+            .get::<TrayUserInfo>("tray_user_info")
+            .unwrap_or_default();
         info.role_id = Some(role_id);
         config
-            .set("tray_user_info".to_string(), serde_json::to_value(&info).map_err(|e| e.to_string())?)
+            .set(
+                "tray_user_info".to_string(),
+                serde_json::to_value(&info).map_err(|e| e.to_string())?,
+            )
             .map_err(|e| e.to_string())?;
         info
     };
@@ -44,7 +51,10 @@ pub fn update_tray_user_data<R: Runtime>(
     {
         let mut config = config_service.lock().map_err(|e| e.to_string())?;
         config
-            .set("tray_user_info".to_string(), serde_json::to_value(&user_info).map_err(|e| e.to_string())?)
+            .set(
+                "tray_user_info".to_string(),
+                serde_json::to_value(&user_info).map_err(|e| e.to_string())?,
+            )
             .map_err(|e| e.to_string())?;
     }
 

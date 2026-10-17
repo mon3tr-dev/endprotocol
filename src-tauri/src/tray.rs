@@ -32,7 +32,10 @@ pub struct TrayUserInfo {
 
 /// Show the main window and bring it to focus (cross-desktop on Windows)
 pub fn show_main_window_focus<R: Runtime>(app: &tauri::AppHandle<R>) {
-    if let Some(window) = app.get_webview_window("main") {
+    if let Some(window) = app
+        .get_webview_window("main")
+        .or_else(|| crate::create_main_window(app).ok())
+    {
         let _ = window.unminimize();
         let _ = window.show();
 
@@ -88,36 +91,61 @@ pub fn setup_tray<R: Runtime>(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let user_info = {
         let config = config_service.lock().map_err(|e| e.to_string())?;
-        config.get::<TrayUserInfo>("tray_user_info").unwrap_or_default()
+        config
+            .get::<TrayUserInfo>("tray_user_info")
+            .unwrap_or_default()
     };
 
-    let tooltip = user_info
-        .nickname
-        .as_deref()
-        .unwrap_or("EndProtocol");
+    let tooltip = user_info.nickname.as_deref().unwrap_or("EndProtocol");
 
+    build_tray(app, tooltip, false)
+}
+
+/// Setup an icon-only tray for silent startup.
+pub fn setup_silent_tray<R: Runtime>(
+    app: &tauri::AppHandle<R>,
+    config_service: Arc<std::sync::Mutex<ConfigService>>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let tooltip = config_service
+        .lock()
+        .map_err(|error| error.to_string())?
+        .get::<TrayUserInfo>("tray_user_info")
+        .unwrap_or_default()
+        .nickname
+        .unwrap_or_else(|| "EndProtocol".to_string());
+
+    build_tray(app, &tooltip, true)
+}
+
+fn build_tray<R: Runtime>(
+    app: &tauri::AppHandle<R>,
+    tooltip: &str,
+    silent: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
     let _tray = TrayIconBuilder::with_id(TRAY_ID)
         .icon(app.default_window_icon().unwrap().clone())
         .tooltip(tooltip)
         .show_menu_on_left_click(false)
-        .on_tray_icon_event(|tray, event| {
+        .on_tray_icon_event(move |tray, event| {
             let app = tray.app_handle();
             match event {
                 TrayIconEvent::DoubleClick {
                     button: MouseButton::Left,
                     ..
                 } => {
-                    // Left double-click → show main window
-                    show_main_window_focus(app);
-                    // Also hide panel if open
-                    let _ = hide_tray_panel(app);
+                    if silent {
+                        crate::promote_to_full(app);
+                    } else {
+                        show_main_window_focus(app);
+                        let _ = hide_tray_panel(app);
+                    }
                 }
                 TrayIconEvent::Click {
                     button: MouseButton::Right,
                     button_state: tauri::tray::MouseButtonState::Up,
                     position,
                     ..
-                } => {
+                } if !silent => {
                     // Right click → show tray panel
                     show_panel_at_position(app, position);
                 }
@@ -135,10 +163,7 @@ pub fn update_tray_menu<R: Runtime>(
     user_info: &TrayUserInfo,
 ) -> Result<(), Box<dyn std::error::Error>> {
     if let Some(tray) = app.tray_by_id(TRAY_ID) {
-        let tooltip = user_info
-            .nickname
-            .as_deref()
-            .unwrap_or("EndProtocol");
+        let tooltip = user_info.nickname.as_deref().unwrap_or("EndProtocol");
         let _ = tray.set_tooltip(Some(tooltip));
     }
 

@@ -10,38 +10,7 @@
     "frontendDist": "../dist"
   },
   "app": {
-    "windows": [
-      {
-        "title": "endprotocol",
-        "width": 1200,
-        "height": 700,
-        "resizable": true,
-        "center": true,
-        "decorations": false,
-        "transparent": true,
-        "windowEffects": {
-          "effects": ["acrylic"],
-          "color": [18, 18, 20, 30]
-        }
-      },
-      {
-        "label": "tray-panel",
-        "title": "tray-panel",
-        "url": "/tray-panel.html",
-        "width": 260,
-        "height": 340,
-        "resizable": false,
-        "decorations": false,
-        "transparent": true,
-        "visible": false,
-        "skipTaskbar": true,
-        "alwaysOnTop": true,
-        "windowEffects": {
-          "effects": ["acrylic"],
-          "color": [18, 18, 20, 30]
-        }
-      }
-    ],
+    "windows": [],
     "security": {
       "csp": null
     }

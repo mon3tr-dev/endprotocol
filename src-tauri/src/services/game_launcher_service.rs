@@ -289,9 +289,7 @@ impl GameLauncherService {
 
         let resp = capture::send(
             &self.http_client,
-            self.http_client
-                .post(channel.api_url())
-                .json(&req_body),
+            self.http_client.post(channel.api_url()).json(&req_body),
         )
         .await
         .map_err(|e| format!("API request failed: {}", e))?;
@@ -726,38 +724,91 @@ impl GameLauncherService {
 
     // ========== 文件比较与计划 ==========
 
-    /// 比较本地文件与清单，生成下载计划
-    pub fn plan_updates(&self, manifest: &[ManifestFile], install_path: &str) -> Vec<FilePlan> {
-        let install_dir = Path::new(install_path);
-        let mut plans = Vec::new();
+    /// 比较本地文件与清单，生成更新计划。
+    ///
+    /// 先按「是否存在 + 大小是否一致」判断；对其中**大小一致且不超过阈值**的文件再计算
+    /// MD5，以识别「内容变化但大小不变」的文件——最典型的是 `config.ini` 的版本号（它决定
+    /// 本地版本，若不更新则永远提示可更新）。大文件只按大小判断：游戏大资源多为内容寻址，
+    /// 内容变化会改变文件名或大小。由此既避免对数 10GB 本地文件做全量哈希，又能正确探测
+    /// 版本号等小文件的变化。下载得到的文件仍会在写入时校验 MD5。
+    async fn plan_updates(
+        &self,
+        manifest: &[ManifestFile],
+        install_path: &str,
+        max_concurrent: usize,
+    ) -> Vec<FilePlan> {
+        /// 超过该大小的文件不再计算 MD5（只按大小判断）。
+        const HASH_MAX_SIZE: i64 = 16 * 1024 * 1024;
 
-        for entry in manifest {
+        let install_dir = Path::new(install_path);
+        let mut plans: Vec<FilePlan> = manifest
+            .iter()
+            .map(|entry| FilePlan {
+                manifest: entry.clone(),
+                source_path: None,
+            })
+            .collect();
+
+        let mut to_hash: Vec<usize> = Vec::new();
+        let mut need_download: usize = 0;
+        for (idx, entry) in manifest.iter().enumerate() {
             let local_path = install_dir.join(&entry.path);
-            let source = if local_path.exists() {
-                // 检查本地文件是否匹配（大小 + MD5）
-                if let Ok(meta) = fs::metadata(&local_path) {
-                    if meta.len() as i64 == entry.size {
-                        if let Ok(true) =
-                            hg_crypto::verify_md5(local_path.to_str().unwrap_or(""), &entry.md5)
-                        {
-                            Some(local_path.to_string_lossy().to_string())
-                        } else {
-                            None
-                        }
-                    } else {
-                        None
-                    }
+            let size_ok = fs::metadata(&local_path)
+                .map(|m| m.len() as i64 == entry.size)
+                .unwrap_or(false);
+            if !size_ok {
+                // 缺失或大小不符 → 需要下载
+                need_download += 1;
+                continue;
+            }
+            if entry.size <= HASH_MAX_SIZE {
+                // 小文件：需 MD5 确认内容是否变化
+                to_hash.push(idx);
+            } else {
+                // 大文件：按大小复用
+                plans[idx].source_path = Some(local_path.to_string_lossy().to_string());
+            }
+        }
+
+        tracing::info!(
+            "[compare] {} files: {} need download, {} small files to hash",
+            manifest.len(),
+            need_download,
+            to_hash.len()
+        );
+
+        let semaphore = Arc::new(Semaphore::new(max_concurrent.max(1).min(32)));
+        let mut join_set = tokio::task::JoinSet::new();
+        for &idx in &to_hash {
+            let local_path = install_dir.join(&manifest[idx].path);
+            let expected_md5 = manifest[idx].md5.clone();
+            let sem = semaphore.clone();
+            join_set.spawn(async move {
+                let _permit = match sem.acquire().await {
+                    Ok(permit) => permit,
+                    Err(_) => return None,
+                };
+                if DOWNLOAD_CANCELLED.load(Ordering::Relaxed) {
+                    return None;
+                }
+                let path_str = local_path.to_string_lossy().to_string();
+                let matched = tokio::task::spawn_blocking(move || {
+                    hg_crypto::verify_md5(&path_str, &expected_md5).unwrap_or(false)
+                })
+                .await
+                .unwrap_or(false);
+                if matched {
+                    Some(idx)
                 } else {
                     None
                 }
-            } else {
-                None
-            };
-
-            plans.push(FilePlan {
-                manifest: entry.clone(),
-                source_path: source,
             });
+        }
+        while let Some(joined) = join_set.join_next().await {
+            if let Ok(Some(idx)) = joined {
+                let path = install_dir.join(&plans[idx].manifest.path);
+                plans[idx].source_path = Some(path.to_string_lossy().to_string());
+            }
         }
 
         plans
@@ -977,21 +1028,26 @@ impl GameLauncherService {
             verified_bytes: 0,
         });
 
-        let plans = self.plan_updates(&manifest, install_path);
+        let plans = self.plan_updates(&manifest, install_path, 16).await;
+
+        if DOWNLOAD_CANCELLED.load(Ordering::Relaxed) {
+            progress_callback(DownloadProgress {
+                stage: InstallStage::Error.as_str().to_string(),
+                ..Default::default()
+            });
+            return Err("Install cancelled".to_string());
+        }
+
         let mut files_to_download: Vec<&FilePlan> =
             plans.iter().filter(|p| p.source_path.is_none()).collect();
 
-        let files_to_copy: Vec<&FilePlan> =
-            plans.iter().filter(|p| p.source_path.is_some()).collect();
-
         tracing::info!(
-            "[install] Plan: {} files to download, {} files to copy (out of {} total)",
+            "[install] Plan: {} files to download (out of {} total)",
             files_to_download.len(),
-            files_to_copy.len(),
             manifest.len()
         );
 
-        if files_to_download.is_empty() && files_to_copy.is_empty() {
+        if files_to_download.is_empty() {
             // 已经是最新版本
             tracing::info!("[install] Already up to date, saving state");
             self.save_payload_state(channel, &remote.version, &manifest_sha256, &manifest)?;
@@ -1008,30 +1064,9 @@ impl GameLauncherService {
         let install_dir = Path::new(install_path);
 
         let result = async {
-            // 5. 复制已有文件
-            tracing::info!(
-                "[install] Copying {} existing files to staging...",
-                files_to_copy.len()
-            );
-            for (idx, plan) in files_to_copy.iter().enumerate() {
-                if let Some(ref src) = plan.source_path {
-                    let dest = staging_path.join(&plan.manifest.path);
-                    if let Some(parent) = dest.parent() {
-                        fs::create_dir_all(parent).map_err(|e| format!("Create dir: {}", e))?;
-                    }
-                    fs::copy(src, &dest)
-                        .map_err(|e| format!("Copy file {}: {}", plan.manifest.path, e))?;
-                    if (idx + 1) % 500 == 0 || idx + 1 == files_to_copy.len() {
-                        tracing::debug!(
-                            "[install] Copied {}/{} files",
-                            idx + 1,
-                            files_to_copy.len()
-                        );
-                    }
-                }
-            }
-
-            // 6. 下载缺失文件（并发下载） — 优先使用预下载文件
+            // 5. 只暂存需要更新的文件：本地已存在且 MD5 匹配的文件保持原样，
+            //    不再整目录拷贝到暂存区，更新时只需下载/应用变更文件。
+            // 6. 下载缺失/异常文件（并发下载） — 优先使用预下载文件
             let total_bytes: u64 = files_to_download
                 .iter()
                 .map(|p| p.manifest.size.max(0) as u64)
@@ -1212,50 +1247,12 @@ impl GameLauncherService {
             }
 
             tracing::info!(
-                "[install] All {} downloads complete, verifying...",
+                "[install] All {} downloads complete, applying staged files...",
                 file_count
             );
 
-            // 7. 验证阶段：对暂存目录中所有文件做完整 MD5 校验
-            let mut verified_bytes: u64 = 0;
-            progress_callback(DownloadProgress {
-                downloaded: total_bytes,
-                total: total_bytes,
-                stage: InstallStage::Verifying.as_str().to_string(),
-                current_file: None,
-                file_index: 0,
-                file_count: manifest.len(),
-                verified_bytes: 0,
-            });
-
-            for (idx, entry) in manifest.iter().enumerate() {
-                let file_path = staging_path.join(&entry.path);
-                if !file_path.exists() {
-                    tracing::error!("[install] Missing file after download: {}", entry.path);
-                    return Err(format!("Missing file after download: {}", entry.path));
-                }
-                let verified = hg_crypto::verify_md5(file_path.to_str().unwrap_or(""), &entry.md5)
-                    .map_err(|e| format!("Verify error for {}: {}", entry.path, e))?;
-                if !verified {
-                    tracing::error!("[install] MD5 verification failed: {}", entry.path);
-                    return Err(format!("MD5 verification failed: {}", entry.path));
-                }
-                verified_bytes += entry.size as u64;
-                if (idx + 1) % 500 == 0 || idx + 1 == manifest.len() {
-                    tracing::debug!("[install] Verified {}/{} files", idx + 1, manifest.len());
-                    progress_callback(DownloadProgress {
-                        downloaded: total_bytes,
-                        total: total_bytes,
-                        stage: InstallStage::Verifying.as_str().to_string(),
-                        current_file: Some(entry.path.clone()),
-                        file_index: idx + 1,
-                        file_count: manifest.len(),
-                        verified_bytes,
-                    });
-                }
-            }
-
-            tracing::info!("[install] Verification complete, applying staged files...");
+            // 7. 跳过全量校验：下载文件在 download_single_file 中已按 MD5 校验，
+            //    本地文件在 plan_updates 中已按大小匹配；安装完成后由前端触发快速校验。
 
             // 8. 应用阶段：原子替换
             progress_callback(DownloadProgress {
@@ -1805,14 +1802,20 @@ impl GameLauncherService {
         install_path: &str,
         progress_callback: Arc<dyn Fn(DownloadProgress) + Send + Sync>,
         max_concurrent: usize,
+        remote_package: Option<RemotePackage>,
     ) -> Result<String, String> {
         // 1. 读取本地版本（接口只在上报本地版本时返回 pre_patch）
         let local_version = self.read_local_version(install_path).ok();
 
-        // 2. 获取远端信息（含预下载分卷列表）
-        let (remote, _cd_key) = self
-            .get_latest_package_with_cd_key(channel, local_version.as_deref())
-            .await?;
+        // Reuse package metadata already fetched by install_preload.
+        let remote = match remote_package {
+            Some(remote) => remote,
+            None => {
+                self.get_latest_package_with_cd_key(channel, local_version.as_deref())
+                    .await?
+                    .0
+            }
+        };
 
         let preload_version = remote
             .preload_version
@@ -1847,7 +1850,18 @@ impl GameLauncherService {
             total_bytes
         );
 
-        // 3. 准备 preload staging 目录：同版本的旧暂存直接复用（续传），异版本先删除
+        // 3. 开始下载阶段：复用同版本暂存以支持续传。
+        progress_callback(DownloadProgress {
+            downloaded: 0,
+            total: total_bytes,
+            stage: InstallStage::Preloading.as_str().to_string(),
+            current_file: None,
+            file_index: 0,
+            file_count: part_count,
+            verified_bytes: 0,
+        });
+
+        // 同版本的旧暂存直接复用，异版本先删除。
         let staging_path = match self.preload_staging_dir(install_path) {
             Some(dir)
                 if Self::preload_staging_version(&dir).as_deref()
@@ -1863,17 +1877,6 @@ impl GameLauncherService {
             }
             None => Self::create_preload_staging(install_path, &preload_version)?,
         };
-        // 4. 初始进度
-        progress_callback(DownloadProgress {
-            downloaded: 0,
-            total: total_bytes,
-            stage: InstallStage::Preloading.as_str().to_string(),
-            current_file: None,
-            file_index: 0,
-            file_count: part_count,
-            verified_bytes: 0,
-        });
-
         // 5. 并发下载所有分卷（download_single_file 内部完成单卷 MD5 校验与断点续传）
         let downloaded_bytes = Arc::new(AtomicU64::new(0));
         let finished_parts = Arc::new(AtomicUsize::new(0));
@@ -2069,11 +2072,6 @@ impl GameLauncherService {
             .ok_or_else(|| "Preload package cannot be installed: no decryption key".to_string())?
             .to_string();
 
-        progress_callback(DownloadProgress {
-            stage: InstallStage::Checking.as_str().to_string(),
-            ..Default::default()
-        });
-
         let download_progress = progress_callback.clone();
         let preload_progress = Arc::new(move |progress: DownloadProgress| {
             if progress.stage != InstallStage::Completed.as_str() {
@@ -2082,8 +2080,14 @@ impl GameLauncherService {
         });
 
         let result = async {
-            self.preload_download(channel, install_path, preload_progress, max_concurrent)
-                .await?;
+            self.preload_download(
+                channel,
+                install_path,
+                preload_progress,
+                max_concurrent,
+                Some(remote.clone()),
+            )
+            .await?;
 
             let staging_dir = self
                 .preload_staging_dir(install_path)
@@ -2093,67 +2097,16 @@ impl GameLauncherService {
             }
 
             let staging_path = PathBuf::from(&staging_dir);
-            let preload_total_bytes = remote.preload_total_bytes;
-            progress_callback(DownloadProgress {
-                total: preload_total_bytes,
-                stage: InstallStage::Verifying.as_str().to_string(),
-                file_count: remote.preload_parts.len(),
-                ..Default::default()
-            });
-            let part_checks = remote
+            // 分卷在 preload_download 阶段已逐卷按 MD5 校验（下载后校验、复用时复验），
+            // 安装时直接解压，不再重复全量校验；安装完成后由前端触发快速校验。
+            let part_paths = remote
                 .preload_parts
                 .iter()
                 .enumerate()
                 .map(|(index, part)| {
-                    (
-                        staging_path.join(Self::preload_part_file_name(&part.url, index)),
-                        part.md5.clone(),
-                    )
+                    staging_path.join(Self::preload_part_file_name(&part.url, index))
                 })
                 .collect::<Vec<_>>();
-            let part_count = part_checks.len();
-            let verify_progress = progress_callback.clone();
-            let part_paths = tokio::task::spawn_blocking(move || {
-                let mut paths = Vec::with_capacity(part_count);
-                let mut verified_bytes = 0u64;
-                for (index, (part_path, expected_md5)) in part_checks.into_iter().enumerate() {
-                    if DOWNLOAD_CANCELLED.load(Ordering::Relaxed) {
-                        return Err("Preload installation cancelled".to_string());
-                    }
-                    let part_path_str = part_path.to_string_lossy();
-                    if !part_path.is_file()
-                        || !hg_crypto::verify_md5_with_cancel(
-                            &part_path_str,
-                            &expected_md5,
-                            Some(&DOWNLOAD_CANCELLED),
-                        )
-                        .map_err(|e| format!("Failed to verify preload part: {}", e))?
-                    {
-                        return Err(format!(
-                            "Preload part failed integrity verification: {}",
-                            part_path.file_name().unwrap_or_default().to_string_lossy()
-                        ));
-                    }
-                    verified_bytes = verified_bytes.saturating_add(
-                        fs::metadata(&part_path)
-                            .map_err(|e| format!("Read preload part metadata: {}", e))?
-                            .len(),
-                    );
-                    paths.push(part_path);
-                    verify_progress(DownloadProgress {
-                        downloaded: verified_bytes,
-                        total: preload_total_bytes,
-                        stage: InstallStage::Verifying.as_str().to_string(),
-                        file_index: index + 1,
-                        file_count: part_count,
-                        verified_bytes,
-                        ..Default::default()
-                    });
-                }
-                Ok(paths)
-            })
-            .await
-            .map_err(|e| format!("Preload verification task failed: {}", e))??;
 
             let extracted_dir = staging_path.join(".extracted");
             if extracted_dir.exists() {
@@ -2180,23 +2133,6 @@ impl GameLauncherService {
             .map_err(|e| format!("Preload extraction task failed: {}", e))??;
 
             self.apply_preload_files(&extracted_dir, Path::new(install_path), &progress_callback)?;
-
-            let verify_progress = progress_callback.clone();
-            let verify_callback = Arc::new(move |progress: DownloadProgress| {
-                if progress.stage != InstallStage::Completed.as_str() {
-                    verify_progress(progress);
-                }
-            });
-            let verify_result = self
-                .verify_and_repair(
-                    channel,
-                    install_path,
-                    verify_callback,
-                    max_concurrent,
-                    false,
-                )
-                .await?;
-            Self::ensure_verification_succeeded(&verify_result)?;
 
             let installed_package = self.get_latest_package(channel, None).await?;
             let (manifest, manifest_sha256) = self
@@ -2405,29 +2341,6 @@ impl GameLauncherService {
         Ok(())
     }
 
-    fn ensure_verification_succeeded(result: &str) -> Result<(), String> {
-        if result == "All files verified OK" {
-            return Ok(());
-        }
-        let summary: serde_json::Value = serde_json::from_str(result)
-            .map_err(|e| format!("Invalid integrity verification result: {}", e))?;
-        let failed = summary
-            .get("failed")
-            .and_then(serde_json::Value::as_u64)
-            .ok_or_else(|| "Integrity verification result is missing failed count".to_string())?;
-        let repaired = summary
-            .get("repaired")
-            .and_then(serde_json::Value::as_u64)
-            .ok_or_else(|| "Integrity verification result is missing repaired count".to_string())?;
-        if repaired < failed {
-            return Err(format!(
-                "Integrity verification could not repair all files ({}/{} repaired)",
-                repaired, failed
-            ));
-        }
-        Ok(())
-    }
-
     /// 从分卷 URL 推断本地文件名（去掉查询串）；文件名非法时回退为 part_###.zip
     fn preload_part_file_name(url: &str, index: usize) -> String {
         let path = url.split('?').next().unwrap_or("");
@@ -2454,8 +2367,7 @@ impl GameLauncherService {
 
     /// 读取预下载暂存目录记录的目标版本
     fn preload_staging_version(dir: &str) -> Option<String> {
-        let content =
-            fs::read_to_string(Path::new(dir).join(Self::PRELOAD_VERSION_MARKER)).ok()?;
+        let content = fs::read_to_string(Path::new(dir).join(Self::PRELOAD_VERSION_MARKER)).ok()?;
         Some(content.trim().to_string())
     }
 
@@ -2588,9 +2500,7 @@ impl GameLauncherService {
 
         let resp = capture::send(
             &self.http_client,
-            self.http_client
-                .post(channel.web_api_url())
-                .json(&req_body),
+            self.http_client.post(channel.web_api_url()).json(&req_body),
         )
         .await
         .map_err(|e| format!("Web API request failed: {}", e))?;
@@ -2747,9 +2657,7 @@ impl GameLauncherService {
 
         let resp = capture::send(
             &self.http_client,
-            self.http_client
-                .post(channel.web_api_url())
-                .json(&req_body),
+            self.http_client.post(channel.web_api_url()).json(&req_body),
         )
         .await
         .map_err(|e| format!("Web API request failed: {}", e))?;

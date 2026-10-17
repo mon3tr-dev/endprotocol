@@ -311,10 +311,7 @@ fn encode_body(bytes: &[u8]) -> CaptureBody {
         Ok(text) => ("utf8", text.to_string()),
         Err(_) => {
             if truncated && std::str::from_utf8(bytes).is_ok() {
-                (
-                    "utf8",
-                    String::from_utf8_lossy(slice).to_string(),
-                )
+                ("utf8", String::from_utf8_lossy(slice).to_string())
             } else {
                 ("base64", BASE64.encode(slice))
             }

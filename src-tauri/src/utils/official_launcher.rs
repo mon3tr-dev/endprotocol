@@ -123,7 +123,9 @@ impl LaunchError {
             LaunchToken::NotFound => exit_code::INVALID_ARGUMENTS,
             LaunchToken::NoLauncher => exit_code::NO_VALID_LAUNCHER,
             LaunchToken::WaitFailed => exit_code::WAIT_FAILED,
-            LaunchToken::Create | LaunchToken::Cancelled | LaunchToken::Fallback
+            LaunchToken::Create
+            | LaunchToken::Cancelled
+            | LaunchToken::Fallback
             | LaunchToken::Unknown => exit_code::CREATE_FAILED,
         }
     }
@@ -165,7 +167,11 @@ pub fn quote_argument(value: &str, out: &mut Vec<u16>) {
             slashes += 1;
             continue;
         }
-        let count = if character == QUOTE { slashes * 2 + 1 } else { slashes };
+        let count = if character == QUOTE {
+            slashes * 2 + 1
+        } else {
+            slashes
+        };
         for _ in 0..count {
             out.push(BACKSLASH);
         }
@@ -311,7 +317,6 @@ mod win {
     use std::ptr;
     use std::time::Duration;
 
-
     use windows_sys::core::{GUID, PCWSTR, PWSTR};
     use windows_sys::Win32::Foundation::{
         CloseHandle, GetLastError, LocalFree, ERROR_CANCELLED, ERROR_NO_MORE_ITEMS, ERROR_SUCCESS,
@@ -321,10 +326,10 @@ mod win {
         szOID_ORGANIZATION_NAME, CertGetNameStringW, CERT_NAME_ATTR_TYPE,
     };
     use windows_sys::Win32::Security::WinTrust::{
-        WinVerifyTrust, WTHelperGetProvSignerFromChain, WTHelperProvDataFromStateData,
+        WTHelperGetProvSignerFromChain, WTHelperProvDataFromStateData, WinVerifyTrust,
         CRYPT_PROVIDER_SGNR, WINTRUST_ACTION_GENERIC_VERIFY_V2, WINTRUST_DATA, WINTRUST_FILE_INFO,
-        WTD_CACHE_ONLY_URL_RETRIEVAL, WTD_CHOICE_FILE, WTD_REVOCATION_CHECK_NONE,
-        WTD_REVOKE_NONE, WTD_STATEACTION_CLOSE, WTD_STATEACTION_VERIFY, WTD_UI_NONE,
+        WTD_CACHE_ONLY_URL_RETRIEVAL, WTD_CHOICE_FILE, WTD_REVOCATION_CHECK_NONE, WTD_REVOKE_NONE,
+        WTD_STATEACTION_CLOSE, WTD_STATEACTION_VERIFY, WTD_UI_NONE,
     };
     use windows_sys::Win32::System::Console::GetConsoleWindow;
     use windows_sys::Win32::System::Diagnostics::Debug::{
@@ -340,15 +345,15 @@ mod win {
         KEY_WOW64_32KEY, KEY_WOW64_64KEY, REG_EXPAND_SZ, REG_SZ,
     };
     use windows_sys::Win32::System::Threading::{
-        CreateProcessW, GetExitCodeProcess, GetProcessId, InitializeProcThreadAttributeList,
-        UpdateProcThreadAttribute, DeleteProcThreadAttributeList, TerminateProcess,
-        WaitForSingleObject, EXTENDED_STARTUPINFO_PRESENT, CREATE_NO_WINDOW, CREATE_SUSPENDED,
-        LPPROC_THREAD_ATTRIBUTE_LIST, PROCESS_INFORMATION, PROC_THREAD_ATTRIBUTE_PARENT_PROCESS,
-        STARTF_USESHOWWINDOW, STARTUPINFOEXW, STARTUPINFOW, INFINITE,
+        CreateProcessW, DeleteProcThreadAttributeList, GetExitCodeProcess, GetProcessId,
+        InitializeProcThreadAttributeList, TerminateProcess, UpdateProcThreadAttribute,
+        WaitForSingleObject, CREATE_NO_WINDOW, CREATE_SUSPENDED, EXTENDED_STARTUPINFO_PRESENT,
+        INFINITE, LPPROC_THREAD_ATTRIBUTE_LIST, PROCESS_INFORMATION,
+        PROC_THREAD_ATTRIBUTE_PARENT_PROCESS, STARTF_USESHOWWINDOW, STARTUPINFOEXW, STARTUPINFOW,
     };
     use windows_sys::Win32::UI::Shell::{
-        CommandLineToArgvW, ShellExecuteExW, SHELLEXECUTEINFOW, SEE_MASK_FLAG_NO_UI,
-        SEE_MASK_NO_CONSOLE, SEE_MASK_NOASYNC, SEE_MASK_NOCLOSEPROCESS,
+        CommandLineToArgvW, ShellExecuteExW, SEE_MASK_FLAG_NO_UI, SEE_MASK_NOASYNC,
+        SEE_MASK_NOCLOSEPROCESS, SEE_MASK_NO_CONSOLE, SHELLEXECUTEINFOW,
     };
     use windows_sys::Win32::UI::WindowsAndMessaging::{ShowWindow, SW_HIDE, SW_SHOWNORMAL};
 
@@ -398,7 +403,8 @@ mod win {
         let mut message: PWSTR = ptr::null_mut();
         let length = unsafe {
             FormatMessageW(
-                FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM
+                FORMAT_MESSAGE_ALLOCATE_BUFFER
+                    | FORMAT_MESSAGE_FROM_SYSTEM
                     | FORMAT_MESSAGE_IGNORE_INSERTS,
                 ptr::null(),
                 code,
@@ -417,9 +423,8 @@ mod win {
             unsafe { LocalFree(message as *mut c_void) };
         }
         if code == windows_sys::Win32::Foundation::ERROR_ELEVATION_REQUIRED {
-            result.push_str(
-                " — administrator privileges are required; allow the Windows UAC prompt",
-            );
+            result
+                .push_str(" — administrator privileges are required; allow the Windows UAC prompt");
         }
         result
     }
@@ -515,7 +520,8 @@ mod win {
             return None;
         }
         let mut expanded = vec![0u16; required as usize];
-        if unsafe { ExpandEnvironmentStringsW(source.as_ptr(), expanded.as_mut_ptr(), required) } == 0
+        if unsafe { ExpandEnvironmentStringsW(source.as_ptr(), expanded.as_mut_ptr(), required) }
+            == 0
         {
             return None;
         }
@@ -571,9 +577,11 @@ mod win {
         {
             root = root.parent().map(Path::to_path_buf).unwrap_or(root);
         }
-        let duplicate = roots
-            .iter()
-            .any(|existing| existing.to_string_lossy().eq_ignore_ascii_case(&root.to_string_lossy()));
+        let duplicate = roots.iter().any(|existing| {
+            existing
+                .to_string_lossy()
+                .eq_ignore_ascii_case(&root.to_string_lossy())
+        });
         if !duplicate {
             roots.push(root);
         }
@@ -585,7 +593,10 @@ mod win {
         let mut roots = Vec::new();
 
         for protocol in subkeys(HKEY_CLASSES_ROOT, "", 0) {
-            if !protocol.to_ascii_lowercase().starts_with("hypergryphlauncher") {
+            if !protocol
+                .to_ascii_lowercase()
+                .starts_with("hypergryphlauncher")
+            {
                 continue;
             }
             let command_path = format!("{protocol}\\shell\\open\\command");
@@ -631,8 +642,7 @@ mod win {
                     if !is_launcher {
                         continue;
                     }
-                    if let Some(location) =
-                        read_registry(hive, &key, Some("InstallLocation"), view)
+                    if let Some(location) = read_registry(hive, &key, Some("InstallLocation"), view)
                     {
                         add_root(&mut roots, Path::new(&location));
                     }
@@ -1135,9 +1145,7 @@ mod win {
 
         let code = wait_for_game(game.get())
             .map_err(|error| LaunchError::new(LaunchToken::WaitFailed, error))?;
-        tracing::info!(
-            "[launcher] game exited with code {code}; cleaning up suspended parent"
-        );
+        tracing::info!("[launcher] game exited with code {code}; cleaning up suspended parent");
         // 作用域结束：OfficialParent 的 Drop 终止挂起的启动器并等待它消失。
         Ok(code as i32)
     }
@@ -1211,17 +1219,18 @@ mod win {
         )
     }
 
-    fn shell_execute_elevated(executable: &Path, parameters: &str) -> Result<HelperProcess, LaunchError> {
+    fn shell_execute_elevated(
+        executable: &Path,
+        parameters: &str,
+    ) -> Result<HelperProcess, LaunchError> {
         let verb = wide("runas");
         let file = wide(&executable.to_string_lossy());
         let parameters_wide = wide(parameters);
 
         let mut info = SHELLEXECUTEINFOW::default();
         info.cbSize = std::mem::size_of::<SHELLEXECUTEINFOW>() as u32;
-        info.fMask = SEE_MASK_NOCLOSEPROCESS
-            | SEE_MASK_NOASYNC
-            | SEE_MASK_FLAG_NO_UI
-            | SEE_MASK_NO_CONSOLE;
+        info.fMask =
+            SEE_MASK_NOCLOSEPROCESS | SEE_MASK_NOASYNC | SEE_MASK_FLAG_NO_UI | SEE_MASK_NO_CONSOLE;
         info.lpVerb = verb.as_ptr();
         info.lpFile = file.as_ptr();
         info.lpParameters = parameters_wide.as_ptr();
@@ -1235,7 +1244,10 @@ mod win {
             } else {
                 LaunchToken::Create
             };
-            return Err(LaunchError::new(token, windows_error("Elevate launcher helper", code)));
+            return Err(LaunchError::new(
+                token,
+                windows_error("Elevate launcher helper", code),
+            ));
         }
 
         // 提权场景下系统允许 hProcess 为 NULL；此时没有观察通道，只能乐观认为已启动。
@@ -1316,10 +1328,7 @@ mod win {
         })?;
         let parameters = helper_parameters(game, &launcher_path, arguments, status_file);
         let helper = shell_execute_elevated(&executable, &parameters)?;
-        tracing::info!(
-            "[launcher] elevated helper started, pid {}",
-            helper.pid()
-        );
+        tracing::info!("[launcher] elevated helper started, pid {}", helper.pid());
 
         let helper_pid = helper.pid();
         if let Some(code) = helper.wait_early_exit(HELPER_GRACE) {
@@ -1407,7 +1416,10 @@ mod tests {
 
     #[test]
     fn quotes_plain_arguments() {
-        assert_eq!(quoted(r"C:\Games\Endfield.exe"), r#""C:\Games\Endfield.exe""#);
+        assert_eq!(
+            quoted(r"C:\Games\Endfield.exe"),
+            r#""C:\Games\Endfield.exe""#
+        );
     }
 
     #[test]

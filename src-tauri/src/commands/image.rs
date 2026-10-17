@@ -1,8 +1,8 @@
 use crate::services::avatar_cache_service::{all_sub_dir_names, resolve_url_subdir};
-use base64::engine::general_purpose::STANDARD as BASE64;
-use base64::Engine as _;
 use crate::utils::{capture, paths};
 use crate::{log_info, log_warn};
+use base64::engine::general_purpose::STANDARD as BASE64;
+use base64::Engine as _;
 use std::fs;
 use std::path::PathBuf;
 
@@ -110,10 +110,10 @@ pub async fn download_image(
     )
     .await
     .map_err(|e| {
-            let msg = format!("Failed to download image '{}': {}", url, e);
-            log_warn!("[download_image] {}", msg);
-            msg
-        })?;
+        let msg = format!("Failed to download image '{}': {}", url, e);
+        log_warn!("[download_image] {}", msg);
+        msg
+    })?;
 
     let status = response.status();
     log_info!("[download_image] Response status: {}", status);

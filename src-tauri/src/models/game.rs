@@ -183,13 +183,22 @@ pub struct BatchProxyResponse {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProxyResponse {
     pub kind: String,
-    #[serde(rename = "get_latest_game_rsp", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "get_latest_game_rsp",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub get_latest_game_rsp: Option<GetLatestGameRsp>,
     #[serde(rename = "get_banner_rsp", skip_serializing_if = "Option::is_none")]
     pub get_banner_rsp: Option<BannerRsp>,
-    #[serde(rename = "get_announcement_rsp", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "get_announcement_rsp",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub get_announcement_rsp: Option<AnnouncementRsp>,
-    #[serde(rename = "get_main_bg_image_rsp", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "get_main_bg_image_rsp",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub get_main_bg_image_rsp: Option<MainBgImageRsp>,
 }
 

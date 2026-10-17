@@ -138,12 +138,21 @@ pub async fn launcher_verify_and_repair(
             version: None,
             warning: None,
         }),
-        Err(e) => Ok(LauncherResult {
-            success: false,
-            message: e,
-            version: None,
-            warning: None,
-        }),
+        Err(e) => {
+            let _ = app.emit(
+                "launcher-progress",
+                &DownloadProgress {
+                    stage: InstallStage::Error.as_str().to_string(),
+                    ..Default::default()
+                },
+            );
+            Ok(LauncherResult {
+                success: false,
+                message: e,
+                version: None,
+                warning: None,
+            })
+        }
     }
 }
 
@@ -176,7 +185,13 @@ pub async fn launcher_preload_download(
     });
 
     match svc
-        .preload_download(&ch, &install_path, progress_cb, max_concurrent.unwrap_or(8))
+        .preload_download(
+            &ch,
+            &install_path,
+            progress_cb,
+            max_concurrent.unwrap_or(8),
+            None,
+        )
         .await
     {
         Ok(msg) => Ok(LauncherResult {
@@ -217,7 +232,7 @@ pub async fn launcher_install_preload(
     {
         Ok(version) => Ok(LauncherResult {
             success: true,
-            message: format!("Preload installed and verified: {}", version),
+            message: format!("Preload installed: {}", version),
             version: Some(version),
             warning: None,
         }),
@@ -338,8 +353,7 @@ fn launch_message(token: LaunchToken, detail: impl Into<String>) -> String {
 
 /// 同一时刻只允许一次启动：避免重复点击弹出两次 UAC、留下两套挂起的官方父进程。
 #[cfg(target_os = "windows")]
-static LAUNCH_IN_FLIGHT: std::sync::atomic::AtomicBool =
-    std::sync::atomic::AtomicBool::new(false);
+static LAUNCH_IN_FLIGHT: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 /// 直接启动游戏（旧行为）：交给 shell，靠 exe 自身的 manifest 自动提权。
 /// 只在找不到签名有效的官方启动器时作为回退使用。

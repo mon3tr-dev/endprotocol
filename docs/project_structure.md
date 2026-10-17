@@ -25,7 +25,7 @@ EndProtocol/
 │   ├── card_development.md        # 卡片开发指南
 │   ├── card_configuration.md      # 卡片配置系统
 │   └── reference/                 # ★ 逐文件功能参考（27 篇）
-│       ├── ipc_index.md           # 99 个命令 ↔ 定义 ↔ 调用方
+│       ├── ipc_index.md           # 105 个命令 ↔ 定义 ↔ 调用方
 │       ├── frontend/  (18 篇)
 │       └── backend/   (9 篇)
 ├── index.html                     # 主窗口入口
@@ -61,9 +61,9 @@ EndProtocol/
 │   │                              #   （含 todoStore.ts：To-Do 单一数据源）
 ├── src-tauri/                     # ===== 后端源码 =====
 │   ├── src/main.rs                # 进程入口
-│   ├── src/lib.rs                 # 插件/状态/菜单/托盘/命令注册（100 个命令）
-│   ├── src/tray.rs                # 托盘图标与菜单
-│   ├── src/commands/              # 14 个文件：IPC 命令入口
+│   ├── src/lib.rs                 # 启动模式分流、单实例、插件/状态/托盘/命令注册
+│   ├── src/tray.rs                # 完整模式面板托盘与静默图标托盘
+│   ├── src/commands/              # 15 个文件：IPC 命令入口
 │   ├── src/services/              # 12 个服务：account、skland、game_launcher、
 │   │                              #   gacha、char_detail、char_wiki、config、
 │   │                              #   avatar_cache、data_query、network、
@@ -80,7 +80,7 @@ EndProtocol/
 ## 4. 项目运行流程
 
 1. **启动阶段**：
-   - `src-tauri/src/main.rs` 启动 Tauri 应用；`lib.rs` 注册插件、State（`Arc<Mutex<AccountService>>`、`Arc<Mutex<ConfigService>>`、`Arc<GachaService>` 等）、菜单、托盘与 99 个命令。
+   - `src-tauri/src/main.rs` 启动 Tauri 应用；`lib.rs` 先处理游戏提权 helper 与单实例转发，再按参数分流。普通模式创建主窗口和托盘面板并初始化完整服务；`--silent` 模式只初始化 LocalAppData 配置、单实例、无菜单托盘和游戏启动链，不创建 WebView。
    - 前端 `src/main.tsx` 挂载 React、初始化 i18n、主题、日志与托盘事件监听。
 2. **前端加载**：
    - `src/App.tsx` 挂载路由，根据用户登录状态跳转至仪表板或账户页。
@@ -101,6 +101,7 @@ EndProtocol/
 - **系统资源卡片**：`system-resource/index.tsx` 按 `refreshMs` 轮询 `get_system_snapshot`（`SystemResourceService`，`spawn_blocking` + `sysinfo`/`nvidia-smi`），按 `layout` 渲染单指标或卡片组；默认值存 `system_resource_defaults`。
 - **To-Do**：`todoStore.ts` 是全应用唯一数据源（持久化 `todo_lists`），卡片内联、`pages/todo.tsx` 页面与 `todo-modal.tsx` 弹窗三处共用 `TodoDetail`，经订阅 + `todoChanged` 事件实时同步。
 - **启动器**：`game-action-panel.tsx` → `launcherService.ts` → `commands/launcher.rs` → `GameLauncherService`（下载/校验/切服/进程），进度经事件推送。
+- **静默游戏启动**：`--silent --launch-game` 通过 `ConfigService` 中的 `launcher_install_path` / `launcher_channel` 调用既有 `launcher_start_game`；单实例收到普通启动请求时，静默进程等待旧进程退出后交接到完整模式。
 
 ## 6. 本文件与其他文档的关系
 
