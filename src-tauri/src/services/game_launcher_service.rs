@@ -2515,15 +2515,15 @@ impl GameLauncherService {
             if let Some(rsps) = raw.get("proxy_rsps").and_then(|v| v.as_array()) {
                 for (i, rsp) in rsps.iter().enumerate() {
                     let kind = rsp.get("kind").and_then(|v| v.as_str()).unwrap_or("?");
-                    eprintln!("[Launcher] proxy_rsps[{}] kind={}", i, kind);
+                    crate::safe_eprintln!("[Launcher] proxy_rsps[{}] kind={}", i, kind);
                     if let Some(ann_rsp) = rsp.get("get_announcement_rsp") {
-                        eprintln!(
+                        crate::safe_eprintln!(
                             "[Launcher]   get_announcement_rsp keys: {:?}",
                             ann_rsp.as_object().map(|m| m.keys().collect::<Vec<_>>())
                         );
                         if let Some(tabs) = ann_rsp.get("tabs") {
                             let tab_arr = tabs.as_array();
-                            eprintln!(
+                            crate::safe_eprintln!(
                                 "[Launcher]   tabs count: {}",
                                 tab_arr.map_or(0, |a| a.len())
                             );
@@ -2535,14 +2535,14 @@ impl GameLauncherService {
                                         .get("announcements")
                                         .and_then(|v| v.as_array())
                                         .map_or(0, |a| a.len());
-                                    eprintln!(
+                                    crate::safe_eprintln!(
                                         "[Launcher]     tab[{}] name={}, announcements={}",
                                         ti, tab_name, ann_count
                                     );
                                 }
                             }
                         } else {
-                            eprintln!("[Launcher]   no 'tabs' key in get_announcement_rsp");
+                            crate::safe_eprintln!("[Launcher]   no 'tabs' key in get_announcement_rsp");
                         }
                     }
                     if let Some(banner_rsp) = rsp.get("get_banner_rsp") {
@@ -2550,7 +2550,7 @@ impl GameLauncherService {
                             .get("banners")
                             .and_then(|v| v.as_array())
                             .map_or(0, |a| a.len());
-                        eprintln!("[Launcher]   get_banner_rsp: {} banners", count);
+                        crate::safe_eprintln!("[Launcher]   get_banner_rsp: {} banners", count);
                     }
                 }
             }
@@ -2821,7 +2821,7 @@ impl GameLauncherService {
             }
         }
 
-        eprintln!(
+        crate::safe_eprintln!(
             "[Launcher] get_notice_content result: {} banners, {} announcements",
             banners.len(),
             announcements.len()
@@ -2852,15 +2852,15 @@ impl GameLauncherService {
 
         let body = self.batch_proxy_web(channel, proxy_reqs).await?;
 
-        eprintln!(
+        crate::safe_eprintln!(
             "[Launcher] Background API proxy_rsps count: {}",
             body.proxy_rsps.len()
         );
 
         for (i, rsp) in body.proxy_rsps.iter().enumerate() {
-            eprintln!("[Launcher] proxy_rsp[{}] kind={:?}", i, rsp.kind);
+            crate::safe_eprintln!("[Launcher] proxy_rsp[{}] kind={:?}", i, rsp.kind);
             if let Some(ref bg_rsp) = rsp.get_main_bg_image_rsp {
-                eprintln!("[Launcher] get_main_bg_image_rsp: {:?}", bg_rsp);
+                crate::safe_eprintln!("[Launcher] get_main_bg_image_rsp: {:?}", bg_rsp);
                 if let Some(ref bg_data) = bg_rsp.main_bg_image {
                     let url = bg_data.url.clone();
                     let alt = bg_data.video_url.clone().filter(|u| !u.is_empty());
@@ -2879,7 +2879,7 @@ impl GameLauncherService {
                         (if url.is_empty() { None } else { Some(url) }, video)
                     };
 
-                    eprintln!(
+                    crate::safe_eprintln!(
                         "[Launcher] Background media found: image={:?}, video={:?}",
                         image_url, video_url
                     );
@@ -2891,7 +2891,7 @@ impl GameLauncherService {
             }
         }
 
-        eprintln!("[Launcher] No background media found in response");
+        crate::safe_eprintln!("[Launcher] No background media found in response");
         Ok(None)
     }
 

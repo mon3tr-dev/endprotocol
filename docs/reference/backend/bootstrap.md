@@ -10,7 +10,7 @@
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
-| `windows_subsystem` 属性 | main.rs:2 | `#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]`，release 构建隐藏控制台窗口（注释标注 DO NOT REMOVE） |
+| `windows_subsystem` 属性 | main.rs:5 | **无条件** `#![windows_subsystem = "windows"]`（注释标注 DO NOT REMOVE）：release 与 debug 都不再创建控制台，被 Steam / 快捷方式等无控制台父进程拉起时不会闪现黑窗口；debug 下 `run()` 开头用 `AttachConsole(ATTACH_PARENT_PROCESS)` 附接父终端，`cargo run` 的控制台日志仍可输出 |
 | `main` | main.rs:4 | 调用 `endprotocol_lib::run()`（main.rs:5） |
 
 **备注**：`cargo run`/`pnpm tauri dev` 的实际逻辑全部在 lib.rs。
@@ -28,6 +28,7 @@
 | `use services::*` | lib.rs:13-20 | 导入 8 个服务类型（Account/AvatarCache/Config/Gacha/GameLauncher/Network/Skland/SystemResource） |
 | `run` | lib.rs:30 | 解析 `--silent` / `--launch-game` / `--close-after-launch` 并分流到静默或完整模式 |
 | `create_config_service` | lib.rs:319 | 初始化现有 `ConfigService`，并校验/更新配置键 `main_exe_path` |
+| `attach_parent_console`（私有，仅 Windows debug） | lib.rs:324 | `main.rs` 已无条件使用 GUI 子系统，进程本身不再创建控制台（根除黑窗口闪现：控制台在进程创建期生成，进程内 `ShowWindow(SW_HIDE)` 只能事后隐藏、仍会闪一瞬间）。此函数在 `run()` 最开头（logger / Tauri 初始化之前）尝试 `AttachConsole(ATTACH_PARENT_PROCESS)`：手动 `cargo run` 时附接父终端使日志可见，被 Steam / 快捷方式拉起时附接失败即静默无窗口。附接必须发生在首次 stdio 写入前（`eprintln!` 在 GUI 进程无控制台时会 panic，所有 stderr 写入均需经 `logger::safe_eprintln!`） |
 | `dispatch_instance_request` | lib.rs:356 | 将第二实例的参数路由为静默启动、启动游戏或显示主窗口 |
 | `start_game_from_config` | lib.rs:380 | 读取 `launcher_install_path` / `launcher_channel` 并调用已有 `launcher_start_game`；`close_after_launch: bool` 为 true（仅静默模式传入）时启动成功即退出本进程 |
 | `promote_to_full_with_game` | lib.rs:445 | 静默实例接到普通启动/托盘双击时，等待当前进程退出后重新启动完整模式 |

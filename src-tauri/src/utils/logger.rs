@@ -8,6 +8,33 @@ use std::sync::Mutex;
 
 use super::paths;
 
+/// 当前进程是否持有可用的控制台（GUI 子系统启动且未 AttachConsole 时为 false）。
+/// std 的 `eprintln!` 在 stderr 句柄不可用时会 panic，控制台写入前必须先检查。
+#[cfg(target_os = "windows")]
+pub fn console_available() -> bool {
+    use windows_sys::Win32::System::Console::GetConsoleWindow;
+    unsafe { !GetConsoleWindow().is_null() }
+}
+
+#[cfg(not(target_os = "windows"))]
+pub fn console_available() -> bool {
+    true
+}
+
+/// 写入 stderr，但仅在存在可用控制台时执行。
+pub fn eprint_console(fmt: std::fmt::Arguments) {
+    if console_available() {
+        eprintln!("{}", fmt);
+    }
+}
+
+#[macro_export]
+macro_rules! safe_eprintln {
+    ($($arg:tt)*) => {
+        $crate::utils::logger::eprint_console(format_args!($($arg)*))
+    };
+}
+
 /// 日志级别
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 pub enum LogLevel {
@@ -138,11 +165,14 @@ impl Logger {
             message
         );
 
-        // 控制台输出（带颜色）
+        // 控制台输出（带颜色）。GUI 子系统下没有可用的控制台，
+        // 直接写 stderr 会导致 std panic，必须先确认有控制台。
         if self.config.log_to_console && level >= self.config.log_level {
-            let color = level.color_code();
-            let reset = "\x1b[0m";
-            eprintln!("{}{}{}", color, formatted, reset);
+            if console_available() {
+                let color = level.color_code();
+                let reset = "\x1b[0m";
+                eprintln!("{}{}{}", color, formatted, reset);
+            }
         }
 
         // 文件输出（无颜色）

@@ -81,7 +81,7 @@ where
         Ok(chars) => Ok(chars),
         Err(e) => {
             // 记录错误但返回空数组，避免整个解析失败
-            eprintln!(
+            crate::safe_eprintln!(
                 "Warning: Failed to deserialize chars array: {}. Returning empty array.",
                 e
             );

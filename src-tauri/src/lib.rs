@@ -28,6 +28,12 @@ static PROMOTION_STARTED: AtomicBool = AtomicBool::new(false);
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // main.rs 现在无条件使用 Windows 子系统（不再创建控制台，避免被 Steam /
+    // 快捷方式拉起时闪现黑窗口）；debug 构建下尝试附接父进程的终端，
+    // 让 `cargo run` 的日志仍能打印到运行环境。
+    #[cfg(all(target_os = "windows", debug_assertions))]
+    attach_parent_console();
+
     // 提权启动 helper 模式（见 utils/official_launcher.rs）：
     // 必须在 logger / tracing / Tauri 初始化之前截获 —— 这个进程是被 launcher_start_game
     // 以 runas 拉起来的第二个实例，只负责「伪造官方父进程 + 启动游戏 + 转发退出码」，
@@ -38,6 +44,7 @@ pub fn run() {
     }
 
     let args = std::env::args().collect::<Vec<_>>();
+
     if let Some(parent_pid) = arg_value(&args, WAIT_FOR_PARENT_ARG).and_then(|pid| pid.parse().ok())
     {
         wait_for_parent(parent_pid);
@@ -90,7 +97,7 @@ pub fn run() {
 
     // 初始化日志系统（静默模式刻意不初始化完整日志和业务服务）
     if let Err(e) = utils::logger::init_logger() {
-        eprintln!("Failed to initialize logger: {}", e);
+        crate::safe_eprintln!("Failed to initialize logger: {}", e);
     }
 
     // 初始化 tracing subscriber，将 tracing 事件桥接到自定义 Logger
@@ -269,10 +276,7 @@ pub fn run() {
             app.manage(gacha_service);
 
             // 初始化网络数据服务
-            let network_service = Arc::new(NetworkService::new(
-                skland_service.clone(),
-                avatar_cache_service.clone(),
-            ));
+            let network_service = Arc::new(NetworkService::new(skland_service.clone()));
 
             // 初始化账户服务（使用 tokio::sync::Mutex，因为它包含异步方法）
             let account_service = AccountService::new(
@@ -314,6 +318,15 @@ fn arg_value<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
         .position(|arg| arg == name)
         .and_then(|index| args.get(index + 1))
         .map(String::as_str)
+}
+
+#[cfg(all(target_os = "windows", debug_assertions))]
+fn attach_parent_console() {
+    use windows_sys::Win32::System::Console::{AttachConsole, ATTACH_PARENT_PROCESS};
+
+    unsafe {
+        AttachConsole(ATTACH_PARENT_PROCESS);
+    }
 }
 
 fn create_config_service() -> Result<Arc<StdMutex<ConfigService>>, String> {
@@ -424,12 +437,12 @@ fn write_startup_error(message: &str) {
     use std::io::Write;
 
     let Ok(data_dir) = utils::paths::app_data_dir() else {
-        eprintln!("{message}");
+        crate::safe_eprintln!("{message}");
         return;
     };
     let log_dir = data_dir.join("logs");
     if let Err(error) = std::fs::create_dir_all(&log_dir) {
-        eprintln!("{message}; could not create startup log directory: {error}");
+        crate::safe_eprintln!("{message}; could not create startup log directory: {error}");
         return;
     }
     match std::fs::OpenOptions::new()
@@ -440,10 +453,10 @@ fn write_startup_error(message: &str) {
         Ok(mut file) => {
             let timestamp = chrono::Local::now().to_rfc3339();
             if let Err(error) = writeln!(file, "[{timestamp}] {message}") {
-                eprintln!("Could not write startup log: {error}");
+                crate::safe_eprintln!("Could not write startup log: {error}");
             }
         }
-        Err(error) => eprintln!("{message}; could not open startup log: {error}"),
+        Err(error) => crate::safe_eprintln!("{message}; could not open startup log: {error}"),
     }
 }
 
