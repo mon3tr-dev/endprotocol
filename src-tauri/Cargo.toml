@@ -56,9 +56,6 @@ rfd = "0.15"
 sysinfo = "0.38.4"
 zip = { version = "4.6.1", default-features = false, features = ["aes-crypto", "deflate-flate2"] }
 
-[target.x86_64-pc-windows-msvc]
-rustflags = ["-C", "link-arg=-fuse-ld=lld"]
-
 [target.'cfg(windows)'.dependencies]
 icoextract_rs = "0.1"
 # 免启动器启动（utils/official_launcher.rs）额外需要的特性：
@@ -76,7 +73,3 @@ windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Graphic
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-updater = "2"
-
-[profile.dev]
-debug = "line-tables-only"
-incremental = true
