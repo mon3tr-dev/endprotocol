@@ -1,7 +1,8 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, Suspense } from "react";
 import { useLocation } from "react-router-dom";
 import { CustomTitlebar } from "@/components/custom-titlebar";
 import { Sidebar } from "@/components/dashboard-sidebar";
+import { GlassSpinner } from "@/components/ui/glass";
 import {
   getLauncherMode,
   subscribeLauncherMode,
@@ -412,7 +413,15 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
         <div className="flex-1 flex flex-col overflow-hidden min-w-0">
           <main className="flex-1 overflow-y-auto p-4 lg:p-8 pt-6">
             <div key={location.pathname} className="h-full min-h-full">
-              {children}
+              <Suspense
+                fallback={
+                  <div className="flex h-full min-h-[50vh] items-center justify-center">
+                    <GlassSpinner color="primary" size="lg" />
+                  </div>
+                }
+              >
+                {children}
+              </Suspense>
             </div>
           </main>
         </div>

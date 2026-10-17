@@ -62,7 +62,7 @@
 ## `src/components/gacha-pity-chart.tsx`
 **职责**：抽卡「寻访统计」保底条形图——按卡池分组，以横向柱条展示每次六星距离上个六星的抽数（或赠送十连内序号）及未出六星的余量，柱头附角色/武器圆形头像，支持卡池筛选与中英文案。
 **导出**：`GachaPityChart`（default 导出）
-**主要依赖**：`echarts`（自定义 `custom` series + `renderItem` 手绘）、`@tauri-apps/api/core` 的 `invoke`、`@/components/ui/glass`（`GlassCard`、`GlassSelect`）、`@/utils/imageCacheManager`（`cacheManager`、`usePinImages`）、`@/utils/logger` 的 `logError`、`@/types/gacha`（`GachaCategory`/`GachaPoolInfo`/`GachaPoolKind`/`GachaRecord`）
+**主要依赖**：`echarts/core`（按需引入，`echarts.use([...])` 注册 `CustomChart` + `GridComponent`/`TooltipComponent`/`GraphicComponent` + `CanvasRenderer`，自定义 `custom` series + `renderItem` 手绘）、`@tauri-apps/api/core` 的 `invoke`、`@/components/ui/glass`（`GlassCard`、`GlassSelect`）、`@/utils/imageCacheManager`（`cacheManager`、`usePinImages`）、`@/utils/logger` 的 `logError`、`@/types/gacha`（`GachaCategory`/`GachaPoolInfo`/`GachaPoolKind`/`GachaRecord`）
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
@@ -116,7 +116,7 @@
 ## `src/components/gacha-stat-charts.tsx`
 **职责**：抽卡统计三联图容器——星级占比环形图、按卡池分组的六星间隔折线图（含期望参考线）、六星间隔累积曲线（阶梯图，含期望参考线），间隔算法与统计卡片和保底图共用。
 **导出**：`GachaStatCharts`（default 导出）
-**主要依赖**：`echarts`、`@/components/ui/glass` 的 `GlassCard`、`@/types/gacha`（`GachaCategory`/`GachaPoolKind`/`GachaRecord`）；无任何 Tauri 调用
+**主要依赖**：`echarts/core`（按需引入，`echarts.use([...])` 注册 `PieChart`/`LineChart` + `GridComponent`/`LegendComponent`/`MarkLineComponent`/`TooltipComponent` + `CanvasRenderer`）、`@/components/ui/glass` 的 `GlassCard`、`@/types/gacha`（`GachaCategory`/`GachaPoolKind`/`GachaRecord`）；无任何 Tauri 调用
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |

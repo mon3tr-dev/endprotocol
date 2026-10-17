@@ -45,8 +45,11 @@
 ### 3.2 新增页面路由
 
 1. 在 `src/pages/` 创建页面组件
-2. 在 `src/App.tsx` 用 `react-router-dom` 的 `<Route>` 注册
-3. 导航入口：`src/components/dashboard-sidebar.tsx` 或 `navbar.tsx`（入口与侧栏结构见 [components_sidebar_charts.md](reference/frontend/components_sidebar_charts.md)）
+2. 在 `src/App.tsx` 用 `React.lazy(() => import("@/pages/..."))` 声明页面组件，再用 `react-router-dom` 的 `<Route>` 注册（页面加载态由 `layouts/dashboard.tsx` 的 `<main>` 内 `Suspense` 兜底，勿在路由内重复包裹）
+3. 如路由需可恢复，把路径加入 `App.tsx` 的 `ROUTES` 白名单
+4. 导航入口：`src/components/dashboard-sidebar.tsx` 或 `navbar.tsx`（入口与侧栏结构见 [components_sidebar_charts.md](reference/frontend/components_sidebar_charts.md)）
+
+> 打包：页面按路由懒加载；第三方库由 `vite.config.ts` 的 `build.rollupOptions.output.manualChunks` 拆成 `vendor-react`/`vendor-echarts`/`vendor-zrender`/`vendor-i18n`/`vendor-ui`/`vendor-dnd`/`vendor-tauri` 等 chunk，避免单个 chunk 超过 Vite 的 500 kB 告警阈值。引入 `echarts` 时务必用 `echarts/core` + 按需 `echarts.use(...)`，不要全量 `import * as echarts from "echarts"`。
 
 ### 3.3 新增后端命令调用
 

@@ -1,11 +1,27 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import * as echarts from "echarts";
+import * as echarts from "echarts/core";
+import { CustomChart } from "echarts/charts";
+import {
+  GraphicComponent,
+  GridComponent,
+  TooltipComponent,
+} from "echarts/components";
+import { CanvasRenderer } from "echarts/renderers";
+import type { EChartsOption } from "echarts";
 import { invoke } from "@tauri-apps/api/core";
 import { GlassCard, GlassSelect } from "@/components/ui/glass";
 import { cacheManager, usePinImages } from "@/utils/imageCacheManager";
 import { calculateGachaSixStarIntervals } from "@/utils/gachaIntervals";
 import { logError } from "@/utils/logger";
 import type { GachaCategory, GachaPoolInfo, GachaPoolKind, GachaRecord } from "@/types/gacha";
+
+echarts.use([
+  CustomChart,
+  GridComponent,
+  TooltipComponent,
+  GraphicComponent,
+  CanvasRenderer,
+]);
 
 /** 记录所属卡池类型：优先用 pools 元信息，缺失时按 poolId 前缀推断 */
 function poolKindOf(rec: GachaRecord, pools: Record<string, { poolType: string }>): GachaPoolKind {
@@ -368,7 +384,7 @@ export default function GachaPityChart({
     const categories = meta.map((_, i) => `r${i}`);
     const maxCount = Math.max(10, ...meta.filter((m) => m.kind !== "header").map((m) => m.row!.count));
 
-    const option: echarts.EChartsOption = {
+    const option: EChartsOption = {
       animationDuration: 500,
       animationEasing: "cubicOut",
       grid: { left: GRID_LEFT, right: GRID_RIGHT, top: 0, bottom: CHART_BOTTOM_PAD, containLabel: false },

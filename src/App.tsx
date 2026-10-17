@@ -1,19 +1,20 @@
-import { useEffect, useRef } from "react";
+import { lazy, useEffect, useRef } from "react";
 import { Route, Routes, useLocation, useNavigate } from "react-router-dom";
 
-import DashboardPage from "@/pages/dashboard";
-import SettingsPage from "@/pages/settings";
-import DeveloperPage from "@/pages/developer";
-import AccountPage from "@/pages/account";
-import CharactersPage from "@/pages/characters";
-import MedalsPage from "@/pages/medals";
-import AttendancePage from "@/pages/attendance";
-import GachaRecordsPage from "@/pages/gacha-records";
-import TodoPage from "@/pages/todo";
 import DashboardLayout from "@/layouts/dashboard";
 import { getConfig, setConfig } from "@/utils/configService";
 import { checkAndNotify } from "@/utils/updateService";
 import { ensureTodoLoaded } from "@/stores/todoStore";
+
+const DashboardPage = lazy(() => import("@/pages/dashboard"));
+const SettingsPage = lazy(() => import("@/pages/settings"));
+const DeveloperPage = lazy(() => import("@/pages/developer"));
+const AccountPage = lazy(() => import("@/pages/account"));
+const CharactersPage = lazy(() => import("@/pages/characters"));
+const MedalsPage = lazy(() => import("@/pages/medals"));
+const AttendancePage = lazy(() => import("@/pages/attendance"));
+const GachaRecordsPage = lazy(() => import("@/pages/gacha-records"));
+const TodoPage = lazy(() => import("@/pages/todo"));
 
 const ROUTES = ["/", "/settings", "/account", "/characters", "/medals", "/attendance", "/gacha", "/todo", "/developer"];
 

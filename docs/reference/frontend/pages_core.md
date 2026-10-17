@@ -9,7 +9,8 @@
 
 **主要依赖**：
 - 项目内：`@/components/custom-titlebar`（`CustomTitlebar`）、`@/components/dashboard-sidebar`（`Sidebar`）、`@/components/in-app-browser`（`InAppBrowser`）、`@/components/game-action-panel`（`GameActionPanel`）、`@/stores/launcherMode`（模式与背景媒体的可订阅 store）、`@/stores/inAppBrowser`（`openInAppBrowser`/`suspendInAppBrowser`/`resumeInAppBrowser`）、`@/utils/launcherService`（`getNoticeContent`/`getBackgroundImage` 与 `GameChannel`/`BannerItem`/`AnnouncementItem` 类型）、`@/utils/platform`（`isWindowsPlatform`）、`@/utils/startupProgress`（`trackStartupTask`）。
-- 第三方：`react`（`useState`/`useEffect`/`useRef`）、`react-router-dom`（`useLocation`）。
+- 项目内（续）：`@/components/ui/glass`（`GlassSpinner`，作为懒加载页面的 `Suspense` 兜底）。
+- 第三方：`react`（`useState`/`useEffect`/`useRef`/`Suspense`）、`react-router-dom`（`useLocation`）。
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
@@ -37,12 +38,12 @@
   - 215-370 行：内容层（`z-10`）：底部左侧「Banner + 公告」玻璃盒（220-363 行）与右侧 `GameActionPanel`（365-368 行）。
     - 224-315 行：Banner 轮播（`overflow-hidden` 圆角容器）——翻页时离场图（231-244 行，绝对定位）向反方向推走（`.animate-banner-push-out-left/right`），入场图（246-268 行，`z-[1]`）从对应方向推入（`.animate-banner-push-in-right/left`）；点击 `jump_url` 走 `openInAppBrowser`，`onError` 隐藏图片；图片悬停时 `group-hover:scale-[1.08]` + `transition-transform duration-300` 缩放。悬停显示左右箭头（271-297 行，环形取模翻页）；底部圆点指示器（299-314 行）。
     - 317-362 行：公告区——分类 Tab（320-336 行，`setAnnouncementTab`）+ 列表（338-356 行，`slice(0, 6)` 只显示 6 条，点击条目 `openInAppBrowser(item.jump_url)`）；无分类时显示 “No announcements”（358-361 行）。
-- 375-435 行：**DATA MODE 分支**（默认业务界面）：
-  - 378 行：`dashboard-background` 背景层；380 行：`CustomTitlebar`。
-  - 383-386 行：桌面端侧边栏（`hidden lg:flex w-72`，`<Sidebar />`）。
-  - 388-401 行：移动端抽屉（`mobileOpen` 为真时渲染遮罩 + `Sidebar onNavigate={关闭}`）。
-  - 403-409 行：`<main>` 滚动容器，内部 `div` 以 `location.pathname` 为 key 强制路由切换时重挂载，渲染 `{children}`。
-  - 412-432 行：移动端右下角浮动菜单按钮（`lg:hidden`），点击 `setMobileOpen(true)`。
+- 385-451 行：**DATA MODE 分支**（默认业务界面）：
+  - 388 行：`dashboard-background` 背景层；390 行：`CustomTitlebar`。
+  - 394-396 行：桌面端侧边栏（`hidden lg:flex w-72`，`<Sidebar />`）。
+  - 399-411 行：移动端抽屉（`mobileOpen` 为真时渲染遮罩 + `Sidebar onNavigate={关闭}`）。
+  - 414-426 行：`<main>` 滚动容器，内部 `div` 以 `location.pathname` 为 key 强制路由切换时重挂载，其中 `<Suspense>` 包裹 `{children}`，懒加载页面 chunk 未就绪时以居中的 `GlassSpinner` 作为兜底（布局外壳保持挂载）。
+  - 430-450 行：移动端右下角浮动菜单按钮（`lg:hidden`），点击 `setMobileOpen(true)`。
 
 **备注**：
 - **invoke 命令**：本文件无直接 `invoke(...)`；间接经 `launcherService` 调用 `launcher_get_notice_content`（公告）与 `launcher_get_background_image`（背景）。

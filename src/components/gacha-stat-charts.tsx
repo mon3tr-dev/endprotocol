@@ -1,8 +1,27 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import * as echarts from "echarts";
+import * as echarts from "echarts/core";
+import { LineChart, PieChart } from "echarts/charts";
+import {
+  GridComponent,
+  LegendComponent,
+  MarkLineComponent,
+  TooltipComponent,
+} from "echarts/components";
+import { CanvasRenderer } from "echarts/renderers";
+import type { EChartsOption } from "echarts";
 import { GlassCard } from "@/components/ui/glass";
 import type { GachaCategory, GachaPoolKind, GachaRecord } from "@/types/gacha";
 import { calculateGachaSixStarIntervals, type GachaSixStarInterval } from "@/utils/gachaIntervals";
+
+echarts.use([
+  LineChart,
+  PieChart,
+  GridComponent,
+  LegendComponent,
+  MarkLineComponent,
+  TooltipComponent,
+  CanvasRenderer,
+]);
 
 /** 六星期望抽数：武器 25 抽/个，角色 35.5 抽/个 */
 const SIX_STAR_EXPECTATION = 35.5;
@@ -48,7 +67,7 @@ function useEchart(ref: React.RefObject<HTMLDivElement | null>) {
   }, [ref, themeTick]);
 
   return {
-    setOption(option: echarts.EChartsOption) {
+    setOption(option: EChartsOption) {
       const chart = chartRef.current;
       if (chart) chart.setOption(option, true);
     },
@@ -187,7 +206,7 @@ export default function GachaStatCharts({
   const baseText = { color: muted, fontSize: 11 };
 
   useEffect(() => {
-    const pieOption: echarts.EChartsOption = {
+    const pieOption: EChartsOption = {
       color: starDist.series.map(([r]) => RARITY_COLORS[r] ?? RARITY_COLORS[3]),
       tooltip: {
         trigger: "item",
@@ -240,7 +259,7 @@ export default function GachaStatCharts({
     const expLabel = `${isZh ? "期望" : "Expected"} ${expectation}${isZh ? " 抽" : ""}`;
     const maxY = Math.max(expectation, ...intervals.map(({ count }) => count), 1);
     const maxIndex = Math.max(1, intervals.length);
-    const histOption: echarts.EChartsOption = {
+    const histOption: EChartsOption = {
       grid: { left: 8, right: 20, top: 30, bottom: 40, containLabel: true },
       tooltip: {
         trigger: "item",
@@ -311,7 +330,7 @@ export default function GachaStatCharts({
   useEffect(() => {
     const maxX = Math.max(1, cumulative.maxInterval);
     const maxY = Math.max(1, cumulative.total);
-    const cumOption: echarts.EChartsOption = {
+    const cumOption: EChartsOption = {
       grid: { left: 8, right: 24, top: 30, bottom: 24, containLabel: true },
       tooltip: {
         trigger: "axis",
