@@ -31,6 +31,10 @@ import {
   CircleHelp,
   Factory,
   Sprout,
+  Terminal,
+  Copy,
+  ExternalLink,
+  FileCode,
 } from "lucide";
 import { MorphIcon } from "morphicons/react";
 import { createMorphIcon, type IconSvgProps } from "@/components/morph-icon";
@@ -94,6 +98,10 @@ export const PlusIcon = createMorphIcon(Plus);
 export const ChevronLeftIcon = createMorphIcon(ChevronLeft);
 export const EditIcon = createMorphIcon(Pencil);
 export const TrashIcon = createMorphIcon(Trash2);
+export const TerminalIcon = createMorphIcon(Terminal);
+export const CopyIcon = createMorphIcon(Copy);
+export const ExternalLinkIcon = createMorphIcon(ExternalLink);
+export const FileCodeIcon = createMorphIcon(FileCode);
 
 export { MoonIcon as MoonFilledIcon, SunIcon as SunFilledIcon, HeartIcon as HeartFilledIcon };
 

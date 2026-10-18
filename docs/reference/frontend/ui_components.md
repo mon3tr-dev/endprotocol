@@ -559,8 +559,8 @@
 
 ## `src/components/icons.tsx`
 **职责**：业务图标集合——品牌图标（内联 SVG）、lucide 图标的 MorphIcon 封装、以及 key 到图标的映射表 `CardIcon`。
-**导出**：`Logo`、`DiscordIcon`、`TwitterIcon`、`GithubIcon`、25 个命名图标、3 个别名、`CardIcon`
-**主要依赖**：`lucide`（^1.33.0，31 个图标）、`morphicons/react`（`MorphIcon`）、`@/components/morph-icon`（`createMorphIcon`、`IconSvgProps`）、`morphicons`（`IconInput` 类型）
+**导出**：`Logo`、`DiscordIcon`、`TwitterIcon`、`GithubIcon`、29 个命名图标、3 个别名、`CardIcon`
+**主要依赖**：`lucide`（^1.33.0，35 个图标）、`morphicons/react`（`MorphIcon`）、`@/components/morph-icon`（`createMorphIcon`、`IconSvgProps`）、`morphicons`（`IconInput` 类型）
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
@@ -569,6 +569,7 @@
 | `TwitterIcon` | icons.tsx:64 | Twitter/X 图标 |
 | `GithubIcon` | icons.tsx:68 | GitHub 图标 |
 | `MoonIcon`/`SunIcon`/`ComputerIcon`/`HeartIcon`/`SearchIcon`/`HomeIcon`/`ChartIcon`/`SettingsIcon`/`UsersIcon`/`ProjectsIcon`/`CalendarIcon`/`HelpIcon`/`DeveloperIcon`/`AccountIcon`/`StarIcon`/`GachaIcon`/`MedalIcon`/`BookmarkIcon`/`TagIcon`/`FolderIcon`/`BellIcon`/`PlusIcon`/`ChevronLeftIcon`/`EditIcon`/`TrashIcon` | icons.tsx:72-96 | lucide 图标（Moon/Sun/Monitor/Heart/Search/Home/BarChart3/Settings/Users/FolderOpen/Calendar/HelpCircle/Code/User/Star/Sparkles/Award/Bookmark/Tag/Folder/Bell/Plus/ChevronLeft/Pencil/Trash2）的 MorphIcon 封装 |
+| `TerminalIcon`/`CopyIcon`/`ExternalLinkIcon`/`FileCodeIcon` | icons.tsx:97-100 | lucide 图标（Terminal/Copy/ExternalLink/FileCode）的 MorphIcon 封装，用于游戏启动快捷弹窗的命令/快捷方式/bat 板块 |
 | `MoonFilledIcon`/`SunFilledIcon`/`HeartFilledIcon` | icons.tsx:98 | 上述三个图标的再导出别名 |
 | `CARD_ICON_MAP` | icons.tsx:100 | 23 个 key（home/chart/users/star/heart/bookmark/tag/folder/calendar/bell/settings/account/search/developer/projects/file/map/satellite/award/user/help/factory/sprout）→ lucide 图标数据 |
 | `CardIcon` | icons.tsx:126 | props：`iconKey`（必填）、`size`（默认 24）、`className` + SVGProps；**key 未命中映射时回退为纯文本 span 显示 key 本身**（:133）；渲染前剥离 `from/to/ref`（:134） |

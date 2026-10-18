@@ -5,6 +5,12 @@ import { Slider } from "@/components/ui/slider";
 import { SettingsDivider } from "@/components/ui/settings-row";
 import { GlassModalCompound as GlassModal } from "@/components/ui/modal";
 import {
+  CopyIcon,
+  ExternalLinkIcon,
+  FileCodeIcon,
+  TerminalIcon,
+} from "@/components/icons";
+import {
   createGameShortcut,
   createLaunchBat,
   getGameLaunchCommand,
@@ -343,13 +349,15 @@ export function QuickLaunchModal({ onClose }: { onClose: () => void }) {
                   {t("settings.game_launch.silent_launch_desc")}
                 </p>
                 <div className="flex flex-col gap-5 sm:flex-row">
-                  <aside className="flex flex-col gap-2 sm:w-48 sm:shrink-0 sm:border-r sm:border-separator/50 sm:pr-5">
-                    <p className={sectionTitle}>
-                      {t("settings.game_launch.close_after_launch")}
-                    </p>
-                    <p className={sectionHint}>
-                      {t("settings.game_launch.close_after_launch_desc")}
-                    </p>
+                  <aside className="flex flex-col justify-center items-center gap-3 text-center sm:w-44 sm:shrink-0 sm:border-r sm:border-separator/50 sm:pr-5">
+                    <div className="space-y-0.5">
+                      <p className={sectionTitle}>
+                        {t("settings.game_launch.close_after_launch")}
+                      </p>
+                      <p className={sectionHint}>
+                        {t("settings.game_launch.close_after_launch_desc")}
+                      </p>
+                    </div>
                     <GlassSwitch
                       isSelected={closeAfterLaunch}
                       onValueChange={handleToggleCloseAfterLaunch}
@@ -360,63 +368,81 @@ export function QuickLaunchModal({ onClose }: { onClose: () => void }) {
                     </GlassSwitch>
                   </aside>
 
-                  <div className="min-w-0 flex-1 space-y-5">
-                    <section className="space-y-2">
-                      <p className={sectionTitle}>
-                        {t("settings.game_launch.launch_command")}
-                      </p>
-                      <div className="rounded-lg border border-separator/40 bg-default-100/30 p-3">
-                        <code className="block break-all text-xs text-foreground">
-                          {launchCommand || t("settings.game_launch.command_loading")}
-                        </code>
+                  <div className="min-w-0 flex-1 divide-y divide-separator/40">
+                    <section className="flex items-start gap-3 pb-4">
+                      <TerminalIcon size={18} className="mt-0.5 shrink-0 text-muted" />
+                      <div className="min-w-0 flex-1 space-y-2">
+                        <p className={sectionTitle}>
+                          {t("settings.game_launch.launch_command")}
+                        </p>
+                        <div className="flex items-center gap-2 rounded-lg border border-separator/40 bg-default-100/30 p-2.5">
+                          <code className="min-w-0 flex-1 truncate text-xs text-foreground">
+                            {launchCommand || t("settings.game_launch.command_loading")}
+                          </code>
+                          <button
+                            type="button"
+                            onClick={handleCopyCommand}
+                            disabled={!launchCommand}
+                            aria-label={t("settings.game_launch.copy_command")}
+                            title={t("settings.game_launch.copy_command")}
+                            className="shrink-0 rounded-md border border-separator/40 p-1.5 text-muted transition-colors hover:bg-default-100/60 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+                          >
+                            <CopyIcon size={14} />
+                          </button>
+                        </div>
                       </div>
-                      <GlassButton
-                        variant="secondary"
-                        onPress={handleCopyCommand}
-                        isDisabled={!launchCommand}
-                      >
-                        {t("settings.game_launch.copy_command")}
-                      </GlassButton>
                     </section>
 
-                    <section className="space-y-2">
-                      <p className={sectionTitle}>
-                        {t("settings.game_launch.shortcut_title")}
-                      </p>
-                      <p className={sectionHint}>
-                        {t("settings.game_launch.shortcut_hint")}
-                      </p>
-                      {supportsWindows && (
-                        <GlassButton
-                          variant="secondary"
-                          onPress={handleCreateShortcut}
-                          isDisabled={creatingShortcut}
-                        >
-                          {creatingShortcut
-                            ? t("settings.game_launch.shortcut_creating")
-                            : t("settings.game_launch.create_shortcut")}
-                        </GlassButton>
-                      )}
+                    <section className="flex items-start gap-3 py-4">
+                      <ExternalLinkIcon size={18} className="mt-0.5 shrink-0 text-muted" />
+                      <div className="min-w-0 flex-1 space-y-2">
+                        <p className={sectionTitle}>
+                          {t("settings.game_launch.shortcut_title")}
+                        </p>
+                        <p className={sectionHint}>
+                          {t("settings.game_launch.shortcut_hint")}
+                        </p>
+                        {supportsWindows && (
+                          <GlassButton
+                            variant="secondary"
+                            onPress={handleCreateShortcut}
+                            isDisabled={creatingShortcut}
+                          >
+                            <span className="inline-flex items-center gap-2">
+                              <ExternalLinkIcon size={14} />
+                              {creatingShortcut
+                                ? t("settings.game_launch.shortcut_creating")
+                                : t("settings.game_launch.create_shortcut")}
+                            </span>
+                          </GlassButton>
+                        )}
+                      </div>
                     </section>
 
-                    <section className="space-y-2">
-                      <p className={sectionTitle}>
-                        {t("settings.game_launch.bat_title")}
-                      </p>
-                      <p className={sectionHint}>
-                        {t("settings.game_launch.bat_hint")}
-                      </p>
-                      {supportsWindows && (
-                        <GlassButton
-                          variant="secondary"
-                          onPress={handleSaveBat}
-                          isDisabled={savingBat}
-                        >
-                          {savingBat
-                            ? t("settings.game_launch.bat_saving")
-                            : t("settings.game_launch.save_bat")}
-                        </GlassButton>
-                      )}
+                    <section className="flex items-start gap-3 pt-4">
+                      <FileCodeIcon size={18} className="mt-0.5 shrink-0 text-muted" />
+                      <div className="min-w-0 flex-1 space-y-2">
+                        <p className={sectionTitle}>
+                          {t("settings.game_launch.bat_title")}
+                        </p>
+                        <p className={sectionHint}>
+                          {t("settings.game_launch.bat_hint")}
+                        </p>
+                        {supportsWindows && (
+                          <GlassButton
+                            variant="secondary"
+                            onPress={handleSaveBat}
+                            isDisabled={savingBat}
+                          >
+                            <span className="inline-flex items-center gap-2">
+                              <FileCodeIcon size={14} />
+                              {savingBat
+                                ? t("settings.game_launch.bat_saving")
+                                : t("settings.game_launch.save_bat")}
+                            </span>
+                          </GlassButton>
+                        )}
+                      </div>
                     </section>
                   </div>
                 </div>

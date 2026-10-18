@@ -149,7 +149,7 @@
 | `handleSaveBat` | 308-314 | `createLaunchBat({closeAfterLaunch})` |
 
 **内部结构**：
-- Body 为左右两栏：左栏（`sm:w-48`，右侧竖分隔线）为 `--close-after-launch` 开关（标题/描述 + `GlassSwitch`）；右栏自上而下三个板块——①「启动命令」：圆角 code 显示随开关变化的完整命令 + 「复制命令」按钮；②「Windows 快捷方式」：说明 + 「创建快捷方式…」按钮；③「bat 启动脚本」：说明 + 「保存为 bat 文件…」按钮。三者共享底部一条状态消息（成功/失败）。backdrop `z-[300]`，容器 `size="lg"`。
+- Body 为左右两栏：左栏（`sm:w-44`）垂直居中、水平居中（`justify-center items-center text-center`，右侧竖分隔线）为 `--close-after-launch` 开关（标题/描述 + `GlassSwitch`）；右栏由 `divide-y` 在板块间划分割线，每个板块以左侧图标开篇——①「启动命令」（`TerminalIcon`）：单行截断（`truncate`）的 code 条 + 条内右端复制 icon 按钮（`CopyIcon`，无文字按钮）；②「Windows 快捷方式」（`ExternalLinkIcon`）：说明 + 头部带 icon 的「创建快捷方式…」按钮；③「bat 启动脚本」（`FileCodeIcon`）：说明 + 带 icon 的「保存为 bat 文件…」按钮。三者共享底部一条状态消息（成功/失败）。backdrop `z-[300]`，容器 `size="lg"`。
 - 两个打开入口：设置页「静默启动」区块内按钮，以及游戏行动面板汉堡菜单的「启动设置」项；原 `GameLaunchSettingsModal` 包装层已删除。
 - `.lnk` 目标命令为主程序路径及 `--silent --launch-game`；游戏目录与渠道同步到后端 `ConfigService`。
 
