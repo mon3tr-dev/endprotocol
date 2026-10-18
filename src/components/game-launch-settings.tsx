@@ -1,11 +1,13 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { Check, Copy } from "lucide";
+import { MorphIcon } from "morphicons/react";
+import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { GlassButton, GlassSwitch } from "@/components/ui/glass";
 import { Slider } from "@/components/ui/slider";
 import { SettingsDivider } from "@/components/ui/settings-row";
 import { GlassModalCompound as GlassModal } from "@/components/ui/modal";
 import {
-  CopyIcon,
   ExternalLinkIcon,
   FileCodeIcon,
   TerminalIcon,
@@ -17,6 +19,8 @@ import {
   syncSilentLaunchConfig,
 } from "@/utils/launcherService";
 import { isWindowsPlatform } from "@/utils/platform";
+import { addMessage } from "@/utils/messageStore";
+import { logError } from "@/utils/logger";
 import {
   getGameBgMode,
   setGameBgMode,
@@ -24,6 +28,7 @@ import {
 } from "@/stores/launcherMode";
 
 const CLOSE_AFTER_LAUNCH_KEY = "launcher_close_after_launch";
+const COPY_FEEDBACK_MS = 3000;
 
 const CANCEL_BEHAVIOR_KEY = "launcher_cancel_behavior";
 const VERIFY_THREADS_KEY = "launcher_verify_threads";
@@ -235,10 +240,10 @@ export function QuickLaunchModal({ onClose }: { onClose: () => void }) {
   const [closeAfterLaunch, setCloseAfterLaunch] = useState(
     () => localStorage.getItem(CLOSE_AFTER_LAUNCH_KEY) === "true",
   );
-  const [launchMessage, setLaunchMessage] = useState("");
-  const [launchError, setLaunchError] = useState(false);
+  const [copied, setCopied] = useState(false);
   const [creatingShortcut, setCreatingShortcut] = useState(false);
   const [savingBat, setSavingBat] = useState(false);
+  const copyResetTimer = useRef<number | undefined>(undefined);
   const supportsWindows = isWindowsPlatform();
 
   useEffect(() => {
@@ -250,10 +255,12 @@ export function QuickLaunchModal({ onClose }: { onClose: () => void }) {
         if (active) setBaseCommand(command);
       } catch (error) {
         if (active) {
-          setLaunchError(true);
-          setLaunchMessage(
-            `${t("settings.game_launch.command_error")}: ${String(error)}`,
-          );
+          addMessage({
+            type: "warn",
+            title: t("settings.game_launch.command_error"),
+            body: String(error),
+            tag: "quick-launch-command",
+          });
         }
       }
     })();
@@ -261,6 +268,8 @@ export function QuickLaunchModal({ onClose }: { onClose: () => void }) {
       active = false;
     };
   }, [t]);
+
+  useEffect(() => () => window.clearTimeout(copyResetTimer.current), []);
 
   const launchCommand = closeAfterLaunch
     ? `${baseCommand} --close-after-launch`
@@ -274,13 +283,19 @@ export function QuickLaunchModal({ onClose }: { onClose: () => void }) {
   const handleCopyCommand = async () => {
     try {
       await navigator.clipboard.writeText(launchCommand);
-      setLaunchError(false);
-      setLaunchMessage(t("settings.game_launch.command_copied"));
-    } catch (error) {
-      setLaunchError(true);
-      setLaunchMessage(
-        `${t("settings.game_launch.command_copy_error")}: ${String(error)}`,
+      setCopied(true);
+      window.clearTimeout(copyResetTimer.current);
+      copyResetTimer.current = window.setTimeout(
+        () => setCopied(false),
+        COPY_FEEDBACK_MS,
       );
+    } catch (error) {
+      addMessage({
+        type: "warn",
+        title: t("settings.game_launch.command_copy_error"),
+        body: String(error),
+        tag: "quick-launch-command",
+      });
     }
   };
 
@@ -289,23 +304,40 @@ export function QuickLaunchModal({ onClose }: { onClose: () => void }) {
     saving: (busy: boolean) => void,
     createdKey: string,
     errorKey: string,
+    successTag: string,
   ) => {
     saving(true);
-    setLaunchMessage("");
     try {
       await syncSilentLaunchConfig();
       const savedPath = await run();
       if (savedPath) {
-        setLaunchError(false);
-        setLaunchMessage(
-          `${t(createdKey)}: ${savedPath}`,
-        );
+        addMessage({
+          type: "info",
+          title: t(createdKey),
+          body: savedPath,
+          tag: successTag,
+          actions: [
+            {
+              label: t("settings.game_launch.open_folder"),
+              variant: "secondary",
+              onClick: async () => {
+                try {
+                  await revealItemInDir(savedPath);
+                } catch (error) {
+                  logError(`Failed to reveal ${savedPath}`, error);
+                }
+              },
+            },
+          ],
+        });
       }
     } catch (error) {
-      setLaunchError(true);
-      setLaunchMessage(
-        `${t(errorKey)}: ${String(error)} ${t("settings.game_launch.command_fallback")}`,
-      );
+      addMessage({
+        type: "warn",
+        title: t(errorKey),
+        body: `${String(error)} ${t("settings.game_launch.command_fallback")}`,
+        tag: successTag,
+      });
     } finally {
       saving(false);
     }
@@ -317,6 +349,7 @@ export function QuickLaunchModal({ onClose }: { onClose: () => void }) {
       setCreatingShortcut,
       "settings.game_launch.shortcut_created",
       "settings.game_launch.shortcut_error",
+      "quick-launch-shortcut",
     );
 
   const handleSaveBat = () =>
@@ -325,6 +358,7 @@ export function QuickLaunchModal({ onClose }: { onClose: () => void }) {
       setSavingBat,
       "settings.game_launch.bat_created",
       "settings.game_launch.bat_error",
+      "quick-launch-bat",
     );
 
   const sectionTitle = "text-sm font-medium text-foreground";
@@ -387,7 +421,10 @@ export function QuickLaunchModal({ onClose }: { onClose: () => void }) {
                             title={t("settings.game_launch.copy_command")}
                             className="shrink-0 rounded-md border border-separator/40 p-1.5 text-muted transition-colors hover:bg-default-100/60 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
                           >
-                            <CopyIcon size={14} />
+                            <MorphIcon
+                              icon={copied ? Check : Copy}
+                              size={14}
+                            />
                           </button>
                         </div>
                       </div>
@@ -446,15 +483,6 @@ export function QuickLaunchModal({ onClose }: { onClose: () => void }) {
                     </section>
                   </div>
                 </div>
-
-                {launchMessage && (
-                  <p
-                    role="status"
-                    className={`text-sm ${launchError ? "text-danger" : "text-success"}`}
-                  >
-                    {launchMessage}
-                  </p>
-                )}
               </div>
             </GlassModal.Body>
           </GlassModal.Dialog>

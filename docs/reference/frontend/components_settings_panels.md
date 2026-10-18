@@ -142,14 +142,15 @@
 | `QuickLaunchModal`（export） | 223 | 独立弹窗；props：`onClose: () => void`；打开时同步游戏配置并加载基础命令 |
 | 命令加载 effect | 231-250 | 同步 localStorage 的游戏路径/渠道到 app config，再取得基础启动命令（`baseCommand`，不带 `--close-after-launch`） |
 | `closeAfterLaunch` state | 225 | 从 localStorage `launcher_close_after_launch` 初始化；切换即写回 localStorage（左栏 `GlassSwitch`） |
-| 派生 `launchCommand` | 259 | `baseCommand` + 开启时追加 ` --close-after-launch`，供命令板块与复制使用 |
-| `handleCopyCommand` | 265-276 | 复制当前命令（随开关变化）到剪贴板 |
-| `runExport` | 278-298 | 快捷方式 / bat 保存共用的调用骨架：`syncSilentLaunchConfig` → invoke → 成功路径/失败回退信息，`saving` setter 控制按钮 busy |
-| `handleCreateShortcut` | 300-306 | `createGameShortcut({closeAfterLaunch})` |
-| `handleSaveBat` | 308-314 | `createLaunchBat({closeAfterLaunch})` |
+| `copied` state | 232 | 复制按钮本地反馈：true 后 3 秒（`COPY_FEEDBACK_MS`）回 False，期间 icon morph 为对勾；timer 由 `copyResetTimer` ref 管理并在卸载时清除 |
+| 派生 `launchCommand` | 261 | `baseCommand` + 开启时追加 ` --close-after-launch`，供命令板块与复制使用 |
+| `handleCopyCommand` | 268-284 | 复制当前命令到剪贴板；成功不留 message，仅触发 icon morph（Copy→Check）3 秒；失败经 `addMessage`（warn，tag `quick-launch-command`） |
+| `runExport` | 286-326 | 快捷方式 / bat 保存共用骨架：`syncSilentLaunchConfig` → invoke → **成功/失败都不再写 modal 内提示，统一进消息队列**。成功：`addMessage`（info，tag `quick-launch-shortcut` / `quick-launch-bat`），body 为保存路径，并附「打开所在文件夹」action（`revealItemInDir`，来自 `@tauri-apps/plugin-opener`，失败 `logError`）；失败：warn message（含命令行回退提示） |
+| `handleCreateShortcut` | 328-334 | `createGameShortcut({closeAfterLaunch})` |
+| `handleSaveBat` | 336-345 | `createLaunchBat({closeAfterLaunch})` |
 
 **内部结构**：
-- Body 为左右两栏：左栏（`sm:w-44`）垂直居中、水平居中（`justify-center items-center text-center`，右侧竖分隔线）为 `--close-after-launch` 开关（标题/描述 + `GlassSwitch`）；右栏由 `divide-y` 在板块间划分割线，每个板块以左侧图标开篇——①「启动命令」（`TerminalIcon`）：单行截断（`truncate`）的 code 条 + 条内右端复制 icon 按钮（`CopyIcon`，无文字按钮）；②「Windows 快捷方式」（`ExternalLinkIcon`）：说明 + 头部带 icon 的「创建快捷方式…」按钮；③「bat 启动脚本」（`FileCodeIcon`）：说明 + 带 icon 的「保存为 bat 文件…」按钮。三者共享底部一条状态消息（成功/失败）。backdrop `z-[300]`，容器 `size="lg"`。
+- Body 为左右两栏：左栏（`sm:w-44`）垂直居中、水平居中（`justify-center items-center text-center`，右侧竖分隔线）为 `--close-after-launch` 开关（标题/描述 + `GlassSwitch`）；右栏由 `divide-y` 在板块间划分割线，每个板块以左侧图标开篇——①「启动命令」（`TerminalIcon`）：单行截断（`truncate`）的 code 条 + 条内右端复制按钮为同一 `MorphIcon`（`icon` 在 lucide `Copy`/`Check` 间切换，复制成功 morph 为对勾并保持 3 秒）；②「Windows 快捷方式」（`ExternalLinkIcon`）：说明 + 头部带 icon 的「创建快捷方式…」按钮；③「bat 启动脚本」（`FileCodeIcon`）：说明 + 带 icon 的「保存为 bat 文件…」按钮。**无底部消息区**——所有完成/失败反馈进全局消息队列。backdrop `z-[300]`，容器 `size="lg"`。
 - 两个打开入口：设置页「静默启动」区块内按钮，以及游戏行动面板汉堡菜单的「启动设置」项；原 `GameLaunchSettingsModal` 包装层已删除。
 - `.lnk` 目标命令为主程序路径及 `--silent --launch-game`；游戏目录与渠道同步到后端 `ConfigService`。
 

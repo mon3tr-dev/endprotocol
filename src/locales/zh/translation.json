@@ -131,7 +131,7 @@
       "command_loading": "正在读取命令…",
       "command_error": "读取启动命令失败",
       "copy_command": "复制命令",
-      "command_copied": "命令已复制到剪贴板",
+      "open_folder": "打开所在文件夹",
       "command_copy_error": "复制失败",
       "shortcut_title": "Windows 快捷方式",
       "shortcut_hint": "选择保存位置，创建可用于一键启动游戏的 .lnk 快捷方式。",

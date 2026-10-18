@@ -131,7 +131,7 @@
       "command_loading": "Loading command…",
       "command_error": "Failed to load launch command",
       "copy_command": "Copy command",
-      "command_copied": "Command copied to clipboard",
+      "open_folder": "Open folder",
       "command_copy_error": "Copy failed",
       "shortcut_title": "Windows shortcut",
       "shortcut_hint": "Choose where to save a .lnk shortcut for one-click game launch.",
