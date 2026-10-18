@@ -302,8 +302,24 @@ export async function getGameLaunchCommand(): Promise<string> {
   return invoke<string>("get_game_launch_command");
 }
 
-export async function createGameShortcut(): Promise<string | null> {
-  return invoke<string | null>("create_game_shortcut");
+export interface LaunchExportOptions {
+  closeAfterLaunch?: boolean;
+}
+
+export async function createGameShortcut(
+  options?: LaunchExportOptions,
+): Promise<string | null> {
+  return invoke<string | null>("create_game_shortcut", {
+    closeAfterLaunch: options?.closeAfterLaunch ?? false,
+  });
+}
+
+export async function createLaunchBat(
+  options?: LaunchExportOptions,
+): Promise<string | null> {
+  return invoke<string | null>("create_launch_bat", {
+    closeAfterLaunch: options?.closeAfterLaunch ?? false,
+  });
 }
 
 export async function browseFolder(): Promise<string | null> {

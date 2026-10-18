@@ -48,7 +48,7 @@
 
 | 需求 | 位置 | 详细参考 |
 | --- | --- | --- |
-| **IPC 命令在哪定义 / 前端谁调用** | 生成的对照表 | [ipc_index.md](reference/ipc_index.md)（105 个命令全表） |
+| **IPC 命令在哪定义 / 前端谁调用** | 生成的对照表 | [ipc_index.md](reference/ipc_index.md)（106 个命令全表） |
 | 新增/修改一个 Tauri 命令 | `src-tauri/src/commands/`、`src-tauri/src/lib.rs` | [commands.md](reference/backend/commands.md)、[bootstrap.md](reference/backend/bootstrap.md)、[backend_development.md](backend_development.md) |
 | 错误类型与转换 | `src-tauri/src/utils/error.rs` | [utils.md](reference/backend/utils.md) |
 | 加密与签名（RSA/AES/DES/HMAC） | `src-tauri/src/utils/hg_crypto.rs`、`services/skland_service.rs` | [utils.md](reference/backend/utils.md)、[services_skland.md](reference/backend/services_skland.md) |
@@ -85,7 +85,7 @@
 | 文件 | 覆盖范围 |
 | --- | --- |
 | [reference/backend/bootstrap.md](reference/backend/bootstrap.md) | `main.rs`、`lib.rs`（含全部命令注册清单）、`tray.rs`、`build.rs`、`Cargo.toml`、`tauri.conf.json`、`capabilities/*`、`examples/sign_test.rs` |
-| [reference/backend/commands.md](reference/backend/commands.md) | `commands/` 全部 15 个文件、**108 处 `#[tauri::command]` 注解**：参数、返回值、内部调用链 |
+| [reference/backend/commands.md](reference/backend/commands.md) | `commands/` 全部 15 个文件、**109 处 `#[tauri::command]` 注解**：参数、返回值、内部调用链 |
 | [reference/backend/models.md](reference/backend/models.md) | `models/` 全部 7 个文件：79 个结构体/枚举的字段与 serde 映射 |
 | [reference/backend/services_account.md](reference/backend/services_account.md) | `services/account_service.rs`（约 3100 行）：登录、凭证刷新、角色数据、状态中枢 |
 | [reference/backend/services_skland.md](reference/backend/services_skland.md) | `services/skland_service.rs`：森空岛 API 端点总表、签名与加密流程 |

@@ -22,7 +22,7 @@ use services::system_resource_service::SystemResourceService;
 
 const SILENT_ARG: &str = "--silent";
 const LAUNCH_GAME_ARG: &str = "--launch-game";
-const CLOSE_AFTER_LAUNCH_ARG: &str = "--close-after-launch";
+pub(crate) const CLOSE_AFTER_LAUNCH_ARG: &str = "--close-after-launch";
 const WAIT_FOR_PARENT_ARG: &str = "--endprotocol-wait-for-parent";
 static PROMOTION_STARTED: AtomicBool = AtomicBool::new(false);
 
@@ -237,6 +237,7 @@ pub fn run() {
             commands::launcher::launcher_cancel_all,
             commands::startup::get_game_launch_command,
             commands::startup::create_game_shortcut,
+            commands::startup::create_launch_bat,
         ])
         .setup(move |app| {
             // 主窗口与托盘面板仅在完整模式创建，静默模式不建立 WebView。

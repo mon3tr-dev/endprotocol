@@ -1,6 +1,6 @@
 # IPC 命令索引（前端 invoke ↔ 后端定义）
 
-> 由脚本扫描 `#[tauri::command]` 与前端 `invoke('...')` 自动生成。共 105 个后端命令，其中 91 个在前端有直接调用；14 个未见前端调用。行号基于当前工作区版本。
+> 由脚本扫描 `#[tauri::command]` 与前端 `invoke('...')` 自动生成。共 106 个后端命令，其中 92 个在前端有直接调用；14 个未见前端调用。行号基于当前工作区版本。
 
 每个命令的参数、返回值与内部调用链见 [commands.md](backend/commands.md)；前端侧的封装函数见各 `utils_services_*.md`。
 
@@ -23,7 +23,8 @@
 | `check_and_refresh_cred` | [src-tauri/src/commands/account.rs:282](backend/commands.md) | [src/utils/accountService.ts](../../src/utils/accountService.ts) |
 | `check_update_endpoint` | [src-tauri/src/commands/updater.rs:57](backend/commands.md) | —（前端未调用） |
 | `close_window` | [src-tauri/src/commands/window.rs:21](backend/commands.md) | —（前端未调用） |
-| `create_game_shortcut` | [src-tauri/src/commands/startup.rs:62](backend/commands.md) | [src/utils/launcherService.ts](../../src/utils/launcherService.ts) |
+| `create_game_shortcut` | [src-tauri/src/commands/startup.rs:70](backend/commands.md) | [src/utils/launcherService.ts](../../src/utils/launcherService.ts) |
+| `create_launch_bat` | [src-tauri/src/commands/startup.rs:215](backend/commands.md) | [src/utils/launcherService.ts](../../src/utils/launcherService.ts) |
 | `delete_background_image` | [src-tauri/src/commands/image.rs:190](backend/commands.md) | [src/components/appearance-settings.tsx](../../src/components/appearance-settings.tsx) |
 | `do_attendance` | [src-tauri/src/commands/attendance.rs:181](backend/commands.md) | [src/components/cards/attendance/index.tsx](../../src/components/cards/attendance/index.tsx) |
 | `download_file` | [src-tauri/src/commands/updater.rs:149](backend/commands.md) | —（前端未调用） |

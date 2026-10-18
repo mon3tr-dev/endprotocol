@@ -1,7 +1,7 @@
 # Tauri 命令层（IPC 入口）— 文件功能参考
 
 > 逐文件精读源码生成。行号基于当前工作区版本，仅用于快速定位。
-> 覆盖范围：`src-tauri/src/commands/` 下 15 个文件，当前参考表收录 **105 个不同命令名**；源码含 108 处命令注解（其中有同名定义）。注册入口见 `src-tauri/src/lib.rs` 的 `generate_handler!`。
+> 覆盖范围：`src-tauri/src/commands/` 下 15 个文件，当前参考表收录 **106 个不同命令名**；源码含 109 处命令注解（其中有同名定义）。注册入口见 `src-tauri/src/lib.rs` 的 `generate_handler!`。
 
 ## 命令速查表
 
@@ -91,7 +91,8 @@
 | `launcher_switch_channel` | commands/launcher.rs:730 | `service`、`from_channel`、`to_channel`、`install_path`、`app: AppHandle` | `Result<String, String>` | `GameLauncherService::switch_channel` |
 | `get_backend_logs` | commands/logs.rs:4 | 无 | `Vec<LogEntry>` | `utils::logger::get_logger().get_recent_logs()` |
 | `get_tray_user_info` | commands/tray.rs:8 | `config_service: State<Arc<Mutex<ConfigService>>>` | `Result<TrayUserInfo, String>` | `ConfigService::get::<TrayUserInfo>("tray_user_info")` |
-| `create_game_shortcut` | commands/startup.rs:65 | `config_service: State<Arc<Mutex<ConfigService>>>` | `Result<Option<String>, String>` | 用户通过 `rfd` 选择 `.lnk` 路径；PowerShell COM 创建快捷方式，返回路径；取消选择返回 `None` |
+| `create_game_shortcut` | commands/startup.rs:71 | `config_service: State<Arc<Mutex<ConfigService>>>`、`close_after_launch: Option<bool>`（前端传 `closeAfterLaunch`，缺省 false） | `Result<Option<String>, String>` | 用户通过 `rfd` 选择 `.lnk` 路径；PowerShell COM 创建快捷方式，返回路径；取消选择返回 `None` |
+| `create_launch_bat` | commands/startup.rs:207 | `config_service: State<Arc<Mutex<ConfigService>>>`、`close_after_launch: Option<bool>` | `Result<Option<String>, String>` | 用户通过 `rfd` 选择 `.bat` 保存路径；写入 `@echo off` + `chcp 65001>nul` + `start "" <exe> <args>`（UTF-8 无 BOM，保证中文路径在 cmd 下可解析），返回路径；取消选择返回 `None`；非 Windows 返回 `Err` |
 | `set_tray_user` | commands/tray.rs:17 | `app: AppHandle`、`config_service`、`role_id: String` | `Result<(), String>` | `ConfigService::set("tray_user_info", …)`、`tray::update_tray_menu` |
 | `update_tray_user_data` | commands/tray.rs:38 | `app`、`config_service`、`user_info: TrayUserInfo` | `Result<(), String>` | `ConfigService::set("tray_user_info", …)`、`tray::update_tray_menu` |
 | `show_tray_panel` | commands/tray.rs:56 | `app: AppHandle` | `Result<(), String>` | `tray::show_tray_panel` |
@@ -119,18 +120,19 @@
 **职责**：纯模块声明文件，导出 `account`、`attendance`、`capture`、`card_config`、`color_picker`、`config`、`gacha`、`image`、`launcher`、`logs`、`startup`、`system_resource`、`tray`、`updater`、`window` 共 15 个子模块。无命令定义，无逻辑。
 
 ## `src-tauri/src/commands/startup.rs`
-**职责**：静默游戏启动命令的配置、命令行文本与 Windows `.lnk` 创建入口（不在磁盘上生成图标文件）。
-**导出**：`refresh_main_exe_path`（启动初始化辅助函数）、Tauri 命令 `get_game_launch_command`、`create_game_shortcut`。
+**职责**：静默游戏启动命令的配置、命令行文本与 Windows `.lnk` / `.bat` 导出入口（不在磁盘上生成图标文件）。
+**导出**：`refresh_main_exe_path`（启动初始化辅助函数）、Tauri 命令 `get_game_launch_command`、`create_game_shortcut`、`create_launch_bat`。
 **主要依赖**：`ConfigService`、`rfd::FileDialog`、Windows PowerShell `WScript.Shell` COM。
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
 | `normalize_path` | startup.rs:13 | 剥除 `canonicalize()` 返回的 `\\?\` / `\\?\UNC\` 扩展长度前缀，避开 UNC 的还原为 `\\`，保证命令行与快捷方式目标路径干净 |
 | `ensure_main_exe_path` | startup.rs:25 | 规范化当前 exe 路径；当配置缺失、无效或已变化时更新 `main_exe_path` |
-| `refresh_main_exe_path` | startup.rs:52 | 应用初始化时同步 exe 路径 |
+| `refresh_main_exe_path` | startup.rs:58 | 应用初始化时同步 exe 路径 |
+| `launch_args`（`pub(crate)`） | startup.rs:13 | 组合 `--silent --launch-game` 并按需追加 `--close-after-launch`（常量在 lib.rs:25，`pub(crate)`）；`get_game_launch_command` 只返回基础参数，追加由前端完成 |
 | `get_game_launch_command` | startup.rs:57 | 返回带引号的当前 exe 路径及 `--silent --launch-game` |
 | `create_game_shortcut` | startup.rs:63 | 读取 `launcher_install_path` / `launcher_channel`，用户选择保存路径后创建 Windows `.lnk`；取消选择返回 `None` |
-| `powershell_literal`（私有，仅 Windows） | startup.rs:189 | 单引号转义（`'` → `''`），用于嵌入脚本路径串 |
+| `powershell_literal`（私有，仅 Windows） | startup.rs:202 | 单引号转义（`'` → `''`），用于嵌入脚本路径串 |
 
 **备注**：配置文件仍为 `%LOCALAPPDATA%\\cn.msk-network.endprotocol\\app_config.json`；键为 `main_exe_path`、`launcher_install_path`、`launcher_channel`。`main_exe_path` 不含 `\\?\` 前缀。快捷方式目标为主程序 exe，工作目录为 exe 所在目录；`Endfield.exe` 存在时其内嵌图标直接通过 `$shortcut.IconLocation = '<Endfield.exe>,0'` 引用（`executable_name()` 与渠道无关），不再提取/落盘 `.ico`；exe 缺失则不设置图标。
 

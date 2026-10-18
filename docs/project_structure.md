@@ -25,7 +25,7 @@ EndProtocol/
 │   ├── card_development.md        # 卡片开发指南
 │   ├── card_configuration.md      # 卡片配置系统
 │   └── reference/                 # ★ 逐文件功能参考（27 篇）
-│       ├── ipc_index.md           # 105 个命令 ↔ 定义 ↔ 调用方
+│       ├── ipc_index.md           # 106 个命令 ↔ 定义 ↔ 调用方
 │       ├── frontend/  (18 篇)
 │       └── backend/   (9 篇)
 ├── index.html                     # 主窗口入口

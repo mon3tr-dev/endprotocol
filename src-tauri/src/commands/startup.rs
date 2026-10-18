@@ -10,6 +10,14 @@ const INSTALL_PATH_KEY: &str = "launcher_install_path";
 const CHANNEL_KEY: &str = "launcher_channel";
 const LAUNCH_ARGS: &str = "--silent --launch-game";
 
+pub(crate) fn launch_args(close_after_launch: bool) -> String {
+    if close_after_launch {
+        format!("{LAUNCH_ARGS} {}", crate::CLOSE_AFTER_LAUNCH_ARG)
+    } else {
+        LAUNCH_ARGS.to_string()
+    }
+}
+
 fn normalize_path(path: PathBuf) -> PathBuf {
     let text = path.to_string_lossy().into_owned();
     let normalized = if let Some(rest) = text.strip_prefix(r"\\?\UNC\") {
@@ -62,7 +70,9 @@ pub fn get_game_launch_command(
 #[tauri::command]
 pub fn create_game_shortcut(
     config_service: State<'_, Arc<Mutex<ConfigService>>>,
+    close_after_launch: Option<bool>,
 ) -> Result<Option<String>, String> {
+    let exit_after_start = close_after_launch.unwrap_or(false);
     let exe_path = ensure_main_exe_path(config_service.inner())?;
     let (install_path, channel) = {
         let config = config_service.lock().map_err(|error| error.to_string())?;
@@ -126,6 +136,7 @@ pub fn create_game_shortcut(
             String::new()
         };
 
+        let launch_arguments = launch_args(exit_after_start);
         let script = format!(
             "$shell = New-Object -ComObject WScript.Shell; \
              $shortcut = $shell.CreateShortcut('{}'); \
@@ -136,7 +147,7 @@ pub fn create_game_shortcut(
              $shortcut.Save()",
             powershell_literal(&shortcut_path.to_string_lossy()),
             powershell_literal(&exe_path.to_string_lossy()),
-            LAUNCH_ARGS,
+            powershell_literal(&launch_arguments),
             powershell_literal(&work_dir.to_string_lossy()),
         );
         let encoded_script = {
@@ -190,4 +201,49 @@ pub fn create_game_shortcut(
 #[cfg(target_os = "windows")]
 fn powershell_literal(value: &str) -> String {
     value.replace('\'', "''")
+}
+
+#[tauri::command]
+pub fn create_launch_bat(
+    config_service: State<'_, Arc<Mutex<ConfigService>>>,
+    close_after_launch: Option<bool>,
+) -> Result<Option<String>, String> {
+    let exit_after_start = close_after_launch.unwrap_or(false);
+
+    #[cfg(target_os = "windows")]
+    {
+        let exe_path = ensure_main_exe_path(config_service.inner())?;
+
+        let Some(mut bat_path) = rfd::FileDialog::new()
+            .set_title("Save game launch script")
+            .set_file_name("EndProtocol - Start Game.bat")
+            .add_filter("Batch File", &["bat"])
+            .save_file()
+        else {
+            return Ok(None);
+        };
+
+        if !bat_path
+            .extension()
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("bat"))
+        {
+            bat_path.set_extension("bat");
+        }
+
+        let content = format!(
+            "@echo off\r\nchcp 65001>nul\r\nstart \"\" \"{}\" {}\r\n",
+            exe_path.display(),
+            launch_args(exit_after_start)
+        );
+        std::fs::write(&bat_path, content)
+            .map_err(|error| format!("Could not write batch file: {error}"))?;
+
+        Ok(Some(bat_path.to_string_lossy().into_owned()))
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = (config_service, exit_after_start);
+        Err("Windows batch files can only be created on Windows.".to_string())
+    }
 }

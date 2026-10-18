@@ -319,7 +319,8 @@
 | `syncSilentLaunchConfig` | launcherService.ts:268 | 从 localStorage 将 `launcher_install_path`、`launcher_channel` 通过 `set_config` 写入 app config |
 | `restoreLaunchConfig` | launcherService.ts:282 | **反向同步**：invoke `get_config` 读取 app config 中非空的 `launcher_install_path`、`launcher_channel` 回写 localStorage；后端不可用时静默保留 localStorage 现状。修复静默命令行启动后打开完整版时游戏面板因 localStorage 缺失而显示「定位游戏」的问题 |
 | `getGameLaunchCommand` | launcherService.ts:282 | invoke `get_game_launch_command`，返回包含 exe 路径与 `--silent --launch-game` 的完整命令 |
-| `createGameShortcut` | launcherService.ts:286 | invoke `create_game_shortcut`，弹出用户选定保存位置的对话框，返回 `.lnk` 路径或 `null`（取消） |
+| `createGameShortcut` | launcherService.ts:305 | invoke `create_game_shortcut`，参数 `LaunchExportOptions {closeAfterLaunch?}`（缺省 false）；弹出用户选定保存位置的对话框，返回 `.lnk` 路径或 `null`（取消） |
+| `createLaunchBat` | launcherService.ts:315 | invoke `create_launch_bat`，参数 `LaunchExportOptions {closeAfterLaunch?}`；保存 `.bat` 脚本，返回路径或 `null`（取消） |
 | `browseFolder` | launcherService.ts:222 | invoke `launcher_browse_folder`，无参，返回 `string \| null`（用户选择的目录） |
 | `checkExecutable` | launcherService.ts:226 | invoke `launcher_check_executable`，参数 `{installPath, channel}`，返回 `boolean` |
 | `checkGameRunning` | launcherService.ts:236 | invoke `launcher_check_game_running`，参数 `{channel}`，返回 `boolean` |
@@ -340,7 +341,7 @@
 | 区间 | 内容 |
 | --- | --- |
 | launcherService.ts:8-105 | 全部类型定义（渠道、状态、进度、包信息、公告、扫描结果、磁盘空间） |
-| launcherService.ts:109-290 | IPC 封装函数（24 个命令包装） |
+| launcherService.ts:109-290 | IPC 封装函数（25 个命令包装） |
 | launcherService.ts:294-316 | 三个事件监听器 |
 | launcherService.ts:320-351 | 常量 `CHANNEL_LABELS`（4 渠道中英标签）、`ALL_CHANNELS`、`formatBytes`、`STAGE_LABELS`（8 个阶段中英标签） |
 

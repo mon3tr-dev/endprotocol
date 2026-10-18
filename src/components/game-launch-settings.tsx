@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { GlassButton } from "@/components/ui/glass";
+import { GlassButton, GlassSwitch } from "@/components/ui/glass";
 import { Slider } from "@/components/ui/slider";
 import { SettingsDivider } from "@/components/ui/settings-row";
 import { GlassModalCompound as GlassModal } from "@/components/ui/modal";
 import {
   createGameShortcut,
+  createLaunchBat,
   getGameLaunchCommand,
   syncSilentLaunchConfig,
 } from "@/utils/launcherService";
@@ -15,6 +16,8 @@ import {
   setGameBgMode,
   type GameBgMode,
 } from "@/stores/launcherMode";
+
+const CLOSE_AFTER_LAUNCH_KEY = "launcher_close_after_launch";
 
 const CANCEL_BEHAVIOR_KEY = "launcher_cancel_behavior";
 const VERIFY_THREADS_KEY = "launcher_verify_threads";
@@ -222,10 +225,14 @@ export function GameLaunchSettings() {
  */
 export function QuickLaunchModal({ onClose }: { onClose: () => void }) {
   const { t } = useTranslation();
-  const [launchCommand, setLaunchCommand] = useState("");
+  const [baseCommand, setBaseCommand] = useState("");
+  const [closeAfterLaunch, setCloseAfterLaunch] = useState(
+    () => localStorage.getItem(CLOSE_AFTER_LAUNCH_KEY) === "true",
+  );
   const [launchMessage, setLaunchMessage] = useState("");
   const [launchError, setLaunchError] = useState(false);
   const [creatingShortcut, setCreatingShortcut] = useState(false);
+  const [savingBat, setSavingBat] = useState(false);
   const supportsWindows = isWindowsPlatform();
 
   useEffect(() => {
@@ -234,7 +241,7 @@ export function QuickLaunchModal({ onClose }: { onClose: () => void }) {
       try {
         await syncSilentLaunchConfig();
         const command = await getGameLaunchCommand();
-        if (active) setLaunchCommand(command);
+        if (active) setBaseCommand(command);
       } catch (error) {
         if (active) {
           setLaunchError(true);
@@ -249,6 +256,15 @@ export function QuickLaunchModal({ onClose }: { onClose: () => void }) {
     };
   }, [t]);
 
+  const launchCommand = closeAfterLaunch
+    ? `${baseCommand} --close-after-launch`
+    : baseCommand;
+
+  const handleToggleCloseAfterLaunch = (value: boolean) => {
+    setCloseAfterLaunch(value);
+    localStorage.setItem(CLOSE_AFTER_LAUNCH_KEY, String(value));
+  };
+
   const handleCopyCommand = async () => {
     try {
       await navigator.clipboard.writeText(launchCommand);
@@ -262,32 +278,56 @@ export function QuickLaunchModal({ onClose }: { onClose: () => void }) {
     }
   };
 
-  const handleCreateShortcut = async () => {
-    setCreatingShortcut(true);
+  const runExport = async (
+    run: () => Promise<string | null>,
+    saving: (busy: boolean) => void,
+    createdKey: string,
+    errorKey: string,
+  ) => {
+    saving(true);
     setLaunchMessage("");
     try {
       await syncSilentLaunchConfig();
-      const shortcutPath = await createGameShortcut();
-      if (shortcutPath) {
+      const savedPath = await run();
+      if (savedPath) {
         setLaunchError(false);
         setLaunchMessage(
-          `${t("settings.game_launch.shortcut_created")}: ${shortcutPath}`,
+          `${t(createdKey)}: ${savedPath}`,
         );
       }
     } catch (error) {
       setLaunchError(true);
       setLaunchMessage(
-        `${t("settings.game_launch.shortcut_error")}: ${String(error)} ${t("settings.game_launch.command_fallback")}`,
+        `${t(errorKey)}: ${String(error)} ${t("settings.game_launch.command_fallback")}`,
       );
     } finally {
-      setCreatingShortcut(false);
+      saving(false);
     }
   };
+
+  const handleCreateShortcut = () =>
+    runExport(
+      () => createGameShortcut({ closeAfterLaunch }),
+      setCreatingShortcut,
+      "settings.game_launch.shortcut_created",
+      "settings.game_launch.shortcut_error",
+    );
+
+  const handleSaveBat = () =>
+    runExport(
+      () => createLaunchBat({ closeAfterLaunch }),
+      setSavingBat,
+      "settings.game_launch.bat_created",
+      "settings.game_launch.bat_error",
+    );
+
+  const sectionTitle = "text-sm font-medium text-foreground";
+  const sectionHint = "text-xs text-muted mt-0.5";
 
   return (
     <GlassModal isOpen onOpenChange={(open) => !open && onClose()}>
       <GlassModal.Backdrop isDismissable className="z-[300] backdrop-blur-md">
-        <GlassModal.Container size="md">
+        <GlassModal.Container size="lg">
           <GlassModal.Dialog className="glass-surface-strong border border-separator/70 shadow-2xl">
             <GlassModal.Header>
               <div className="flex items-center justify-between px-5 py-4 border-b border-separator/50">
@@ -298,35 +338,89 @@ export function QuickLaunchModal({ onClose }: { onClose: () => void }) {
               </div>
             </GlassModal.Header>
             <GlassModal.Body>
-              <div className="px-5 py-4 space-y-3">
+              <div className="flex flex-col gap-5 px-5 py-4">
                 <p className="text-sm text-muted">
                   {t("settings.game_launch.silent_launch_desc")}
                 </p>
-                <div className="rounded-lg border border-separator/40 bg-default-100/30 p-3">
-                  <code className="block break-all text-xs text-foreground">
-                    {launchCommand || t("settings.game_launch.command_loading")}
-                  </code>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <GlassButton
-                    variant="secondary"
-                    onPress={handleCopyCommand}
-                    isDisabled={!launchCommand}
-                  >
-                    {t("settings.game_launch.copy_command")}
-                  </GlassButton>
-                  {supportsWindows && (
-                    <GlassButton
-                      variant="secondary"
-                      onPress={handleCreateShortcut}
-                      isDisabled={creatingShortcut}
+                <div className="flex flex-col gap-5 sm:flex-row">
+                  <aside className="flex flex-col gap-2 sm:w-48 sm:shrink-0 sm:border-r sm:border-separator/50 sm:pr-5">
+                    <p className={sectionTitle}>
+                      {t("settings.game_launch.close_after_launch")}
+                    </p>
+                    <p className={sectionHint}>
+                      {t("settings.game_launch.close_after_launch_desc")}
+                    </p>
+                    <GlassSwitch
+                      isSelected={closeAfterLaunch}
+                      onValueChange={handleToggleCloseAfterLaunch}
                     >
-                      {creatingShortcut
-                        ? t("settings.game_launch.shortcut_creating")
-                        : t("settings.game_launch.create_shortcut")}
-                    </GlassButton>
-                  )}
+                      <GlassSwitch.Control>
+                        <GlassSwitch.Thumb />
+                      </GlassSwitch.Control>
+                    </GlassSwitch>
+                  </aside>
+
+                  <div className="min-w-0 flex-1 space-y-5">
+                    <section className="space-y-2">
+                      <p className={sectionTitle}>
+                        {t("settings.game_launch.launch_command")}
+                      </p>
+                      <div className="rounded-lg border border-separator/40 bg-default-100/30 p-3">
+                        <code className="block break-all text-xs text-foreground">
+                          {launchCommand || t("settings.game_launch.command_loading")}
+                        </code>
+                      </div>
+                      <GlassButton
+                        variant="secondary"
+                        onPress={handleCopyCommand}
+                        isDisabled={!launchCommand}
+                      >
+                        {t("settings.game_launch.copy_command")}
+                      </GlassButton>
+                    </section>
+
+                    <section className="space-y-2">
+                      <p className={sectionTitle}>
+                        {t("settings.game_launch.shortcut_title")}
+                      </p>
+                      <p className={sectionHint}>
+                        {t("settings.game_launch.shortcut_hint")}
+                      </p>
+                      {supportsWindows && (
+                        <GlassButton
+                          variant="secondary"
+                          onPress={handleCreateShortcut}
+                          isDisabled={creatingShortcut}
+                        >
+                          {creatingShortcut
+                            ? t("settings.game_launch.shortcut_creating")
+                            : t("settings.game_launch.create_shortcut")}
+                        </GlassButton>
+                      )}
+                    </section>
+
+                    <section className="space-y-2">
+                      <p className={sectionTitle}>
+                        {t("settings.game_launch.bat_title")}
+                      </p>
+                      <p className={sectionHint}>
+                        {t("settings.game_launch.bat_hint")}
+                      </p>
+                      {supportsWindows && (
+                        <GlassButton
+                          variant="secondary"
+                          onPress={handleSaveBat}
+                          isDisabled={savingBat}
+                        >
+                          {savingBat
+                            ? t("settings.game_launch.bat_saving")
+                            : t("settings.game_launch.save_bat")}
+                        </GlassButton>
+                      )}
+                    </section>
+                  </div>
                 </div>
+
                 {launchMessage && (
                   <p
                     role="status"

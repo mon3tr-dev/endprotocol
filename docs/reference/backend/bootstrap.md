@@ -91,7 +91,7 @@
 
 **备注**：`lib.rs` 本身**没有任何 `emit`/`listen`**，也**没有全局应用菜单**；完整模式右键托盘仍打开原有托盘面板。
 
-### 命令总表（完整模式 `.invoke_handler` 注册 105 个命令；静默模式不注册 IPC 命令）
+### 命令总表（完整模式 `.invoke_handler` 注册 106 个命令；静默模式不注册 IPC 命令）
 
 完整命令清单与定义/调用关系见 [commands.md](commands.md) 和 [ipc_index.md](../ipc_index.md)；静默 handler 位于 lib.rs:68-71。
 
