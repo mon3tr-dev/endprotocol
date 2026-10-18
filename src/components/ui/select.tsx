@@ -85,7 +85,7 @@ function GlassSelect({
           <div
             ref={menuRef}
             className={cn(
-              "fixed z-[9999] min-w-[150px] rounded-xl border border-separator/70 glass-surface-strong shadow-xl py-1 overflow-y-auto overflow-x-hidden animate-scale-in",
+              "fixed z-[9999] min-w-[150px] rounded-xl border border-separator/70 glass-surface-strong shadow-xl overflow-y-auto overflow-x-hidden animate-scale-in",
             )}
             style={{
               top: pos.top,

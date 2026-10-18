@@ -188,7 +188,7 @@ export function MedalBrowser({
               )}
             </div>
             {globalQuery.trim() && (
-              <div className="absolute left-1.5 right-1.5 top-full z-20 max-h-72 overflow-y-auto rounded-lg border border-separator/70 glass-surface-strong shadow-xl py-1">
+              <div className="absolute left-1.5 right-1.5 top-full z-20 max-h-72 overflow-y-auto rounded-lg border border-separator/70 glass-surface-strong shadow-xl">
                 {globalResults.length > 0 ? (
                   globalResults.slice(0, 50).map((medal) => (
                     <button

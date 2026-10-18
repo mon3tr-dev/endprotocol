@@ -163,7 +163,7 @@ export const LanguageSwitch = ({ compact = false }: LanguageSwitchProps) => {
               size="sm"
             />
           </div>
-          <div className="max-h-[200px] overflow-y-auto py-1">
+          <div className="max-h-[200px] overflow-y-auto">
             {filteredLanguages.map((lang) => (
               <button
                 key={lang.key}
