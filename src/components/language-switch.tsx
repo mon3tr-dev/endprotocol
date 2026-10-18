@@ -39,7 +39,12 @@ const CNFlag = () => (
   </svg>
 );
 
-export const LanguageSwitch = () => {
+export interface LanguageSwitchProps {
+  /** 紧凑模式：仅显示语言图标，隐藏文字标签 */
+  compact?: boolean;
+}
+
+export const LanguageSwitch = ({ compact = false }: LanguageSwitchProps) => {
   const { i18n } = useTranslation();
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -124,15 +129,22 @@ export const LanguageSwitch = () => {
           ref={buttonRef}
           type="button"
           onClick={handleToggle}
-          className="glass-surface h-9 px-3 rounded-full flex items-center gap-2 transition-all duration-200 hover:scale-105 active:scale-95 text-foreground"
+          aria-label="Switch language"
+          className={`glass-surface h-9 rounded-full flex items-center transition-all duration-300 ease-in-out hover:scale-105 active:scale-95 text-foreground ${compact ? "px-2 gap-0" : "px-3 gap-2"}`}
         >
           {selectedLang.flag}
-          <span className="text-sm font-medium">{selectedLang.label}</span>
-          <MorphIcon
-            icon={ChevronDown}
-            size={16}
-            className={`transition-transform ${isOpen ? "rotate-180" : ""}`}
-          />
+          <span
+            className={`text-sm font-medium whitespace-nowrap overflow-hidden transition-all duration-300 ease-in-out ${compact ? "max-w-0 opacity-0" : "max-w-[6rem] opacity-100"}`}
+          >
+            {selectedLang.label}
+          </span>
+          {!compact && (
+            <MorphIcon
+              icon={ChevronDown}
+              size={16}
+              className={`transition-transform ${isOpen ? "rotate-180" : ""}`}
+            />
+          )}
         </button>
       </div>
 

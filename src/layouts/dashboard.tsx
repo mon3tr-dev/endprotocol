@@ -1,8 +1,10 @@
 import { useState, useEffect, useRef, Suspense } from "react";
 import { useLocation } from "react-router-dom";
+import clsx from "clsx";
 import { CustomTitlebar } from "@/components/custom-titlebar";
 import { Sidebar } from "@/components/dashboard-sidebar";
 import { GlassSpinner } from "@/components/ui/glass";
+import { getConfig, setConfig } from "@/utils/configService";
 import {
   getLauncherMode,
   subscribeLauncherMode,
@@ -42,6 +44,7 @@ interface DashboardLayoutProps {
 export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [viewMode, setViewMode] = useState(getLauncherMode);
   const [bgMedia, setBgMedia] = useState<LauncherBgMedia | null>(
     getLauncherBgMedia,
@@ -93,6 +96,21 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY_CHANNEL, channel);
   }, [channel]);
+
+  // Restore persisted sidebar collapse state
+  useEffect(() => {
+    getConfig<boolean>("sidebar_rail_collapsed").then((value) => {
+      if (typeof value === "boolean") setSidebarCollapsed(value);
+    });
+  }, []);
+
+  const toggleSidebarCollapsed = () => {
+    setSidebarCollapsed((prev) => {
+      const next = !prev;
+      void setConfig("sidebar_rail_collapsed", next);
+      return next;
+    });
+  };
 
   // Fetch background + banners when channel changes
   useEffect(() => {
@@ -391,8 +409,16 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
 
       <div className="relative z-10 flex flex-1 overflow-hidden">
         {/* Desktop Sidebar */}
-        <div className="hidden lg:flex w-72 shrink-0">
-          <Sidebar />
+        <div
+          className={clsx(
+            "hidden lg:flex shrink-0 overflow-hidden transition-[width] duration-300 ease-out will-change-[width]",
+            sidebarCollapsed ? "w-[64px]" : "w-72",
+          )}
+        >
+          <Sidebar
+            collapsed={sidebarCollapsed}
+            onToggleCollapsed={toggleSidebarCollapsed}
+          />
         </div>
 
         {/* Mobile Drawer */}

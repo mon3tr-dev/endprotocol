@@ -79,14 +79,15 @@
 
 ## `src/components/language-switch.tsx`
 **职责**：顶栏语言切换下拉（English/中文），带搜索、旗帜图标与选中校验，切换后写入持久化配置。
-**导出**：`LanguageSwitch`（另有未导出的 `USFlag`、`CNFlag` 内联 SVG 组件）。
+**导出**：`LanguageSwitch`（另有导出的 `LanguageSwitchProps` 接口与未导出的 `USFlag`、`CNFlag` 内联 SVG 组件）。
 **主要依赖**：`react`、`react-dom`（`createPortal`）、`react-i18next`（`i18n`）、`@/components/ui/glass`（`GlassInput`）、`@/utils/configService`（`setConfig`）、`morphicons/react`（`MorphIcon`）、`lucide`（`ChevronDown`、`Check`）。
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
 | `USFlag` | 12-26 | 美国国旗内联 SVG（`w-6 h-4`） |
 | `CNFlag` | 28-40 | 中国国旗内联 SVG |
-| `LanguageSwitch`（export） | 42-179 | 无 props 的下拉切换组件 |
+| `LanguageSwitchProps`（export） | 42-45 | `{ compact?: boolean }`——`compact` 为真时仅显示旗帜、隐藏文字标签与下拉箭头（供折叠侧边栏使用） |
+| `LanguageSwitch`（export） | 47-187 | 下拉切换组件，`compact` 默认 `false` |
 
 **内部结构**：
 - 43-49 行：`i18n`、开关/搜索状态、`wrapperRef`/`buttonRef`/`menuRef`、`dropdownPos` 浮层坐标。

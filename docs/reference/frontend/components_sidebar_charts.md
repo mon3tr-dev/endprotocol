@@ -5,16 +5,16 @@
 ## `src/components/dashboard-sidebar.tsx`
 **职责**：应用左侧全局侧边栏——展示当前选中账户卡片、可拖拽排序的主导航（仪表板/角色/勋章/出勤/抽卡）、仪表板多标签页列表（增删改、右键菜单、折叠）、底部功能入口与主题/语言切换；同时内含一个被硬关闭的命令面板式搜索模块。
 **导出**：`Sidebar`（唯一导出，命名导出，无 default）
-**主要依赖**：`react-router-dom`（`Link`/`useLocation`/`useNavigate`）、`react-dom` 的 `createPortal`、`react-i18next` 的 `useTranslation`、`clsx`、`@/components/ui/glass`（`GlassKbd`、`GlassSkeleton`）、`@/components/icons`（11 个图标）、`@/components/theme-switch`、`@/components/language-switch`、`@/components/ui/account-avatar`、`@/components/ui/app-icon`（`ChevronDownIcon`/`SwitchIcon`）、`./account-switch-modal`、`@/components/cards/card-context-menu`、`@/components/tab-editor-modal`、`@/components/ui/confirm-dialog`、`@/utils/accountService`、`@/utils/configService`、`@/utils/tabService`、`@/utils/tabIcons`、`@/utils/imageCacheManager`、`@/utils/logger`、`@/config/site`、`@/types`（`resolveServerLabel`）、`@/types/dashboard`（`DashboardTab`）
+**主要依赖**：`react-router-dom`（`Link`/`useLocation`/`useNavigate`）、`react-dom` 的 `createPortal`、`react-i18next` 的 `useTranslation`、`clsx`、`@/components/ui/glass`（`GlassKbd`、`GlassSkeleton`）、`@/components/icons`（11 个图标）、`@/components/theme-switch`、`@/components/language-switch`、`@/components/ui/account-avatar`、`@/components/ui/app-icon`（`ChevronDownIcon`/`ChevronLeftIcon`/`ChevronRightIcon`/`SwitchIcon`）、`./account-switch-modal`、`@/components/cards/card-context-menu`、`@/components/tab-editor-modal`、`@/components/ui/confirm-dialog`、`@/utils/accountService`、`@/utils/configService`、`@/utils/tabService`、`@/utils/tabIcons`、`@/utils/imageCacheManager`、`@/utils/logger`、`@/config/site`、`@/types`（`resolveServerLabel`）、`@/types/dashboard`（`DashboardTab`）
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
 | `SearchResult` | dashboard-sidebar.tsx:50 | 接口：`id`、`title`、`description?`、`path`、`category`、`elementId?`（页面内锚点）、`titleEn/titleZh/descriptionEn/descriptionZh/categoryEn/categoryZh?`（跨语言检索字段）、`matchedLang?("current"/"en"/"zh")`、`matchedText?` |
-| `SidebarProps` | dashboard-sidebar.tsx:69 | props：`onNavigate?: () => void`（移动端点击导航后关闭抽屉的回调） |
+| `SidebarProps` | dashboard-sidebar.tsx:75 | props：`onNavigate?: () => void`（移动端点击导航后关闭抽屉的回调）、`collapsed?: boolean`（桌面端折叠为仅图标窄轨，默认 `false`）、`onToggleCollapsed?: () => void`（切换折叠状态；提供时页脚渲染折叠/展开按钮） |
 | `NavKey` | dashboard-sidebar.tsx:74 | 联合类型：`"dashboard" \| "characters" \| "medals" \| "attendance" \| "gacha"` |
 | `NAV_KEYS` | dashboard-sidebar.tsx:76 | 默认导航顺序数组（5 项），作为 `navOrder` 初值 |
 | `GripHandle` | dashboard-sidebar.tsx:84 | 六点拖拽手柄按钮（内联 SVG）。props：`onPointerDown`（必需）、`onDragEnd?`、`isDragging?`；`pointerUp`/`click` 均 `preventDefault+stopPropagation`（97-105），hover 时才显示（106） |
-| `Sidebar` | dashboard-sidebar.tsx:123 | 主组件，123-1722 行，见下方内部结构 |
+| `Sidebar` | dashboard-sidebar.tsx:132 | 主组件，约 132-1973 行，见下方内部结构 |
 
 **内部结构**：
 
@@ -49,14 +49,15 @@
 - **1640-1660 行**：`TabEditorModal`——`onSave` 按是否在编辑调用 `updateTab` 或 `addTab(name, icon, tags, defaultRoleId)`，随后刷新并派发 `tabsChanged`。
 - **1662-1711 行**：页脚——`bottomItems` 链接列表（1666-1694）、GitHub 外链（`siteConfig.links.github`，1698-1706）、`ThemeSwitch`、`LanguageSwitch`。
 - **1714-1719 行**：`AccountSwitchModal`（`isOpen`/`onClose`/`currentAccountId`）。
+- **折叠（`collapsed`）**：`return` 前派生 `tabsHidden = isDashboardCollapsed || collapsed`。折叠时账户卡片收缩为居中的小头像：`AccountAvatar size` 由 `md`→`sm`，账户区外层横向内边距 `px-3`→`px-[7px]`、卡片内边距 `p-2`→`p-[5px]`，卡片始终 `w-full`（不切换 `justify-center`/`w-fit`），使头像位置随容器宽度与内边距的过渡连续移动而不跳变（折叠后卡片宽 50px = 头像 40px + 左右各 5px），文字/切换按钮以 `max-w-0 + opacity-0` 过渡隐藏；主导航与页脚项改为 `justify-center` 仅显示图标（标签同样 `max-w-0` 过渡隐藏、`title` 提供提示），`GripHandle` 与仪表板标签列表隐藏；页脚隐藏 GitHub/主题/语言按钮，仅保留折叠/展开按钮（`ChevronLeftIcon`/`ChevronRightIcon`，在 `onToggleCollapsed` 提供时渲染）。所有过渡统一 `duration-300 ease-out`。
 
 **备注**：
 - **invoke 命令**：本文件 0 个（无 `@tauri-apps/api/core` 引用）；后端能力经 `getAccounts`/`getSelectedAccount`/`getConfig`/`setConfig`/`getAllTabs`/`addTab`/`updateTab`/`removeTab`/`saveTabs`/`getActiveTabId`/`setActiveTabId` 间接调用。
 - **listen/事件**（全部为 DOM 事件，非 Tauri `listen`）：
   - 监听：`window "tabsChanged"`(268)、`window "accountChanged"`(269, 371)、`window "themeChange"`(282)、`window "developerModeChange"`(312)、`window "manualRefresh"`(393)、`window "pointerup"`(243, 255)、`document "keydown"`(799, 844)、`document "mousedown"`(812)、`window "scroll"` capture(813)。
   - 派发：`window.dispatchEvent(accountChanged)`(1373-1375)、`window.dispatchEvent(tabsChanged)`(1632, 1657)。
-- **配置键（configService）**：读 `sidebar_nav_order`(185)、`developer_mode`(291)、`sidebar_collapsed`(300)、`refresh_on_account_switch`(353)；写 `sidebar_nav_order`(222)、`sidebar_collapsed`(1286)。
-- **Props 清单**：`Sidebar` 仅 `onNavigate?: () => void`（默认 `{}`，123）。
+- **配置键（configService）**：读 `sidebar_nav_order`(185)、`developer_mode`(291)、`sidebar_collapsed`(300)、`refresh_on_account_switch`(353)；写 `sidebar_nav_order`(222)、`sidebar_collapsed`(1286)。（整条侧边栏的折叠状态 `sidebar_rail_collapsed` 由外层布局 `layouts/dashboard.tsx` 读写，本文件不涉及。）
+- **Props 清单**：`Sidebar` 的 `onNavigate?`（默认 `{}`）、`collapsed`（默认 `false`）、`onToggleCollapsed?`。
 - **异常/注意点**：① 搜索 UI 被 `{false && ...}` 永久隐藏（1019），但其状态、4 个键盘/鼠标 effect 与约 500 行 JSX 仍保留在文件中（1018-1237，属死代码）。② `handleManualRefresh` 中 `void expectedAccountCount`(380) 为规避 lint 的占位，且 390 行 `logger.debug` 读到的是闭包旧值。③ `highlightMatch`(904-911) 用带 `g` 标志的正则做 `.test()`，`lastIndex` 有状态残留风险。④ 1272 行判断 `location.pathname === ""`（其余处均为 `"/"`），该分支实际不会命中。⑤ `startNavDrag`/`startTabDrag` 注册的 `pointerup` 监听只在触发后移除，拖拽中途卸载组件会短暂泄漏。
 
 ## `src/components/gacha-pity-chart.tsx`

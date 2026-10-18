@@ -23,7 +23,12 @@ import { ThemeSwitch } from "@/components/theme-switch";
 import { LanguageSwitch } from "@/components/language-switch";
 import { AccountAvatar } from "@/components/ui/account-avatar";
 import { resolveServerLabel } from "@/types";
-import { ChevronDownIcon, SwitchIcon } from "@/components/ui/app-icon";
+import {
+  ChevronDownIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  SwitchIcon,
+} from "@/components/ui/app-icon";
 import AccountSwitchModal from "./account-switch-modal";
 import {
   getAccounts,
@@ -70,6 +75,10 @@ interface SearchResult {
 interface SidebarProps {
   /** 点击导航链接后回调（用于移动端关闭抽屉） */
   onNavigate?: () => void;
+  /** 折叠为仅图标的窄轨（桌面端） */
+  collapsed?: boolean;
+  /** 切换折叠状态 */
+  onToggleCollapsed?: () => void;
 }
 
 type NavKey = "dashboard" | "characters" | "medals" | "attendance" | "gacha" | "todo";
@@ -122,7 +131,11 @@ function GripHandle({
   );
 }
 
-export const Sidebar = ({ onNavigate }: SidebarProps = {}) => {
+export const Sidebar = ({
+  onNavigate,
+  collapsed = false,
+  onToggleCollapsed,
+}: SidebarProps = {}) => {
   const location = useLocation();
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState("");
@@ -966,27 +979,70 @@ export const Sidebar = ({ onNavigate }: SidebarProps = {}) => {
     return items;
   }, [t, developerMode]);
 
+  const tabsHidden = isDashboardCollapsed || collapsed;
+
   return (
     <>
       <aside key={themeChangeKey} className="w-full h-full flex flex-col">
         {/* Selected Account Display */}
-        <div className="px-3 py-2">
+        <div
+          className={clsx(
+            "transition-all duration-300 ease-out",
+            collapsed ? "px-[7px] py-2" : "px-3 py-2",
+          )}
+        >
           {isLoadingAccount || isManualRefreshing ? (
-            <div className="glass-surface flex items-center gap-3 p-2 rounded-xl">
-              <GlassSkeleton className="w-10 h-10 rounded-full" />
-              <div className="flex-1 space-y-2">
+            <div
+              className={clsx(
+                "glass-surface flex items-center rounded-xl transition-all duration-300 ease-out",
+                collapsed ? "p-[5px]" : "gap-3 p-2",
+              )}
+            >
+              <GlassSkeleton
+                className={clsx(
+                  "rounded-full transition-all duration-300 ease-in-out",
+                  collapsed ? "w-8 h-8" : "w-10 h-10",
+                )}
+              />
+              <div
+                className={clsx(
+                  "space-y-2 overflow-hidden transition-all duration-300 ease-out",
+                  collapsed
+                    ? "max-w-0 max-h-0 opacity-0"
+                    : "max-w-full max-h-10 flex-1 opacity-100",
+                )}
+              >
                 <GlassSkeleton className="w-24 h-4 rounded-lg" />
                 <GlassSkeleton className="w-16 h-3 rounded-lg" />
               </div>
             </div>
           ) : selectedAccount ? (
-            <div className="glass-surface flex items-center gap-3 p-2 rounded-xl transition-all duration-200 group">
-              <div className="flex items-center gap-3 flex-1 min-w-0">
-                <AccountAvatar
-                  src={selectedAccount.avatar}
-                  alt={selectedAccount.nickname}
-                  size="sm"
-                />
+            <div
+              onClick={
+                collapsed ? () => setIsSwitchModalOpen(true) : undefined
+              }
+              title={collapsed ? selectedAccount.nickname : undefined}
+              className={clsx(
+                "glass-surface flex items-center rounded-xl transition-all duration-300 ease-out group",
+                collapsed
+                  ? "p-[5px] cursor-pointer hover:bg-default-100"
+                  : "gap-3 p-2",
+              )}
+            >
+              <AccountAvatar
+                src={selectedAccount.avatar}
+                alt={selectedAccount.nickname}
+                size={collapsed ? "sm" : "md"}
+                className="transition-all duration-300 ease-out"
+              />
+              <div
+                className={clsx(
+                  "min-w-0 overflow-hidden transition-all duration-300 ease-out",
+                  collapsed
+                    ? "max-w-0 max-h-0 opacity-0"
+                    : "max-w-full max-h-[6rem] flex-1 opacity-100",
+                )}
+              >
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold text-foreground truncate">
                     {selectedAccount.nickname}
@@ -1004,21 +1060,57 @@ export const Sidebar = ({ onNavigate }: SidebarProps = {}) => {
                 </div>
               </div>
 
-              <button
-                onClick={() => setIsSwitchModalOpen(true)}
-                className="p-1.5 rounded-lg transition-all duration-200 flex-shrink-0 text-muted hover:text-foreground hover:scale-105 active:scale-95 opacity-0 group-hover:opacity-100"
-                title={i18n.language === "zh" ? "切换账户" : "Switch Account"}
-                aria-label="Switch account"
+              <div
+                className={clsx(
+                  "flex-shrink-0 overflow-hidden transition-all duration-300 ease-in-out",
+                  collapsed ? "max-w-0 opacity-0" : "max-w-[2.5rem] opacity-100",
+                )}
               >
-                <SwitchIcon size={18} />
-              </button>
+                <button
+                  onClick={() => setIsSwitchModalOpen(true)}
+                  className="p-1.5 rounded-lg transition-all duration-200 flex-shrink-0 text-muted hover:text-foreground hover:scale-105 active:scale-95 opacity-0 group-hover:opacity-100"
+                  title={i18n.language === "zh" ? "切换账户" : "Switch Account"}
+                  aria-label="Switch account"
+                >
+                  <SwitchIcon size={18} />
+                </button>
+              </div>
             </div>
           ) : (
-            <div className="glass-surface flex items-center gap-3 p-2.5 rounded-xl border border-dashed border-separator/60">
-              <div className="w-10 h-10 rounded-lg flex items-center justify-center">
-                <AccountIcon className="w-5 h-5 text-muted" />
+            <div
+              title={
+                collapsed
+                  ? i18n.language === "zh"
+                    ? "未选择账户"
+                    : "No account selected"
+                  : undefined
+              }
+              className={clsx(
+                "glass-surface flex items-center rounded-xl border border-dashed border-separator/60 transition-all duration-300 ease-out",
+                collapsed ? "p-[5px]" : "gap-3 p-2.5",
+              )}
+            >
+              <div
+                className={clsx(
+                  "rounded-lg flex items-center justify-center transition-all duration-300 ease-in-out",
+                  collapsed ? "w-8 h-8" : "w-10 h-10",
+                )}
+              >
+                <AccountIcon
+                  className={clsx(
+                    "text-muted transition-all duration-300 ease-in-out",
+                    collapsed ? "w-4 h-4" : "w-5 h-5",
+                  )}
+                />
               </div>
-              <div className="flex-1">
+              <div
+                className={clsx(
+                  "overflow-hidden transition-all duration-300 ease-out",
+                  collapsed
+                    ? "max-w-0 max-h-0 opacity-0"
+                    : "max-w-full max-h-12 flex-1 opacity-100",
+                )}
+              >
                 <p className="text-sm text-muted">
                   {i18n.language === "zh"
                     ? "未选择账户"
@@ -1256,7 +1348,12 @@ export const Sidebar = ({ onNavigate }: SidebarProps = {}) => {
         )}
 
         {/* Main Navigation */}
-        <nav className="flex-1 overflow-y-auto px-3 select-none">
+        <nav
+          className={clsx(
+            "flex-1 overflow-y-auto select-none transition-all duration-300 ease-in-out",
+            collapsed ? "px-2" : "px-3",
+          )}
+        >
           <div className="space-y-0.5 py-2">
             {navOrder.map((key) => {
               switch (key) {
@@ -1273,7 +1370,10 @@ export const Sidebar = ({ onNavigate }: SidebarProps = {}) => {
                       {/* Dashboard link with collapse toggle */}
                       <div
                         className={clsx(
-                          "relative flex items-center gap-1 pl-3 pr-8 py-2.5 rounded-xl transition-all duration-200 group",
+                          "relative flex items-center rounded-xl transition-all duration-300 ease-in-out group",
+                          collapsed
+                            ? "justify-center px-0 py-2.5 gap-0"
+                            : "gap-1 pl-3 pr-8 py-2.5",
                           draggingNav === "dashboard" ? "opacity-60" : "",
                           location.pathname === "/"
                             ? "glass-surface-strong text-foreground"
@@ -1283,60 +1383,75 @@ export const Sidebar = ({ onNavigate }: SidebarProps = {}) => {
                         <Link
                           to="/"
                           onClick={onNavigate}
-                          className="flex items-center gap-3 flex-1 min-w-0"
+                          title={collapsed ? t("sidebar.dashboard") : undefined}
+                          className={clsx(
+                            "flex items-center min-w-0 transition-all duration-300 ease-in-out",
+                            collapsed
+                              ? "flex-none justify-center gap-0"
+                              : "flex-1 gap-3",
+                          )}
                         >
                           <HomeIcon
                             className={clsx(
-                              "w-5 h-5 transition-all duration-200",
+                              "w-5 h-5 flex-shrink-0 transition-all duration-200",
                               location.pathname === ""
                                 ? ""
                                 : "group-hover:scale-110 group-hover:rotate-12",
                             )}
                           />
-                          <span className="text-sm font-semibold">
+                          <span
+                            className={clsx(
+                              "text-sm font-semibold whitespace-nowrap overflow-hidden transition-all duration-300 ease-in-out",
+                              collapsed
+                                ? "max-w-0 opacity-0"
+                                : "max-w-[10rem] opacity-100",
+                            )}
+                          >
                             {t("sidebar.dashboard")}
                           </span>
                         </Link>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const next = !isDashboardCollapsed;
-                            setIsDashboardCollapsed(next);
-                            setConfig("sidebar_collapsed", next);
-                          }}
-                          className={clsx(
-                            "p-1 rounded-lg transition-colors",
-                            "text-muted hover:text-foreground",
-                          )}
-                          aria-label={
-                            isDashboardCollapsed
-                              ? "Expand tabs"
-                              : "Collapse tabs"
-                          }
-                        >
-                          <ChevronDownIcon
-                            size={16}
+                        {!collapsed && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const next = !isDashboardCollapsed;
+                              setIsDashboardCollapsed(next);
+                              setConfig("sidebar_collapsed", next);
+                            }}
                             className={clsx(
-                              "transition-transform duration-300",
-                              isDashboardCollapsed && "-rotate-90",
+                              "p-1 rounded-lg transition-colors",
+                              "text-muted hover:text-foreground",
                             )}
+                            aria-label={
+                              isDashboardCollapsed
+                                ? "Expand tabs"
+                                : "Collapse tabs"
+                            }
+                          >
+                            <ChevronDownIcon
+                              size={16}
+                              className={clsx(
+                                "transition-transform duration-300",
+                                isDashboardCollapsed && "-rotate-90",
+                              )}
+                            />
+                          </button>
+                        )}
+                        {!collapsed && (
+                          <GripHandle
+                            onPointerDown={(e) => startNavDrag("dashboard", e)}
+                            onDragEnd={endNavDrag}
+                            isDragging={draggingNav === "dashboard"}
                           />
-                        </button>
-                        <GripHandle
-                          onPointerDown={(e) => startNavDrag("dashboard", e)}
-                          onDragEnd={endNavDrag}
-                          isDragging={draggingNav === "dashboard"}
-                        />
+                        )}
                       </div>
 
                       {/* Tab list */}
                       <div
                         className="grid transition-all duration-300 ease-in-out"
                         style={{
-                          gridTemplateRows: isDashboardCollapsed
-                            ? "0fr"
-                            : "1fr",
-                          opacity: isDashboardCollapsed ? 0 : 1,
+                          gridTemplateRows: tabsHidden ? "0fr" : "1fr",
+                          opacity: tabsHidden ? 0 : 1,
                         }}
                       >
                         <div className="overflow-hidden">
@@ -1453,8 +1568,16 @@ export const Sidebar = ({ onNavigate }: SidebarProps = {}) => {
                       <Link
                         to="/characters"
                         onClick={onNavigate}
+                        title={
+                          collapsed
+                            ? t("sidebar.characters") || "Characters"
+                            : undefined
+                        }
                         className={clsx(
-                          "flex items-center gap-3 pl-3 pr-8 py-2.5 rounded-xl transition-all duration-200",
+                          "flex items-center rounded-xl transition-all duration-300 ease-in-out",
+                          collapsed
+                            ? "justify-center px-0 py-2.5 gap-0"
+                            : "gap-3 pl-3 pr-8 py-2.5",
                           draggingNav === "characters" ? "opacity-60" : "",
                           location.pathname === "/characters"
                             ? "glass-surface-strong text-foreground"
@@ -1463,21 +1586,30 @@ export const Sidebar = ({ onNavigate }: SidebarProps = {}) => {
                       >
                         <UsersIcon
                           className={clsx(
-                            "w-5 h-5 transition-all duration-200",
+                            "w-5 h-5 flex-shrink-0 transition-all duration-200",
                             location.pathname === "/characters"
                               ? ""
                               : "group-hover:scale-110 group-hover:rotate-12",
                           )}
                         />
-                        <span className="text-sm font-semibold">
+                        <span
+                          className={clsx(
+                            "text-sm font-semibold whitespace-nowrap overflow-hidden transition-all duration-300 ease-in-out",
+                            collapsed
+                              ? "max-w-0 opacity-0"
+                              : "max-w-[10rem] opacity-100",
+                          )}
+                        >
                           {t("sidebar.characters") || "Characters"}
                         </span>
                       </Link>
-                      <GripHandle
-                        onPointerDown={(e) => startNavDrag("characters", e)}
-                        onDragEnd={endNavDrag}
-                        isDragging={draggingNav === "characters"}
-                      />
+                      {!collapsed && (
+                        <GripHandle
+                          onPointerDown={(e) => startNavDrag("characters", e)}
+                          onDragEnd={endNavDrag}
+                          isDragging={draggingNav === "characters"}
+                        />
+                      )}
                     </div>
                   );
 
@@ -1495,8 +1627,14 @@ export const Sidebar = ({ onNavigate }: SidebarProps = {}) => {
                       <Link
                         to="/medals"
                         onClick={onNavigate}
+                        title={
+                          collapsed ? t("sidebar.medals") || "Medals" : undefined
+                        }
                         className={clsx(
-                          "flex items-center gap-3 pl-3 pr-8 py-2.5 rounded-xl transition-all duration-200",
+                          "flex items-center rounded-xl transition-all duration-300 ease-in-out",
+                          collapsed
+                            ? "justify-center px-0 py-2.5 gap-0"
+                            : "gap-3 pl-3 pr-8 py-2.5",
                           draggingNav === "medals" ? "opacity-60" : "",
                           location.pathname === "/medals"
                             ? "glass-surface-strong text-foreground"
@@ -1505,21 +1643,30 @@ export const Sidebar = ({ onNavigate }: SidebarProps = {}) => {
                       >
                         <MedalIcon
                           className={clsx(
-                            "w-5 h-5 transition-all duration-200",
+                            "w-5 h-5 flex-shrink-0 transition-all duration-200",
                             location.pathname === "/medals"
                               ? ""
                               : "group-hover:scale-110 group-hover:rotate-12",
                           )}
                         />
-                        <span className="text-sm font-semibold">
+                        <span
+                          className={clsx(
+                            "text-sm font-semibold whitespace-nowrap overflow-hidden transition-all duration-300 ease-in-out",
+                            collapsed
+                              ? "max-w-0 opacity-0"
+                              : "max-w-[10rem] opacity-100",
+                          )}
+                        >
                           {t("sidebar.medals") || "Medals"}
                         </span>
                       </Link>
-                      <GripHandle
-                        onPointerDown={(e) => startNavDrag("medals", e)}
-                        onDragEnd={endNavDrag}
-                        isDragging={draggingNav === "medals"}
-                      />
+                      {!collapsed && (
+                        <GripHandle
+                          onPointerDown={(e) => startNavDrag("medals", e)}
+                          onDragEnd={endNavDrag}
+                          isDragging={draggingNav === "medals"}
+                        />
+                      )}
                     </div>
                   );
 
@@ -1537,8 +1684,16 @@ export const Sidebar = ({ onNavigate }: SidebarProps = {}) => {
                       <Link
                         to="/attendance"
                         onClick={onNavigate}
+                        title={
+                          collapsed
+                            ? t("sidebar.attendance") || "Attendance"
+                            : undefined
+                        }
                         className={clsx(
-                          "flex items-center gap-3 pl-3 pr-8 py-2.5 rounded-xl transition-all duration-200",
+                          "flex items-center rounded-xl transition-all duration-300 ease-in-out",
+                          collapsed
+                            ? "justify-center px-0 py-2.5 gap-0"
+                            : "gap-3 pl-3 pr-8 py-2.5",
                           draggingNav === "attendance" ? "opacity-60" : "",
                           location.pathname === "/attendance"
                             ? "glass-surface-strong text-foreground"
@@ -1547,21 +1702,30 @@ export const Sidebar = ({ onNavigate }: SidebarProps = {}) => {
                       >
                         <CalendarIcon
                           className={clsx(
-                            "w-5 h-5 transition-all duration-200",
+                            "w-5 h-5 flex-shrink-0 transition-all duration-200",
                             location.pathname === "/attendance"
                               ? ""
                               : "group-hover:scale-110 group-hover:rotate-12",
                           )}
                         />
-                        <span className="text-sm font-semibold">
+                        <span
+                          className={clsx(
+                            "text-sm font-semibold whitespace-nowrap overflow-hidden transition-all duration-300 ease-in-out",
+                            collapsed
+                              ? "max-w-0 opacity-0"
+                              : "max-w-[10rem] opacity-100",
+                          )}
+                        >
                           {t("sidebar.attendance") || "Attendance"}
                         </span>
                       </Link>
-                      <GripHandle
-                        onPointerDown={(e) => startNavDrag("attendance", e)}
-                        onDragEnd={endNavDrag}
-                        isDragging={draggingNav === "attendance"}
-                      />
+                      {!collapsed && (
+                        <GripHandle
+                          onPointerDown={(e) => startNavDrag("attendance", e)}
+                          onDragEnd={endNavDrag}
+                          isDragging={draggingNav === "attendance"}
+                        />
+                      )}
                     </div>
                   );
 
@@ -1579,8 +1743,14 @@ export const Sidebar = ({ onNavigate }: SidebarProps = {}) => {
                       <Link
                         to="/gacha"
                         onClick={onNavigate}
+                        title={
+                          collapsed ? t("sidebar.gacha") || "Gacha" : undefined
+                        }
                         className={clsx(
-                          "flex items-center gap-3 pl-3 pr-8 py-2.5 rounded-xl transition-all duration-200",
+                          "flex items-center rounded-xl transition-all duration-300 ease-in-out",
+                          collapsed
+                            ? "justify-center px-0 py-2.5 gap-0"
+                            : "gap-3 pl-3 pr-8 py-2.5",
                           draggingNav === "gacha" ? "opacity-60" : "",
                           location.pathname === "/gacha"
                             ? "glass-surface-strong text-foreground"
@@ -1589,21 +1759,30 @@ export const Sidebar = ({ onNavigate }: SidebarProps = {}) => {
                       >
                         <GachaIcon
                           className={clsx(
-                            "w-5 h-5 transition-all duration-200",
+                            "w-5 h-5 flex-shrink-0 transition-all duration-200",
                             location.pathname === "/gacha"
                               ? ""
                               : "group-hover:scale-110 group-hover:rotate-12",
                           )}
                         />
-                        <span className="text-sm font-semibold">
+                        <span
+                          className={clsx(
+                            "text-sm font-semibold whitespace-nowrap overflow-hidden transition-all duration-300 ease-in-out",
+                            collapsed
+                              ? "max-w-0 opacity-0"
+                              : "max-w-[10rem] opacity-100",
+                          )}
+                        >
                           {t("sidebar.gacha") || "Gacha"}
                         </span>
                       </Link>
-                      <GripHandle
-                        onPointerDown={(e) => startNavDrag("gacha", e)}
-                        onDragEnd={endNavDrag}
-                        isDragging={draggingNav === "gacha"}
-                      />
+                      {!collapsed && (
+                        <GripHandle
+                          onPointerDown={(e) => startNavDrag("gacha", e)}
+                          onDragEnd={endNavDrag}
+                          isDragging={draggingNav === "gacha"}
+                        />
+                      )}
                     </div>
                   );
 
@@ -1621,8 +1800,14 @@ export const Sidebar = ({ onNavigate }: SidebarProps = {}) => {
                       <Link
                         to="/todo"
                         onClick={onNavigate}
+                        title={
+                          collapsed ? t("sidebar.todo") || "To-Do" : undefined
+                        }
                         className={clsx(
-                          "flex items-center gap-3 pl-3 pr-8 py-2.5 rounded-xl transition-all duration-200",
+                          "flex items-center rounded-xl transition-all duration-300 ease-in-out",
+                          collapsed
+                            ? "justify-center px-0 py-2.5 gap-0"
+                            : "gap-3 pl-3 pr-8 py-2.5",
                           draggingNav === "todo" ? "opacity-60" : "",
                           location.pathname === "/todo"
                             ? "glass-surface-strong text-foreground"
@@ -1631,21 +1816,30 @@ export const Sidebar = ({ onNavigate }: SidebarProps = {}) => {
                       >
                         <BookmarkIcon
                           className={clsx(
-                            "w-5 h-5 transition-all duration-200",
+                            "w-5 h-5 flex-shrink-0 transition-all duration-200",
                             location.pathname === "/todo"
                               ? ""
                               : "group-hover:scale-110 group-hover:rotate-12",
                           )}
                         />
-                        <span className="text-sm font-semibold">
+                        <span
+                          className={clsx(
+                            "text-sm font-semibold whitespace-nowrap overflow-hidden transition-all duration-300 ease-in-out",
+                            collapsed
+                              ? "max-w-0 opacity-0"
+                              : "max-w-[10rem] opacity-100",
+                          )}
+                        >
                           {t("sidebar.todo") || "To-Do"}
                         </span>
                       </Link>
-                      <GripHandle
-                        onPointerDown={(e) => startNavDrag("todo", e)}
-                        onDragEnd={endNavDrag}
-                        isDragging={draggingNav === "todo"}
-                      />
+                      {!collapsed && (
+                        <GripHandle
+                          onPointerDown={(e) => startNavDrag("todo", e)}
+                          onDragEnd={endNavDrag}
+                          isDragging={draggingNav === "todo"}
+                        />
+                      )}
                     </div>
                   );
               }
@@ -1721,7 +1915,12 @@ export const Sidebar = ({ onNavigate }: SidebarProps = {}) => {
         />
 
         {/* Footer Section */}
-        <div className="px-4 py-4 space-y-2 border-t border-separator/60">
+        <div
+          className={clsx(
+            "py-4 space-y-2 border-t border-separator/60 transition-all duration-300 ease-in-out",
+            collapsed ? "px-2" : "px-4",
+          )}
+        >
           {/* Bottom Navigation */}
           <div className="space-y-0.5">
             {bottomItems.map((item) => {
@@ -1733,8 +1932,12 @@ export const Sidebar = ({ onNavigate }: SidebarProps = {}) => {
                   key={item.href}
                   to={item.href}
                   onClick={onNavigate}
+                  title={collapsed ? item.label : undefined}
                   className={clsx(
-                    "flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 group",
+                    "flex items-center rounded-xl transition-all duration-300 ease-in-out group",
+                    collapsed
+                      ? "justify-center px-0 py-2.5 gap-0"
+                      : "gap-3 px-3 py-2.5",
                     isActive
                       ? "glass-surface-strong text-foreground"
                       : "text-foreground hover:text-foreground",
@@ -1742,32 +1945,73 @@ export const Sidebar = ({ onNavigate }: SidebarProps = {}) => {
                 >
                   <Icon
                     className={clsx(
-                      "w-5 h-5 transition-all duration-200",
+                      "w-5 h-5 flex-shrink-0 transition-all duration-200",
                       isActive
                         ? ""
                         : "group-hover:scale-110 group-hover:rotate-12",
                     )}
                   />
-                  <span className="text-sm font-semibold">{item.label}</span>
+                  <span
+                    className={clsx(
+                      "text-sm font-semibold whitespace-nowrap overflow-hidden transition-all duration-300 ease-in-out",
+                      collapsed
+                        ? "max-w-0 opacity-0"
+                        : "max-w-[10rem] opacity-100",
+                    )}
+                  >
+                    {item.label}
+                  </span>
                 </Link>
               );
             })}
           </div>
 
-          <div className="flex items-center justify-between px-1 pt-1">
-            <div className="flex items-center gap-1">
-              <a
-                aria-label="Github"
-                href={siteConfig.links.github}
-                rel="noopener noreferrer"
-                target="_blank"
-                className="glass-surface p-2 rounded-full transition-all duration-200 hover:scale-105 active:scale-95"
+          <div
+            className={clsx(
+              "flex px-1 pt-1 transition-all duration-300 ease-out",
+              collapsed ? "justify-center" : "items-center justify-between",
+            )}
+          >
+            {!collapsed && (
+              <div className="flex items-center gap-1">
+                <a
+                  aria-label="Github"
+                  href={siteConfig.links.github}
+                  rel="noopener noreferrer"
+                  target="_blank"
+                  className="glass-surface p-2 rounded-full transition-all duration-200 hover:scale-105 active:scale-95"
+                >
+                  <GithubIcon className="text-muted w-4 h-4 hover:text-foreground transition-colors" />
+                </a>
+                <ThemeSwitch />
+                <LanguageSwitch />
+              </div>
+            )}
+            {onToggleCollapsed && (
+              <button
+                type="button"
+                onClick={onToggleCollapsed}
+                title={
+                  collapsed
+                    ? i18n.language === "zh"
+                      ? "展开侧边栏"
+                      : "Expand sidebar"
+                    : i18n.language === "zh"
+                      ? "折叠侧边栏"
+                      : "Collapse sidebar"
+                }
+                aria-label={
+                  collapsed ? "Expand sidebar" : "Collapse sidebar"
+                }
+                className="glass-surface p-2 rounded-full transition-all duration-200 hover:scale-105 active:scale-95 text-muted hover:text-foreground"
               >
-                <GithubIcon className="text-muted w-4 h-4 hover:text-foreground transition-colors" />
-              </a>
-              <ThemeSwitch />
-              <LanguageSwitch />
-            </div>
+                {collapsed ? (
+                  <ChevronRightIcon size={16} />
+                ) : (
+                  <ChevronLeftIcon size={16} />
+                )}
+              </button>
+            )}
           </div>
         </div>
       </aside>
