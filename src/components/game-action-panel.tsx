@@ -60,10 +60,10 @@ const STORAGE_KEY_CANCEL_BEHAVIOR = "launcher_cancel_behavior"; // "ask" | "keep
 
 /** 游戏操作面板统一按钮风格（与预下载按钮一致） */
 const PILL_BASE =
-  "inline-flex items-center h-11 rounded-full whitespace-nowrap backdrop-blur-md border border-transparent bg-black/10 dark:bg-white/10 shadow-lg transition-all duration-200 shrink-0";
+  "inline-flex items-center h-11 rounded-full whitespace-nowrap backdrop-blur-md border border-white/10 bg-black/40 shadow-lg transition-all duration-200 shrink-0";
 const PILL_INTERACTIVE =
-  "cursor-pointer hover:bg-black/15 dark:hover:bg-white/15 hover:text-foreground disabled:opacity-50 disabled:cursor-not-allowed";
-const PILL_TEXT = "text-xs font-medium text-foreground/80";
+  "cursor-pointer hover:bg-black/55 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed";
+const PILL_TEXT = "text-xs font-medium text-white/80";
 
 /** 剩余时间秒数 → `m:ss` / `h:mm:ss` */
 function formatEta(seconds: number): string {
@@ -1567,7 +1567,7 @@ export function GameActionPanel() {
           {/* 识别渠道中的指示（未识别出渠道时显示） */}
           {detecting && !detectedChannel && (
             <div
-              className={`${PILL_BASE} ${PILL_TEXT} gap-1.5 px-4 text-foreground/60`}
+              className={`${PILL_BASE} ${PILL_TEXT} gap-1.5 px-4 text-white/60`}
             >
               <div className="w-1.5 h-1.5 rounded-full bg-yellow-400/60 animate-pulse" />
               <span>{t("launcher.detecting_channel")}</span>
@@ -1751,9 +1751,9 @@ export function GameActionPanel() {
             setProgressFlyoutPos(null);
           }}
           disabled={!statusReady || (preloading && hasUpdate)}
-          className={`${PILL_BASE} ${PILL_INTERACTIVE} relative min-w-[120px] px-5 gap-2.5 text-sm font-semibold text-foreground overflow-hidden active:scale-95 justify-center ${
+          className={`${PILL_BASE} ${PILL_INTERACTIVE} relative min-w-[120px] px-5 gap-2.5 text-sm font-semibold text-white overflow-hidden active:scale-95 justify-center ${
               gameRunning || switching
-                ? "border-danger/60 text-danger"
+                ? "!border-danger/60 !text-danger"
                 : ""
             }`}
         >
