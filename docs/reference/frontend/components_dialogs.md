@@ -113,7 +113,7 @@
 ## `src/components/custom-titlebar.tsx`
 **职责**：自定义标题栏——包含品牌区、数据/游戏视图切换、通知铃铛与消息浮层、窗口最小化/最大化/关闭按钮，并挂载消息抽屉与关闭确认框。
 **导出**：`CustomTitlebar`
-**主要依赖**：`react`（`useState/useEffect/useRef`）、`react-i18next`、`@tauri-apps/api/core`（`invoke`）、`@tauri-apps/api/window`（`getCurrentWindow`）、`@tauri-apps/api/event`（`listen`、`UnlistenFn`）、`@/components/ui/app-icon`（`MinimizeIcon`、`MaximizeIcon`、`RestoreIcon`、`CloseIcon`、`BellIcon`）、`@/components/app-info-drawer`、`@/components/close-confirm-dialog`、`@/utils/messageStore`（`getMessages`、`getUnreadCount`、`hasUrgentUnread`、`subscribeMessages`、`AppMessage`）、`@/components/message-card`、`@/utils/configService`（`getConfig`）、`@/stores/launcherMode`（`getLauncherMode`、`setLauncherMode`、`subscribeLauncherMode`、`LauncherViewMode`）、`@/utils/platform`（`isWindowsPlatform`）、`@/utils/logger`、`@/components/ui/toggle-group`（`ToggleGroup`、`ToggleGroupItem`）
+**主要依赖**：`react`（`useState/useEffect/useRef`）、`react-dom`（`createPortal`）、`react-i18next`、`@tauri-apps/api/core`（`invoke`）、`@tauri-apps/api/window`（`getCurrentWindow`）、`@tauri-apps/api/event`（`listen`、`UnlistenFn`）、`@/components/ui/app-icon`（`MinimizeIcon`、`MaximizeIcon`、`RestoreIcon`、`CloseIcon`、`BellIcon`）、`@/components/app-info-drawer`、`@/components/close-confirm-dialog`、`@/utils/messageStore`（`getMessages`、`getUnreadCount`、`hasUrgentUnread`、`subscribeMessages`、`AppMessage`）、`@/components/message-card`、`@/utils/configService`（`getConfig`）、`@/stores/launcherMode`（`getLauncherMode`、`setLauncherMode`、`subscribeLauncherMode`、`LauncherViewMode`）、`@/utils/platform`（`isWindowsPlatform`）、`@/utils/logger`、`@/components/ui/toggle-group`（`ToggleGroup`、`ToggleGroupItem`）
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
@@ -129,13 +129,13 @@
 | `handleMaximize` | custom-titlebar.tsx:125 | `await invoke("toggle_maximize_window")`，100ms 后再 `checkMaximizedState()` 同步图标 |
 | `handleClose` | custom-titlebar.tsx:134 | 按 `closeAction` 分支：`"ask"` → `setShowCloseConfirm(true)`；`"minimize_to_tray"` → `invoke("minimize_to_tray")`；否则 `invoke("app_quit")` |
 | `handleConfirmClose` | custom-titlebar.tsx:148 | `(action: "close" \| "minimize_to_tray")`：分别 `invoke("minimize_to_tray")` / `invoke("app_quit")`；之后重新 `getConfig("close_action")` 回写本地 `closeAction`（用户可能勾选了「记住」） |
-| 渲染块 | custom-titlebar.tsx:165-289 | `titlebar-shell h-11`（`WebkitAppRegion: drag`，交互元素 `no-drag`）：品牌圆点 + 标题（`viewMode === "game"` 显示 `launcher.game_title`，否则 `ENDPROTOCOL`，178 行）→ `ToggleGroup` 视图切换（182-204，值 `"data"` / `"game"`，写入 `setLauncherMode`）→ 弹性占位 → 铃铛按钮（211-226，未读角标 `99+` 截断，`hasUrgent` 用 `bg-danger`）→ 新消息浮层（228-242，`z-[220]` 内嵌 `MessageCard compact`）→ 窗口三键（244-278）→ `<AppInfoDrawer>`（282）与 `<CloseConfirmDialog>`（283-287） |
+| 渲染块 | custom-titlebar.tsx:165-289 | `titlebar-shell h-11`（`WebkitAppRegion: drag`，交互元素 `no-drag`）：品牌圆点 + 标题（`viewMode === "game"` 显示 `launcher.game_title`，否则 `ENDPROTOCOL`，178 行）→ `ToggleGroup` 视图切换（182-204，值 `"data"` / `"game"`，写入 `setLauncherMode`）→ 弹性占位 → 铃铛按钮（211-226，未读角标 `99+` 截断，`hasUrgent` 用 `bg-danger`）→ 新消息浮层（228-246，`createPortal(document.body)` + `fixed right-12 top-10 z-[10005]`，内嵌 `MessageCard compact`）→ 窗口三键（248-282）→ `<AppInfoDrawer>`（286）与 `<CloseConfirmDialog>`（287-291） |
 
 **备注**：
 - **invoke 命令**：`minimize_window`（custom-titlebar.tsx:119）、`toggle_maximize_window`（127）、`minimize_to_tray`（139、151）、`app_quit`（141、153）。
 - **listen 事件**：`tauri://resize`（103）、`tauri://move`（107）。
 - 其它事件源：`subscribeMessages`、`subscribeLauncherMode`（均为前端 store 回调，非 Tauri event）。
-- 层级：标题栏 `titlebar-shell`，消息浮层 `z-[220]`；抽屉 `z-[200]/[210]`（在 `AppInfoDrawer` 内）。
+- 层级：标题栏 `titlebar-shell`；**消息浮层经 portal 渲染到 `document.body`、`fixed` + `z-[10005]`，高于任何 modal/抽屉/全屏遮罩（modal backdrop `z-[100]`~`z-[300]`、快选菜单 `z-[9999]`、取色器 `z-[10001]`），保证打开弹窗时依然可见**；抽屉 `z-[200]/[210]`（在 `AppInfoDrawer` 内）。
 - i18n key：`launcher.game_title`、`launcher.mode_data`、`launcher.mode_game`。
 - 游戏模式切换仅在 Windows 显示；macOS/Linux 通过 `isWindowsPlatform()` 隐藏切换控件，模式 store 也会拒绝切换到游戏模式。
 - 关闭确认框文案本身无 i18n key（见 close-confirm-dialog 备注）。

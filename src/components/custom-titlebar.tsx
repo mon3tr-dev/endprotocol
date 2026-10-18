@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -229,21 +230,23 @@ export const CustomTitlebar = () => {
             )}
           </button>
 
-          {newMessage && flyoutOpen && (
-            <div
-              className="absolute right-12 top-10 z-[220] w-[340px] max-w-[calc(100vw-2rem)] rounded-xl glass-surface-strong p-1 shadow-xl animate-fade-in"
-              style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
-            >
-              <MessageCard
-                msg={newMessage}
-                compact
-                onOpen={() => {
-                  setFlyoutOpen(false);
-                  setInfoOpen(true);
-                }}
-              />
-            </div>
-          )}
+          {newMessage && flyoutOpen &&
+            createPortal(
+              <div
+                className="fixed right-12 top-10 z-[10005] w-[340px] max-w-[calc(100vw-2rem)] rounded-xl glass-surface-strong p-1 shadow-xl animate-fade-in"
+                style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+              >
+                <MessageCard
+                  msg={newMessage}
+                  compact
+                  onOpen={() => {
+                    setFlyoutOpen(false);
+                    setInfoOpen(true);
+                  }}
+                />
+              </div>,
+              document.body,
+            )}
 
           <div
             className="flex items-center glass-surface border border-separator/60 rounded-xl overflow-hidden"
