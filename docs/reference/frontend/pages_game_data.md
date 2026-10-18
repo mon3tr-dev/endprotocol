@@ -107,13 +107,13 @@
 | L371–L379 | 筛选变化回第一页；切换分类重置 `onlyFree` |
 | L381–L409 | 早退分支：加载中 / 错误页 |
 | L411–L505 | JSX header：标题与账号信息（L415–L436）、角色下拉菜单（L440–L491）、同步按钮（L493–L503） |
-| L507–L533 | 分类切换条（`CATEGORIES` 渲染） |
+| L741–L767 | 分类切换条（`CATEGORIES` 渲染）：`sticky` 悬浮于内容区底部、`bg-surface/70` + `backdrop-blur-md` 普通模糊背景，相对内容区水平居中（`mx-auto max-w-2xl`），不再占据文档流顶部 |
 | L535–L545 | 无数据空态 |
 | L547–L573 | 统计卡片行（总抽/6★/5★/4★，含 RATE 与 AVG） |
 | L575–L582 | `GachaStatCharts` 图表渲染（星级分布/六星间隔/六星累计） |
 | L584–L591 | `GachaPityChart` 保底柱状图渲染 |
 | L593–L761 | 记录表格卡片：标题与条数（L595–L602）、筛选栏（L603–L673）、空态（L674–L683）、表格（L686–L753）、分页（L754–L758） |
-| L765–L832 | 同步进度 `CustomModal`（错误/进行中/完成三态） |
+| L769–L836 | 同步进度 `CustomModal`（错误/进行中/完成三态） |
 | L837–L839 | `pctText` 百分比格式化 |
 | L841–L848 | `RARITY_COLORS` 稀有度配色表 |
 | L850–L862 | `formatTime`、`rarityColor` |
@@ -151,7 +151,7 @@
 | ├ `pageGroups` | L347 | 跨组切片，赠送组被分页截断时标 `continuation`，供表格显示分割线 |
 | ├ 回第一页 effect | L372–L374 | 任一筛选变化 → `setPage(1)` |
 | ├ 分类重置 effect | L377–L379 | 分类变化 → `setOnlyFree(false)` |
-| ├ JSX 主体 | L411–L834 | 见「内部结构总览」L411–L832 |
+| ├ JSX 主体 | L411–L838 | 见「内部结构总览」L411–L836 |
 | `pctText` | L837 | `ratio` → 一位小数百分比字符串 |
 | `RARITY_COLORS` | L841 | 6/5/4 星的 text/badge/badge 背景类名 |
 | `formatTime` | L850 | 毫秒时间戳字符串 → 本地化时间 |

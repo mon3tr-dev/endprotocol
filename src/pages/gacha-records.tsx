@@ -413,7 +413,7 @@ export default function GachaRecordsPage() {
   }
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6 pb-12">
+    <div className="max-w-6xl mx-auto space-y-6 pb-28">
       {/* 页面标题 + 右上角操作（角色切换 / 同步） */}
       <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="min-w-0">
@@ -507,34 +507,6 @@ export default function GachaRecordsPage() {
           </GlassButton>
         </div>
       </header>
-
-      {/* 分类选择（大号多项 switch） */}
-      <div className="glass-surface rounded-full p-1.5 flex gap-1.5">
-        {CATEGORIES.map((c) => {
-          const active = category === c.key;
-          return (
-            <button
-              key={c.key}
-              type="button"
-              onClick={() => {
-                setCategory(c.key);
-                setTablePoolFilter(null);
-                setPage(1);
-              }}
-              className={clsx(
-                "flex-1 h-10 rounded-full text-sm lg:text-base font-semibold transition-all duration-200",
-                "flex items-center justify-center",
-                "hover:scale-105 active:scale-95",
-                active
-                  ? "glass-surface-strong border border-primary/50 text-primary"
-                  : "border border-transparent text-foreground/70 hover:text-foreground hover:bg-default-100",
-              )}
-            >
-              {isZh ? c.labelZh : c.labelEn}
-            </button>
-          );
-        })}
-      </div>
 
       {!active || active.records.length === 0 ? (
         <GlassCard className="p-16 glass-surface border border-separator/90">
@@ -765,6 +737,34 @@ export default function GachaRecordsPage() {
           </GlassCard>
         </>
       )}
+
+      {/* 分类选择（悬浮于内容区底部的多项 switch） */}
+      <div className="sticky bottom-4 z-40 mx-auto w-full max-w-2xl rounded-full p-1.5 flex gap-1.5 bg-surface/40 backdrop-blur-md border border-separator/70 shadow-lg">
+        {CATEGORIES.map((c) => {
+          const isActive = category === c.key;
+          return (
+            <button
+              key={c.key}
+              type="button"
+              onClick={() => {
+                setCategory(c.key);
+                setTablePoolFilter(null);
+                setPage(1);
+              }}
+              className={clsx(
+                "flex-1 h-10 rounded-full text-sm lg:text-base font-semibold transition-all duration-200",
+                "flex items-center justify-center",
+                "hover:scale-105 active:scale-95",
+                isActive
+                  ? "glass-surface-strong border border-primary/50 text-primary"
+                  : "border border-transparent text-foreground/70 hover:text-foreground hover:bg-default-100",
+              )}
+            >
+              {isZh ? c.labelZh : c.labelEn}
+            </button>
+          );
+        })}
+      </div>
 
       {/* 同步进度 Modal（关闭后后台继续同步） */}
       <CustomModal
