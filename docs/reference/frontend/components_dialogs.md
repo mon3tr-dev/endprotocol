@@ -118,8 +118,8 @@
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
 | `CustomTitlebar` | custom-titlebar.tsx:33 | 组件主体，无 props |
-| 局部状态 | custom-titlebar.tsx:35-45 | `isMaximized`、`infoOpen`（消息抽屉）、`unreadCount`、`hasUrgent`、`showCloseConfirm`、`closeAction`（默认 `"ask"`）、`viewMode`（初值 `getLauncherMode()`）、`newMessage`（浮层消息）、`flyoutOpen`（默认 `true`）；refs：`latestMessageId`、`flyoutTimer` |
-| 消息订阅 effect | custom-titlebar.tsx:47-65 | `subscribeMessages`：取最新一条，若 id 变化则 `setNewMessage` + 打开浮层并清掉旧定时器；当 `progress === undefined \|\| progress < 0`（非进度型消息）时 5 秒后自动隐藏浮层；同时刷新 `unreadCount`、`hasUrgent` |
+| 局部状态 | custom-titlebar.tsx:35-45 | `isMaximized`、`infoOpen`（消息抽屉）、`unreadCount`、`hasUrgent`、`showCloseConfirm`、`closeAction`（默认 `"ask"`）、`viewMode`（初值 `getLauncherMode()`）、`newMessage`（浮层消息）、`flyoutOpen`（默认 `true`）；refs：`seenMessageIds`（已展示过的消息 id Set，初始为启动时队列内全部 id）、`flyoutTimer` |
+| 消息订阅 effect | custom-titlebar.tsx:47-71 | `subscribeMessages`：仅在队首是**从未展示过的新消息**（`seenMessageIds` 中不存在）时弹出浮层并记录其 id；由于用 Set 判断「新增」，删除队首消息露出旧消息不会重复弹浮层。非进度型消息（`progress === undefined \|\| progress < 0`）5 秒后自动隐藏；若当前正在展示的消息已被从队列移除，则立即收起浮层；同时刷新 `unreadCount`、`hasUrgent` |
 | 定时器清理 effect | custom-titlebar.tsx:67-72 | 卸载时 `clearTimeout(flyoutTimer.current)` |
 | 视图模式订阅 effect | custom-titlebar.tsx:74-78 | `subscribeLauncherMode(() => setViewMode(getLauncherMode()))` |
 | 关闭行为配置 effect | custom-titlebar.tsx:81-85 | `getConfig<string>("close_action")` → `setCloseAction(value ?? "ask")` |

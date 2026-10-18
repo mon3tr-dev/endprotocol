@@ -44,14 +44,15 @@ export const CustomTitlebar = () => {
   const supportsLauncher = isWindowsPlatform();
   const [newMessage, setNewMessage] = useState<AppMessage | null>(null);
   const [flyoutOpen, setFlyoutOpen] = useState(true);
-  const latestMessageId = useRef(getMessages()[0]?.id ?? null);
+  const seenMessageIds = useRef(new Set(getMessages().map((m) => m.id)));
   const flyoutTimer = useRef<number | null>(null);
 
   useEffect(() => {
     return subscribeMessages(() => {
-      const latest = getMessages()[0];
-      if (latest && latest.id !== latestMessageId.current) {
-        latestMessageId.current = latest.id;
+      const messages = getMessages();
+      const latest = messages[0];
+      if (latest && !seenMessageIds.current.has(latest.id)) {
+        seenMessageIds.current.add(latest.id);
         setNewMessage(latest);
         setFlyoutOpen(true);
         if (flyoutTimer.current) window.clearTimeout(flyoutTimer.current);
@@ -62,6 +63,9 @@ export const CustomTitlebar = () => {
           );
         }
       }
+      setNewMessage((prev) =>
+        prev && !messages.some((m) => m.id === prev.id) ? null : prev,
+      );
       setUnreadCount(getUnreadCount());
       setHasUrgent(hasUrgentUnread());
     });
