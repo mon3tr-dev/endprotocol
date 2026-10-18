@@ -6,6 +6,7 @@ use tokio::sync::Mutex;
 
 use crate::models::game::*;
 use crate::services::game_launcher_service::GameLauncherService;
+use crate::utils::game_playtime::GamePlaytime;
 use crate::utils::official_launcher::{LaunchError, LaunchToken};
 
 /// Return the process-level bytes read counter used by Task Manager's disk rate.
@@ -668,17 +669,13 @@ pub fn launcher_check_executable(install_path: String, channel: String) -> Resul
 #[tauri::command]
 pub async fn launcher_check_game_running(channel: String) -> Result<bool, String> {
     let ch = parse_channel(&channel)?;
-    let process_name = ch.process_name();
-    let mut command = tokio::process::Command::new("tasklist");
-    #[cfg(target_os = "windows")]
-    command.creation_flags(windows_sys::Win32::System::Threading::CREATE_NO_WINDOW);
-    let output = command
-        .args(["/FI", &format!("IMAGENAME eq {}", process_name), "/NH"])
-        .output()
-        .await
-        .map_err(|e| e.to_string())?;
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    Ok(stdout.contains(process_name))
+    Ok(crate::utils::process::is_process_running(ch.process_name()).await)
+}
+
+/// 获取游戏累计运行时长快照（仅统计本软件运行期间）。
+#[tauri::command]
+pub fn launcher_get_game_playtime() -> GamePlaytime {
+    crate::utils::game_playtime::snapshot()
 }
 
 #[tauri::command]

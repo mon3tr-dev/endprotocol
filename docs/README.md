@@ -85,13 +85,13 @@
 | 文件 | 覆盖范围 |
 | --- | --- |
 | [reference/backend/bootstrap.md](reference/backend/bootstrap.md) | `main.rs`、`lib.rs`（含全部命令注册清单）、`tray.rs`、`build.rs`、`Cargo.toml`、`tauri.conf.json`、`capabilities/*`、`examples/sign_test.rs` |
-| [reference/backend/commands.md](reference/backend/commands.md) | `commands/` 全部 15 个文件、**109 处 `#[tauri::command]` 注解**：参数、返回值、内部调用链 |
+| [reference/backend/commands.md](reference/backend/commands.md) | `commands/` 全部 15 个文件、**110 处 `#[tauri::command]` 注解**：参数、返回值、内部调用链 |
 | [reference/backend/models.md](reference/backend/models.md) | `models/` 全部 7 个文件：79 个结构体/枚举的字段与 serde 映射 |
 | [reference/backend/services_account.md](reference/backend/services_account.md) | `services/account_service.rs`（约 3100 行）：登录、凭证刷新、角色数据、状态中枢 |
 | [reference/backend/services_skland.md](reference/backend/services_skland.md) | `services/skland_service.rs`：森空岛 API 端点总表、签名与加密流程 |
 | [reference/backend/services_launcher.md](reference/backend/services_launcher.md) | `services/game_launcher_service.rs`（约 2960 行）：下载/校验/切服/进度事件 |
 | [reference/backend/services_others.md](reference/backend/services_others.md) | `gacha_service`、`char_detail_service`、`char_wiki_detail_service`、`avatar_cache_service`、`config_service`、`data_query`、`network_service` |
-| [reference/backend/utils.md](reference/backend/utils.md) | `utils/`：错误类型、加密、HTTP、日志、路径、抓包 |
+| [reference/backend/utils.md](reference/backend/utils.md) | `utils/`：错误类型、加密、HTTP、日志、路径、抓包、进程探测（`process`）、游戏时长统计（`game_playtime`） |
 | [reference/ipc_index.md](reference/ipc_index.md) | 命令名 ↔ 后端定义位置 ↔ 前端调用方（脚本生成的对照表） |
 
 ### 3.2 前端 `src/`

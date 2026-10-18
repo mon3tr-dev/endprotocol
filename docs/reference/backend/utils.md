@@ -1,17 +1,17 @@
 # 后端工具层 — 文件功能参考
 
 > 逐文件精读源码生成。行号基于当前工作区版本，仅用于快速定位。
-> 本文件覆盖：`src-tauri/src/utils/` 下全部 8 个文件（mod / error / hg_crypto / http_client / logger / official_launcher / paths / capture）。
+> 本文件覆盖：`src-tauri/src/utils/` 下全部 10 个文件（mod / error / hg_crypto / http_client / logger / official_launcher / paths / capture / game_playtime / process）。
 
 ## `src-tauri/src/utils/mod.rs`
-**职责**：工具层模块清单（9 行）。声明 7 个子模块并统一再导出统一错误类型。
-**导出**：`pub mod capture`、`pub mod error`、`pub mod hg_crypto`、`pub mod http_client`、`pub mod logger`、`pub mod official_launcher`、`pub mod paths`；`pub use error::AppError`（mod.rs:9）。
+**职责**：工具层模块清单（11 行）。声明 9 个子模块并统一再导出统一错误类型。
+**导出**：`pub mod capture`、`pub mod error`、`pub mod game_playtime`、`pub mod hg_crypto`、`pub mod http_client`、`pub mod logger`、`pub mod official_launcher`、`pub mod paths`、`pub mod process`；`pub use error::AppError`（mod.rs:11）。
 **主要依赖**：`crate::utils::error`。
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
-| `pub mod capture/error/hg_crypto/http_client/logger/official_launcher/paths` | mod.rs:1-7 | 7 个子模块声明，全部 `pub` |
-| `pub use error::AppError` | mod.rs:9 | 别名导出，使调用方写作 `crate::utils::AppError` |
+| `pub mod capture/error/game_playtime/hg_crypto/http_client/logger/official_launcher/paths/process` | mod.rs:1-9 | 9 个子模块声明，全部 `pub` |
+| `pub use error::AppError` | mod.rs:11 | 别名导出，使调用方写作 `crate::utils::AppError` |
 
 **备注**：全 crate 通过 `crate::utils::{capture, paths, http_client, AppError}` 这类分组导入使用（如 services/account_service.rs:20、services/avatar_cache_service.rs:6、services/config_service.rs:8）。
 
@@ -290,6 +290,47 @@
 - `send`/`send_stream` 的调用方遍布全后端：commands/updater.rs:35/70、commands/image.rs:105、services/skland_service.rs:341/569/780/867/961/1060/1121、services/account_service.rs:1862/1916/2016/2079/2144/2872/2952/3008、services/gacha_service.rs:780、services/char_detail_service.rs:631、services/avatar_cache_service.rs:176、services/game_launcher_service.rs:180/462/665/2016/2175/2822。
 - 会话 id 同时充当目录名，所有读写路径都先经 `valid_id` 白名单校验，杜绝 `../` 穿越。
 - 数据结构（`CaptureEntry` 等）同时被 `commands/capture.rs` 直接导入并返回给前端。
+
+---
+
+## `src-tauri/src/utils/game_playtime.rs`
+**职责**：游戏运行时长统计（187 行）。作为进程级单例，只统计 EndProtocol 自身运行期间的游戏进程在线时长：后台每 5 秒探测一次 `Endfield.exe`，进程出现即开始一段会话、消失即把该段累加进总时长并落盘；应用启动时若游戏已在运行则从启动时刻算起，应用退出时若游戏仍在运行则计到退出时刻。
+**导出**：`TOTAL_SECONDS_KEY`、`GamePlaytime`、`init`、`snapshot`、`finalize`；私有：常量 `POLL_SECONDS`/`FOLD_SECONDS`/`GAME_PROCESS_NAME`、`Inner`、`STATE`、`CONFIG`、`state`、`now_secs`、`poll_loop`、`update`、`persist`。
+**主要依赖**：`serde::Serialize`、`std::sync::{Arc, Mutex, OnceLock}`、`std::time::{SystemTime, UNIX_EPOCH}`、`crate::services::config_service::ConfigService`、`crate::utils::process::is_process_running`、`tauri::async_runtime`、`tracing`。
+
+| 符号 | 位置 | 说明 |
+| --- | --- | --- |
+| `TOTAL_SECONDS_KEY` | :19 | `"game_playtime_total_seconds"`，累计总时长在 `app_config.json` 中的键（u64 秒） |
+| `POLL_SECONDS` / `FOLD_SECONDS` | :22 / :25 | 进程探测间隔 5s；运行中每累积 60s 把已过去时长折入总数并落盘（崩溃安全） |
+| `GAME_PROCESS_NAME` | :28 | `"Endfield.exe"`（各渠道一致） |
+| `GamePlaytime`（struct，`Serialize`） | :31-39 | 前端快照：`total_seconds`（不含当前会话）、`session_seconds`（未运行为 0）、`running` |
+| `struct Inner` | :41-47 | 内存态：`total_seconds`、`session_start`、`running`、`first_poll`、`app_start` |
+| `static STATE / CONFIG` | :49-50 | `OnceLock<StdMutex<Inner>>` 与 `OnceLock<Arc<StdMutex<ConfigService>>>` 单例 |
+| `state()` / `now_secs()` | :52 / :64 | 惰性初始化单例；当前 Unix 秒（失败为 0） |
+| `init(config_service)` | :72 | 从 config 读回 `total_seconds`，记录 `app_start`，置首轮探测标记，`CONFIG.set` 后 `tauri::async_runtime::spawn(poll_loop)`。lib.rs 在静默/完整两种 setup 中均调用 |
+| `poll_loop()`（私有 async） | :91 | 循环：`is_process_running("Endfield.exe")` → `update` → sleep 5s |
+| `update(running)`（私有） | :99 | 会话开始（首次探测到运行从 `app_start` 算、否则从此刻算）；会话结束累加并落盘；运行中每满 60s 折叠落盘 |
+| `snapshot() -> GamePlaytime` | :143 | 汇报当前总数 + 实时会话（命令 `launcher_get_game_playtime` 的返回） |
+| `finalize()` | :162 | 应用退出（`RunEvent::Exit`）时若仍在运行则计到此刻并落盘；幂等 |
+| `persist(inner)`（私有） | :174 | 把 `total_seconds` 写入 `ConfigService`（`app_config.json`） |
+
+**备注**：
+- 事件/命令关联：`launcher_get_game_playtime`（commands/launcher.rs）→ `snapshot`；lib.rs 的 `.setup()` 调用 `init`，`.run(|_, event| …)` 在 `RunEvent::Exit` 调用 `finalize`。
+- 仅统计 EndProtocol 运行期间；游戏在软件未运行时的时间段不计入。运行中每 60s 折叠落盘，进程被强杀最多丢 60s。
+- 存储位置：`%LOCALAPPDATA%\cn.msk-network.endprotocol\app_config.json` 的 `game_playtime_total_seconds`。
+
+---
+
+## `src-tauri/src/utils/process.rs`
+**职责**：进程探测辅助（31 行）。供 `launcher_check_game_running` 命令与游戏运行时长统计共用的「进程是否在运行」查询。
+**导出**：`is_process_running`。
+**主要依赖**：`tokio::process::Command`、`windows-sys`（`Win32_System_Threading::CREATE_NO_WINDOW`，仅 Windows）。
+
+| 符号 | 位置 | 说明 |
+| --- | --- | --- |
+| `is_process_running(process_name) -> bool`（pub async） | :8 | Windows：`tasklist /FI "IMAGENAME eq <name>" /NH`，`CREATE_NO_WINDOW`，命中 stdout 含进程名即 true，命令失败记 debug 日志并返回 false；非 Windows 恒 false。调用方：commands/launcher.rs（`launcher_check_game_running`）、utils/game_playtime.rs（`poll_loop`） |
+
+**备注**：探测基于 `tasklist` 镜像名匹配（与旧 `launcher_check_game_running` 实现一致），非 Windows 是空实现（游戏仅支持 Windows）。
 
 ---
 

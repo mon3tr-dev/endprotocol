@@ -295,7 +295,7 @@
 
 ## `src/utils/launcherService.ts`
 **职责**：游戏启动器（安装/更新/校验修复/预下载/渠道切换/启动/进程控制/公告背景资源）的全部 Tauri IPC 封装 + 三个进度事件监听 + 渠道/阶段标签与字节格式化工具。
-**导出**：类型 `GameChannel`、`GameStatus`、`ActiveOperation`、`RemotePackage`、`DownloadProgress`、`BackgroundMedia`、`LauncherResult`、`PayloadState`、`BannerItem`、`AnnouncementItem`、`LauncherNoticeContent`、`FileScanResult`、`DiskSpace`；函数 `checkGameStatus`、`installOrUpdate`、`verifyAndRepair`、`getProcessReadBytes`、`getRemoteVersion`、`getPayloadState`、`cancelDownload`、`preloadDownload`、`installPreload`、`resetDownloadCancel`、`hasDownloadCache`、`getBanners`、`getAnnouncements`、`getNoticeContent`、`getBackgroundImage`、`startGame`、`syncSilentLaunchConfig`、`restoreLaunchConfig`、`getGameLaunchCommand`、`createGameShortcut`、`browseFolder`、`checkExecutable`、`checkGameRunning`、`killGame`、`detectChannel`、`scanInstallDir`、`getDiskSpace`、`switchChannel`、`cancelSwitch`、`cancelAll`、`onLauncherProgress`、`onProgress`、`onSwitchProgress`、`formatBytes`；常量 `CHANNEL_LABELS`、`ALL_CHANNELS`、`STAGE_LABELS`、`LAUNCH_TOKEN_KEYS`；函数 `splitLaunchToken`（解析 `<token>: <detail>` 契约串）。
+**导出**：类型 `GameChannel`、`GameStatus`、`ActiveOperation`、`RemotePackage`、`DownloadProgress`、`BackgroundMedia`、`LauncherResult`、`PayloadState`、`BannerItem`、`AnnouncementItem`、`LauncherNoticeContent`、`FileScanResult`、`DiskSpace`、`GamePlaytime`；函数 `checkGameStatus`、`installOrUpdate`、`verifyAndRepair`、`getProcessReadBytes`、`getRemoteVersion`、`getPayloadState`、`cancelDownload`、`preloadDownload`、`installPreload`、`resetDownloadCancel`、`hasDownloadCache`、`getBanners`、`getAnnouncements`、`getNoticeContent`、`getBackgroundImage`、`startGame`、`syncSilentLaunchConfig`、`restoreLaunchConfig`、`getGameLaunchCommand`、`createGameShortcut`、`browseFolder`、`checkExecutable`、`checkGameRunning`、`killGame`、`getGamePlaytime`、`detectChannel`、`scanInstallDir`、`getDiskSpace`、`switchChannel`、`cancelSwitch`、`cancelAll`、`onLauncherProgress`、`onProgress`、`onSwitchProgress`、`formatBytes`；常量 `CHANNEL_LABELS`、`ALL_CHANNELS`、`STAGE_LABELS`、`LAUNCH_TOKEN_KEYS`；函数 `splitLaunchToken`（解析 `<token>: <detail>` 契约串）。
 **主要依赖**：`@tauri-apps/api/core` 的 `invoke`、`@tauri-apps/api/event` 的 `listen` / 类型 `UnlistenFn`。
 
 | 符号 | 位置 | 说明 |
@@ -325,6 +325,7 @@
 | `checkExecutable` | launcherService.ts:226 | invoke `launcher_check_executable`，参数 `{installPath, channel}`，返回 `boolean` |
 | `checkGameRunning` | launcherService.ts:236 | invoke `launcher_check_game_running`，参数 `{channel}`，返回 `boolean` |
 | `killGame` | launcherService.ts:244 | invoke `launcher_kill_game`，参数 `{channel}`，返回 `boolean` |
+| `getGamePlaytime` | launcherService.ts:365 | invoke `launcher_get_game_playtime`，无参，返回 `GamePlaytime {total_seconds, session_seconds, running}`（累计总时长 + 当前会话 + 运行态） |
 | `detectChannel` | launcherService.ts:252 | invoke `launcher_detect_channel`，参数 `{installPath}`，返回 `GameChannel \| null` |
 | `scanInstallDir` | launcherService.ts:258 | invoke `launcher_scan_install_dir`，参数 `{channel, installPath}`，返回 `FileScanResult`（损坏/缺失文件清单与字节统计） |
 | `getDiskSpace` | launcherService.ts:268 | invoke `launcher_get_disk_space`，参数 `{path}`，返回 `DiskSpace {total, free}` |
@@ -341,12 +342,12 @@
 | 区间 | 内容 |
 | --- | --- |
 | launcherService.ts:8-105 | 全部类型定义（渠道、状态、进度、包信息、公告、扫描结果、磁盘空间） |
-| launcherService.ts:109-290 | IPC 封装函数（25 个命令包装） |
+| launcherService.ts:109-290 | IPC 封装函数（27 个命令包装） |
 | launcherService.ts:294-316 | 三个事件监听器 |
 | launcherService.ts:320-351 | 常量 `CHANNEL_LABELS`（4 渠道中英标签）、`ALL_CHANNELS`、`formatBytes`、`STAGE_LABELS`（8 个阶段中英标签） |
 
 **备注**：
-- 封装的 invoke 命令：`launcher_check_status`、`launcher_install_or_update`、`launcher_verify_and_repair`、`launcher_get_process_read_bytes`、`launcher_get_remote_version`、`launcher_get_payload_state`、`launcher_cancel_download`、`launcher_preload_download`、`launcher_install_preload`、`launcher_reset_download_cancel`、`launcher_has_download_cache`、`launcher_get_banners`、`launcher_get_announcements`、`launcher_get_notice_content`、`launcher_get_background_image`、`launcher_start_game`、`launcher_browse_folder`、`launcher_check_executable`、`launcher_check_game_running`、`launcher_kill_game`、`launcher_detect_channel`、`launcher_scan_install_dir`、`launcher_get_disk_space`、`launcher_switch_channel`、`launcher_cancel_switch`、`launcher_cancel_all`（共 26 个）。
+- 封装的 invoke 命令：`launcher_check_status`、`launcher_install_or_update`、`launcher_verify_and_repair`、`launcher_get_process_read_bytes`、`launcher_get_remote_version`、`launcher_get_payload_state`、`launcher_cancel_download`、`launcher_preload_download`、`launcher_install_preload`、`launcher_reset_download_cancel`、`launcher_has_download_cache`、`launcher_get_banners`、`launcher_get_announcements`、`launcher_get_notice_content`、`launcher_get_background_image`、`launcher_start_game`、`launcher_browse_folder`、`launcher_check_executable`、`launcher_check_game_running`、`launcher_kill_game`、`launcher_get_game_playtime`、`launcher_detect_channel`、`launcher_scan_install_dir`、`launcher_get_disk_space`、`launcher_switch_channel`、`launcher_cancel_switch`、`launcher_cancel_all`（共 27 个）。
 - 监听的 Tauri 事件：`launcher-progress`、`launcher://progress`、`launcher://switch-progress`（注意前两者命名风格不一致，属两套事件源）。
 - 配置键：本文件不读写任何 `configService` 配置键（安装路径、渠道等由调用方传入）。
 - 缓存策略：无前端缓存；远程版本/资源的缓存由后端负责。除 `verifyAndRepair` 外所有函数都**不捕获错误**，异常直接上抛给调用方；`verifyAndRepair` 在业务失败时抛出的是字符串 `result.message` 而非 `Error` 对象。

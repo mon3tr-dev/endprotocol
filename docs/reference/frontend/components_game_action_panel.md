@@ -2,7 +2,7 @@
 
 > 逐行精读源码生成。行号基于当前工作区版本，仅用于快速定位。
 
-**文件职责**：Windows 游戏启动器主操作面板，聚合「定位游戏目录 → 检测渠道 → 安装/更新/校验/修复/预载 → 启动/停止游戏 → 切换渠道」全流程，并提供下载进度浮层、确认对话框、磁盘空间预检与设置入口。仅 Windows 的 dashboard 游戏模式会挂载该组件；Linux/macOS 不显示游戏入口。
+**文件职责**：Windows 游戏启动器主操作面板，聚合「定位游戏目录 → 检测渠道 → 安装/更新/校验/修复/预载 → 启动/停止游戏 → 切换渠道」全流程，并提供下载进度浮层、确认对话框、磁盘空间预检、累计游戏运行时长徽章与设置入口。仅 Windows 的 dashboard 游戏模式会挂载该组件；Linux/macOS 不显示游戏入口。
 
 **导出**：`GameActionPanel`（无 props 的函数组件，行 52）。
 
@@ -19,7 +19,7 @@
 | 62–247 | 本文件内部工具与子组件：`formatEta`(62)、`ButtonProgressRing`(72)、`ProgressFlyout`(114)、`DownloadProgressBody`(138)、`DiskSpaceBar`(183) |
 | 248–342 | `GameActionPanel` 组件声明与 30+ 个 useState / useRef 初始化 |
 | 301–387 | 确认对话框状态、`activeOp`/`progress`/`preparing`/`switching`/`switchProgress`/`switchTarget` 派生值 |
-| 340–440 | 渠道持久化、状态查询 `checkStatus`、渠道自动检测 effect、静默刷新 `refreshStatus`、游戏运行 3 秒轮询 |
+| 340–440 | 渠道持久化、状态查询 `checkStatus`、渠道自动检测 effect、静默刷新 `refreshStatus`、游戏运行 3 秒轮询；累计时长 5 秒轮询 `refreshPlaytime` + 运行中每秒本地补间 |
 | 441–545 | 进度事件订阅 effect（下载/校验/预下载/切换速度计算、完成态清理） |
 | 548–588 | 菜单浮层外部点击/滚动关闭 effect |
 | 590–980 | 业务处理器：定位、安装、渠道选择、渠道切换、启动、更新、校验、取消、预下载确认/开始/取消、杀进程 |
@@ -27,7 +27,7 @@
 | 1008–1044 | 三个 `useLayoutEffect`（主按钮浮层 / 预下载浮层 / 菜单浮层定位） |
 | 1046–1254 | 主按钮文案 `getButtonLabel`、标签变更触发淡入、图标 `getButtonIcon` |
 | 1256–1373 | 主按钮点击分发 `handleButtonClick`、确认回调 `handleConfirmAction` |
-| 1376–1552 | JSX 操作行：预下载按钮（预下载/预下载中/已预下载）+ 预下载进度浮层、主操作按钮、汉堡菜单按钮；右上角服务器指示（绝对定位在内容层右上角，1378–1417，点击徽章开切服对话框） |
+| 1376–1552 | JSX 操作行：累计时长徽章（操作行首个子元素，位于开始游戏按钮左侧）+ 预下载按钮（预下载/预下载中/已预下载）+ 预下载进度浮层、主操作按钮、汉堡菜单按钮；右上角状态栏（绝对定位在内容层右上角，1545–1578，纵向堆叠：服务器指示徽章 + 检测中指示，点击渠道徽章开切服对话框） |
 | 1554–1880 | 主按钮进度浮层（Portal）：准备/下载/校验/比较/修复/应用/切换 7 类进度展示 |
 | 1882–1884 | 汉堡菜单按钮（启动设置入口已并入菜单，不再单独占位） |
 | 1882–2060 | 汉堡菜单浮层（Portal）：游戏设置、启动设置、校验完整性、快速校验、清理临时文件、定位游戏 |
@@ -49,6 +49,7 @@
 | `STORAGE_KEY_SKIP_STOP_CONFIRM` | 49 | `"launcher_skip_stop_confirm"`，停止游戏不再确认 |
 | `STORAGE_KEY_CANCEL_BEHAVIOR` | 50 | `"launcher_cancel_behavior"`，取值 `"ask"｜"keep"｜"delete"` |
 | `formatEta` | 62–69 | 内部工具：剩余秒数 → `m:ss` / `h:mm:ss` |
+| `formatPlaytime` | 79–85 | 内部工具：总秒数 → `h:mm:ss`（小时不补零，分/秒补零），负值归零 |
 | `ProgressFlyout` | 72–94 | 内部组件：进度浮层外壳（`createPortal` + 玻璃样式 + 边界翻转），安装/校验/预下载共用 |
 | `DownloadProgressBody` | 96–139 | 内部组件：浮层里的下载型内容（已下载/总量、进度条、速度、剩余时间、当前文件） |
 | `DiskSpaceBar` | 141–204 | 内部组件：磁盘占用三色条（已用/需要下载/下载后剩余），安装确认与预下载确认共用 |
@@ -56,6 +57,7 @@
 | `checkStatus` | 173–196 | `useCallback`：查询游戏状态并置 `statusReady` |
 | `refreshStatus` | 241–252 | `useCallback`：静默刷新，供进度完成后调用 |
 | `checkRunning` | 259–266 | `useCallback`：查询游戏是否在运行 |
+| `refreshPlaytime` | 531–539 | `useCallback`：调 `getGamePlaytime` 刷新 `playtime` 快照并清零本地补间 `playtimeTick`；失败保留上一次快照 |
 | `handleLocate` | 590–610 | 选择目录、持久化、检测渠道 |
 | `startInstall` | 612–631 | 执行安装/更新，成功后自动做一次 quick 校验 |
 | `handleInstall` | 633–681 | 首次安装编排（选目录 → 检测渠道 → 缓存续传/渠道选择） |
@@ -72,7 +74,7 @@
 | `handlePreloadCancel` | 1067–1075 | 取消预下载（点「预下载中/取消预下载」按钮触发）：按「取消下载行为」决定保留/删除分卷，不动主按钮状态 |
 | `handlePreloadClick` | 1077–1087 | 点「预下载」按钮：拉取 `getDiskSpace` 并打开预下载确认框 |
 | `updatePreloadFlyoutPos` | 1089–1101 | 依 `preloadBtnRef` 计算预下载进度浮层坐标（与主按钮同一套边界处理） |
-| `handleKill` | 1103–1105 | 杀掉游戏进程并刷新运行态 |
+| `handleKill` | 1170–1174 | 调 `killGame` 杀掉游戏进程后 `checkRunning` + `refreshPlaytime` 刷新运行态与时长 |
 | `getButtonLabel` | 1050–1075 | 依状态返回主按钮文案（hover 时切为取消类文案；预下载不参与） |
 | `getButtonIcon` | 1084–1254 | 依状态返回 SVG 图标（旋转/暂停/下载/刷新/播放） |
 | `handleButtonClick` | 1256–1299 | 主按钮统一分发：取消切换/停止/取消校验/取消下载/安装/更新/启动 |
@@ -83,10 +85,13 @@
 ## 关键功能分区
 
 **常量与状态初始化（47–166）**
-4 个 localStorage 键常量 + 统一按钮风格常量 `PILL_BASE`/`PILL_INTERACTIVE`/`PILL_TEXT`（54–58，面板内所有胶囊按钮共用，与预下载按钮同风格）；状态包括：`channel`、`gameStatus`、`localActiveOp`、`installPath`、`detectedChannel`、`detecting`、`statusReady`、`flyoutOpen`、`hasTempFiles`、`settingsOpen`、`launchSettingsOpen`、`gameRunning`、`btnHovered`、`btnLabelKey`、`preloadProgress`、`downloadSpeed`、`channelSelectOpen`、`pendingInstallPath`、`scanResult`、`scanOpen`、`scanning`、`diskSpace`、`switchOpen`、`switchConfirmTarget`、`verifySpeed`、`progressFlyoutPos`、`menuFlyoutPos`、`confirmAction`、`confirmCheckbox`；refs：`prevBtnLabelRef`、`flyoutRef`、`btnRef`、`hamburgerRef`、`speedRef`、`verifySpeedRef`、`cancellingRef`、`menuFlyoutRef`。派生值 `activeOp`（132，本地事件优先于轮询值）、`progress`（133–147）、`preparing`（148）、`switching`（151）、`switchProgress`（152–164）、`switchTarget`（165）；安装相关派生值 `isInstalled`/`hasUpdate`/`hasPreload`/`preloadCompleted`（782–785）、`preloadTotalBytes`（744，提前声明供 `handlePreload` 依赖数组使用）、`preloading`/`preloadPercent`（787–795）、`busyWithDownload = isActionRunning || preloading`（811，用于禁用渠道徽章与菜单项）。
+4 个 localStorage 键常量 + 统一按钮风格常量 `PILL_BASE`/`PILL_INTERACTIVE`/`PILL_TEXT`（54–58，面板内所有胶囊按钮共用，与预下载按钮同风格）；状态包括：`channel`、`gameStatus`、`localActiveOp`、`installPath`、`detectedChannel`、`detecting`、`statusReady`、`flyoutOpen`、`hasTempFiles`、`settingsOpen`、`launchSettingsOpen`、`gameRunning`、`btnHovered`、`btnLabelKey`、`preloadProgress`、`downloadSpeed`、`channelSelectOpen`、`pendingInstallPath`、`scanResult`、`scanOpen`、`scanning`、`diskSpace`、`switchOpen`、`switchConfirmTarget`、`verifySpeed`、`progressFlyoutPos`、`menuFlyoutPos`、`confirmAction`、`confirmCheckbox`、`playtime`、`playtimeTick`；refs：`prevBtnLabelRef`、`flyoutRef`、`btnRef`、`hamburgerRef`、`speedRef`、`verifySpeedRef`、`cancellingRef`、`menuFlyoutRef`。派生值 `activeOp`（132，本地事件优先于轮询值）、`progress`（133–147）、`preparing`（148）、`switching`（151）、`switchProgress`（152–164）、`switchTarget`（165）；安装相关派生值 `isInstalled`/`hasUpdate`/`hasPreload`/`preloadCompleted`（782–785）、`preloadTotalBytes`（744，提前声明供 `handlePreload` 依赖数组使用）、`preloading`/`preloadPercent`（787–795）、`busyWithDownload = isActionRunning || preloading`（811，用于禁用渠道徽章与菜单项）。
 
 **状态查询与渠道自动检测（168–272）**
 渠道写入 localStorage（168–170）；挂载时经 `restoreLaunchConfig` 从 app config 反向回灌 `launcher_install_path`/`launcher_channel` 到 localStorage 与 state（仅挂载一次，路径需存在才写——修复静默命令行启动后从托盘打开完整版时游戏面板显示「定位游戏」的问题）；`checkStatus` 触发 effect（254–256）；`detectChannel` effect（199–238，带取消标记与缓存命中短路，检测到不同渠道时回写 state 与 localStorage）；`checkGameRunning` 每 3 秒轮询（268–272）。
+
+**累计游戏运行时长（395–399, 530–552, 1580–1604）**
+后端在 EndProtocol 运行期间统计游戏在线时长。前端 `refreshPlaytime`（531）挂载时调用并每 5 秒轮询 `getGamePlaytime`，写入 `playtime` 快照（`GamePlaytime {total_seconds, session_seconds, running}`）并清零本地补间 `playtimeTick`；`playtime.running` 为真时另有每秒 `setPlaytimeTick +1` 的 effect（548–552）在两次轮询间平滑推进。派生值 `playtimeSession = session_seconds + (running ? tick : 0)`（396）仅用于把当前会话并入总数，`playtimeTotal = total_seconds + playtimeSession`（399）。`handleKill`（1170）杀进程后同步刷新。徽章位于操作行内、开始游戏按钮左侧（`flyoutRef` 容器首个子元素），仅以 `formatPlaytime` 显示累计总时长文本（时钟图标 + `h:mm:ss`，**无文字标签、不展示本次会话**），并随运行实时增长；仅 `isInstalled && playtime` 时渲染。
 
 **进度事件与速度计算（441–545）**
 `onLauncherProgress`：`stage === "preloading"` 时只写 `preloadProgress` 并用 `speedRef` 差分算预下载速度；其余事件先清 `preloadProgress`，再写入 `localActiveOp`（`downloading`/`repairing` 算下载速度、`verifying` 用 `getProcessReadBytes` 差分算校验速度、`completed`/`error` 清空并 500ms 后 `refreshStatus`）。`onSwitchProgress`：切换阶段同理。清理时解除两订阅。
@@ -141,6 +146,7 @@
    - `launcher_start_game`（635）
    - `launcher_browse_folder`（427、470、613、2410）
    - `launcher_check_game_running`（272）
+   - `launcher_get_game_playtime`（531）
    - `launcher_kill_game`（782）
    - `launcher_detect_channel`（231、433、476、619）
    - `launcher_scan_install_dir`（532）
@@ -154,7 +160,7 @@
    - `GameSettingsModal`：`initialPath: string`（初始安装路径）、`onClose: () => void`（关闭）、`onSave: (path: string) => void`（保存并触发状态刷新）。
    - `GameLaunchSettingsModal`：已从库中删除，「启动设置」入口直接挂 `QuickLaunchModal`（props 见 components_settings_panels.md）。
    - `GlassAlertDialog` / `GlassModal` / `GlassButton` 为其复合子组件提供的 `isOpen`、`onOpenChange`、`onPress`、`className`、`variant`、`status` 等 UI 属性。
-4. **状态管理要点**：全部为组件内 `useState`，无全局 store；`localActiveOp`（事件实时）优先于 `gameStatus.active_operation`（轮询）；`cancellingRef` 在取消期间屏蔽后续进度事件；游戏运行态 3 秒轮询；持久化键为 `launcher_install_path`、`launcher_channel`、`launcher_skip_stop_confirm`、`launcher_cancel_behavior`，另直接读 `launcher_verify_threads`（691–694、716–719）；`confirmAction` 为五值联合（`cancel-download`｜`stop-game`｜`resume-install`｜`delete-temp`｜`verify-confirm`）；880–884 在渲染期间比较文案并 `setBtnLabelKey` 以驱动 `animate-fade-in`。
+4. **状态管理要点**：全部为组件内 `useState`，无全局 store；`localActiveOp`（事件实时）优先于 `gameStatus.active_operation`（轮询）；`cancellingRef` 在取消期间屏蔽后续进度事件；游戏运行态 3 秒轮询，累计时长为 5 秒轮询 `getGamePlaytime` + 运行中每秒本地补间；持久化键为 `launcher_install_path`、`launcher_channel`、`launcher_skip_stop_confirm`、`launcher_cancel_behavior`，另直接读 `launcher_verify_threads`（691–694、716–719）；`confirmAction` 为五值联合（`cancel-download`｜`stop-game`｜`resume-install`｜`delete-temp`｜`verify-confirm`）；880–884 在渲染期间比较文案并 `setBtnLabelKey` 以驱动 `animate-fade-in`。
 5. **异常/待关注**：
    - `handleQuickVerify` 依赖数组（734）缺 `formatVerifyResult`，而 `handleVerify`（709）包含，存在闭包过期风险。
    - 扫描结果 `download_bytes === 0` 时确认按钮文案为 `launcher.start_game`（2120）但实际执行 `startInstall(false)`（2101），文案与行为不符。

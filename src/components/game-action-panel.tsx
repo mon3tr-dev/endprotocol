@@ -20,6 +20,7 @@ import {
   type DownloadProgress,
   type FileScanResult,
   type DiskSpace,
+  type GamePlaytime,
   type LauncherResult,
   ALL_CHANNELS,
   checkGameStatus,
@@ -35,6 +36,7 @@ import {
   checkGameRunning,
   restoreLaunchConfig,
   killGame,
+  getGamePlaytime,
   detectChannel,
   scanInstallDir,
   getDiskSpace,
@@ -71,6 +73,15 @@ function formatEta(seconds: number): string {
   return h > 0
     ? `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`
     : `${m}:${String(s).padStart(2, "0")}`;
+}
+
+/** 运行时长秒数 → `h:mm:ss`（小时不补零，语言无关） */
+function formatPlaytime(totalSeconds: number): string {
+  const seconds = Math.max(0, Math.floor(totalSeconds));
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = seconds % 60;
+  return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
 /** 环绕按钮描边显示下载进度，从按钮正上方开始顺时针绘制 */
@@ -281,6 +292,8 @@ export function GameActionPanel() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [quickLaunchOpen, setQuickLaunchOpen] = useState(false);
   const [gameRunning, setGameRunning] = useState(false);
+  const [playtime, setPlaytime] = useState<GamePlaytime | null>(null);
+  const [playtimeTick, setPlaytimeTick] = useState(0);
   const [btnHovered, setBtnHovered] = useState(false);
   const [btnLabelKey, setBtnLabelKey] = useState(0);
   const prevBtnLabelRef = useRef<string>("");
@@ -378,6 +391,12 @@ export function GameActionPanel() {
       : null;
   const switchTarget =
     (switchProgress?.to_channel as GameChannel | null) ?? null;
+
+  // 总时长 = 后端累计总数 + 实时会话（后端会话 + 本地每秒补间）
+  const playtimeSession = playtime
+    ? playtime.session_seconds + (playtime.running ? playtimeTick : 0)
+    : 0;
+  const playtimeTotal = playtime ? playtime.total_seconds + playtimeSession : 0;
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY_CHANNEL, channel);
@@ -507,6 +526,30 @@ export function GameActionPanel() {
     const timer = setInterval(checkRunning, 3000);
     return () => clearInterval(timer);
   }, [checkRunning]);
+
+  // Poll accumulated playtime (tracked by the backend while EndProtocol runs)
+  const refreshPlaytime = useCallback(async () => {
+    try {
+      setPlaytime(await getGamePlaytime());
+    } catch {
+      // 后端不可用时保留上一次快照
+    } finally {
+      setPlaytimeTick(0);
+    }
+  }, []);
+
+  useEffect(() => {
+    refreshPlaytime();
+    const timer = setInterval(refreshPlaytime, 5000);
+    return () => clearInterval(timer);
+  }, [refreshPlaytime]);
+
+  // While the game is running, tick the session timer locally between polls
+  useEffect(() => {
+    if (!playtime?.running) return;
+    const timer = setInterval(() => setPlaytimeTick((v) => v + 1), 1000);
+    return () => clearInterval(timer);
+  }, [playtime?.running]);
 
   // Listen for progress events — update localActiveOp for real-time UI + calculate speed
   useEffect(() => {
@@ -1127,7 +1170,8 @@ export function GameActionPanel() {
   const handleKill = useCallback(async () => {
     await killGame(channel);
     checkRunning();
-  }, [channel, checkRunning]);
+    refreshPlaytime();
+  }, [channel, checkRunning, refreshPlaytime]);
 
   const isInstalled = gameStatus?.is_installed ?? false;
   const hasUpdate = gameStatus?.has_update ?? false;
@@ -1498,40 +1542,63 @@ export function GameActionPanel() {
 
   return (
     <>
-      {/* 服务器/渠道指示 —— 右上角（点击可切换渠道） */}
-      {installPath && isInstalled && detectedChannel && (
-        <div className="absolute right-4 top-4 z-20 lg:right-8 lg:top-8">
-          <button
-            type="button"
-            onClick={() => setSwitchOpen(true)}
-            disabled={switching || busyWithDownload}
-            className={`${PILL_BASE} ${PILL_INTERACTIVE} ${PILL_TEXT} gap-1.5 px-4`}
-          >
-            <div
-              className={`w-1.5 h-1.5 rounded-full ${switching ? "bg-yellow-400/60 animate-pulse" : "bg-emerald-400/80"}`}
-            />
-            <span>
-              {switching
-                ? t("launcher.switching")
-                : CHANNEL_LABELS[detectedChannel][lang]}
-            </span>
-          </button>
-        </div>
-      )}
+      {/* 右上角状态栏：服务器/渠道指示 */}
+      {installPath && (isInstalled || (detecting && !detectedChannel)) && (
+        <div className="absolute right-4 top-4 z-20 lg:right-8 lg:top-8 flex flex-col items-end gap-2">
+          {/* 服务器/渠道指示（点击可切换渠道） */}
+          {isInstalled && detectedChannel && (
+            <button
+              type="button"
+              onClick={() => setSwitchOpen(true)}
+              disabled={switching || busyWithDownload}
+              className={`${PILL_BASE} ${PILL_INTERACTIVE} ${PILL_TEXT} gap-1.5 px-4`}
+            >
+              <div
+                className={`w-1.5 h-1.5 rounded-full ${switching ? "bg-yellow-400/60 animate-pulse" : "bg-emerald-400/80"}`}
+              />
+              <span>
+                {switching
+                  ? t("launcher.switching")
+                  : CHANNEL_LABELS[detectedChannel][lang]}
+              </span>
+            </button>
+          )}
 
-      {/* 识别渠道中的指示（同一位置，未识别出渠道时显示） */}
-      {installPath && detecting && !detectedChannel && (
-        <div className="absolute right-4 top-4 z-20 lg:right-8 lg:top-8">
-          <div
-            className={`${PILL_BASE} ${PILL_TEXT} gap-1.5 px-4 text-foreground/60`}
-          >
-            <div className="w-1.5 h-1.5 rounded-full bg-yellow-400/60 animate-pulse" />
-            <span>{t("launcher.detecting_channel")}</span>
-          </div>
+          {/* 识别渠道中的指示（未识别出渠道时显示） */}
+          {detecting && !detectedChannel && (
+            <div
+              className={`${PILL_BASE} ${PILL_TEXT} gap-1.5 px-4 text-foreground/60`}
+            >
+              <div className="w-1.5 h-1.5 rounded-full bg-yellow-400/60 animate-pulse" />
+              <span>{t("launcher.detecting_channel")}</span>
+            </div>
+          )}
         </div>
       )}
 
       <div className="relative inline-flex items-center gap-2" ref={flyoutRef}>
+        {/* 累计游戏运行时长（后端在 EndProtocol 运行期间统计），位于开始游戏按钮左侧 */}
+        {isInstalled && playtime && (
+          <div
+            className={`${PILL_BASE} ${PILL_TEXT} gap-1.5 px-4 tabular-nums`}
+          >
+            <svg
+              className="w-3.5 h-3.5"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+              />
+            </svg>
+            <span>{formatPlaytime(playtimeTotal)}</span>
+          </div>
+        )}
+
         {/* Preload button：未开始 → 预下载；进行中 → 预下载中（点击取消）；完成后 → 已预下载 */}
         {hasPreload && isInstalled && preloading && (
           <button

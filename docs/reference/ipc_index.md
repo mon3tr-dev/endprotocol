@@ -1,6 +1,6 @@
 # IPC 命令索引（前端 invoke ↔ 后端定义）
 
-> 由脚本扫描 `#[tauri::command]` 与前端 `invoke('...')` 自动生成。共 106 个后端命令，其中 92 个在前端有直接调用；14 个未见前端调用。行号基于当前工作区版本。
+> 由脚本扫描 `#[tauri::command]` 与前端 `invoke('...')` 自动生成。共 107 个后端命令，其中 93 个在前端有直接调用；14 个未见前端调用。行号基于当前工作区版本。
 
 每个命令的参数、返回值与内部调用链见 [commands.md](backend/commands.md)；前端侧的封装函数见各 `utils_services_*.md`。
 
@@ -68,20 +68,21 @@
 | `launcher_get_announcements` | [src-tauri/src/commands/launcher.rs:317](backend/commands.md) | [src/utils/launcherService.ts](../../src/utils/launcherService.ts) |
 | `launcher_get_background_image` | [src-tauri/src/commands/launcher.rs:339](backend/commands.md) | [src/utils/launcherService.ts](../../src/utils/launcherService.ts) |
 | `launcher_get_banners` | [src-tauri/src/commands/launcher.rs:306](backend/commands.md) | [src/utils/launcherService.ts](../../src/utils/launcherService.ts) |
-| `launcher_get_disk_space` | [src-tauri/src/commands/launcher.rs:539](backend/commands.md) | [src/utils/launcherService.ts](../../src/utils/launcherService.ts) |
-| `launcher_get_notice_content` | [src-tauri/src/commands/launcher.rs:328](backend/commands.md) | [src/utils/launcherService.ts](../../src/utils/launcherService.ts) |
+| `launcher_get_disk_space` | [src-tauri/src/commands/launcher.rs:540](backend/commands.md) | [src/utils/launcherService.ts](../../src/utils/launcherService.ts) |
+| `launcher_get_game_playtime` | [src-tauri/src/commands/launcher.rs:676](backend/commands.md) | [src/utils/launcherService.ts](../../src/utils/launcherService.ts) |
+| `launcher_get_notice_content` | [src-tauri/src/commands/launcher.rs:329](backend/commands.md) | [src/utils/launcherService.ts](../../src/utils/launcherService.ts) |
 | `launcher_get_payload_state` | [src-tauri/src/commands/launcher.rs:249](backend/commands.md) | [src/utils/launcherService.ts](../../src/utils/launcherService.ts) |
 | `launcher_get_process_read_bytes` | [src-tauri/src/commands/launcher.rs:12](backend/commands.md) | [src/utils/launcherService.ts](../../src/utils/launcherService.ts) |
 | `launcher_get_remote_version` | [src-tauri/src/commands/launcher.rs:160](backend/commands.md) | [src/utils/launcherService.ts](../../src/utils/launcherService.ts) |
 | `launcher_has_download_cache` | [src-tauri/src/commands/launcher.rs:273](backend/commands.md) | [src/utils/launcherService.ts](../../src/utils/launcherService.ts) |
 | `launcher_install_or_update` | [src-tauri/src/commands/launcher.rs:51](backend/commands.md) | [src/utils/launcherService.ts](../../src/utils/launcherService.ts) |
 | `launcher_install_preload` | [src-tauri/src/commands/launcher.rs:213](backend/commands.md) | [src/utils/launcherService.ts](../../src/utils/launcherService.ts) |
-| `launcher_kill_game` | [src-tauri/src/commands/launcher.rs:685](backend/commands.md) | [src/utils/launcherService.ts](../../src/utils/launcherService.ts) |
+| `launcher_kill_game` | [src-tauri/src/commands/launcher.rs:681](backend/commands.md) | [src/utils/launcherService.ts](../../src/utils/launcherService.ts) |
 | `launcher_preload_download` | [src-tauri/src/commands/launcher.rs:171](backend/commands.md) | [src/utils/launcherService.ts](../../src/utils/launcherService.ts) |
 | `launcher_reset_download_cancel` | [src-tauri/src/commands/launcher.rs:281](backend/commands.md) | [src/utils/launcherService.ts](../../src/utils/launcherService.ts) |
 | `launcher_scan_install_dir` | [src-tauri/src/commands/launcher.rs:598](backend/commands.md) | [src/utils/launcherService.ts](../../src/utils/launcherService.ts) |
 | `launcher_start_game` | [src-tauri/src/commands/launcher.rs:388](backend/commands.md) | [src/utils/launcherService.ts](../../src/utils/launcherService.ts) |
-| `launcher_switch_channel` | [src-tauri/src/commands/launcher.rs:734](backend/commands.md) | [src/utils/launcherService.ts](../../src/utils/launcherService.ts) |
+| `launcher_switch_channel` | [src-tauri/src/commands/launcher.rs:730](backend/commands.md) | [src/utils/launcherService.ts](../../src/utils/launcherService.ts) |
 | `launcher_verify_and_repair` | [src-tauri/src/commands/launcher.rs:103](backend/commands.md) | [src/utils/launcherService.ts](../../src/utils/launcherService.ts) |
 | `logout_account` | [src-tauri/src/commands/account.rs:144](backend/commands.md) | [src/utils/accountService.ts](../../src/utils/accountService.ts) |
 | `minimize_to_tray` | [src-tauri/src/commands/window.rs:28](backend/commands.md) | [src/components/custom-titlebar.tsx](../../src/components/custom-titlebar.tsx) |

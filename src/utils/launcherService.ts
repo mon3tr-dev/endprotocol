@@ -133,6 +133,16 @@ export interface DiskSpace {
   free: number;
 }
 
+/** 游戏运行时长快照（仅统计 EndProtocol 运行期间） */
+export interface GamePlaytime {
+  /** 已累计的总时长（不含当前会话），秒 */
+  total_seconds: number;
+  /** 当前会话已运行时长（未运行时为 0），秒 */
+  session_seconds: number;
+  /** 游戏进程当前是否在运行 */
+  running: boolean;
+}
+
 // ========== API Calls ==========
 
 export async function checkGameStatus(
@@ -350,6 +360,10 @@ export async function killGame(
   return invoke<boolean>("launcher_kill_game", {
     channel,
   });
+}
+
+export async function getGamePlaytime(): Promise<GamePlaytime> {
+  return invoke<GamePlaytime>("launcher_get_game_playtime");
 }
 
 export async function detectChannel(

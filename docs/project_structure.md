@@ -70,7 +70,8 @@ EndProtocol/
 │   │                              #   system_resource
 │   ├── src/models/                # 7 个文件：序列化数据结构
 │   ├── src/utils/                 # error、hg_crypto、http_client、
-│   │                              #   logger、official_launcher、paths、capture
+│   │                              #   logger、official_launcher、paths、capture、
+│   │                              #   game_playtime（游戏时长统计）、process（进程探测）
 │   ├── capabilities/  tauri.conf.json  Cargo.toml
 │   └── gen/                       # Tauri 自动生成（勿手改）
 ├── dist/  target/  node_modules/  # 构建产物与依赖（勿读）

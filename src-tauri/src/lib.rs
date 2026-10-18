@@ -80,6 +80,7 @@ pub fn run() {
             .setup(move |app| {
                 let config_service = create_config_service()?;
                 app.manage(config_service.clone());
+                utils::game_playtime::init(config_service.clone());
                 tray::setup_silent_tray(app.handle(), config_service)
                     .map_err(|error| error.to_string())?;
 
@@ -90,8 +91,13 @@ pub fn run() {
                 dispatch_pending_requests(app.handle(), &pending_for_setup, true);
                 Ok(())
             })
-            .run(tauri::generate_context!())
-            .expect("error while running silent tauri application");
+            .build(tauri::generate_context!())
+            .expect("error while running silent tauri application")
+            .run(|_app_handle, event| {
+                if let tauri::RunEvent::Exit = event {
+                    utils::game_playtime::finalize();
+                }
+            });
         return;
     }
 
@@ -229,6 +235,7 @@ pub fn run() {
             commands::launcher::launcher_check_executable,
             commands::launcher::launcher_check_game_running,
             commands::launcher::launcher_kill_game,
+            commands::launcher::launcher_get_game_playtime,
             commands::launcher::launcher_detect_channel,
             commands::launcher::launcher_scan_install_dir,
             commands::launcher::launcher_get_disk_space,
@@ -243,6 +250,7 @@ pub fn run() {
             // 主窗口与托盘面板仅在完整模式创建，静默模式不建立 WebView。
             let config_service = create_config_service()?;
             app.manage(config_service.clone());
+            utils::game_playtime::init(config_service.clone());
             create_full_windows(app.handle())?;
 
             // 启动时自动录制：必须在任何 API 请求发出之前开始
@@ -310,8 +318,13 @@ pub fn run() {
             app_ready_for_full_instance(app.handle(), &mode, &app_ready, &pending_requests);
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while running tauri application")
+        .run(|_app_handle, event| {
+            if let tauri::RunEvent::Exit = event {
+                utils::game_playtime::finalize();
+            }
+        });
 }
 
 fn arg_value<'a>(args: &'a [String], name: &str) -> Option<&'a str> {

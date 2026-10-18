@@ -1,7 +1,7 @@
 # Tauri 命令层（IPC 入口）— 文件功能参考
 
 > 逐文件精读源码生成。行号基于当前工作区版本，仅用于快速定位。
-> 覆盖范围：`src-tauri/src/commands/` 下 15 个文件，当前参考表收录 **106 个不同命令名**；源码含 109 处命令注解（其中有同名定义）。注册入口见 `src-tauri/src/lib.rs` 的 `generate_handler!`。
+> 覆盖范围：`src-tauri/src/commands/` 下 15 个文件，当前参考表收录 **107 个不同命令名**；源码含 110 处命令注解（其中有同名定义）。注册入口见 `src-tauri/src/lib.rs` 的 `generate_handler!`。
 
 ## 命令速查表
 
@@ -85,10 +85,11 @@
 | `launcher_get_disk_space` | commands/launcher.rs:540 | `path: String` | `Result<DiskSpace, String>` | 调用 `powershell Get-PSDrive` 子进程解析 used/free |
 | `launcher_scan_install_dir` | commands/launcher.rs:599 | `service`、`channel`、`install_path` | `Result<FileScanResult, String>` | `GameLauncherService::scan_install_dir` |
 | `launcher_detect_channel` | commands/launcher.rs:611 | `install_path: String` | `Result<Option<String>, String>` | 纯本地特征文件探测（hgsdk.dll / PCGameSDK.dll / gfsdk.dll 等） |
-| `launcher_check_executable` | commands/launcher.rs:657 | `install_path: String`、`channel: String` | `Result<bool, String>` | `parse_channel` + `GameChannel::executable_name` + `Path::exists` |
-| `launcher_check_game_running` | commands/launcher.rs:665 | `channel: String` | `Result<bool, String>` | 异步执行隐藏控制台的 `tasklist /FI IMAGENAME eq …`；游戏面板每 3 秒轮询 |
-| `launcher_kill_game` | commands/launcher.rs:681 | `channel: String` | `Result<bool, String>` | 隐藏控制台执行 `taskkill /T /F /IM`（两次）→ `wmic process … terminate` 兜底 |
-| `launcher_switch_channel` | commands/launcher.rs:730 | `service`、`from_channel`、`to_channel`、`install_path`、`app: AppHandle` | `Result<String, String>` | `GameLauncherService::switch_channel` |
+| `launcher_check_executable` | commands/launcher.rs:662 | `install_path: String`、`channel: String` | `Result<bool, String>` | `parse_channel` + `GameChannel::executable_name` + `Path::exists` |
+| `launcher_check_game_running` | commands/launcher.rs:670 | `channel: String` | `Result<bool, String>` | `parse_channel` + `utils::process::is_process_running`（`tasklist`）；游戏面板每 3 秒轮询 |
+| `launcher_get_game_playtime` | commands/launcher.rs:677 | 无 | `GamePlaytime`（同步返回） | `utils::game_playtime::snapshot`（累计总时长 + 实时会话 + 运行态） |
+| `launcher_kill_game` | commands/launcher.rs:682 | `channel: String` | `Result<bool, String>` | 隐藏控制台执行 `taskkill /T /F /IM`（两次）→ `wmic process … terminate` 兜底 |
+| `launcher_switch_channel` | commands/launcher.rs:731 | `service`、`from_channel`、`to_channel`、`install_path`、`app: AppHandle` | `Result<String, String>` | `GameLauncherService::switch_channel` |
 | `get_backend_logs` | commands/logs.rs:4 | 无 | `Vec<LogEntry>` | `utils::logger::get_logger().get_recent_logs()` |
 | `get_tray_user_info` | commands/tray.rs:8 | `config_service: State<Arc<Mutex<ConfigService>>>` | `Result<TrayUserInfo, String>` | `ConfigService::get::<TrayUserInfo>("tray_user_info")` |
 | `create_game_shortcut` | commands/startup.rs:71 | `config_service: State<Arc<Mutex<ConfigService>>>`、`close_after_launch: Option<bool>`（前端传 `closeAfterLaunch`，缺省 false） | `Result<Option<String>, String>` | 用户通过 `rfd` 选择 `.lnk` 路径；PowerShell COM 创建快捷方式，返回路径；取消选择返回 `None` |
@@ -609,16 +610,19 @@
 - 位置：launcher.rs:662（同步）；参数：`install_path: String`、`channel: String`；返回：`Result<bool, String>`；逻辑：`parse_channel` → `Path::exists` 判断渠道对应 exe 是否存在。
 
 ### `launcher_check_game_running`
-- 位置：launcher.rs:670（异步）；参数：`channel: String`；返回：`Result<bool, String>`；逻辑：隐藏控制台异步执行 `tasklist /FI "IMAGENAME eq <process_name>" /NH`，stdout 包含进程名即认为在运行。前端游戏面板每 3 秒调用，避免同步子进程阻塞 Tauri 主线程。
+- 位置：launcher.rs:670（异步）；参数：`channel: String`；返回：`Result<bool, String>`；逻辑：`parse_channel` → `utils::process::is_process_running(ch.process_name())`（隐藏控制台执行 `tasklist /FI "IMAGENAME eq <process>" /NH`，stdout 含进程名即视为运行中）。前端游戏面板每 3 秒调用，避免同步子进程阻塞 Tauri 主线程。
+
+### `launcher_get_game_playtime`
+- 位置：launcher.rs:677（同步）；参数：无；返回：`GamePlaytime`（`{ total_seconds, session_seconds, running }`）；逻辑：`utils::game_playtime::snapshot()`，返回累计总时长（不含当前会话）+ 当前会话时长 + 运行态。由后台探测任务 `utils::game_playtime` 维护，仅在 EndProtocol 运行期间统计。
 
 ### `launcher_kill_game`
-- 位置：launcher.rs:686（async）
+- 位置：launcher.rs:682（async）
 - 参数：`channel: String`
 - 返回：`Result<bool, String>`（恒 `Ok(true)`）
 - 逻辑：三级兜底杀进程：`taskkill /T /F /IM <process_name>` → 失败改用 `<exe_name>` → 仍失败用 `wmic process where name like '%Endfield%' call terminate`；**无论是否成功都返回 `true`**。
 
 ### `launcher_switch_channel`
-- 位置：launcher.rs:735（async）
+- 位置：launcher.rs:731（async）
 - 参数：`service`、`from_channel: String`、`to_channel: String`、`install_path: String`、`app: AppHandle`
 - 返回：`Result<String, String>`（成功消息）
 - 逻辑：两个 channel 都经 `parse_channel` 校验，然后 `GameLauncherService::switch_channel(&from, &to, &install_path, app).await`（service 内部可用 app emit 进度/事件）。

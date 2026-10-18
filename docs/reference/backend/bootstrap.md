@@ -18,7 +18,7 @@
 ---
 
 ## `src-tauri/src/lib.rs`
-**职责**：应用核心装配点。入口首先截获已有提权 helper，再由单实例插件处理后续启动请求。`--silent` 分支不创建 WebView、不注册完整应用插件和业务服务，只初始化配置、单实例和图标托盘；普通分支才初始化完整服务并动态创建主窗口/托盘面板。游戏启动继续复用 `launcher_start_game`。
+**职责**：应用核心装配点。入口首先截获已有提权 helper，再由单实例插件处理后续启动请求。`--silent` 分支不创建 WebView、不注册完整应用插件和业务服务，只初始化配置、单实例和图标托盘；普通分支才初始化完整服务并动态创建主窗口/托盘面板。游戏启动继续复用 `launcher_start_game`。两种模式都在 setup 中调用 `utils::game_playtime::init()` 启动游戏在线时长统计，并在 `RunEvent::Exit` 时 `utils::game_playtime::finalize()` 落盘。
 **导出**：`pub fn run()`（唯一公开项）；其余为私有模块声明。
 **主要依赖**：`commands`、`models`、`services`、`tray`、`utils` 模块；`services::{account_service, avatar_cache_service, config_service, gacha_service, game_launcher_service, network_service, skland_service}`；`tauri`、`tokio::sync::Mutex`、`std::sync::Arc`。
 
@@ -26,7 +26,7 @@
 | --- | --- | --- |
 | `mod commands/models/services/tray/utils` | lib.rs:7-11 | 后端模块声明（全部私有） |
 | `use services::*` | lib.rs:13-20 | 导入 8 个服务类型（Account/AvatarCache/Config/Gacha/GameLauncher/Network/Skland/SystemResource） |
-| `run` | lib.rs:30 | 解析 `--silent` / `--launch-game` / `--close-after-launch` 并分流到静默或完整模式 |
+| `run` | lib.rs:30 | 解析 `--silent` / `--launch-game` / `--close-after-launch` 并分流到静默或完整模式；两种模式均改用 `.build(context)?.run(|_, event| …)`，在 `RunEvent::Exit` 调用 `utils::game_playtime::finalize()` 将当前会话落盘 |
 | `create_config_service` | lib.rs:319 | 初始化现有 `ConfigService`，并校验/更新配置键 `main_exe_path` |
 | `attach_parent_console`（私有，仅 Windows debug） | lib.rs:324 | `main.rs` 已无条件使用 GUI 子系统，进程本身不再创建控制台（根除黑窗口闪现：控制台在进程创建期生成，进程内 `ShowWindow(SW_HIDE)` 只能事后隐藏、仍会闪一瞬间）。此函数在 `run()` 最开头（logger / Tauri 初始化之前）尝试 `AttachConsole(ATTACH_PARENT_PROCESS)`：手动 `cargo run` 时附接父终端使日志可见，被 Steam / 快捷方式拉起时附接失败即静默无窗口。附接必须发生在首次 stdio 写入前（`eprintln!` 在 GUI 进程无控制台时会 panic，所有 stderr 写入均需经 `logger::safe_eprintln!`） |
 | `dispatch_instance_request` | lib.rs:356 | 将第二实例的参数路由为静默启动、启动游戏或显示主窗口 |
@@ -43,7 +43,7 @@
 | lib.rs:29-36 | **提权启动 helper 截获**：`utils::official_launcher::try_run_helper()` 命中 `--endfield-launch-helper` 时以游戏退出码退出，不做 Tauri 初始化 |
 | lib.rs:39-50 | 解析内部父进程交接参数、`--silent`、`--launch-game` 与 `--close-after-launch`（后者仅在静默模式下为 true） |
 | lib.rs:53-61 | 注册单实例插件；第二实例的参数在主实例 setup 完成前先排队 |
-| lib.rs:63-82 | 静默模式不注册 IPC 命令，初始化 config 和 icon-only tray；请求启动游戏时调用既有启动器命令 |
+| lib.rs:63-82 | 静默模式不注册 IPC 命令，初始化 config 和 icon-only tray；`utils::game_playtime::init()` 启动时长统计；请求启动游戏时调用既有启动器命令 |
 | lib.rs:88-109 | 普通模式初始化日志，注册单实例及原有 updater/process/opener/fs 插件与完整命令集 |
 | lib.rs:231-309 | 普通模式 setup：动态窗口、全量服务、原托盘面板和账户刷新 |
 | lib.rs:316-566 | 配置校正、实例参数转发、按需启动游戏、窗口动态创建与关闭行为 |
@@ -63,7 +63,7 @@
 ### `.setup()` 初始化步骤顺序（完整模式）
 | 步骤 | 行号 | 内容 |
 | --- | --- | --- |
-| 1 | lib.rs:233-235 | 初始化 `ConfigService`，校验并更新 `main_exe_path`，`.manage()` 注册；再动态创建完整 WebView 窗口 |
+| 1 | lib.rs:251-254 | 初始化 `ConfigService`，校验并更新 `main_exe_path`，`.manage()` 注册；随后 `utils::game_playtime::init(config_service.clone())` 启动时长统计；再动态创建完整 WebView 窗口 |
 | 2 | lib.rs:238-255 | 读配置键 `capture_autostart`（默认 false），为 true 时调用 `utils::capture::start()` 自动录制；成功/失败只记日志 |
 | 3 | lib.rs:254 | `tray::setup_tray(app.handle(), config_service)`，沿用完整模式的右键托盘面板 |
 | 4 | lib.rs:258 | `SklandService::new(config_service)` — **不** manage，作为依赖注入下游 |
@@ -81,7 +81,7 @@
 ### `.manage()` 的完整模式状态（5 个；静默模式仅注册 config）
 | State 类型 | 注册处 | 说明 |
 | --- | --- | --- |
-| `Arc<std::sync::Mutex<ConfigService>>` | lib.rs:234 | 全局配置（JSON 文件 + 内存缓存），完整/静默启动共用 |
+| `Arc<std::sync::Mutex<ConfigService>>` | lib.rs:252 | 全局配置（JSON 文件 + 内存缓存），完整/静默启动共用 |
 | `Arc<GachaService>` | lib.rs:266 | 抽卡记录服务（持有 AppHandle） |
 | `Arc<tokio::sync::Mutex<AccountService>>` | lib.rs:284 | 账户服务（异步方法，tokio 锁） |
 | `Arc<tokio::sync::Mutex<GameLauncherService>>` | lib.rs:288 | 游戏启动器服务（仅完整模式） |
@@ -91,9 +91,9 @@
 
 **备注**：`lib.rs` 本身**没有任何 `emit`/`listen`**，也**没有全局应用菜单**；完整模式右键托盘仍打开原有托盘面板。
 
-### 命令总表（完整模式 `.invoke_handler` 注册 106 个命令；静默模式不注册 IPC 命令）
+### 命令总表（完整模式 `.invoke_handler` 注册 107 个命令；静默模式不注册 IPC 命令）
 
-完整命令清单与定义/调用关系见 [commands.md](commands.md) 和 [ipc_index.md](../ipc_index.md)；静默 handler 位于 lib.rs:68-71。
+完整命令清单与定义/调用关系见 [commands.md](commands.md) 和 [ipc_index.md](../ipc_index.md)；静默分支为纯 `Builder::default().plugin(单实例).setup(...)`（lib.rs:78-100），无 `.invoke_handler`。
 
 ### 后端 emit 事件（全局，非 lib.rs 内发起）
 | 事件名 | 发出位置 | 载荷 |
