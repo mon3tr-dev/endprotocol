@@ -1348,19 +1348,27 @@ mod win {
     }
 
     /// 直接以 `ShellExecuteW` 启动游戏（回退路径，与旧实现一致：靠 shell 自动提权）。
-    pub fn shell_execute_game(game: &Path) -> Result<(), String> {
+    pub fn shell_execute_game(game: &Path, arguments: &[String]) -> Result<(), String> {
         let executable = wide(&game.to_string_lossy());
         let directory = game
             .parent()
             .map(|parent| parent.to_string_lossy().into_owned())
             .unwrap_or_default();
         let directory = wide(&directory);
+        let mut parameters: Vec<u16> = Vec::new();
+        for (index, argument) in arguments.iter().enumerate() {
+            if index > 0 {
+                parameters.push(b' ' as u16);
+            }
+            quote_argument(argument, &mut parameters);
+        }
+        parameters.push(0);
         let result = unsafe {
             windows_sys::Win32::UI::Shell::ShellExecuteW(
                 ptr::null_mut(),
                 ptr::null(),
                 executable.as_ptr(),
-                ptr::null(),
+                parameters.as_ptr(),
                 directory.as_ptr(),
                 SW_SHOWNORMAL,
             )
@@ -1393,7 +1401,7 @@ pub fn launch_via_official_parent(
 }
 
 #[cfg(not(target_os = "windows"))]
-pub fn shell_execute_game(_game: &Path) -> Result<(), String> {
+pub fn shell_execute_game(_game: &Path, _arguments: &[String]) -> Result<(), String> {
     Err("the official launcher parent trick is Windows-only".to_string())
 }
 

@@ -122,7 +122,7 @@
 | `resolveServerLabel()` (function) | index.ts:43 | 按 lang（zh 之外一律 en）解析服务器标签，未知值回退为原始 server 字符串 |
 
 ## `src/locales/zh/translation.json`
-**职责**：中文 i18n 资源，共 621 行、555 个叶子 key、15 个顶层命名空间。
+**职责**：中文 i18n 资源，共 665 行、599 个叶子 key、15 个顶层命名空间。
 **顶层命名空间清单**（这是重点，要完整列出）：
 
 | 命名空间/key 前缀 | 用途 | 大致行号 |
@@ -134,7 +134,7 @@
 | `filters.*` | 干员筛选器（profession/property/rarity/weapon/mainAttr/subAttr 及 all_* 全选项） | :78 |
 | `settings.*` | 设置页总命名空间，`settings.title` :94 | :93 |
 | `settings.general.*` | 通用设置：语言、主题（light/dark/system）、关闭窗口行为、托盘显示用户 | :95 |
-| `settings.game_launch.*` | 游戏启动：校验线程数、游戏界面背景（视频/图片） | :110 |
+| `settings.game_launch.*` | 游戏启动：取消下载行为、DX11 启动、校验线程数、游戏界面背景（视频/图片）、静默启动命令与启动选项 | :110 |
 | `settings.appearance.*` | 外观：主题模式、主题色、窗口背景透明度/背景图/磨砂/毛玻璃清晰度 | :119 |
 | `settings.system_resource.*` | 系统资源卡片全局默认值（刷新/单位/显示/精度/布局/阈值/曲线/主题色/默认模板） | :145 |
 | `settings.todo.*` | To-Do 卡片全局默认值（排序/隐藏已完成/优先级/截止时间/颜色/图标） | :170 |
@@ -156,11 +156,11 @@
 | `launcher.*` | 启动器：安装/更新/校验修复/渠道切换/预下载/预下载中/预下载确认/启动设置/磁盘与文件扫描等完整流程（本文件最大分组，128 个 key） | :512 |
 | `todo_page.*` | To-Do 页面：标题/描述、导入导出、新建/搜索列表、分组、空态等 | :644 |
 
-- **与 en/translation.json 的 key 差异**：无。经脚本对比，zh 与 en 叶子 key 均为 595 个，键集合完全一致（既无 zh 缺键也无 en 缺键），且两文件结构逐行对齐（行号一一对应）。
+- **与 en/translation.json 的 key 差异**：无。经脚本对比，zh 与 en 叶子 key 均为 599 个，键集合完全一致（既无 zh 缺键也无 en 缺键），且两文件结构逐行对齐（行号一一对应）。
 - **异常（两边共有）**：`settings.update` 内存在重复键 —— `latest_version` 同时出现于 :177 与 :187、`release_date` 同时出现于 :179 与 :188。JSON 解析时后者覆盖前者（zh 实际生效值为 :187 的“远端最新版本”、:188 的“发布日期”；en 同理）。建议后续合并为 `latest_version_remote` 之类的独立键。
 
 ## `src/locales/en/translation.json`
-**职责**：英文 i18n 资源，与 zh 文件同为 661 行、595 个叶子 key、15 个顶层命名空间，行号与 zh 完全对应（见上表）。
+**职责**：英文 i18n 资源，与 zh 文件同为 665 行、599 个叶子 key、15 个顶层命名空间，行号与 zh 完全对应（见上表）。
 - 主要差异仅在文案语言，个别本地化选择值得注意：`settings.characters.cultivation_talents` zh 为“基建技能”而 en 为 “O.M.V. Dijiang Skills”（帝江号相关译名）；`settings.logs.level_*` en 使用大写日志级别（DEBUG/INFO/WARN/ERROR），`source_frontend/source_backend` 缩写为 FE/BE。
 - 同样存在 `settings.update` 的 `latest_version` / `release_date` 重复键（:177/:187、:179/:188），与 zh 完全一致。
 

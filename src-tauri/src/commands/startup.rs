@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use tauri::State;
@@ -8,14 +8,21 @@ use crate::services::config_service::ConfigService;
 const MAIN_EXE_KEY: &str = "main_exe_path";
 const INSTALL_PATH_KEY: &str = "launcher_install_path";
 const CHANNEL_KEY: &str = "launcher_channel";
+const DX11_CONFIG_KEY: &str = "launcher_dx11";
 const LAUNCH_ARGS: &str = "--silent --launch-game";
+const DX11_ARG: &str = "--dx11";
 
-pub(crate) fn launch_args(close_after_launch: bool) -> String {
-    if close_after_launch {
-        format!("{LAUNCH_ARGS} {}", crate::CLOSE_AFTER_LAUNCH_ARG)
-    } else {
-        LAUNCH_ARGS.to_string()
+pub(crate) fn launch_args(close_after_launch: bool, dx11: bool) -> String {
+    let mut args = LAUNCH_ARGS.to_string();
+    if dx11 {
+        args.push(' ');
+        args.push_str(DX11_ARG);
     }
+    if close_after_launch {
+        args.push(' ');
+        args.push_str(crate::CLOSE_AFTER_LAUNCH_ARG);
+    }
+    args
 }
 
 fn normalize_path(path: PathBuf) -> PathBuf {
@@ -71,16 +78,19 @@ pub fn get_game_launch_command(
 pub fn create_game_shortcut(
     config_service: State<'_, Arc<Mutex<ConfigService>>>,
     close_after_launch: Option<bool>,
+    dx11: Option<bool>,
 ) -> Result<Option<String>, String> {
     let exit_after_start = close_after_launch.unwrap_or(false);
     let exe_path = ensure_main_exe_path(config_service.inner())?;
-    let (install_path, channel) = {
+    let (install_path, channel, stored_dx11) = {
         let config = config_service.lock().map_err(|error| error.to_string())?;
         (
             config.get::<String>(INSTALL_PATH_KEY),
             config.get::<String>(CHANNEL_KEY),
+            config.get::<bool>(DX11_CONFIG_KEY).unwrap_or(false),
         )
     };
+    let use_dx11 = dx11.unwrap_or(stored_dx11);
 
     let install_path = install_path
         .filter(|path| !path.trim().is_empty())
@@ -136,7 +146,7 @@ pub fn create_game_shortcut(
             String::new()
         };
 
-        let launch_arguments = launch_args(exit_after_start);
+        let launch_arguments = launch_args(exit_after_start, use_dx11);
         let script = format!(
             "$shell = New-Object -ComObject WScript.Shell; \
              $shortcut = $shell.CreateShortcut('{}'); \
@@ -193,7 +203,7 @@ pub fn create_game_shortcut(
 
     #[cfg(not(target_os = "windows"))]
     {
-        let _ = (exe_path, install_path, channel);
+        let _ = (exe_path, install_path, channel, use_dx11);
         Err("Windows shortcuts can only be created on Windows.".to_string())
     }
 }
@@ -207,8 +217,14 @@ fn powershell_literal(value: &str) -> String {
 pub fn create_launch_bat(
     config_service: State<'_, Arc<Mutex<ConfigService>>>,
     close_after_launch: Option<bool>,
+    dx11: Option<bool>,
 ) -> Result<Option<String>, String> {
     let exit_after_start = close_after_launch.unwrap_or(false);
+    let stored_dx11 = config_service
+        .lock()
+        .map(|config| config.get::<bool>(DX11_CONFIG_KEY).unwrap_or(false))
+        .unwrap_or(false);
+    let use_dx11 = dx11.unwrap_or(stored_dx11);
 
     #[cfg(target_os = "windows")]
     {
@@ -233,7 +249,7 @@ pub fn create_launch_bat(
         let content = format!(
             "@echo off\r\nchcp 65001>nul\r\nstart \"\" \"{}\" {}\r\n",
             exe_path.display(),
-            launch_args(exit_after_start)
+            launch_args(exit_after_start, use_dx11)
         );
         std::fs::write(&bat_path, content)
             .map_err(|error| format!("Could not write batch file: {error}"))?;
@@ -243,7 +259,7 @@ pub fn create_launch_bat(
 
     #[cfg(not(target_os = "windows"))]
     {
-        let _ = (config_service, exit_after_start);
+        let _ = (config_service, exit_after_start, use_dx11);
         Err("Windows batch files can only be created on Windows.".to_string())
     }
 }

@@ -26,12 +26,12 @@
 | --- | --- | --- |
 | `mod commands/models/services/tray/utils` | lib.rs:7-11 | 后端模块声明（全部私有） |
 | `use services::*` | lib.rs:13-20 | 导入 8 个服务类型（Account/AvatarCache/Config/Gacha/GameLauncher/Network/Skland/SystemResource） |
-| `run` | lib.rs:30 | 解析 `--silent` / `--launch-game` / `--close-after-launch` 并分流到静默或完整模式；两种模式均改用 `.build(context)?.run(|_, event| …)`，在 `RunEvent::Exit` 调用 `utils::game_playtime::finalize()` 将当前会话落盘 |
+| `run` | lib.rs:30 | 解析 `--silent` / `--launch-game` / `--close-after-launch` / `--dx11` 并分流到静默或完整模式；两种模式均改用 `.build(context)?.run(|_, event| …)`，在 `RunEvent::Exit` 调用 `utils::game_playtime::finalize()` 将当前会话落盘 |
 | `create_config_service` | lib.rs:319 | 初始化现有 `ConfigService`，并校验/更新配置键 `main_exe_path` |
 | `attach_parent_console`（私有，仅 Windows debug） | lib.rs:324 | `main.rs` 已无条件使用 GUI 子系统，进程本身不再创建控制台（根除黑窗口闪现：控制台在进程创建期生成，进程内 `ShowWindow(SW_HIDE)` 只能事后隐藏、仍会闪一瞬间）。此函数在 `run()` 最开头（logger / Tauri 初始化之前）尝试 `AttachConsole(ATTACH_PARENT_PROCESS)`：手动 `cargo run` 时附接父终端使日志可见，被 Steam / 快捷方式拉起时附接失败即静默无窗口。附接必须发生在首次 stdio 写入前（`eprintln!` 在 GUI 进程无控制台时会 panic，所有 stderr 写入均需经 `logger::safe_eprintln!`） |
-| `dispatch_instance_request` | lib.rs:356 | 将第二实例的参数路由为静默启动、启动游戏或显示主窗口 |
-| `start_game_from_config` | lib.rs:380 | 读取 `launcher_install_path` / `launcher_channel` 并调用已有 `launcher_start_game`；`close_after_launch: bool` 为 true（仅静默模式传入）时启动成功即退出本进程 |
-| `promote_to_full_with_game` | lib.rs:445 | 静默实例接到普通启动/托盘双击时，等待当前进程退出后重新启动完整模式 |
+| `dispatch_instance_request` | lib.rs:394 | 将第二实例的参数路由为静默启动、启动游戏或显示主窗口；解析 `--dx11` 并一并转发 |
+| `start_game_from_config` | lib.rs:416 | 读取 `launcher_install_path` / `launcher_channel` / `launcher_dx11` 并调用 `commands::launcher::launch_game`；`dx11: Option<bool>` 优先取命令行 `--dx11`，`None` 时回退配置 `launcher_dx11`（默认 false）；`close_after_launch: bool` 为 true（仅静默模式传入）时启动成功即退出本进程 |
+| `promote_to_full_with_game` | lib.rs:497 | 静默实例接到普通启动/托盘双击时，等待当前进程退出后重新启动完整模式；`launch_game` 时把 `--dx11` 一并转发给新实例 |
 | `create_full_windows` / `create_main_window` / `app_webview_url` / `dev_asset_url` | lib.rs:498 / 522 / 566 / 614 | 普通模式按需创建窗口；debug 优先连 Vite，开发服务器不可用时改由自定义协议 `endprotocol` 提供 `frontendDist` 资源 |
 | `register_dev_asset_protocol` / `dev_asset_error_response` | lib.rs:626 / 655 | debug 专用：注册 `endprotocol` URI scheme，经 `asset_resolver()` 提供构建产物（含 `.html`、目录 `index.html` 与入口 `index.html` 回退） |
 
@@ -41,7 +41,7 @@
 | --- | --- |
 | lib.rs:27 | `#[cfg_attr(mobile, tauri::mobile_entry_point)]` 属性 |
 | lib.rs:29-36 | **提权启动 helper 截获**：`utils::official_launcher::try_run_helper()` 命中 `--endfield-launch-helper` 时以游戏退出码退出，不做 Tauri 初始化 |
-| lib.rs:39-50 | 解析内部父进程交接参数、`--silent`、`--launch-game` 与 `--close-after-launch`（后者仅在静默模式下为 true） |
+| lib.rs:39-50 | 解析内部父进程交接参数、`--silent`、`--launch-game`、`--close-after-launch`（后者仅在静默模式下为 true）与 `--dx11`（`Option<bool>`，仅与 `--launch-game` 组合生效） |
 | lib.rs:53-61 | 注册单实例插件；第二实例的参数在主实例 setup 完成前先排队 |
 | lib.rs:63-82 | 静默模式不注册 IPC 命令，初始化 config 和 icon-only tray；`utils::game_playtime::init()` 启动时长统计；请求启动游戏时调用既有启动器命令 |
 | lib.rs:88-109 | 普通模式初始化日志，注册单实例及原有 updater/process/opener/fs 插件与完整命令集 |
@@ -58,7 +58,7 @@
 | `tauri_plugin_opener` | lib.rs:100 | 仅完整模式，`opener:default` / `opener:allow-open-url`（default.json）、`opener:allow-open-path`（desktop.json） |
 | `tauri_plugin_fs` | lib.rs:101 | 仅完整模式；**未授予任何 `fs:*` 权限**（见文末异常） |
 
-**稳定命令行参数**：`--silent` 不创建完整界面；`--launch-game` 启动 config 中配置的游戏路径与渠道（静默/完整模式均生效）；`--close-after-launch` 仅在 `--silent` 存在时生效——游戏启动成功后本进程立即退出（游戏由提权 helper 及其挂起的官方父进程持有，`launcher_start_game` 在 helper 建立后即返回成功，不等待游戏退出）；组合使用即静默启动游戏后收尾退出。第二实例通过插件转交参数（第二实例请求中同时带 `--silent` 与 `--close-after-launch` 时同样在启动后退出）。静默实例收到普通启动请求时先退出并由自身以隐藏的父进程等待参数交接启动完整模式，避免插件和业务服务重复初始化。debug 模式优先使用配置的 Vite `devUrl`；若开发服务器未运行，则在同一进程内注册自定义协议 `endprotocol`（Windows 为 `http://endprotocol.localhost`，其余平台为 `endprotocol://localhost`），由 `asset_resolver()` 回退读取 `frontendDist` 中构建好的文件（注册于 `register_dev_asset_protocol`），二者均不可用时返回明确错误。注意不能用 `tauri://localhost` / `http://tauri.localhost`：dev 构建不含内嵌资源，Tauri 协议处理器会直接报 `asset not found`。
+**稳定命令行参数**：`--silent` 不创建完整界面；`--launch-game` 启动 config 中配置的游戏路径与渠道（静默/完整模式均生效）；`--dx11` 仅与 `--launch-game` 组合生效——存在时给游戏进程追加 `-force-d3d11`，不存在时使用应用内设置 `launcher_dx11`（默认 false）；`--close-after-launch` 仅在 `--silent` 存在时生效——游戏启动成功后本进程立即退出（游戏由提权 helper 及其挂起的官方父进程持有，`launcher_start_game` 在 helper 建立后即返回成功，不等待游戏退出）；组合使用即静默启动游戏后收尾退出。第二实例通过插件转交参数（第二实例请求中同时带 `--silent` 与 `--close-after-launch` 时同样在启动后退出；`--dx11` 同样随请求转发）。静默实例收到普通启动请求时先退出并由自身以隐藏的父进程等待参数交接启动完整模式，避免插件和业务服务重复初始化。debug 模式优先使用配置的 Vite `devUrl`；若开发服务器未运行，则在同一进程内注册自定义协议 `endprotocol`（Windows 为 `http://endprotocol.localhost`，其余平台为 `endprotocol://localhost`），由 `asset_resolver()` 回退读取 `frontendDist` 中构建好的文件（注册于 `register_dev_asset_protocol`），二者均不可用时返回明确错误。注意不能用 `tauri://localhost` / `http://tauri.localhost`：dev 构建不含内嵌资源，Tauri 协议处理器会直接报 `asset not found`。
 
 ### `.setup()` 初始化步骤顺序（完整模式）
 | 步骤 | 行号 | 内容 |

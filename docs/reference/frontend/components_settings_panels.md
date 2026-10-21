@@ -126,36 +126,40 @@
 **备注**：`invoke`：无；`listen`：无；Tauri `emit`：`theme-changed`（63、77）；window 事件：监听 `themeChange`（53）、派发 `themeChange`（76）；配置键 `theme_mode`（读 36/48，写 75）。未使用的 `btnRef` 仅绑定在按钮上。
 
 ## `src/components/game-launch-settings.tsx`
-**职责**：游戏启动相关设置组（取消下载行为 / 校验线程数 / 启动界面背景媒体）；静默启动命令与 Windows `.lnk` 创建在独立弹窗 `QuickLaunchModal`（设置页与游戏行动面板「启动设置」入口都直接打开它，`GameLaunchSettingsModal` 已删除）。
-**导出**：`GameLaunchSettings`、`QuickLaunchModal`。
-**主要依赖**：`react`、`react-i18next`、`@/components/ui/glass`（`GlassButton`）、`@/components/ui/slider`（`Slider`）、`@/components/ui/settings-row`（`SettingsDivider`）、`@/components/ui/modal`（`GlassModalCompound`）、`@/stores/launcherMode`、`@/utils/launcherService`（静默启动 IPC）、`@/utils/platform`。
+**职责**：游戏启动相关设置组（取消下载行为 / DX11 启动 / 校验线程数 / 启动界面背景媒体）；这些字段由 `GameLaunchSettingsFields` 统一渲染，设置页与游戏行动面板的「游戏设置」弹窗共用。静默启动命令、`--dx11` 选项与 Windows `.lnk` / `.bat` 创建在独立弹窗 `QuickLaunchModal`。
+**导出**：`GameLaunchSettings`、`GameLaunchSettingsFields`、`QuickLaunchModal`、`CLOSE_AFTER_LAUNCH_KEY`、`CANCEL_BEHAVIOR_KEY`、`VERIFY_THREADS_KEY`、`DX11_KEY`、`GAME_LAUNCH_SYNC_EVENT`、`readCancelBehavior`、`readVerifyThreads`、`readDx11`、`persistGameLaunchSetting`、`setDx11Setting`。
+**主要依赖**：`react`、`react-i18next`、`@/components/ui/glass`（`GlassButton`、`GlassSwitch`）、`@/components/ui/slider`（`Slider`）、`@/components/ui/settings-row`（`SettingsDivider`）、`@/components/ui/modal`（`GlassModalCompound`）、`@/components/icons`（`TerminalIcon`/`ExternalLinkIcon`/`FileCodeIcon`）、`@/stores/launcherMode`、`@/utils/launcherService`（静默启动 IPC）、`@/utils/configService`（`setConfig`）、`@/utils/platform`、`@tauri-apps/plugin-opener`。
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
-| `CANCEL_BEHAVIOR_KEY` | 19 | localStorage 键 `launcher_cancel_behavior` |
-| `VERIFY_THREADS_KEY` | 20 | localStorage 键 `launcher_verify_threads` |
-| `SYNC_EVENT` | 21 | window 事件名 `game-launch-settings-sync` |
-| `readCancelBehavior()` | 23-29 | 读取消行为，默认 `"ask"` |
-| `readVerifyThreads()` | 31-38 | 读线程数并夹取 1-32，默认 12 |
-| `persist(key, value)` | 40-45 | 写 localStorage 并广播 `SYNC_EVENT` |
-| `GameLaunchSettings`（export） | 51 | 设置组主体，无 props；`quickLaunchOpen` 控制静默启动弹窗 |
-| 静默启动区块 | 194-211 | 仅剩标题/描述与「查看命令与创建快捷方式…」按钮，点击打开 `QuickLaunchModal` |
-| `QuickLaunchModal`（export） | 223 | 独立弹窗；props：`onClose: () => void`；打开时同步游戏配置并加载基础命令 |
-| 命令加载 effect | 231-250 | 同步 localStorage 的游戏路径/渠道到 app config，再取得基础启动命令（`baseCommand`，不带 `--close-after-launch`） |
-| `closeAfterLaunch` state | 225 | 从 localStorage `launcher_close_after_launch` 初始化；切换即写回 localStorage（左栏 `GlassSwitch`） |
-| `copied` state | 232 | 复制按钮本地反馈：true 后 3 秒（`COPY_FEEDBACK_MS`）回 False，期间 icon morph 为对勾；timer 由 `copyResetTimer` ref 管理并在卸载时清除 |
-| 派生 `launchCommand` | 261 | `baseCommand` + 开启时追加 ` --close-after-launch`，供命令板块与复制使用 |
-| `handleCopyCommand` | 268-284 | 复制当前命令到剪贴板；成功不留 message，仅触发 icon morph（Copy→Check）3 秒；失败经 `addMessage`（warn，tag `quick-launch-command`） |
-| `runExport` | 286-326 | 快捷方式 / bat 保存共用骨架：`syncSilentLaunchConfig` → invoke → **成功/失败都不再写 modal 内提示，统一进消息队列**。成功：`addMessage`（info，tag `quick-launch-shortcut` / `quick-launch-bat`），body 为保存路径，并附「打开所在文件夹」action（`revealItemInDir`，来自 `@tauri-apps/plugin-opener`，失败 `logError`）；失败：warn message（含命令行回退提示） |
-| `handleCreateShortcut` | 328-334 | `createGameShortcut({closeAfterLaunch})` |
-| `handleSaveBat` | 336-345 | `createLaunchBat({closeAfterLaunch})` |
+| `CLOSE_AFTER_LAUNCH_KEY`（export） | 32 | localStorage 键 `launcher_close_after_launch` |
+| `CANCEL_BEHAVIOR_KEY`（export） | 33 | localStorage 键 `launcher_cancel_behavior` |
+| `VERIFY_THREADS_KEY`（export） | 34 | localStorage 键 `launcher_verify_threads` |
+| `DX11_KEY`（export） | 35 | localStorage 键 `launcher_dx11` |
+| `GAME_LAUNCH_SYNC_EVENT`（export） | 36 | window 事件名 `game-launch-settings-sync` |
+| `readCancelBehavior()`（export） | 40-46 | 读取消行为，默认 `"ask"` |
+| `readVerifyThreads()`（export） | 48-55 | 读线程数并夹取 1-32，默认 12 |
+| `readDx11()`（export） | 57-63 | 读 DX11 开关，默认 `false` |
+| `persistGameLaunchSetting(key, value)`（export） | 65-70 | 写 localStorage 并广播 `GAME_LAUNCH_SYNC_EVENT` |
+| `setDx11Setting(value)`（export） | 73-76 | DX11 开关：写 localStorage（界面同步）+ `setConfig("launcher_dx11", value)`（后端静默启动读取） |
+| `GameLaunchSettingsFields`（export） | 82-255 | 四项共享设置字段（取消下载行为 129-160、DX11 165-181、校验线程 186-211、背景媒体 216-252，分隔线 162/183/213）；监听同步事件与 `subscribeGameBgMode`，任意一处修改立即广播 |
+| `GameLaunchSettings`（export） | 261-295 | 设置页分区：`GameLaunchSettingsFields` + 静默启动入口（打开 `QuickLaunchModal`） |
+| `QuickLaunchModal`（export） | 300-591 | 独立弹窗；props：`onClose: () => void`；左栏「启动选项」含 DX11 与「启动后自动退出」两个 `GlassSwitch` |
+| 命令加载 effect | 313-334 | `syncSilentLaunchConfig()` 同步游戏路径/渠道/DX11 到 app config，再取基础命令（`baseCommand`） |
+| `closeAfterLaunch` state | 303-305 | 从 localStorage 初始化；切换即写回（350-355） |
+| `dx11` state | 306 | 从 `readDx11()` 初始化；监听 `GAME_LAUNCH_SYNC_EVENT`（336-340）；切换调用 `setDx11Setting`（357-360） |
+| 派生 `launchCommand` | 344-350 | `baseCommand` + 开启时追加 ` --dx11` / ` --close-after-launch` |
+| `handleCopyCommand` | 362-379 | 复制当前命令到剪贴板；成功仅触发 icon morph（Copy→Check）3 秒；失败经 `addMessage`（warn，tag `quick-launch-command`） |
+| `runExport` | 381-423 | 快捷方式 / bat 保存共用骨架：`syncSilentLaunchConfig` → invoke → 成功/失败均进消息队列（tag `quick-launch-shortcut` / `quick-launch-bat`） |
+| `handleCreateShortcut` | 425-432 | `createGameShortcut({closeAfterLaunch, dx11})` |
+| `handleSaveBat` | 434-441 | `createLaunchBat({closeAfterLaunch, dx11})` |
 
 **内部结构**：
-- Body 为左右两栏：左栏（`sm:w-44`）垂直居中、水平居中（`justify-center items-center text-center`，右侧竖分隔线）为 `--close-after-launch` 开关（标题/描述 + `GlassSwitch`）；右栏由 `divide-y` 在板块间划分割线，每个板块以左侧图标开篇——①「启动命令」（`TerminalIcon`）：单行截断（`truncate`）的 code 条 + 条内右端复制按钮为同一 `MorphIcon`（`icon` 在 lucide `Copy`/`Check` 间切换，复制成功 morph 为对勾并保持 3 秒）；②「Windows 快捷方式」（`ExternalLinkIcon`）：说明 + 头部带 icon 的「创建快捷方式…」按钮；③「bat 启动脚本」（`FileCodeIcon`）：说明 + 带 icon 的「保存为 bat 文件…」按钮。**无底部消息区**——所有完成/失败反馈进全局消息队列。backdrop `z-[300]`，容器 `size="lg"`。
-- 两个打开入口：设置页「静默启动」区块内按钮，以及游戏行动面板汉堡菜单的「启动设置」项；原 `GameLaunchSettingsModal` 包装层已删除。
-- `.lnk` 目标命令为主程序路径及 `--silent --launch-game`；游戏目录与渠道同步到后端 `ConfigService`。
+- Body 为左右两栏：左栏（`sm:w-56`，`justify-center items-center text-center`，右侧竖分隔线）顶部为「启动选项」小标题（`launch_options`），其下依次为 DX11 开关与「启动后自动退出」开关（标题/描述 + `GlassSwitch`）；右栏由 `divide-y` 在板块间划分割线，每个板块以左侧图标开篇——①「启动命令」（`TerminalIcon`）：单行截断（`truncate`）的 code 条 + 条内右端复制按钮为同一 `MorphIcon`（`Copy`/`Check` 间切换，成功保持 3 秒）；②「Windows 快捷方式」（`ExternalLinkIcon`）；③「bat 启动脚本」（`FileCodeIcon`）。所有完成/失败反馈进全局消息队列。backdrop `z-[300]`，容器 `size="lg"`。
+- 两个打开入口：设置页「静默启动」区块内按钮，以及游戏行动面板汉堡菜单的「游戏设置」项。
+- `.lnk` / `.bat` 目标命令为 `--silent --launch-game`，按开关追加 `--dx11` / `--close-after-launch`；游戏目录、渠道与 DX11 设置同步到后端 `ConfigService`。
 
-**备注**：通过 `launcherService` 调用 `get_game_launch_command` / `create_game_shortcut` / `create_launch_bat` 并用 `set_config` 同步 `launcher_install_path` / `launcher_channel`；剪贴板使用浏览器 Clipboard API。localStorage 键：`launcher_cancel_behavior`、`launcher_verify_threads`、`launcher_install_path`、`launcher_channel`、`launcher_close_after_launch`；window 事件：`game-launch-settings-sync`。文案位于 `settings.game_launch.*` 与 `launcher.*`。
+**备注**：通过 `launcherService` 调用 `get_game_launch_command` / `create_game_shortcut` / `create_launch_bat` 并用 `set_config` 同步 `launcher_install_path` / `launcher_channel` / `launcher_dx11`；剪贴板使用浏览器 Clipboard API。localStorage 键：`launcher_cancel_behavior`、`launcher_verify_threads`、`launcher_dx11`、`launcher_install_path`、`launcher_channel`、`launcher_close_after_launch`；window 事件：`game-launch-settings-sync`。文案位于 `settings.game_launch.*` 与 `launcher.*`。
 
 ## `src/components/in-app-browser.tsx`
 **职责**：应用内嵌浏览器覆盖层——玻璃工具栏（前进/后退/刷新/地址栏/关闭）+ 加载进度条 + 沙箱 `iframe`，开合与地址由 `@/stores/inAppBrowser` 状态驱动。

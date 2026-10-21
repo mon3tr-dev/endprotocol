@@ -315,12 +315,12 @@
 | `getAnnouncements` | launcherService.ts:190 | invoke `launcher_get_announcements`，参数 `{channel}`，返回 `AnnouncementItem[]` |
 | `getNoticeContent` | launcherService.ts:196 | invoke `launcher_get_notice_content`，参数 `{channel}`，返回 `LauncherNoticeContent`（横幅+公告合并结构） |
 | `getBackgroundImage` | launcherService.ts:204 | invoke `launcher_get_background_image`，参数 `{channel}`，返回 `BackgroundMedia \| null` |
-| `startGame` | launcherService.ts:240 | invoke `launcher_start_game`，参数 `{installPath, channel}`，返回 `LauncherResult`；失败时 `message` 为 `<token>: <detail>`（token 见 `LAUNCH_TOKEN_KEYS`），回退直接启动时该提示在 `warning` 字段 |
-| `syncSilentLaunchConfig` | launcherService.ts:268 | 从 localStorage 将 `launcher_install_path`、`launcher_channel` 通过 `set_config` 写入 app config |
-| `restoreLaunchConfig` | launcherService.ts:282 | **反向同步**：invoke `get_config` 读取 app config 中非空的 `launcher_install_path`、`launcher_channel` 回写 localStorage；后端不可用时静默保留 localStorage 现状。修复静默命令行启动后打开完整版时游戏面板因 localStorage 缺失而显示「定位游戏」的问题 |
-| `getGameLaunchCommand` | launcherService.ts:282 | invoke `get_game_launch_command`，返回包含 exe 路径与 `--silent --launch-game` 的完整命令 |
-| `createGameShortcut` | launcherService.ts:305 | invoke `create_game_shortcut`，参数 `LaunchExportOptions {closeAfterLaunch?}`（缺省 false）；弹出用户选定保存位置的对话框，返回 `.lnk` 路径或 `null`（取消） |
-| `createLaunchBat` | launcherService.ts:315 | invoke `create_launch_bat`，参数 `LaunchExportOptions {closeAfterLaunch?}`；保存 `.bat` 脚本，返回路径或 `null`（取消） |
+| `startGame` | launcherService.ts:263 | invoke `launcher_start_game`，参数 `{installPath, channel, dx11?}`，返回 `LauncherResult`；`dx11` 为 true 时后端给游戏进程追加 `-force-d3d11`，省略时后端读取配置 `launcher_dx11`；失败时 `message` 为 `<token>: <detail>`（token 见 `LAUNCH_TOKEN_KEYS`），回退直接启动时该提示在 `warning` 字段 |
+| `syncSilentLaunchConfig` | launcherService.ts:280 | 从 localStorage 将 `launcher_install_path`、`launcher_channel`、`launcher_dx11` 通过 `set_config` 写入 app config |
+| `restoreLaunchConfig` | launcherService.ts:301 | **反向同步**：invoke `get_config` 读取 app config 中非空的 `launcher_install_path`、`launcher_channel` 与布尔 `launcher_dx11` 回写 localStorage；后端不可用时静默保留 localStorage 现状。修复静默命令行启动后打开完整版时游戏面板因 localStorage 缺失而显示「定位游戏」的问题 |
+| `getGameLaunchCommand` | launcherService.ts:326 | invoke `get_game_launch_command`，返回包含 exe 路径与 `--silent --launch-game` 的完整命令（`--dx11` 由前端按开关追加展示） |
+| `createGameShortcut` | launcherService.ts:335 | invoke `create_game_shortcut`，参数 `LaunchExportOptions {closeAfterLaunch?, dx11?}`（缺省 false / 后端配置）；弹出用户选定保存位置的对话框，返回 `.lnk` 路径或 `null`（取消） |
+| `createLaunchBat` | launcherService.ts:344 | invoke `create_launch_bat`，参数 `LaunchExportOptions {closeAfterLaunch?, dx11?}`；保存 `.bat` 脚本，返回路径或 `null`（取消） |
 | `browseFolder` | launcherService.ts:222 | invoke `launcher_browse_folder`，无参，返回 `string \| null`（用户选择的目录） |
 | `checkExecutable` | launcherService.ts:226 | invoke `launcher_check_executable`，参数 `{installPath, channel}`，返回 `boolean` |
 | `checkGameRunning` | launcherService.ts:236 | invoke `launcher_check_game_running`，参数 `{channel}`，返回 `boolean` |

@@ -1,13 +1,19 @@
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
 use std::sync::Arc;
+use std::sync::Mutex as StdMutex;
 use tauri::Emitter;
 use tokio::sync::Mutex;
 
 use crate::models::game::*;
+use crate::services::config_service::ConfigService;
 use crate::services::game_launcher_service::GameLauncherService;
 use crate::utils::game_playtime::GamePlaytime;
 use crate::utils::official_launcher::{LaunchError, LaunchToken};
+
+/// 启用 DX11 时附加给游戏的命令行参数。
+const DX11_GAME_ARG: &str = "-force-d3d11";
+const DX11_CONFIG_KEY: &str = "launcher_dx11";
 
 /// Return the process-level bytes read counter used by Task Manager's disk rate.
 #[tauri::command]
@@ -359,12 +365,15 @@ static LAUNCH_IN_FLIGHT: std::sync::atomic::AtomicBool = std::sync::atomic::Atom
 /// 直接启动游戏（旧行为）：交给 shell，靠 exe 自身的 manifest 自动提权。
 /// 只在找不到签名有效的官方启动器时作为回退使用。
 #[cfg(target_os = "windows")]
-fn direct_launch(exe_path: &std::path::Path) -> Result<LauncherResult, String> {
+fn direct_launch(
+    exe_path: &std::path::Path,
+    arguments: &[String],
+) -> Result<LauncherResult, String> {
     let exe_name = exe_path
         .file_name()
         .map(|name| name.to_string_lossy().into_owned())
         .unwrap_or_default();
-    match crate::utils::official_launcher::shell_execute_game(exe_path) {
+    match crate::utils::official_launcher::shell_execute_game(exe_path, arguments) {
         Ok(()) => Ok(LauncherResult {
             success: true,
             message: format!("{exe_name} launched"),
@@ -386,14 +395,39 @@ fn direct_launch(exe_path: &std::path::Path) -> Result<LauncherResult, String> {
 /// 「官方启动器父进程伪造」（见 `utils/official_launcher.rs`）：以提权 helper 创建一个
 /// 挂起且永不运行的官方启动器，再把它指定为游戏的父进程。找不到签名有效的官方启动器时
 /// 回退到直接启动（旧行为），并通过 `warning` 让界面提示原因。
+///
+/// `dx11` 为 `None` 时读取配置键 `launcher_dx11`（默认 false）；为 true 时给游戏附加
+/// `-force-d3d11`。静默启动的 `--dx11` 参数在 `lib.rs` 中解析后通过内部 `launch_game` 传入。
 #[tauri::command]
 pub async fn launcher_start_game(
+    config_service: tauri::State<'_, Arc<StdMutex<ConfigService>>>,
     install_path: String,
     channel: String,
+    dx11: Option<bool>,
+) -> Result<LauncherResult, String> {
+    let dx11 = dx11.unwrap_or_else(|| {
+        config_service
+            .lock()
+            .map(|config| config.get::<bool>(DX11_CONFIG_KEY).unwrap_or(false))
+            .unwrap_or(false)
+    });
+    launch_game(install_path, channel, dx11).await
+}
+
+/// `launcher_start_game` 的实际实现；静默模式没有 Tauri State，直接调用本函数。
+pub(crate) async fn launch_game(
+    install_path: String,
+    channel: String,
+    dx11: bool,
 ) -> Result<LauncherResult, String> {
     let ch = parse_channel(&channel)?;
     let exe_name = ch.executable_name();
     let exe_path = std::path::Path::new(&install_path).join(exe_name);
+    let game_arguments: Vec<String> = if dx11 {
+        vec![DX11_GAME_ARG.to_string()]
+    } else {
+        Vec::new()
+    };
 
     if !exe_path.exists() {
         return Ok(LauncherResult {
@@ -429,6 +463,7 @@ pub async fn launcher_start_game(
         }
 
         let game = exe_path.clone();
+        let launch_arguments = game_arguments.clone();
         // 状态文件用于区分「helper 在启动阶段就失败了」与「游戏创建成功但很快退出」。
         let status_file = crate::utils::paths::app_data_dir()
             .ok()
@@ -438,7 +473,7 @@ pub async fn launcher_start_game(
             crate::utils::official_launcher::launch_via_official_parent(
                 &game,
                 None,
-                &[],
+                &launch_arguments,
                 status_file.as_deref(),
             )
         })
@@ -461,7 +496,7 @@ pub async fn launcher_start_game(
                     "[launcher] {} — falling back to a direct launch",
                     error.message()
                 );
-                direct_launch(&exe_path).map(|mut result| {
+                direct_launch(&exe_path, &game_arguments).map(|mut result| {
                     // 用 `fallback` token 而不是原错误：前端据此显示「已直接启动」的提示，
                     // 而不是把它当成启动失败。
                     result.warning = Some(
@@ -496,10 +531,9 @@ pub async fn launcher_start_game(
 
     #[cfg(not(target_os = "windows"))]
     {
-        match std::process::Command::new(&exe_path)
-            .current_dir(&install_path)
-            .spawn()
-        {
+        let mut command = std::process::Command::new(&exe_path);
+        command.current_dir(&install_path).args(&game_arguments);
+        match command.spawn() {
             Ok(_) => Ok(LauncherResult {
                 success: true,
                 message: format!("{} launched", exe_name),

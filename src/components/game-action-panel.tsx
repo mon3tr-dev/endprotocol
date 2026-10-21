@@ -51,7 +51,12 @@ import {
   splitLaunchToken,
 } from "@/utils/launcherService";
 import { addMessage } from "@/utils/messageStore";
-import { QuickLaunchModal } from "@/components/game-launch-settings";
+import {
+  GameLaunchSettingsFields,
+  QuickLaunchModal,
+  readDx11,
+} from "@/components/game-launch-settings";
+import { SettingsDivider } from "@/components/ui/settings-row";
 
 const STORAGE_KEY_INSTALL_PATH = "launcher_install_path";
 const STORAGE_KEY_CHANNEL = "launcher_channel";
@@ -910,7 +915,7 @@ export function GameActionPanel() {
     }
 
     try {
-      const result = await startGame(installPath, channel);
+      const result = await startGame(installPath, channel, readDx11());
       if (!result.success) {
         // 后端 message 是 `<token>: <detail>`：token 选文案，detail 是技术细节。
         const { token, detail } = splitLaunchToken(result.message);
@@ -2897,7 +2902,7 @@ function GameSettingsModal({
   return (
     <GlassModal isOpen onOpenChange={(open) => !open && onClose()}>
       <GlassModal.Backdrop isDismissable>
-        <GlassModal.Container size="sm">
+        <GlassModal.Container size="lg">
           <GlassModal.Dialog>
             <GlassModal.Header>
               <div className="flex items-center justify-between px-5 py-4 border-b border-separator/50">
@@ -2908,7 +2913,7 @@ function GameSettingsModal({
               </div>
             </GlassModal.Header>
             <GlassModal.Body>
-              <div className="px-5 py-4 space-y-4">
+              <div className="px-5 py-4 space-y-5">
                 <div>
                   <label className="block text-xs font-medium text-muted mb-1.5">
                     {t("launcher.install_path")}
@@ -2924,12 +2929,16 @@ function GameSettingsModal({
                     <button
                       type="button"
                       onClick={handleBrowse}
-                      className="h-9 px-3 rounded-lg glass-surface border border-primary/30 text-xs font-medium text-primary hover:bg-primary/20 transition-colors cursor-pointer shrink-0"
+                      className="h-9 px-3 rounded-lg glass-surface border border-primary/30 text-xs font-medium text-primary hover:bg-primary/20 transition-colors cursor-pointer shrink-0 whitespace-nowrap"
                     >
                       {t("launcher.browse")}
                     </button>
                   </div>
                 </div>
+
+                <SettingsDivider />
+
+                <GameLaunchSettingsFields />
               </div>
             </GlassModal.Body>
             <GlassModal.Footer>

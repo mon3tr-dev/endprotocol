@@ -80,7 +80,7 @@
 | `launcher_get_announcements` | commands/launcher.rs:318 | `service`、`channel` | `Result<Vec<AnnouncementItem>, String>` | `GameLauncherService::get_announcements` |
 | `launcher_get_notice_content` | commands/launcher.rs:329 | `service`、`channel` | `Result<LauncherNoticeContent, String>` | `GameLauncherService::get_notice_content`（Banner + 公告合并内容） |
 | `launcher_get_background_image` | commands/launcher.rs:340 | `service`、`channel` | `Result<Option<BackgroundMedia>, String>` | `GameLauncherService::get_background_image` |
-| `launcher_start_game` | commands/launcher.rs:389 | `install_path: String`、`channel: String` | `Result<LauncherResult, String>` | `parse_channel`、`taskkill /F /IM`、`official_launcher::launch_via_official_parent`（提权 helper 伪造官方父进程）/ 回退 `direct_launch` → `shell_execute_game` |
+| `launcher_start_game` | commands/launcher.rs:402 | `config_service: State<Arc<StdMutex<ConfigService>>>`、`install_path: String`、`channel: String`、`dx11: Option<bool>`（省略时读配置 `launcher_dx11`，默认 false） | `Result<LauncherResult, String>` | `parse_channel`、`taskkill /F /IM`、`official_launcher::launch_via_official_parent`（提权 helper 伪造官方父进程）/ 回退 `direct_launch` → `shell_execute_game`；DX11 开启时给游戏参数追加 `-force-d3d11` |
 | `launcher_browse_folder` | commands/launcher.rs:523 | 无 | `Result<Option<String>, String>` | `rfd::FileDialog::pick_folder` |
 | `launcher_get_disk_space` | commands/launcher.rs:540 | `path: String` | `Result<DiskSpace, String>` | 调用 `powershell Get-PSDrive` 子进程解析 used/free |
 | `launcher_scan_install_dir` | commands/launcher.rs:599 | `service`、`channel`、`install_path` | `Result<FileScanResult, String>` | `GameLauncherService::scan_install_dir` |
@@ -92,8 +92,8 @@
 | `launcher_switch_channel` | commands/launcher.rs:731 | `service`、`from_channel`、`to_channel`、`install_path`、`app: AppHandle` | `Result<String, String>` | `GameLauncherService::switch_channel` |
 | `get_backend_logs` | commands/logs.rs:4 | 无 | `Vec<LogEntry>` | `utils::logger::get_logger().get_recent_logs()` |
 | `get_tray_user_info` | commands/tray.rs:8 | `config_service: State<Arc<Mutex<ConfigService>>>` | `Result<TrayUserInfo, String>` | `ConfigService::get::<TrayUserInfo>("tray_user_info")` |
-| `create_game_shortcut` | commands/startup.rs:71 | `config_service: State<Arc<Mutex<ConfigService>>>`、`close_after_launch: Option<bool>`（前端传 `closeAfterLaunch`，缺省 false） | `Result<Option<String>, String>` | 用户通过 `rfd` 选择 `.lnk` 路径；PowerShell COM 创建快捷方式，返回路径；取消选择返回 `None` |
-| `create_launch_bat` | commands/startup.rs:207 | `config_service: State<Arc<Mutex<ConfigService>>>`、`close_after_launch: Option<bool>` | `Result<Option<String>, String>` | 用户通过 `rfd` 选择 `.bat` 保存路径；写入 `@echo off` + `chcp 65001>nul` + `start "" <exe> <args>`（UTF-8 无 BOM，保证中文路径在 cmd 下可解析），返回路径；取消选择返回 `None`；非 Windows 返回 `Err` |
+| `create_game_shortcut` | commands/startup.rs:78 | `config_service: State<Arc<Mutex<ConfigService>>>`、`close_after_launch: Option<bool>`（前端传 `closeAfterLaunch`，缺省 false）、`dx11: Option<bool>`（缺省读配置 `launcher_dx11`） | `Result<Option<String>, String>` | 用户通过 `rfd` 选择 `.lnk` 路径；PowerShell COM 创建快捷方式，启动参数按开关包含 `--dx11`，返回路径；取消选择返回 `None` |
+| `create_launch_bat` | commands/startup.rs:217 | `config_service: State<Arc<Mutex<ConfigService>>>`、`close_after_launch: Option<bool>`、`dx11: Option<bool>`（缺省读配置 `launcher_dx11`） | `Result<Option<String>, String>` | 用户通过 `rfd` 选择 `.bat` 保存路径；写入 `@echo off` + `chcp 65001>nul` + `start "" <exe> <args>`（参数含可选 `--dx11`，UTF-8 无 BOM，保证中文路径在 cmd 下可解析），返回路径；取消选择返回 `None`；非 Windows 返回 `Err` |
 | `set_tray_user` | commands/tray.rs:17 | `app: AppHandle`、`config_service`、`role_id: String` | `Result<(), String>` | `ConfigService::set("tray_user_info", …)`、`tray::update_tray_menu` |
 | `update_tray_user_data` | commands/tray.rs:38 | `app`、`config_service`、`user_info: TrayUserInfo` | `Result<(), String>` | `ConfigService::set("tray_user_info", …)`、`tray::update_tray_menu` |
 | `show_tray_panel` | commands/tray.rs:56 | `app: AppHandle` | `Result<(), String>` | `tray::show_tray_panel` |
@@ -130,12 +130,12 @@
 | `normalize_path` | startup.rs:13 | 剥除 `canonicalize()` 返回的 `\\?\` / `\\?\UNC\` 扩展长度前缀，避开 UNC 的还原为 `\\`，保证命令行与快捷方式目标路径干净 |
 | `ensure_main_exe_path` | startup.rs:25 | 规范化当前 exe 路径；当配置缺失、无效或已变化时更新 `main_exe_path` |
 | `refresh_main_exe_path` | startup.rs:58 | 应用初始化时同步 exe 路径 |
-| `launch_args`（`pub(crate)`） | startup.rs:13 | 组合 `--silent --launch-game` 并按需追加 `--close-after-launch`（常量在 lib.rs:25，`pub(crate)`）；`get_game_launch_command` 只返回基础参数，追加由前端完成 |
-| `get_game_launch_command` | startup.rs:57 | 返回带引号的当前 exe 路径及 `--silent --launch-game` |
-| `create_game_shortcut` | startup.rs:63 | 读取 `launcher_install_path` / `launcher_channel`，用户选择保存路径后创建 Windows `.lnk`；取消选择返回 `None` |
+| `launch_args`（`pub(crate)`） | startup.rs:15 | 组合 `--silent --launch-game`，按需追加 `--dx11`；是否追加 `--close-after-launch` 由入参控制（常量在 lib.rs:23-26）；`get_game_launch_command` 只返回基础参数，追加由前端完成 |
+| `get_game_launch_command` | startup.rs:70 | 返回带引号的当前 exe 路径及 `--silent --launch-game` |
+| `create_game_shortcut` | startup.rs:78 | 读取 `launcher_install_path` / `launcher_channel` / `launcher_dx11`，用户选择保存路径后创建 Windows `.lnk`；取消选择返回 `None` |
 | `powershell_literal`（私有，仅 Windows） | startup.rs:202 | 单引号转义（`'` → `''`），用于嵌入脚本路径串 |
 
-**备注**：配置文件仍为 `%LOCALAPPDATA%\\cn.msk-network.endprotocol\\app_config.json`；键为 `main_exe_path`、`launcher_install_path`、`launcher_channel`。`main_exe_path` 不含 `\\?\` 前缀。快捷方式目标为主程序 exe，工作目录为 exe 所在目录；`Endfield.exe` 存在时其内嵌图标直接通过 `$shortcut.IconLocation = '<Endfield.exe>,0'` 引用（`executable_name()` 与渠道无关），不再提取/落盘 `.ico`；exe 缺失则不设置图标。
+**备注**：配置文件仍为 `%LOCALAPPDATA%\\cn.msk-network.endprotocol\\app_config.json`；键为 `main_exe_path`、`launcher_install_path`、`launcher_channel`、`launcher_dx11`。`main_exe_path` 不含 `\\?\` 前缀。快捷方式目标为主程序 exe，工作目录为 exe 所在目录；`Endfield.exe` 存在时其内嵌图标直接通过 `$shortcut.IconLocation = '<Endfield.exe>,0'` 引用（`executable_name()` 与渠道无关），不再提取/落盘 `.ico`；exe 缺失则不设置图标。
 
 ---
 
@@ -571,10 +571,10 @@
 - 位置：launcher.rs:340（async）；参数：`service`、`channel`；返回：`Result<Option<BackgroundMedia>, String>`；逻辑：`GameLauncherService::get_background_image(&ch)`。
 
 ### `launcher_start_game`
-- 位置：launcher.rs:389（async）
-- 参数：`install_path: String`、`channel: String`
+- 位置：launcher.rs:402（async）
+- 参数：`config_service: State<Arc<StdMutex<ConfigService>>>`、`install_path: String`、`channel: String`、`dx11: Option<bool>`（为 `None` 时读取配置 `launcher_dx11`，缺省 false）
 - 返回：`Result<LauncherResult, String>`
-- 逻辑：用 `ch.executable_name()` 拼 exe 路径，不存在直接返回 `success:false`；先 `taskkill /F /IM <exe>` 杀残留进程并 `sleep(500ms)`；随后（Windows）在 `spawn_blocking` 中调用 `official_launcher::launch_via_official_parent` —— **游戏会校验自己的直接父进程必须是签名有效的官方 `Games.exe`**，该函数先查找 + 验签官方启动器（失败即 `no_launcher`），再用 `ShellExecuteExW("runas")` 以 `--endfield-launch-helper` 提权重启自身，由提权实例创建「挂起且永不运行的官方启动器 + 以其为父进程的游戏进程」；命令侧用 2.5s 宽限期 + 状态文件判断 helper 是启动阶段失败还是游戏已创建。找不到签名有效的官方启动器时回退 `direct_launch`（`ShellExecuteW(SW_SHOWNORMAL)`，即旧行为）并把原因放进 `LauncherResult.warning`。非 Windows 走 `Command::spawn`。
+- 逻辑：用 `ch.executable_name()` 拼 exe 路径，不存在直接返回 `success:false`；启用 DX11 时构造游戏参数 `vec!["-force-d3d11"]`；先 `taskkill /F /IM <exe>` 杀残留进程并 `sleep(500ms)`；随后（Windows）在 `spawn_blocking` 中调用 `official_launcher::launch_via_official_parent` —— **游戏会校验自己的直接父进程必须是签名有效的官方 `Games.exe`**，该函数先查找 + 验签官方启动器（失败即 `no_launcher`），再用 `ShellExecuteExW("runas")` 以 `--endfield-launch-helper` 提权重启自身，由提权实例创建「挂起且永不运行的官方启动器 + 以其为父进程的游戏进程」；命令侧用 2.5s 宽限期 + 状态文件判断 helper 是启动阶段失败还是游戏已创建。找不到签名有效的官方启动器时回退 `direct_launch`（`ShellExecuteW(SW_SHOWNORMAL)` + 游戏参数，即旧行为）并把原因放进 `LauncherResult.warning`。非 Windows 走 `Command::spawn` 并传入 `game_arguments`。实际实现在 `launch_game`（launcher.rs:418），供静默启动直接调用。
 - 并发保护：`static LAUNCH_IN_FLIGHT`（launcher.rs:356）保证同一时刻只有一次启动，避免重复点击弹出两次 UAC / 留下两套挂起的父进程。
 
 #### `launcher_start_game` 的 `message` / `warning` token 契约

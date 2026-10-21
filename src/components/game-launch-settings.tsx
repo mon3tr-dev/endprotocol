@@ -21,20 +21,23 @@ import {
 import { isWindowsPlatform } from "@/utils/platform";
 import { addMessage } from "@/utils/messageStore";
 import { logError } from "@/utils/logger";
+import { setConfig } from "@/utils/configService";
 import {
   getGameBgMode,
   setGameBgMode,
+  subscribeGameBgMode,
   type GameBgMode,
 } from "@/stores/launcherMode";
 
-const CLOSE_AFTER_LAUNCH_KEY = "launcher_close_after_launch";
+export const CLOSE_AFTER_LAUNCH_KEY = "launcher_close_after_launch";
+export const CANCEL_BEHAVIOR_KEY = "launcher_cancel_behavior";
+export const VERIFY_THREADS_KEY = "launcher_verify_threads";
+export const DX11_KEY = "launcher_dx11";
+export const GAME_LAUNCH_SYNC_EVENT = "game-launch-settings-sync";
+
 const COPY_FEEDBACK_MS = 3000;
 
-const CANCEL_BEHAVIOR_KEY = "launcher_cancel_behavior";
-const VERIFY_THREADS_KEY = "launcher_verify_threads";
-const SYNC_EVENT = "game-launch-settings-sync";
-
-const readCancelBehavior = (): string => {
+export const readCancelBehavior = (): string => {
   try {
     return localStorage.getItem(CANCEL_BEHAVIOR_KEY) || "ask";
   } catch {
@@ -42,7 +45,7 @@ const readCancelBehavior = (): string => {
   }
 };
 
-const readVerifyThreads = (): number => {
+export const readVerifyThreads = (): number => {
   try {
     const parsed = parseInt(localStorage.getItem(VERIFY_THREADS_KEY) || "12", 10);
     return Number.isFinite(parsed) ? Math.min(32, Math.max(1, parsed)) : 12;
@@ -51,49 +54,73 @@ const readVerifyThreads = (): number => {
   }
 };
 
-const persist = (key: string, value: string) => {
+export const readDx11 = (): boolean => {
+  try {
+    return localStorage.getItem(DX11_KEY) === "true";
+  } catch {
+    return false;
+  }
+};
+
+export const persistGameLaunchSetting = (key: string, value: string) => {
   try {
     localStorage.setItem(key, value);
   } catch {}
-  window.dispatchEvent(new Event(SYNC_EVENT));
+  window.dispatchEvent(new Event(GAME_LAUNCH_SYNC_EVENT));
+};
+
+/** DX11 开关同时写 localStorage（界面同步）与后端配置（静默启动读取）。 */
+export const setDx11Setting = (value: boolean) => {
+  persistGameLaunchSetting(DX11_KEY, String(value));
+  void setConfig("launcher_dx11", value);
 };
 
 /**
- * 游戏启动设置项（取消下载行为 / 校验线程数 / 界面背景）。
- * 与数据模式设置页共用同一份存储，任意一处修改立即同步到另一处。
+ * 游戏启动设置字段（取消下载行为 / DX11 / 校验线程数 / 界面背景）。
+ * 设置页与游戏行动面板的「游戏设置」弹窗共用本组件，任意一处修改立即同步到另一处。
  */
-export function GameLaunchSettings() {
+export function GameLaunchSettingsFields() {
   const { t } = useTranslation();
   const [cancelBehavior, setCancelBehavior] = useState(readCancelBehavior);
   const [verifyThreads, setVerifyThreads] = useState(readVerifyThreads);
   const [bgMediaMode, setBgMediaMode] = useState<GameBgMode>(getGameBgMode);
-  const [quickLaunchOpen, setQuickLaunchOpen] = useState(false);
+  const [dx11, setDx11] = useState(readDx11);
 
   useEffect(() => {
     const sync = () => {
       setCancelBehavior(readCancelBehavior());
       setVerifyThreads(readVerifyThreads());
-      setBgMediaMode(getGameBgMode());
+      setDx11(readDx11());
     };
-    window.addEventListener(SYNC_EVENT, sync);
-    return () => window.removeEventListener(SYNC_EVENT, sync);
+    window.addEventListener(GAME_LAUNCH_SYNC_EVENT, sync);
+    const unsubscribeBg = subscribeGameBgMode(() => {
+      setBgMediaMode(getGameBgMode());
+    });
+    return () => {
+      window.removeEventListener(GAME_LAUNCH_SYNC_EVENT, sync);
+      unsubscribeBg();
+    };
   }, []);
 
   const handleCancelChange = (value: string) => {
     setCancelBehavior(value);
-    persist(CANCEL_BEHAVIOR_KEY, value);
+    persistGameLaunchSetting(CANCEL_BEHAVIOR_KEY, value);
   };
 
   const handleThreadsChange = (value: number) => {
     setVerifyThreads(value);
-    persist(VERIFY_THREADS_KEY, String(value));
+    persistGameLaunchSetting(VERIFY_THREADS_KEY, String(value));
   };
 
   const handleBgMediaChange = (value: GameBgMode) => {
     if (value === getGameBgMode()) return;
     setBgMediaMode(value);
     setGameBgMode(value);
-    window.dispatchEvent(new Event(SYNC_EVENT));
+  };
+
+  const handleDx11Change = (value: boolean) => {
+    setDx11(value);
+    setDx11Setting(value);
   };
 
   return (
@@ -109,7 +136,7 @@ export function GameLaunchSettings() {
               {t("launcher.cancel_download_behavior_desc")}
             </p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 shrink-0 whitespace-nowrap">
             {[
               { value: "ask", label: t("launcher.cancel_behavior_ask") },
               { value: "keep", label: t("launcher.cancel_behavior_keep") },
@@ -118,7 +145,7 @@ export function GameLaunchSettings() {
               <button
                 key={opt.value}
                 type="button"
-                className={`px-3 py-1.5 rounded-lg text-sm border transition-all cursor-pointer ${
+                className={`px-3 py-1.5 rounded-lg text-sm border transition-all cursor-pointer whitespace-nowrap ${
                   cancelBehavior === opt.value
                     ? "border-primary/50 bg-primary/10 text-primary font-medium"
                     : "border-separator/40 text-muted hover:bg-default-100/50"
@@ -129,6 +156,27 @@ export function GameLaunchSettings() {
               </button>
             ))}
           </div>
+        </div>
+      </div>
+
+      <SettingsDivider />
+
+      {/* DX11 Launch */}
+      <div id="settings-dx11">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="min-w-0">
+            <p className="font-medium text-foreground whitespace-nowrap">
+              {t("settings.game_launch.dx11")}
+            </p>
+            <p className="text-sm text-muted mt-0.5">
+              {t("settings.game_launch.dx11_desc")}
+            </p>
+          </div>
+          <GlassSwitch isSelected={dx11} onValueChange={handleDx11Change}>
+            <GlassSwitch.Control>
+              <GlassSwitch.Thumb />
+            </GlassSwitch.Control>
+          </GlassSwitch>
         </div>
       </div>
 
@@ -145,7 +193,7 @@ export function GameLaunchSettings() {
               {t("settings.game_launch.verify_threads_desc")}
             </p>
           </div>
-          <div className="flex items-center gap-3 sm:w-56">
+          <div className="flex items-center gap-3 sm:w-56 shrink-0">
             <Slider
               min={1}
               max={32}
@@ -175,7 +223,7 @@ export function GameLaunchSettings() {
               {t("settings.game_launch.bg_media_desc")}
             </p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 shrink-0 whitespace-nowrap">
             {[
               {
                 value: "video" as GameBgMode,
@@ -189,7 +237,7 @@ export function GameLaunchSettings() {
               <button
                 key={opt.value}
                 type="button"
-                className={`px-3 py-1.5 rounded-lg text-sm border transition-all cursor-pointer ${
+                className={`px-3 py-1.5 rounded-lg text-sm border transition-all cursor-pointer whitespace-nowrap ${
                   bgMediaMode === opt.value
                     ? "border-primary/50 bg-primary/10 text-primary font-medium"
                     : "border-separator/40 text-muted hover:bg-default-100/50"
@@ -202,6 +250,21 @@ export function GameLaunchSettings() {
           </div>
         </div>
       </div>
+    </>
+  );
+}
+
+/**
+ * 游戏启动设置项（取消下载行为 / DX11 / 校验线程数 / 界面背景）。
+ * 与游戏行动面板的「游戏设置」弹窗共用同一份存储，任意一处修改立即同步到另一处。
+ */
+export function GameLaunchSettings() {
+  const { t } = useTranslation();
+  const [quickLaunchOpen, setQuickLaunchOpen] = useState(false);
+
+  return (
+    <>
+      <GameLaunchSettingsFields />
 
       <SettingsDivider />
 
@@ -240,6 +303,7 @@ export function QuickLaunchModal({ onClose }: { onClose: () => void }) {
   const [closeAfterLaunch, setCloseAfterLaunch] = useState(
     () => localStorage.getItem(CLOSE_AFTER_LAUNCH_KEY) === "true",
   );
+  const [dx11, setDx11] = useState(readDx11);
   const [copied, setCopied] = useState(false);
   const [creatingShortcut, setCreatingShortcut] = useState(false);
   const [savingBat, setSavingBat] = useState(false);
@@ -269,15 +333,30 @@ export function QuickLaunchModal({ onClose }: { onClose: () => void }) {
     };
   }, [t]);
 
+  useEffect(() => {
+    const sync = () => setDx11(readDx11());
+    window.addEventListener(GAME_LAUNCH_SYNC_EVENT, sync);
+    return () => window.removeEventListener(GAME_LAUNCH_SYNC_EVENT, sync);
+  }, []);
+
   useEffect(() => () => window.clearTimeout(copyResetTimer.current), []);
 
-  const launchCommand = closeAfterLaunch
-    ? `${baseCommand} --close-after-launch`
-    : baseCommand;
+  const launchCommand = [
+    baseCommand,
+    dx11 ? "--dx11" : "",
+    closeAfterLaunch ? "--close-after-launch" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
 
   const handleToggleCloseAfterLaunch = (value: boolean) => {
     setCloseAfterLaunch(value);
     localStorage.setItem(CLOSE_AFTER_LAUNCH_KEY, String(value));
+  };
+
+  const handleToggleDx11 = (value: boolean) => {
+    setDx11(value);
+    setDx11Setting(value);
   };
 
   const handleCopyCommand = async () => {
@@ -345,7 +424,7 @@ export function QuickLaunchModal({ onClose }: { onClose: () => void }) {
 
   const handleCreateShortcut = () =>
     runExport(
-      () => createGameShortcut({ closeAfterLaunch }),
+      () => createGameShortcut({ closeAfterLaunch, dx11 }),
       setCreatingShortcut,
       "settings.game_launch.shortcut_created",
       "settings.game_launch.shortcut_error",
@@ -354,7 +433,7 @@ export function QuickLaunchModal({ onClose }: { onClose: () => void }) {
 
   const handleSaveBat = () =>
     runExport(
-      () => createLaunchBat({ closeAfterLaunch }),
+      () => createLaunchBat({ closeAfterLaunch, dx11 }),
       setSavingBat,
       "settings.game_launch.bat_created",
       "settings.game_launch.bat_error",
@@ -383,23 +462,42 @@ export function QuickLaunchModal({ onClose }: { onClose: () => void }) {
                   {t("settings.game_launch.silent_launch_desc")}
                 </p>
                 <div className="flex flex-col gap-5 sm:flex-row">
-                  <aside className="flex flex-col justify-center items-center gap-3 text-center sm:w-44 sm:shrink-0 sm:border-r sm:border-separator/50 sm:pr-5">
-                    <div className="space-y-0.5">
-                      <p className={sectionTitle}>
+                  <aside className="flex flex-col justify-center items-center gap-5 text-center sm:w-56 sm:shrink-0 sm:border-r sm:border-separator/50 sm:pr-5">
+                    <p className="text-xs font-medium uppercase tracking-wide text-muted">
+                      {t("settings.game_launch.launch_options")}
+                    </p>
+                    <div className="flex flex-col items-center gap-2">
+                      <p className={`${sectionTitle} whitespace-nowrap`}>
+                        {t("settings.game_launch.dx11")}
+                      </p>
+                      <p className={sectionHint}>
+                        {t("settings.game_launch.dx11_silent_desc")}
+                      </p>
+                      <GlassSwitch
+                        isSelected={dx11}
+                        onValueChange={handleToggleDx11}
+                      >
+                        <GlassSwitch.Control>
+                          <GlassSwitch.Thumb />
+                        </GlassSwitch.Control>
+                      </GlassSwitch>
+                    </div>
+                    <div className="flex flex-col items-center gap-2">
+                      <p className={`${sectionTitle} whitespace-nowrap`}>
                         {t("settings.game_launch.close_after_launch")}
                       </p>
                       <p className={sectionHint}>
                         {t("settings.game_launch.close_after_launch_desc")}
                       </p>
+                      <GlassSwitch
+                        isSelected={closeAfterLaunch}
+                        onValueChange={handleToggleCloseAfterLaunch}
+                      >
+                        <GlassSwitch.Control>
+                          <GlassSwitch.Thumb />
+                        </GlassSwitch.Control>
+                      </GlassSwitch>
                     </div>
-                    <GlassSwitch
-                      isSelected={closeAfterLaunch}
-                      onValueChange={handleToggleCloseAfterLaunch}
-                    >
-                      <GlassSwitch.Control>
-                        <GlassSwitch.Thumb />
-                      </GlassSwitch.Control>
-                    </GlassSwitch>
                   </aside>
 
                   <div className="min-w-0 flex-1 divide-y divide-separator/40">

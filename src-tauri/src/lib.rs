@@ -23,6 +23,7 @@ use services::system_resource_service::SystemResourceService;
 const SILENT_ARG: &str = "--silent";
 const LAUNCH_GAME_ARG: &str = "--launch-game";
 pub(crate) const CLOSE_AFTER_LAUNCH_ARG: &str = "--close-after-launch";
+const DX11_ARG: &str = "--dx11";
 const WAIT_FOR_PARENT_ARG: &str = "--endprotocol-wait-for-parent";
 static PROMOTION_STARTED: AtomicBool = AtomicBool::new(false);
 
@@ -53,6 +54,8 @@ pub fn run() {
     let silent_mode = args.iter().any(|arg| arg == SILENT_ARG);
     let launch_game = args.iter().any(|arg| arg == LAUNCH_GAME_ARG);
     let close_after_launch = silent_mode && args.iter().any(|arg| arg == CLOSE_AFTER_LAUNCH_ARG);
+    // `--dx11` 只与 `--launch-game` 组合生效；缺省时在 start_game_from_config 中读取应用设置。
+    let requested_dx11 = args.iter().any(|arg| arg == DX11_ARG).then_some(true);
     let mode = Arc::new(AtomicBool::new(silent_mode));
     let app_ready = Arc::new(AtomicBool::new(false));
     let pending_requests = Arc::new(StdMutex::new(Vec::<Vec<String>>::new()));
@@ -75,6 +78,7 @@ pub fn run() {
         let pending_for_setup = pending_requests.clone();
         let initial_launch = launch_game;
         let initial_close_after_launch = close_after_launch;
+        let initial_dx11 = requested_dx11;
         tauri::Builder::default()
             .plugin(single_instance_plugin)
             .setup(move |app| {
@@ -85,7 +89,11 @@ pub fn run() {
                     .map_err(|error| error.to_string())?;
 
                 if initial_launch {
-                    start_game_from_config(app.handle(), initial_close_after_launch);
+                    start_game_from_config(
+                        app.handle(),
+                        initial_close_after_launch,
+                        initial_dx11,
+                    );
                 }
                 ready_for_setup.store(true, Ordering::Release);
                 dispatch_pending_requests(app.handle(), &pending_for_setup, true);
@@ -312,7 +320,7 @@ pub fn run() {
             AccountService::start_auto_refresh(timer_service);
 
             if launch_game {
-                start_game_from_config(app.handle(), false);
+                start_game_from_config(app.handle(), false, requested_dx11);
             }
 
             app_ready_for_full_instance(app.handle(), &mode, &app_ready, &pending_requests);
@@ -389,14 +397,15 @@ fn dispatch_instance_request<R: Runtime>(
     let request_launch_game = args.iter().any(|arg| arg == LAUNCH_GAME_ARG);
     let request_close_after_launch =
         request_silent && args.iter().any(|arg| arg == CLOSE_AFTER_LAUNCH_ARG);
+    let request_dx11 = args.iter().any(|arg| arg == DX11_ARG).then_some(true);
 
     if silent_mode && !request_silent {
-        promote_to_full_with_game(app, request_launch_game);
+        promote_to_full_with_game(app, request_launch_game, request_dx11);
         return;
     }
 
     if request_launch_game {
-        start_game_from_config(app, request_close_after_launch);
+        start_game_from_config(app, request_close_after_launch, request_dx11);
     }
 
     if !request_silent {
@@ -404,7 +413,11 @@ fn dispatch_instance_request<R: Runtime>(
     }
 }
 
-fn start_game_from_config<R: Runtime>(app: &tauri::AppHandle<R>, close_after_launch: bool) {
+fn start_game_from_config<R: Runtime>(
+    app: &tauri::AppHandle<R>,
+    close_after_launch: bool,
+    dx11: Option<bool>,
+) {
     let config = match app.try_state::<Arc<StdMutex<ConfigService>>>() {
         Some(config) => config.inner().clone(),
         None => {
@@ -419,9 +432,10 @@ fn start_game_from_config<R: Runtime>(app: &tauri::AppHandle<R>, close_after_lau
             return;
         }
     };
-    let (Some(install_path), Some(channel)) = (
+    let (Some(install_path), Some(channel), stored_dx11) = (
         config.get::<String>("launcher_install_path"),
         config.get::<String>("launcher_channel"),
+        config.get::<bool>("launcher_dx11").unwrap_or(false),
     ) else {
         write_startup_error(
             "Cannot start the game: launcher_install_path or launcher_channel is not configured.",
@@ -430,9 +444,11 @@ fn start_game_from_config<R: Runtime>(app: &tauri::AppHandle<R>, close_after_lau
     };
     drop(config);
 
+    // 命令行 `--dx11` 优先；未提供时使用应用内设置（配置键 launcher_dx11，默认 false）。
+    let dx11 = dx11.unwrap_or(stored_dx11);
     let app_handle = app.clone();
     tauri::async_runtime::spawn(async move {
-        match commands::launcher::launcher_start_game(install_path, channel).await {
+        match commands::launcher::launch_game(install_path, channel, dx11).await {
             Ok(result) if result.success => {
                 if let Some(warning) = result.warning {
                     write_startup_error(&format!("Game launch warning: {warning}"));
@@ -475,10 +491,14 @@ fn write_startup_error(message: &str) {
 }
 
 pub(crate) fn promote_to_full<R: Runtime>(app: &tauri::AppHandle<R>) {
-    promote_to_full_with_game(app, false);
+    promote_to_full_with_game(app, false, None);
 }
 
-fn promote_to_full_with_game<R: Runtime>(app: &tauri::AppHandle<R>, launch_game: bool) {
+fn promote_to_full_with_game<R: Runtime>(
+    app: &tauri::AppHandle<R>,
+    launch_game: bool,
+    dx11: Option<bool>,
+) {
     if PROMOTION_STARTED.swap(true, Ordering::AcqRel) {
         return;
     }
@@ -497,6 +517,9 @@ fn promote_to_full_with_game<R: Runtime>(app: &tauri::AppHandle<R>, launch_game:
         .arg(std::process::id().to_string());
     if launch_game {
         command.arg(LAUNCH_GAME_ARG);
+        if dx11 == Some(true) {
+            command.arg(DX11_ARG);
+        }
     }
     match command.spawn() {
         Ok(_) => app.exit(0),

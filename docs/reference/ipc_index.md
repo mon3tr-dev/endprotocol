@@ -23,8 +23,8 @@
 | `check_and_refresh_cred` | [src-tauri/src/commands/account.rs:282](backend/commands.md) | [src/utils/accountService.ts](../../src/utils/accountService.ts) |
 | `check_update_endpoint` | [src-tauri/src/commands/updater.rs:57](backend/commands.md) | —（前端未调用） |
 | `close_window` | [src-tauri/src/commands/window.rs:21](backend/commands.md) | —（前端未调用） |
-| `create_game_shortcut` | [src-tauri/src/commands/startup.rs:70](backend/commands.md) | [src/utils/launcherService.ts](../../src/utils/launcherService.ts) |
-| `create_launch_bat` | [src-tauri/src/commands/startup.rs:215](backend/commands.md) | [src/utils/launcherService.ts](../../src/utils/launcherService.ts) |
+| `create_game_shortcut` | [src-tauri/src/commands/startup.rs:77](backend/commands.md) | [src/utils/launcherService.ts](../../src/utils/launcherService.ts) |
+| `create_launch_bat` | [src-tauri/src/commands/startup.rs:216](backend/commands.md) | [src/utils/launcherService.ts](../../src/utils/launcherService.ts) |
 | `delete_background_image` | [src-tauri/src/commands/image.rs:190](backend/commands.md) | [src/components/appearance-settings.tsx](../../src/components/appearance-settings.tsx) |
 | `do_attendance` | [src-tauri/src/commands/attendance.rs:181](backend/commands.md) | [src/components/cards/attendance/index.tsx](../../src/components/cards/attendance/index.tsx) |
 | `download_file` | [src-tauri/src/commands/updater.rs:149](backend/commands.md) | —（前端未调用） |
@@ -81,7 +81,7 @@
 | `launcher_preload_download` | [src-tauri/src/commands/launcher.rs:171](backend/commands.md) | [src/utils/launcherService.ts](../../src/utils/launcherService.ts) |
 | `launcher_reset_download_cancel` | [src-tauri/src/commands/launcher.rs:281](backend/commands.md) | [src/utils/launcherService.ts](../../src/utils/launcherService.ts) |
 | `launcher_scan_install_dir` | [src-tauri/src/commands/launcher.rs:598](backend/commands.md) | [src/utils/launcherService.ts](../../src/utils/launcherService.ts) |
-| `launcher_start_game` | [src-tauri/src/commands/launcher.rs:388](backend/commands.md) | [src/utils/launcherService.ts](../../src/utils/launcherService.ts) |
+| `launcher_start_game` | [src-tauri/src/commands/launcher.rs:401](backend/commands.md) | [src/utils/launcherService.ts](../../src/utils/launcherService.ts) |
 | `launcher_switch_channel` | [src-tauri/src/commands/launcher.rs:730](backend/commands.md) | [src/utils/launcherService.ts](../../src/utils/launcherService.ts) |
 | `launcher_verify_and_repair` | [src-tauri/src/commands/launcher.rs:103](backend/commands.md) | [src/utils/launcherService.ts](../../src/utils/launcherService.ts) |
 | `logout_account` | [src-tauri/src/commands/account.rs:144](backend/commands.md) | [src/utils/accountService.ts](../../src/utils/accountService.ts) |

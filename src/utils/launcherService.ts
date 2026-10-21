@@ -263,6 +263,7 @@ export async function getBackgroundImage(
 export async function startGame(
   installPath: string,
   channel: GameChannel,
+  dx11?: boolean,
 ): Promise<LauncherResult> {
   await invoke("set_config", {
     key: "launcher_install_path",
@@ -272,12 +273,14 @@ export async function startGame(
   return invoke<LauncherResult>("launcher_start_game", {
     installPath,
     channel,
+    dx11,
   });
 }
 
 export async function syncSilentLaunchConfig(): Promise<void> {
   const installPath = localStorage.getItem("launcher_install_path");
   const channel = localStorage.getItem("launcher_channel");
+  const dx11 = localStorage.getItem("launcher_dx11");
   if (installPath) {
     await invoke("set_config", {
       key: "launcher_install_path",
@@ -286,6 +289,12 @@ export async function syncSilentLaunchConfig(): Promise<void> {
   }
   if (channel) {
     await invoke("set_config", { key: "launcher_channel", value: channel });
+  }
+  if (dx11 !== null) {
+    await invoke("set_config", {
+      key: "launcher_dx11",
+      value: dx11 === "true",
+    });
   }
 }
 
@@ -303,6 +312,12 @@ export async function restoreLaunchConfig(): Promise<void> {
     if (channel) {
       localStorage.setItem("launcher_channel", channel);
     }
+    const dx11 = await invoke<boolean | null>("get_config", {
+      key: "launcher_dx11",
+    });
+    if (typeof dx11 === "boolean") {
+      localStorage.setItem("launcher_dx11", String(dx11));
+    }
   } catch {
     // 后端不可用时保留 localStorage 现状
   }
@@ -314,6 +329,7 @@ export async function getGameLaunchCommand(): Promise<string> {
 
 export interface LaunchExportOptions {
   closeAfterLaunch?: boolean;
+  dx11?: boolean;
 }
 
 export async function createGameShortcut(
@@ -321,6 +337,7 @@ export async function createGameShortcut(
 ): Promise<string | null> {
   return invoke<string | null>("create_game_shortcut", {
     closeAfterLaunch: options?.closeAfterLaunch ?? false,
+    dx11: options?.dx11,
   });
 }
 
@@ -329,6 +346,7 @@ export async function createLaunchBat(
 ): Promise<string | null> {
   return invoke<string | null>("create_launch_bat", {
     closeAfterLaunch: options?.closeAfterLaunch ?? false,
+    dx11: options?.dx11,
   });
 }
 

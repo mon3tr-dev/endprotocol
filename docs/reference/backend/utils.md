@@ -168,7 +168,7 @@
 | `HelperProcess` | :1148-1212 | `ShellExecuteExW` 返回的 helper 进程句柄；`wait_early_exit(2.5s)` 宽限期探测 + `watch_to_completion()` 分离线程收尾 |
 | `shell_execute_elevated` / `helper_parameters` | :1214-1289 | `ShellExecuteExW("runas", 自身 exe, ...)`，`SW_HIDE` + `SEE_MASK_NOCLOSEPROCESS\|NOASYNC\|FLAG_NO_UI\|NO_CONSOLE` |
 | `launch_via_official_parent` | :1291-1340 | 未提权一侧入口：先验签（失败即 `no_launcher`，调用方回退直接启动）→ 提权重启自身 → 宽限期判定 |
-| `shell_execute_game` | :1342-1366 | 回退路径：`ShellExecuteW(SW_SHOWNORMAL)` 直接启动游戏（旧实现的行为） |
+| `shell_execute_game` | :1342-1366 | 回退路径：`ShellExecuteW(SW_SHOWNORMAL)` 直接启动游戏（旧实现的行为）；新增 `arguments: &[String]` 参数，逐个经 `quote_argument` 拼接后作为 `lpParameters` 传入，用于转发 `-force-d3d11` |
 | `mod tests` | :1399-1530 | 12 个单测：引号转义（结尾反斜杠 / 内嵌引号）、组织名比对、版本解析与数值比较、helper 参数解析 |
 
 **备注（提权模型 / 契约 / 限制）**：

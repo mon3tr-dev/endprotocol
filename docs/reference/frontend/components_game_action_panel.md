@@ -7,7 +7,7 @@
 **导出**：`GameActionPanel`（无 props 的函数组件，行 52）。
 
 **主要依赖**：
-- 项目内：`@/components/ui/modal`（`GlassAlertDialogCompound`、`GlassModalCompound`）、`@/components/ui/button`（`GlassButton`）、`@/utils/launcherService`（全部 Tauri 后端调用与事件订阅的封装）、`@/utils/messageStore`（`addMessage`）、`@/components/game-launch-settings`（`QuickLaunchModal`）。
+- 项目内：`@/components/ui/modal`（`GlassAlertDialogCompound`、`GlassModalCompound`）、`@/components/ui/button`（`GlassButton`）、`@/utils/launcherService`（全部 Tauri 后端调用与事件订阅的封装）、`@/utils/messageStore`（`addMessage`）、`@/components/game-launch-settings`（`QuickLaunchModal`、`GameLaunchSettingsFields`、`readDx11`）、`@/components/ui/settings-row`（`SettingsDivider`）。
 - 第三方：React（`useState`/`useEffect`/`useLayoutEffect`/`useRef`/`useCallback`）、`react-dom`（`createPortal`）、`react-i18next`（`useTranslation`）。Tauri API 不直接引用，全部经 `launcherService` 间接调用。
 
 ## 内部结构总览
@@ -38,7 +38,7 @@
 | 2600–2778 | 扫描结果 + 磁盘空间占用条对话框（同样复用 `DiskSpaceBar`） |
 | 2781–2858 | 渠道切换：目标渠道选择对话框 |
 | 2861–2901 | 渠道切换确认对话框 |
-| 2906–2988 | `GameSettingsModalProps` 接口与 `GameSettingsModal` 内部组件（未导出） |
+| 2906–3040 | `GameSettingsModalProps` 接口与 `GameSettingsModal` 内部组件（未导出）：安装路径 + `GameLaunchSettingsFields` 四项共享设置，容器 `size="lg"` |
 
 ## 组件与函数清单
 
@@ -64,7 +64,7 @@
 | `handleChannelSelected` | 683–717 | 渠道选定后并行扫描目录与磁盘空间，弹扫描结果 |
 | `handleSwitchChannel` | 719–727 | 记录切换目标，转确认态 |
 | `handleConfirmSwitch` | 729–774 | 定位进度浮层坐标并执行渠道切换，失败发 urgent 消息 |
-| `handleStart` | 820–876 | 启动游戏（无路径时先定位并检测渠道）；把 `startGame` 的返回结果按 `<token>: <detail>` 契约转成 `addMessage` 提示（失败 → urgent，回退 → warn） |
+| `handleStart` | 820–876 | 启动游戏（无路径时先定位并检测渠道）；调用 `startGame(installPath, channel, readDx11())`，把返回结果按 `<token>: <detail>` 契约转成 `addMessage` 提示（失败 → urgent，回退 → warn） |
 | `formatVerifyResult` | 881–908 | 解析校验结果 JSON，生成 i18n 文本与 info/warn 级别 |
 | `handleUpdate` | 914–979 | 更新；优先安装官方补丁，成功后执行快速校验；失败分别提示更新或校验错误 |
 | `handleVerify` | 981–1004 | 完整校验（线程数取 `launcher_verify_threads`，默认 12） |
@@ -79,8 +79,8 @@
 | `getButtonIcon` | 1084–1254 | 依状态返回 SVG 图标（旋转/暂停/下载/刷新/播放） |
 | `handleButtonClick` | 1256–1299 | 主按钮统一分发：取消切换/停止/取消校验/取消下载/安装/更新/启动 |
 | `handleConfirmAction` | 1301–1373 | 确认对话框回调，按 5 种 `confirmAction` 分支执行 |
-| `GameSettingsModalProps` | 2648–2652 | 内部弹窗 props 类型 |
-| `GameSettingsModal` | 2654–2728 | 安装路径设置弹窗（`handleBrowse` 于 2662–2665） |
+| `GameSettingsModalProps` | 2878–2882 | 内部弹窗 props 类型：`initialPath`、`onClose`、`onSave(path)` |
+| `GameSettingsModal` | 2884–3040 | 游戏设置弹窗：安装路径 + 浏览，分隔线后渲染 `GameLaunchSettingsFields`（取消下载行为 / DX11 启动 / 校验线程数 / 背景媒体，与设置页实时同步）；`handleBrowse` 于 2892–2895；容器 `size="lg"`（720px）以避免控件换行 |
 
 ## 关键功能分区
 
@@ -103,7 +103,7 @@
 选择器（2781）→ `handleSwitchChannel` 记录目标 → 确认框（2861）→ `handleConfirmSwitch` 计算浮层位置、调用 `switchChannel`、成功后同步 `channel`/`detectedChannel`/localStorage 并 `checkStatus`，失败经 `addMessage` 发 `switch-error` 紧急消息。切换中主按钮点击触发 `cancelSwitch`。
 
 **启动 / 停止（776–804, 973–976, 1256–1299）**
-`handleStart` → `startGame`（成功且带 `warning` 时提示 `launcher.launch_fallback_body`；失败时按 token 映射 `launcher.launch_err_*`）；运行中点击主按钮：`launcher_skip_stop_confirm === "1"` 直接 `handleKill`，否则弹 `stop-game` 确认框（可勾选不再提示）。
+`handleStart` → `startGame`（附带 `readDx11()`；启用时后端给游戏进程追加 `-force-d3d11`）。成功且带 `warning` 时提示 `launcher.launch_fallback_body`；失败时按 token 映射 `launcher.launch_err_*`。运行中点击主按钮：`launcher_skip_stop_confirm === "1"` 直接 `handleKill`，否则弹 `stop-game` 确认框（可勾选不再提示）。
 
 **校验 / 修复 / 预载（881–1101, 2458–2549）**
 `handleVerify`（完整）、`handleQuickVerify`（快速，菜单直连）、`startInstall` 与 `handleUpdate` 成功后自动 quick 校验；结果经 `formatVerifyResult` 转 `verify-result` 消息。官方补丁安装直接应用后进入快速校验，不先执行额外的全量 MD5 扫描。
