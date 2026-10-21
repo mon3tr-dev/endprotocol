@@ -12,6 +12,7 @@ import {
   setLauncherBgMedia,
   subscribeLauncherBgMedia,
   getGameBgMode,
+  setGameBgMode,
   subscribeGameBgMode,
   type LauncherBgMedia,
   type GameBgMode,
@@ -23,8 +24,14 @@ import {
 } from "@/stores/inAppBrowser";
 import { InAppBrowser } from "@/components/in-app-browser";
 import { GameActionPanel } from "@/components/game-action-panel";
+import { useTranslation } from "react-i18next";
 import { MorphIcon } from "morphicons/react";
-import { ChevronLeft, ChevronRight } from "lucide";
+import {
+  ChevronLeft,
+  ChevronRight,
+  Image as ImageIcon,
+  Video,
+} from "lucide";
 import { trackStartupTask } from "@/utils/startupProgress";
 import {
   type GameChannel,
@@ -236,6 +243,11 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
         </div>
 
         <CustomTitlebar />
+
+        {/* Background mode switch — floats in near the top center */}
+        {bgMedia && (
+          <GameBackgroundSwitch mode={bgMediaMode} media={bgMedia} />
+        )}
 
         {/* In-app browser overlay — below titlebar */}
         <InAppBrowser />
@@ -474,6 +486,131 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
           />
         </svg>
       </button>
+    </div>
+  );
+}
+
+const BG_SWITCH_TRIGGER_HEIGHT = 150;
+const BG_SWITCH_TRIGGER_HALF_WIDTH = 220;
+const BG_SWITCH_HIDE_DELAY = 300;
+
+const BG_MODE_OPTIONS: Array<{
+  value: GameBgMode;
+  icon: typeof Video;
+  labelKey: string;
+}> = [
+  {
+    value: "video",
+    icon: Video,
+    labelKey: "settings.game_launch.bg_media_video",
+  },
+  {
+    value: "image",
+    icon: ImageIcon,
+    labelKey: "settings.game_launch.bg_media_image",
+  },
+];
+
+/**
+ * 游戏界面顶部中央的背景模式切换器：鼠标靠近顶部中央时浮出，
+ * 两侧图标分别对应视频 / 图片背景，与设置页共用 launcherMode store。
+ */
+function GameBackgroundSwitch({
+  mode,
+  media,
+}: {
+  mode: GameBgMode;
+  media: LauncherBgMedia;
+}) {
+  const { t } = useTranslation();
+  const [visible, setVisible] = useState(false);
+
+  const videoAvailable = Boolean(media.video_url);
+  const imageAvailable = Boolean(media.image_url);
+
+  useEffect(() => {
+    let hideTimer: number | null = null;
+
+    const handleMouseMove = (event: MouseEvent) => {
+      const nearTopCenter =
+        event.clientY <= BG_SWITCH_TRIGGER_HEIGHT &&
+        Math.abs(event.clientX - window.innerWidth / 2) <=
+          BG_SWITCH_TRIGGER_HALF_WIDTH;
+
+      if (nearTopCenter) {
+        if (hideTimer !== null) {
+          window.clearTimeout(hideTimer);
+          hideTimer = null;
+        }
+        setVisible(true);
+        return;
+      }
+
+      if (hideTimer !== null) return;
+      hideTimer = window.setTimeout(() => {
+        hideTimer = null;
+        setVisible(false);
+      }, BG_SWITCH_HIDE_DELAY);
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      if (hideTimer !== null) window.clearTimeout(hideTimer);
+    };
+  }, []);
+
+  if (!videoAvailable && !imageAvailable) return null;
+
+  return (
+    <div
+      className={`fixed left-1/2 top-12 z-30 -translate-x-1/2 transition-all duration-300 ease-out will-change-transform ${
+        visible
+          ? "translate-y-0 scale-100 opacity-100"
+          : "pointer-events-none -translate-y-2 scale-95 opacity-0"
+      }`}
+    >
+      <div
+        role="group"
+        aria-label={t("settings.game_launch.bg_media")}
+        className="relative flex items-center rounded-full border border-white/15 bg-black/45 p-1 shadow-2xl backdrop-blur-md"
+      >
+        <span
+          aria-hidden="true"
+          className={`pointer-events-none absolute inset-y-1 left-1 w-9 rounded-full border border-white/30 bg-primary shadow-[inset_0_1px_0_rgba(255,255,255,0.28),0_1px_4px_rgba(0,0,0,0.25)] transition-transform duration-300 ease-out ${
+            mode === "image" ? "translate-x-9" : "translate-x-0"
+          }`}
+        />
+        {BG_MODE_OPTIONS.map((option) => {
+          const Icon = option.icon;
+          const active = mode === option.value;
+          const available =
+            option.value === "video" ? videoAvailable : imageAvailable;
+
+          return (
+            <button
+              key={option.value}
+              type="button"
+              title={t(option.labelKey)}
+              aria-label={t(option.labelKey)}
+              aria-pressed={active}
+              disabled={!available}
+              onClick={() => {
+                if (!active) setGameBgMode(option.value);
+              }}
+              className={`relative z-10 flex h-8 w-9 items-center justify-center rounded-full transition-colors duration-200 ${
+                active
+                  ? "cursor-pointer text-primary-foreground"
+                  : available
+                    ? "cursor-pointer text-white/75 hover:text-white"
+                    : "cursor-not-allowed text-white/30"
+              }`}
+            >
+              <MorphIcon icon={Icon} size={16} aria-hidden />
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
