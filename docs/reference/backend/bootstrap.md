@@ -18,16 +18,18 @@
 ---
 
 ## `src-tauri/src/lib.rs`
-**职责**：应用核心装配点。入口首先截获已有提权 helper，再由单实例插件处理后续启动请求。`--silent` 分支不创建 WebView、不注册完整应用插件和业务服务，只初始化配置、单实例和图标托盘；普通分支才初始化完整服务并动态创建主窗口/托盘面板。游戏启动继续复用 `launcher_start_game`。两种模式都在 setup 中调用 `utils::game_playtime::init()` 启动游戏在线时长统计，并在 `RunEvent::Exit` 时 `utils::game_playtime::finalize()` 落盘。
+**职责**：应用核心装配点。入口首先截获已有提权 helper，安装全局 panic hook，再由单实例插件处理后续启动请求。`--silent` 分支不创建 WebView、不注册完整应用插件和业务服务，只初始化配置、单实例和图标托盘；普通分支才初始化完整服务并动态创建主窗口/托盘面板。游戏启动继续复用 `launcher_start_game`。两种模式都在 setup 中保存 `AppHandle` 供崩溃广播，并调用 `utils::game_playtime::init()` 启动游戏在线时长统计，在 `RunEvent::Exit` 时 `utils::game_playtime::finalize()` 落盘。
 **导出**：`pub fn run()`（唯一公开项）；其余为私有模块声明。
 **主要依赖**：`commands`、`models`、`services`、`tray`、`utils` 模块；`services::{account_service, avatar_cache_service, config_service, gacha_service, game_launcher_service, network_service, skland_service}`；`tauri`、`tokio::sync::Mutex`、`std::sync::Arc`。
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
 | `mod commands/models/services/tray/utils` | lib.rs:7-11 | 后端模块声明（全部私有） |
-| `use services::*` | lib.rs:13-20 | 导入 8 个服务类型（Account/AvatarCache/Config/Gacha/GameLauncher/Network/Skland/SystemResource） |
-| `run` | lib.rs:30 | 解析 `--silent` / `--launch-game` / `--close-after-launch` / `--dx11` 并分流到静默或完整模式；两种模式均改用 `.build(context)?.run(|_, event| …)`，在 `RunEvent::Exit` 调用 `utils::game_playtime::finalize()` 将当前会话落盘 |
-| `create_config_service` | lib.rs:319 | 初始化现有 `ConfigService`，并校验/更新配置键 `main_exe_path` |
+| `use services::*` | lib.rs:14-21 | 导入 8 个服务类型（Account/AvatarCache/Config/Gacha/GameLauncher/Network/Skland/SystemResource） |
+| `run` | lib.rs:31 | 解析 `--silent` / `--launch-game` / `--close-after-launch` / `--dx11` 并分流到静默或完整模式；两种模式均改用 `.build(context)?.run(|_, event| …)`，在 `RunEvent::Exit` 调用 `utils::game_playtime::finalize()` 将当前会话落盘 |
+| `utils::crash::install_panic_hook()` | lib.rs:48 | 在 helper 截获后、业务初始化之前安装 panic hook；崩溃写入 `logs/crashes/crash-*.log` 并广播 `app:crash` |
+| `create_config_service` | lib.rs:369 | 初始化现有 `ConfigService`，并校验/更新配置键 `main_exe_path` |
+| `crash::set_app_handle` / `api_health::init` | lib.rs:88 / 263 | 静默模式设置崩溃广播 handle；完整模式额外初始化 API 熔断器，二者均在 `.setup()` 最前调用 |
 | `attach_parent_console`（私有，仅 Windows debug） | lib.rs:324 | `main.rs` 已无条件使用 GUI 子系统，进程本身不再创建控制台（根除黑窗口闪现：控制台在进程创建期生成，进程内 `ShowWindow(SW_HIDE)` 只能事后隐藏、仍会闪一瞬间）。此函数在 `run()` 最开头（logger / Tauri 初始化之前）尝试 `AttachConsole(ATTACH_PARENT_PROCESS)`：手动 `cargo run` 时附接父终端使日志可见，被 Steam / 快捷方式拉起时附接失败即静默无窗口。附接必须发生在首次 stdio 写入前（`eprintln!` 在 GUI 进程无控制台时会 panic，所有 stderr 写入均需经 `logger::safe_eprintln!`） |
 | `dispatch_instance_request` | lib.rs:394 | 将第二实例的参数路由为静默启动、启动游戏或显示主窗口；解析 `--dx11` 并一并转发 |
 | `start_game_from_config` | lib.rs:416 | 读取 `launcher_install_path` / `launcher_channel` / `launcher_dx11` 并调用 `commands::launcher::launch_game`；`dx11: Option<bool>` 优先取命令行 `--dx11`，`None` 时回退配置 `launcher_dx11`（默认 false）；`close_after_launch: bool` 为 true（仅静默模式传入）时启动成功即退出本进程 |
@@ -91,7 +93,7 @@
 
 **备注**：`lib.rs` 本身**没有任何 `emit`/`listen`**，也**没有全局应用菜单**；完整模式右键托盘仍打开原有托盘面板。
 
-### 命令总表（完整模式 `.invoke_handler` 注册 107 个命令；静默模式不注册 IPC 命令）
+### 命令总表（完整模式 `.invoke_handler` 注册 113 个命令；静默模式不注册 IPC 命令）
 
 完整命令清单与定义/调用关系见 [commands.md](commands.md) 和 [ipc_index.md](../ipc_index.md)；静默分支为纯 `Builder::default().plugin(单实例).setup(...)`（lib.rs:78-100），无 `.invoke_handler`。
 

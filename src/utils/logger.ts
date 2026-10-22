@@ -147,6 +147,11 @@ class Logger {
     return [...this.memoryBuffer];
   }
 
+  /** 读取 localStorage 中持久化的日志（跨页面重载可用，用于崩溃导出）。 */
+  getPersistedLogs(): LogEntry[] {
+    return this.getLogsFromStorage();
+  }
+
   getAllLogs(backendLogs: LogEntry[] = []): LogEntry[] {
     const merged = [...backendLogs, ...this.memoryBuffer];
     merged.sort((a, b) => a.timestamp.localeCompare(b.timestamp));

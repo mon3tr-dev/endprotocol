@@ -16,6 +16,8 @@ import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import logger, { LogEntry, LogLevel } from "@/utils/logger";
 import { invoke } from "@tauri-apps/api/core";
 import { logError } from "@/utils/logger";
+import { exportDiagnostics, revealDiagnostics } from "@/utils/diagnostics";
+import { pushGlobalAlert } from "@/components/ui/global-alert";
 import { MorphIcon } from "morphicons/react";
 import { FileText, Settings } from "lucide";
 
@@ -147,6 +149,7 @@ export default function DeveloperPage() {
 
   const [logSourceFilter, setLogSourceFilter] = useState<LogFilter>("all");
   const [logLevelFilter, setLogLevelFilter] = useState<LogLevelFilter>("all");
+  const [isExportingDiagnostics, setIsExportingDiagnostics] = useState(false);
   const logContainerRef = useRef<HTMLDivElement>(null);
   const backendLogsRef = useRef<LogEntry[]>([]);
   const knownTimestampsRef = useRef<Set<string>>(new Set());
@@ -431,6 +434,28 @@ export default function DeveloperPage() {
     backendLogsRef.current = [];
     knownTimestampsRef.current = new Set();
     setDisplayKey((k) => k + 1);
+  };
+
+  const handleExportDiagnostics = async () => {
+    setIsExportingDiagnostics(true);
+    try {
+      const path = await exportDiagnostics("Developer log export");
+      await revealDiagnostics(path);
+      pushGlobalAlert(
+        "success",
+        `${t("crash.action_exported")}: ${path}`,
+        5000,
+      );
+    } catch (error) {
+      logError("Failed to export diagnostics:", error);
+      pushGlobalAlert(
+        "danger",
+        t("crash.export_failed", { error: String(error) }),
+        6000,
+      );
+    } finally {
+      setIsExportingDiagnostics(false);
+    }
   };
 
   const truncateMessage = (msg: string): string => {
@@ -1024,6 +1049,17 @@ export default function DeveloperPage() {
               {t("settings.logs.title")}
             </h2>
             <div className="flex items-center gap-2">
+              <GlassButton
+                variant="outline"
+                size="sm"
+                onPress={handleExportDiagnostics}
+                isDisabled={isExportingDiagnostics}
+                isLoading={isExportingDiagnostics}
+              >
+                {isExportingDiagnostics
+                  ? t("crash.action_exporting")
+                  : t("crash.action_export")}
+              </GlassButton>
               <GlassButton variant="outline" size="sm" onPress={fetchBackendLogs}>
                 {t("common.refresh")}
               </GlassButton>

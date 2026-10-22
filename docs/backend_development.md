@@ -6,10 +6,10 @@
 
 | 目录/文件 | 内容 | 对应 reference 文档 |
 | --- | --- | --- |
-| `src-tauri/src/commands/` | 15 个文件、**109 处 `#[tauri::command]` 注解**，处理前端 Invoke 请求 | [commands.md](reference/backend/commands.md) |
+| `src-tauri/src/commands/` | 16 个文件、**116 处 `#[tauri::command]` 注解**，处理前端 Invoke 请求 | [commands.md](reference/backend/commands.md) |
 | `src-tauri/src/services/` | 11 个服务：`account_service`（状态中枢）、`skland_service`（API 客户端）、`game_launcher_service`、`gacha_service`、`char_detail_service`、`char_wiki_detail_service`、`config_service`、`avatar_cache_service`、`data_query`、`network_service` | [services_account.md](reference/backend/services_account.md)、[services_skland.md](reference/backend/services_skland.md)、[services_launcher.md](reference/backend/services_launcher.md)、[services_others.md](reference/backend/services_others.md) |
 | `src-tauri/src/models/` | 7 个文件、79 个结构体/枚举（序列化与状态存储） | [models.md](reference/backend/models.md) |
-| `src-tauri/src/utils/` | `error`、`hg_crypto`、`http_client`、`logger`、`official_launcher`（免启动器启动/提权 helper）、`paths`、`capture` | [utils.md](reference/backend/utils.md) |
+| `src-tauri/src/utils/` | `api_health`（API 熔断）、`error`、`crash`（panic/崩溃报告）、`diagnostics`（诊断导出）、`hg_crypto`、`http_client`、`logger`、`official_launcher`（免启动器启动/提权 helper）、`paths`、`capture` | [utils.md](reference/backend/utils.md) |
 | `src-tauri/src/{main,lib,tray}.rs` | 进程入口、插件/状态/命令注册、托盘 | [bootstrap.md](reference/backend/bootstrap.md) |
 | `src-tauri/{Cargo.toml,tauri.conf.json,capabilities/}` | 依赖、窗口与打包配置、权限 | [bootstrap.md](reference/backend/bootstrap.md) |
 

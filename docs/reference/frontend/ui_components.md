@@ -1,7 +1,7 @@
 # 通用 UI 组件库 — 文件功能参考
 
 > 逐文件精读源码生成。行号基于当前工作区版本，仅用于快速定位。
-> 覆盖 `src/components/ui/` 全部 36 个文件 + `src/components/` 下 3 个基础文件（共 39 个）。
+> 覆盖 `src/components/ui/` 全部 36 个文件 + `src/components/` 下 3 个基础文件（共 39 个），以及 `src/components/crash-report-host.tsx` 崩溃提示宿主。
 
 ## `src/components/ui/account-avatar.tsx`
 **职责**：账户头像组件，图片加载失败时回退为首字母占位符，可选显示激活状态圆点。
@@ -164,15 +164,18 @@
 | `EmptyStateUserIcon` | empty-state.tsx:47 | 24x24 用户轮廓 SVG，接受全部 `SVGProps`；被 `error-boundary.tsx`、`global-error-fallback.tsx` 复用 |
 
 ## `src/components/ui/error-boundary.tsx`
-**职责**：类组件错误边界，捕获子树未捕获异常并展示可重置的兜底 UI。
+**职责**：类组件错误边界，捕获子树未捕获异常，写入崩溃日志并展示可重置的兜底 UI。
 **导出**：`ErrorBoundary`
-**主要依赖**：`react`（Component）、`@/components/ui/glass`（`GlassButton`）、`./empty-state`（`EmptyStateUserIcon`）
+**主要依赖**：`react`（Component）、`react-i18next`（默认兜底文案）、`@/components/ui/glass`（`GlassButton`）、`./empty-state`（`EmptyStateUserIcon`）、`@/utils/crashReporting`（`reportCrash`）、`@/i18n`
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
-| `ErrorBoundaryProps` | error-boundary.tsx:5 | `children`、`fallback`（自定义兜底节点）、`onError(error, info)` |
-| `ErrorBoundary` | error-boundary.tsx:20 | `getDerivedStateFromError` 置错（:26）；`componentDidCatch` 转发 `onError`（:30）；实例方法 `reset` 清除错误态（:34）；无 `fallback` 时渲染默认兜底 |
-| `DefaultErrorFallback` | error-boundary.tsx:45 | 内部未导出：60vh 居中错误页 + Reload 按钮调用 `onReset` |
+| `ErrorFallbackRenderer` | error-boundary.tsx:8 | `(error, reset) => ReactNode`，`fallback` 支持节点或渲染函数 |
+| `ErrorBoundaryProps` | error-boundary.tsx:10 | `children`、`fallback`（节点/函数）、`onError(error, info)` |
+| `ErrorBoundary` | error-boundary.tsx:25 | `getDerivedStateFromError` 置错；`componentDidCatch` 调 `reportCrash({source:"react", fatal:true, stack: error.stack + componentStack})` 并转发 `onError`；`reset` 清除错误态 |
+| `DefaultErrorFallback` | error-boundary.tsx:66 | 内部未导出：60vh 居中错误页 + 错误消息 + Reload 按钮调用 `onReset` |
+
+**备注**：`Provider` 传入渲染函数 `(error) => <GlobalErrorFallback error={error} />`，因此根级错误展示完整诊断面板；默认兜底仅在单独使用 `ErrorBoundary` 时出现。
 
 ## `src/components/ui/global-alert.tsx`
 **职责**：全局顶部浮层提示（toast 式 Alert），模块级发布/订阅，可在任意模块直接调用。
@@ -189,13 +192,29 @@
 **备注**：同屏只显示最后一条 alert（新覆盖旧）；`z-50` 低于 modal 的 `z-[100]`，弹窗打开时提示会被遮挡。
 
 ## `src/components/ui/global-error-fallback.tsx`
-**职责**：应用根级 ErrorBoundary 的整页兜底（全屏错误页 + 重新加载）。
+**职责**：应用根级 ErrorBoundary 的整页兜底（全屏错误页 + 可能原因/建议 + 复制/导出/打开日志/重载/退出）。
 **导出**：`GlobalErrorFallback`
-**主要依赖**：`@/components/ui/glass`（`GlassButton`）、`./empty-state`（`EmptyStateUserIcon`）
+**主要依赖**：`react`（useMemo）、`react-i18next`、`@tauri-apps/api/core`（`invoke("app_quit")`）、`@/components/crash-report-host`（`CrashDetails`/`CrashActionBar`）
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
-| `GlobalErrorFallback` | global-error-fallback.tsx:5 | 无 props；`min-h-screen` 居中，图标 80px danger 色，按钮执行 `window.location.reload()`（:18） |
+| `GlobalErrorFallback` | global-error-fallback.tsx:11 | props：`error: Error`；用 `CrashReport` 包装后渲染 `CrashDetails` 与 `CrashActionBar`（primary=重新加载、危险按钮=退出应用） |
+
+**备注**：导出诊断日志与打开日志目录由 `CrashActionBar` 统一实现；该组件位于 `Provider` 的 ErrorBoundary 外层兜底中，因此不依赖 `GlobalAlertHost`。
+
+## `src/components/crash-report-host.tsx`
+**职责**：全局崩溃/API 熔断提示宿主（约 320 行）。订阅 `crashReporting` 的当前报告，在应用内弹出阻塞/非阻塞 Modal，展示错误摘要、可能原因、建议、技术详情，并提供复制、导出诊断日志、打开日志目录、重试/重载/退出操作。
+**导出**：`CrashDetails`、`CrashActionBar`、`CrashReportHost`。私有：`useCrashReportState`。
+**主要依赖**：`react`、`react-i18next`、`@tauri-apps/api/core`（`reset_api_health`/`app_quit`）、`morphicons/react` + `lucide` 图标、`@/components/ui/glass`（`GlassAlert`/`GlassButton`）、`@/components/ui/modal`（`GlassModalCompound`）、`@/utils/diagnostics`、`@/utils/crashReporting`
+
+| 符号 | 位置 | 说明 |
+| --- | --- | --- |
+| `useCrashReportState`（私有） | :24 | 订阅崩溃报告并在挂载时 `loadPendingCrashReports()` |
+| `CrashDetails` | :44 | 图标 + 摘要 + 时间 + 时钟偏差警示 + `diagnoseCrash` 的「可能原因/建议处理」+ 折叠技术详情（message/detail/stack/API health） |
+| `CrashActionBar` | :129 | 复制报告、导出 zip 并 `revealItemInDir`、打开日志目录、可选关闭/退出、主操作按钮；底部内联状态文案 |
+| `CrashReportHost` | :243 | 读取当前报告并渲染 `GlassModal`（`z-[150]`）；`fatal` 报告禁止背景关闭/Escape；API 报告主按钮先 `reset_api_health` 再重载；关闭时确认崩溃报告路径 |
+
+**备注**：挂载于 `src/provider.tsx` 的 `ErrorBoundary` 内。API 熔断报告（`source:"api"`）为 `fatal`：会调用 `startupProgress.abortStartup` 收起 Splash，并在修复后点「已修复，重试」清除后端 `BLOCKED` 状态并重载。i18n 键前缀 `crash.*`。
 
 ## `src/components/ui/input-otp.tsx`
 **职责**：OTP 验证码输入——隐藏真实 input 承担键盘与粘贴，可视格子从 Context 读取字符。

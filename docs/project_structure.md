@@ -25,7 +25,7 @@ EndProtocol/
 │   ├── card_development.md        # 卡片开发指南
 │   ├── card_configuration.md      # 卡片配置系统
 │   └── reference/                 # ★ 逐文件功能参考（27 篇）
-│       ├── ipc_index.md           # 106 个命令 ↔ 定义 ↔ 调用方
+│       ├── ipc_index.md           # 113 个命令 ↔ 定义 ↔ 调用方
 │       ├── frontend/  (18 篇)
 │       └── backend/   (9 篇)
 ├── index.html                     # 主窗口入口
@@ -63,7 +63,7 @@ EndProtocol/
 │   ├── src/main.rs                # 进程入口
 │   ├── src/lib.rs                 # 启动模式分流、单实例、插件/状态/托盘/命令注册
 │   ├── src/tray.rs                # 完整模式面板托盘与静默图标托盘
-│   ├── src/commands/              # 15 个文件：IPC 命令入口
+│   ├── src/commands/              # 16 个文件：IPC 命令入口
 │   ├── src/services/              # 12 个服务：account、skland、game_launcher、
 │   │                              #   gacha、char_detail、char_wiki、config、
 │   │                              #   avatar_cache、data_query、network、

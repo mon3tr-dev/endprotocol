@@ -16,10 +16,21 @@ use crate::models::account::{
 use crate::models::char_detail::CharDetailResponse;
 use crate::models::role::{BindingResponse, GameBinding};
 use crate::services::config_service::ConfigService;
-use crate::utils::{capture, http_client, AppError};
+use crate::utils::{api_health, capture, http_client, AppError};
 use crate::{log_debug, log_info, log_warn};
 
 type HmacSha256 = Hmac<Sha256>;
+
+/// 解析 HTTP `Date` 响应头（RFC 7231 使用 GMT 格式）。
+fn parse_http_date(value: &str) -> Option<chrono::DateTime<Utc>> {
+    chrono::DateTime::parse_from_rfc2822(value)
+        .map(|time| time.with_timezone(&Utc))
+        .or_else(|_| {
+            chrono::DateTime::parse_from_str(value, "%a, %d %b %Y %H:%M:%S GMT")
+                .map(|time| time.with_timezone(&Utc))
+        })
+        .ok()
+}
 
 const ORG: &str = "UWXspnCCJN4sfYlNfqps";
 const PUB_KEY_DER: &str = "MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQCmxMNr7n8ZeT0tE1R9j/mPixoinPkeM+k4VGIn/s0k7N5rJAfnZ0eMER+QhwFvshzo0LNmeUkpR8uIlU/GEVr8mN28sKmwd2gpygqj0ePnBmOW4v0ZVwbSYK+izkhVFk2V/doLoMbWy6b+UnA8mkjvg0iYWRByfRsK2gdl7llqCwIDAQAB";
@@ -489,11 +500,20 @@ impl SklandService {
         let client = http_client::create_client();
         let mut last_err: Option<AppError> = None;
 
+        // 连续失败守卫：已判定 API 异常（如本地时间错误）时直接失败，
+        // 避免前端持续等待/重试。
         for attempt in 0..2 {
+            api_health::ensure_available()?;
+
             let did = if attempt == 0 {
                 match self.get_or_refresh_did().await {
                     Ok(d) => d,
                     Err(e) => {
+                        api_health::record_failure(
+                            api_health::ApiFailureKind::Network,
+                            &format!("Failed to obtain dId: {}", e),
+                            None,
+                        );
                         last_err = Some(e);
                         continue;
                     }
@@ -511,6 +531,11 @@ impl SklandService {
                 match self.fetch_new_did().await {
                     Ok(d) => d,
                     Err(e) => {
+                        api_health::record_failure(
+                            api_health::ApiFailureKind::Network,
+                            &format!("Failed to refresh dId: {}", e),
+                            None,
+                        );
                         last_err = Some(e);
                         continue;
                     }
@@ -543,18 +568,46 @@ impl SklandService {
             let response = match capture::send(&client, req).await {
                 Ok(r) => r,
                 Err(e) => {
-                    last_err = Some(AppError::AuthError {
-                        message: format!("HTTP request failed: {}", e),
-                    });
+                    let message = format!("HTTP request failed: {}", e);
+                    api_health::record_failure(
+                        api_health::ApiFailureKind::Network,
+                        &message,
+                        None,
+                    );
+                    last_err = Some(AppError::AuthError { message });
                     continue;
                 }
             };
 
             let elapsed = start_time.elapsed();
             let status = response.status();
-            let resp_text = response.text().await.map_err(|e| AppError::AuthError {
-                message: format!("Failed to read response text: {}", e),
-            })?;
+            let clock_skew_seconds = response
+                .headers()
+                .get(reqwest::header::DATE)
+                .and_then(|value| value.to_str().ok())
+                .and_then(parse_http_date)
+                .map(|server_time| Utc::now().signed_duration_since(server_time).num_seconds());
+            if let Some(skew) = clock_skew_seconds {
+                if skew.abs() >= api_health::CLOCK_SKEW_THRESHOLD_SECONDS {
+                    log_warn!(
+                        "Local clock differs from server time by {} seconds; signed requests may be rejected",
+                        skew
+                    );
+                }
+            }
+            let resp_text = match response.text().await {
+                Ok(text) => text,
+                Err(e) => {
+                    let message = format!("Failed to read response text: {}", e);
+                    api_health::record_failure(
+                        api_health::ApiFailureKind::Parse,
+                        &message,
+                        clock_skew_seconds,
+                    );
+                    last_err = Some(AppError::AuthError { message });
+                    continue;
+                }
+            };
 
             log_info!("=== Skland API Response ===");
             log_info!("Status: {}, Time: {:?}", status, elapsed);
@@ -563,23 +616,32 @@ impl SklandService {
                 Ok(json) => {
                     let code = json.get("code").and_then(|c| c.as_i64()).unwrap_or(-1);
                     if code == 0 {
+                        api_health::record_success();
                         return Ok(json);
                     }
-                    last_err = Some(AppError::AuthError {
-                        message: format!(
-                            "API error: code={}, message={}",
-                            code,
-                            json.get("message")
-                                .and_then(|m| m.as_str())
-                                .unwrap_or("unknown")
-                        ),
-                    });
+                    let api_message = json
+                        .get("message")
+                        .and_then(|m| m.as_str())
+                        .unwrap_or("unknown");
+                    let message = format!("API error: code={}, message={}", code, api_message);
+                    let kind = api_health::classify_error(
+                        code,
+                        api_message,
+                        clock_skew_seconds,
+                    );
+                    api_health::record_failure(kind, &message, clock_skew_seconds);
+                    last_err = Some(AppError::AuthError { message });
                     continue;
                 }
                 Err(e) => {
-                    last_err = Some(AppError::AuthError {
-                        message: format!("Failed to parse JSON: {}. Response: {}", e, resp_text),
-                    });
+                    let message =
+                        format!("Failed to parse JSON: {}. Response: {}", e, resp_text);
+                    api_health::record_failure(
+                        api_health::ApiFailureKind::Parse,
+                        &message,
+                        clock_skew_seconds,
+                    );
+                    last_err = Some(AppError::AuthError { message });
                     continue;
                 }
             }
@@ -742,6 +804,7 @@ impl SklandService {
 
     /// 检查 cred 是否有效
     pub async fn check_cred(&self, cred: &str) -> Result<bool, AppError> {
+        api_health::ensure_available()?;
         let client = http_client::create_client();
 
         let start_time = std::time::Instant::now();
@@ -790,6 +853,7 @@ impl SklandService {
         hytoken: &str,
         device_token: Option<&str>,
     ) -> Result<(String, String, Option<String>, String), AppError> {
+        api_health::ensure_available()?;
         // Step 1: OAuth grant（hytoken → skland sk_code）
         let sk_code = self.oauth_grant_to_sk_code(hytoken).await?;
 

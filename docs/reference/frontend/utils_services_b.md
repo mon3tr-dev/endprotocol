@@ -218,9 +218,10 @@
 | `logger.warn(...)` | logger.ts:138 | WARN | 同上，`console.warn`，橙色 `#FF9800` |
 | `logger.error(...)` | logger.ts:142 | ERROR | 同上，`console.error`，红色 `#F44336` |
 | `getLogs()` | logger.ts:146 | — | 返回 `memoryBuffer` 浅拷贝 |
-| `getAllLogs(backendLogs=[])` | logger.ts:150 | — | 后端日志 + 内存日志按 `timestamp.localeCompare` 合并排序（后端日志由调用方通过后端命令另行获取后传入，本文件不发命令） |
-| `clearLogs()` | logger.ts:156 | — | 清空内存缓冲并 `localStorage.removeItem("app_logs")` |
-| `updateConfig(config)` | logger.ts:161 | — | 合并更新运行时配置 |
+| `getPersistedLogs()` | logger.ts:151 | — | 读取 `localStorage["app_logs"]` 中的持久化日志（上限 1000 条），供崩溃诊断导出跨重载使用 |
+| `getAllLogs(backendLogs=[])` | logger.ts:155 | — | 后端日志 + 内存日志按 `timestamp.localeCompare` 合并排序（后端日志由调用方通过后端命令另行获取后传入，本文件不发命令） |
+| `clearLogs()` | logger.ts:163 | — | 清空内存缓冲并 `localStorage.removeItem("app_logs")` |
+| `updateConfig(config)` | logger.ts:168 | — | 合并更新运行时配置 |
 
 ### 内部结构（行号区间）
 
@@ -255,21 +256,61 @@
 **备注**：无 Tauri 命令、无 HTTP 端点、无缓存、无日志写入；仅修改元素内联样式与 `data-ovs` 属性。
 
 ## `src/utils/startupProgress.ts`
-**职责**：管理主窗口 Splash 的首屏启动进度；汇总初始化阶段以及显式跟踪的初始异步任务，并在任务静稳后完成进度动画、淡出静态 Splash。
+**职责**：管理主窗口 Splash 的首屏启动进度；汇总初始化阶段以及显式跟踪的初始异步任务，并在任务静稳后完成进度动画、淡出静态 Splash。新增 45 秒超时看门狗与失败操作面板（导出诊断日志/打开日志目录/重新加载）。
 
-**导出**：`setStartupPhase`、`beginStartupTracking`、`trackStartupTask`、`failStartup`。
+**导出**：`armStartupTimeout`、`setStartupPhase`、`beginStartupTracking`、`trackStartupTask`、`failStartup`、`abortStartup`。
 
-**主要依赖**：浏览器 DOM API（更新 `index.html` 中的启动进度条、状态和 `#startup-splash`）。
+**主要依赖**：`@/i18n`、浏览器 DOM API（更新 `index.html` 中的 `#startup-splash*` 元素）；失败按钮点击时动态导入 `./diagnostics`。
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
-| `setStartupPhase` | startupProgress.ts:28 | 单调更新当前进度（最高 94%）并设置本地化状态文案 |
-| `beginStartupTracking` | startupProgress.ts:33 | React 挂载后开启任务计数，并设定加载中/完成文案 |
-| `trackStartupTask` | startupProgress.ts:40 | 统计启动阶段 Promise；任务完成后不吞异常，并重置 650ms 静稳计时 |
-| `finishWhenIdle`（私有） | startupProgress.ts:18 | 无待处理任务且持续静稳 650ms 后设为 100%、淡出并移除 Splash |
-| `failStartup` | startupProgress.ts:56 | 关闭启动跟踪并在 Splash 中显示初始化错误 |
+| `STARTUP_TIMEOUT_MS` | startupProgress.ts:3 | 45 秒启动超时 |
+| `armStartupTimeout` | startupProgress.ts:117 | 重置并启动 45 秒看门狗；超时后停止跟踪，按 `pendingTasks` 显示未完成请求数或通用卡死提示，并展示 Splash 操作按钮。`main.tsx` 在配置初始化前调用一次，覆盖 `invoke` 永不返回、React 未挂载的卡死场景 |
+| `setStartupPhase` | startupProgress.ts:134 | 启动完成后忽略；单调更新当前进度（最高 94%）并设置本地化状态文案 |
+| `beginStartupTracking` | startupProgress.ts:140 | React 挂载后开启任务计数，设定加载中/完成文案并重置超时看门狗 |
+| `trackStartupTask` | startupProgress.ts:149 | 统计启动阶段 Promise；任务完成后不吞异常，并重置 650ms 静稳计时 |
+| `finishWhenIdle`（私有） | startupProgress.ts:33 | 无待处理任务且持续静稳 650ms 后设为 100%、清理计时器、淡出并移除 Splash |
+| `failStartup` | startupProgress.ts:166 | 关闭启动跟踪并在 Splash 错误面板显示初始化错误与详情 |
+| `abortStartup` | startupProgress.ts:175 | 外部中止（API 熔断）时收起 Splash，让 React 崩溃弹窗可见 |
 
-**备注**：启动进度由 `index.html` 提供纯静态 UI，因此 React 配置初始化之前也不会显示空白页；配置/API 失败时状态文案明确显示，既有调用者仍负责记录与呈现各自错误。
+**备注**：启动进度由 `index.html` 提供纯静态 UI，因此 React 配置初始化之前也不会显示空白页；`showStartupFailure`（私有）把 `#startup-splash-error` 面板解除隐藏，按钮文案来自 `crash.*` i18n 键。超时/失败都不会一直卡住：超时面板可直接导出诊断日志或重新加载；API 熔断时由 `crashReporting` 调用 `abortStartup` 后弹出阻塞提示。
+
+## `src/utils/crashReporting.ts`
+**职责**：前端崩溃处理中枢（约 365 行）。安装 `error` / `unhandledrejection` 全局监听，接收后端 `app:crash` 与 API 熔断 `app:api-health` 事件，维护当前崩溃报告与订阅者；同时提供错因启发式判断、报告文本格式化与上次运行崩溃报告载入。
+
+**导出**：类型 `CrashSource`、`ApiFailureKind`、`ApiHealthSnapshot`、`BackendCrashEvent`、`CrashReport`、`CrashDiagnosis`；函数 `subscribeCrashReports`、`getCurrentCrashReport`、`showCrashReport`、`dismissCrashReport`、`reportCrash`、`installCrashHandlers`、`loadPendingCrashReports`、`diagnoseCrash`、`formatCrashReport`。私有：`currentReport`、`reportCounter`、`listeners`、`lastSignature`、`handleApiBlocked`、`checkApiHealth`。
+
+**主要依赖**：`@tauri-apps/api/core`（`invoke`）、`@tauri-apps/api/event`（`listen`）、`@/i18n`、`./logger`、`./diagnostics`。
+
+| 符号 | 位置 | 说明 |
+| --- | --- | --- |
+| `CrashReport`（interface） | :42-54 | `id`、`title`、`message`、`detail?`、`stack?`、`source`、`timestamp`、`fatal`、`api?`、`crashPaths?` |
+| `reportCrash(input)` | :117 | 先 `logger.error("[Crash]...")`，相同来源+消息 2 秒内去重，然后写入当前报告并通知订阅者 |
+| `installCrashHandlers()` | :166 | 幂等安装 `window.error` / `unhandledrejection`；`listen("app:api-health")`、`listen("app:crash")`；启动后 1.5s/6s 轮询 `get_api_health` 兜底 |
+| `handleApiBlocked(snapshot)`（私有） | :135 | 动态调用 `startupProgress.abortStartup` 收起 Splash，并生成 `fatal` 的 API 熔断报告（含失败次数与时钟偏差） |
+| `loadPendingCrashReports()` | :225 | 启动时调用 `get_pending_crash_reports`，把最近一条报告包装成「上次运行异常退出」提示 |
+| `diagnoseCrash(report)` | :245 | 依据 `api.kind`、错误文本正则（sign/timestamp、网络、认证、权限、解析、5xx）返回 `causeKey` + `suggestionKeys`（i18n 键） |
+| `formatCrashReport(report)` | :351 | 拼接时间、来源、消息、详细栈、API 状态与崩溃文件路径，供复制/导出 context 使用 |
+
+**备注**：`CrashSource` 为 `window / unhandled-rejection / react / api / backend-panic / startup`；`app:api-health` payload 与 `ApiHealthSnapshot` 对齐（后端 `snake_case`），`app:crash` payload 含 `report_path`。该模块本身不渲染 UI，由 `src/components/crash-report-host.tsx` 订阅展示。
+
+## `src/utils/diagnostics.ts`
+**职责**：诊断导出与崩溃报告 IPC 封装（共 75 行）。收集内存与持久化日志（对 `data` 做循环引用/Error 安全序列化），调用 `export_diagnostics` 生成 zip，并提供文件定位、日志目录打开与崩溃报告确认。
+
+**导出**：`BackendCrashReport`、`exportDiagnostics`、`revealDiagnostics`、`openLogDirectory`、`getPendingCrashReports`、`acknowledgeCrashReports`。私有：`sanitizeLogData`。
+
+**主要依赖**：`@tauri-apps/api/core`（`invoke`）、`@tauri-apps/plugin-opener`（`revealItemInDir`）、`./logger`。
+
+| 符号 | 位置 | 说明 |
+| --- | --- | --- |
+| `exportDiagnostics(context?)` | :17 | 合并 `logger.getPersistedLogs()` 与 `logger.getLogs()`（按时间戳/级别/模块/消息去重排序），`invoke("export_diagnostics", { frontendLogs, context })`；返回 zip 路径 |
+| `sanitizeLogData(value)`（私有） | :37 | Error → `{name,message,stack}`；JSON 往返去除不可序列化/循环引用，失败回退 `String(value)` |
+| `revealDiagnostics(path)` | :57 | `revealItemInDir(path)` 在文件管理器中定位 zip |
+| `openLogDirectory()` | :62 | `invoke("get_log_dir")` 后 `revealItemInDir(dir)` |
+| `getPendingCrashReports()` | :67 | `invoke("get_pending_crash_reports")` → `BackendCrashReport[]` |
+| `acknowledgeCrashReports(paths)` | :71 | `invoke("ack_crash_reports", { paths })`；空数组直接返回 |
+
+**备注**：导出 zip 由后端 `utils/diagnostics.rs` 组装，包含 `manifest.json`、`frontend-logs.json`、`backend-logs.txt`、`logs/app-*.log`、`logs/startup.log`、`crashes/crash-*.log`，不包含 `app_config.json`。调用方：`CrashReportHost`/`GlobalErrorFallback`/开发者页导出按钮/启动 Splash 失败面板（动态导入）。
 
 ## `src/utils/gachaIntervals.ts`
 **职责**：统一计算角色/武器寻访中每个六星事件的间隔；各卡池独立计数，供统计卡片、六星间隔折线图、累计图与保底图共用。

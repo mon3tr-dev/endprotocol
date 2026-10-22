@@ -1,4 +1,7 @@
+pub mod api_health;
 pub mod capture;
+pub mod crash;
+pub mod diagnostics;
 pub mod error;
 pub mod game_playtime;
 pub mod hg_crypto;

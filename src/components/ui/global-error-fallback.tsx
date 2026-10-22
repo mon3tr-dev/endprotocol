@@ -1,24 +1,43 @@
-import { GlassButton } from "@/components/ui/glass";
-import { EmptyStateUserIcon } from "@/components/ui/empty-state";
+import { useMemo } from "react";
+import { useTranslation } from "react-i18next";
+import { invoke } from "@tauri-apps/api/core";
+import {
+  CrashActionBar,
+  CrashDetails,
+} from "@/components/crash-report-host";
+import type { CrashReport } from "@/utils/crashReporting";
 
 /** 应用根 ErrorBoundary 兜底 */
-export function GlobalErrorFallback() {
+export function GlobalErrorFallback({ error }: { error: Error }) {
+  const { t } = useTranslation();
+  const report = useMemo<CrashReport>(
+    () => ({
+      id: 0,
+      title: t("crash.title"),
+      message: error.message || String(error),
+      stack: error.stack,
+      source: "react",
+      timestamp: new Date().toISOString(),
+      fatal: true,
+    }),
+    [error, t],
+  );
+
   return (
-    <div className="min-h-screen flex items-center justify-center p-6 bg-background">
-      <div className="max-w-md text-center space-y-4">
-        <EmptyStateUserIcon className="mx-auto w-20 h-20 text-danger" />
-        <h1 className="text-2xl font-bold text-foreground">
-          Application Error
-        </h1>
-        <p className="text-sm text-muted">
-          The application encountered a critical error and cannot continue.
-        </p>
-        <GlassButton
-          variant="primary"
-          onPress={() => window.location.reload()}
-        >
-          Reload Application
-        </GlassButton>
+    <div className="flex min-h-screen items-center justify-center bg-background p-6">
+      <div className="w-full max-w-2xl space-y-5 rounded-2xl border border-separator/90 bg-surface p-6 shadow-xl">
+        <h1 className="text-xl font-bold text-foreground">{report.title}</h1>
+        <CrashDetails report={report} />
+        <div className="border-t border-separator pt-4">
+          <CrashActionBar
+            report={report}
+            primaryLabel={t("crash.action_reload")}
+            onPrimary={() => window.location.reload()}
+            onQuit={() => {
+              void invoke("app_quit");
+            }}
+          />
+        </div>
       </div>
     </div>
   );

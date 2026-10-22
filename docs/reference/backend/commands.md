@@ -1,7 +1,7 @@
 # Tauri 命令层（IPC 入口）— 文件功能参考
 
 > 逐文件精读源码生成。行号基于当前工作区版本，仅用于快速定位。
-> 覆盖范围：`src-tauri/src/commands/` 下 15 个文件，当前参考表收录 **107 个不同命令名**；源码含 110 处命令注解（其中有同名定义）。注册入口见 `src-tauri/src/lib.rs` 的 `generate_handler!`。
+> 覆盖范围：`src-tauri/src/commands/` 下 16 个文件，当前参考表收录 **113 个不同命令名**；源码含 116 处命令注解（其中有同名定义）。注册入口见 `src-tauri/src/lib.rs` 的 `generate_handler!`。
 
 ## 命令速查表
 
@@ -91,6 +91,12 @@
 | `launcher_kill_game` | commands/launcher.rs:682 | `channel: String` | `Result<bool, String>` | 隐藏控制台执行 `taskkill /T /F /IM`（两次）→ `wmic process … terminate` 兜底 |
 | `launcher_switch_channel` | commands/launcher.rs:731 | `service`、`from_channel`、`to_channel`、`install_path`、`app: AppHandle` | `Result<String, String>` | `GameLauncherService::switch_channel` |
 | `get_backend_logs` | commands/logs.rs:4 | 无 | `Vec<LogEntry>` | `utils::logger::get_logger().get_recent_logs()` |
+| `get_log_dir` | commands/diagnostics.rs:7 | 无 | `Result<String, String>` | `utils::paths::log_dir()` |
+| `export_diagnostics` | commands/diagnostics.rs:15 | `app: AppHandle`、`frontend_logs: Vec<FrontendLogEntry>`、`context: Option<String>` | `Result<String, String>` | `utils::diagnostics::export` |
+| `get_pending_crash_reports` | commands/diagnostics.rs:25 | 无 | `Vec<CrashReportInfo>` | `utils::crash::pending_reports` |
+| `ack_crash_reports` | commands/diagnostics.rs:31 | `paths: Vec<String>` | `Result<(), String>` | `utils::crash::acknowledge` |
+| `get_api_health` | commands/diagnostics.rs:37 | 无 | `ApiHealthSnapshot` | `utils::api_health::snapshot` |
+| `reset_api_health` | commands/diagnostics.rs:43 | 无 | `()` | `utils::api_health::reset` |
 | `get_tray_user_info` | commands/tray.rs:8 | `config_service: State<Arc<Mutex<ConfigService>>>` | `Result<TrayUserInfo, String>` | `ConfigService::get::<TrayUserInfo>("tray_user_info")` |
 | `create_game_shortcut` | commands/startup.rs:78 | `config_service: State<Arc<Mutex<ConfigService>>>`、`close_after_launch: Option<bool>`（前端传 `closeAfterLaunch`，缺省 false）、`dx11: Option<bool>`（缺省读配置 `launcher_dx11`） | `Result<Option<String>, String>` | 用户通过 `rfd` 选择 `.lnk` 路径；PowerShell COM 创建快捷方式，启动参数按开关包含 `--dx11`，返回路径；取消选择返回 `None` |
 | `create_launch_bat` | commands/startup.rs:217 | `config_service: State<Arc<Mutex<ConfigService>>>`、`close_after_launch: Option<bool>`、`dx11: Option<bool>`（缺省读配置 `launcher_dx11`） | `Result<Option<String>, String>` | 用户通过 `rfd` 选择 `.bat` 保存路径；写入 `@echo off` + `chcp 65001>nul` + `start "" <exe> <args>`（参数含可选 `--dx11`，UTF-8 无 BOM，保证中文路径在 cmd 下可解析），返回路径；取消选择返回 `None`；非 Windows 返回 `Err` |
@@ -626,6 +632,47 @@
 - 参数：`service`、`from_channel: String`、`to_channel: String`、`install_path: String`、`app: AppHandle`
 - 返回：`Result<String, String>`（成功消息）
 - 逻辑：两个 channel 都经 `parse_channel` 校验，然后 `GameLauncherService::switch_channel(&from, &to, &install_path, app).await`（service 内部可用 app emit 进度/事件）。
+
+---
+
+## `src-tauri/src/commands/diagnostics.rs`
+**职责**：崩溃处理与诊断导出 IPC（48 行 / 6 个命令）。转发到 `utils::crash`、`utils::api_health`、`utils::diagnostics`。
+
+### `get_log_dir`
+- 位置：diagnostics.rs:7（同步）
+- 参数：无
+- 返回：`Result<String, String>`
+- 逻辑：`utils::paths::log_dir()` 返回应用日志目录；前端配合 `revealItemInDir` 打开。
+
+### `export_diagnostics`
+- 位置：diagnostics.rs:15（同步）
+- 参数：`app: AppHandle`、`frontend_logs: Vec<FrontendLogEntry>`、`context: Option<String>`（前端 `invoke` 传 `frontendLogs` / `context`）
+- 返回：`Result<String, String>`（zip 文件绝对路径）
+- 逻辑：`utils::diagnostics::export` 打包前端日志、后端内存日志、日志文件、崩溃报告与 manifest。
+
+### `get_pending_crash_reports`
+- 位置：diagnostics.rs:25（同步）
+- 参数：无
+- 返回：`Vec<CrashReportInfo>`
+- 逻辑：`utils::crash::pending_reports`；启动时前端若拿到非空列表则弹出「上次运行异常退出」提示。
+
+### `ack_crash_reports`
+- 位置：diagnostics.rs:31（同步）
+- 参数：`paths: Vec<String>`
+- 返回：`Result<(), String>`
+- 逻辑：`utils::crash::acknowledge` 在崩溃报告旁写 `.log.ack`，避免下次启动重复提示。
+
+### `get_api_health`
+- 位置：diagnostics.rs:37（同步）
+- 参数：无
+- 返回：`ApiHealthSnapshot`
+- 逻辑：`utils::api_health::snapshot`；前端在启动阶段轮询作为事件漏收兜底。
+
+### `reset_api_health`
+- 位置：diagnostics.rs:43（同步）
+- 参数：无
+- 返回：`()`
+- 逻辑：`utils::api_health::reset`；用户点击「已修复，重试」后解除熔断，随后前端重载页面。
 
 ---
 

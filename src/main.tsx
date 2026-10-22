@@ -19,11 +19,13 @@ import { invoke } from "@tauri-apps/api/core";
 import { loadBackgroundSettings } from "@/utils/backgroundSettings";
 import { syncSilentLaunchConfig } from "@/utils/launcherService";
 import {
+  armStartupTimeout,
   beginStartupTracking,
   failStartup,
   setStartupPhase,
   trackStartupTask,
 } from "@/utils/startupProgress";
+import { installCrashHandlers } from "@/utils/crashReporting";
 
 type ThemeMode = "light" | "dark" | "system";
 
@@ -145,8 +147,22 @@ function applyThemeMode(mode: ThemeMode) {
   root.classList.toggle("dark", isDark);
 }
 
+// Initialize crash handling before any startup work can fail.
+installCrashHandlers();
+// main.tsx 已执行：取消 index.html 中针对「前端脚本未启动」的静态兜底计时器，
+// 并撤销静态面板（避免慢启动时残留误报）。
+window.clearTimeout(window.__endprotocolBootTimer);
+const bootErrorPanel = document.getElementById("startup-splash-error");
+if (bootErrorPanel) {
+  bootErrorPanel.hidden = true;
+  document.getElementById("startup-splash-export")?.removeAttribute("style");
+  document.getElementById("startup-splash-open-logs")?.removeAttribute("style");
+}
+
 // Initialize language and theme from config service before rendering
 setStartupPhase(12, i18n.t("startup.loadingSettings"));
+// Cover the case where an IPC invoke never resolves and React is never mounted.
+armStartupTimeout();
 void syncSilentLaunchConfig().catch((error: unknown) => {
   logger.warn("Failed to sync game launch config: " + error, "Main");
 });
@@ -232,5 +248,5 @@ Promise.all([
   }, 5000);
 }).catch((error: unknown) => {
   logger.error("Failed to initialize the application", error);
-  failStartup(i18n.t("startup.failed"));
+  failStartup(i18n.t("startup.failed"), String(error));
 });

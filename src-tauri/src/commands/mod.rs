@@ -4,6 +4,7 @@ pub mod capture;
 pub mod card_config;
 pub mod color_picker;
 pub mod config;
+pub mod diagnostics;
 pub mod gacha;
 pub mod image;
 pub mod launcher;

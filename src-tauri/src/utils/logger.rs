@@ -244,6 +244,11 @@ pub fn get_logger() -> &'static Logger {
         .expect("Logger not initialized. Call init_logger() first.")
 }
 
+/// 在 panic hook 等日志系统可能尚未初始化的场景下安全获取 logger。
+pub fn try_get_logger() -> Option<&'static Logger> {
+    GLOBAL_LOGGER.get()
+}
+
 /// tracing 层：将 tracing 事件桥接到自定义 Logger
 struct TracingBridgeLayer;
 

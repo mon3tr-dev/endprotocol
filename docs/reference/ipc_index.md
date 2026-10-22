@@ -1,15 +1,16 @@
 # IPC 命令索引（前端 invoke ↔ 后端定义）
 
-> 由脚本扫描 `#[tauri::command]` 与前端 `invoke('...')` 自动生成。共 107 个后端命令，其中 93 个在前端有直接调用；14 个未见前端调用。行号基于当前工作区版本。
+> 由脚本扫描 `#[tauri::command]` 与前端 `invoke('...')` 自动生成。共 113 个后端命令，其中 99 个在前端有直接调用；14 个未见前端调用。行号基于当前工作区版本。
 
 每个命令的参数、返回值与内部调用链见 [commands.md](backend/commands.md)；前端侧的封装函数见各 `utils_services_*.md`。
 
 | 命令名 | 后端定义 | 前端调用方 |
 | --- | --- | --- |
+| `ack_crash_reports` | [src-tauri/src/commands/diagnostics.rs:31](backend/commands.md) | [src/utils/diagnostics.ts](../../src/utils/diagnostics.ts) |
 | `add_account` | [src-tauri/src/commands/account.rs:131](backend/commands.md) | [src/utils/accountService.ts](../../src/utils/accountService.ts) |
 | `add_account_by_code` | [src-tauri/src/commands/account.rs:189](backend/commands.md) | [src/utils/accountService.ts](../../src/utils/accountService.ts) |
 | `add_account_by_scan` | [src-tauri/src/commands/account.rs:224](backend/commands.md) | [src/utils/accountService.ts](../../src/utils/accountService.ts) |
-| `app_quit` | [src-tauri/src/commands/tray.rs:87](backend/commands.md) | [src/components/custom-titlebar.tsx](../../src/components/custom-titlebar.tsx)<br>[src/components/tray-panel.tsx](../../src/components/tray-panel.tsx) |
+| `app_quit` | [src-tauri/src/commands/tray.rs:87](backend/commands.md) | [src/components/crash-report-host.tsx](../../src/components/crash-report-host.tsx)<br>[src/components/custom-titlebar.tsx](../../src/components/custom-titlebar.tsx)<br>[src/components/tray-panel.tsx](../../src/components/tray-panel.tsx)<br>[src/components/ui/global-error-fallback.tsx](../../src/components/ui/global-error-fallback.tsx) |
 | `batch_logout` | [src-tauri/src/commands/account.rs:157](backend/commands.md) | [src/utils/accountService.ts](../../src/utils/accountService.ts) |
 | `cancel_download` | [src-tauri/src/commands/updater.rs:135](backend/commands.md) | —（前端未调用） |
 | `capture_delete_session` | [src-tauri/src/commands/capture.rs:32](backend/commands.md) | [src/pages/developer.tsx](../../src/pages/developer.tsx) |
@@ -29,11 +30,13 @@
 | `do_attendance` | [src-tauri/src/commands/attendance.rs:181](backend/commands.md) | [src/components/cards/attendance/index.tsx](../../src/components/cards/attendance/index.tsx) |
 | `download_file` | [src-tauri/src/commands/updater.rs:149](backend/commands.md) | —（前端未调用） |
 | `download_image` | [src-tauri/src/commands/image.rs:29](backend/commands.md) | [src/components/cards/character-list/char-select-modal.tsx](../../src/components/cards/character-list/char-select-modal.tsx)<br>[src/utils/imageCacheManager.ts](../../src/utils/imageCacheManager.ts) |
+| `export_diagnostics` | [src-tauri/src/commands/diagnostics.rs:15](backend/commands.md) | [src/utils/diagnostics.ts](../../src/utils/diagnostics.ts) |
 | `fetch_url` | [src-tauri/src/commands/updater.rs:121](backend/commands.md) | [src/utils/updateService.ts](../../src/utils/updateService.ts) |
 | `finish_screen_pick` | [src-tauri/src/commands/color_picker.rs:169](backend/commands.md) | [src/components/screen-color-picker.tsx](../../src/components/screen-color-picker.tsx) |
 | `gen_scan_login` | [src-tauri/src/commands/account.rs:202](backend/commands.md) | [src/utils/accountService.ts](../../src/utils/accountService.ts) |
 | `get_accounts` | [src-tauri/src/commands/account.rs:16](backend/commands.md) | [src/utils/accountService.ts](../../src/utils/accountService.ts) |
 | `get_all_configs` | [src-tauri/src/commands/config.rs:34](backend/commands.md) | [src/utils/configService.ts](../../src/utils/configService.ts) |
+| `get_api_health` | [src-tauri/src/commands/diagnostics.rs:37](backend/commands.md) | [src/utils/crashReporting.ts](../../src/utils/crashReporting.ts) |
 | `get_attendance` | [src-tauri/src/commands/attendance.rs:59](backend/commands.md) | [src/components/cards/attendance/index.tsx](../../src/components/cards/attendance/index.tsx)<br>[src/pages/attendance.tsx](../../src/pages/attendance.tsx) |
 | `get_backend_logs` | [src-tauri/src/commands/logs.rs:4](backend/commands.md) | [src/pages/developer.tsx](../../src/pages/developer.tsx) |
 | `get_backgrounds_dir` | [src-tauri/src/commands/image.rs:141](backend/commands.md) | —（前端未调用） |
@@ -43,6 +46,8 @@
 | `get_gacha_record_stats` | [src-tauri/src/commands/gacha.rs:518](backend/commands.md) | —（前端未调用） |
 | `get_game_launch_command` | [src-tauri/src/commands/startup.rs:54](backend/commands.md) | [src/utils/launcherService.ts](../../src/utils/launcherService.ts) |
 | `get_image_cache_dir` | [src-tauri/src/commands/image.rs:16](backend/commands.md) | [src/components/cards/character-list/char-select-modal.tsx](../../src/components/cards/character-list/char-select-modal.tsx)<br>[src/utils/imageCacheManager.ts](../../src/utils/imageCacheManager.ts) |
+| `get_log_dir` | [src-tauri/src/commands/diagnostics.rs:7](backend/commands.md) | [src/utils/diagnostics.ts](../../src/utils/diagnostics.ts) |
+| `get_pending_crash_reports` | [src-tauri/src/commands/diagnostics.rs:25](backend/commands.md) | [src/utils/diagnostics.ts](../../src/utils/diagnostics.ts) |
 | `get_saved_gacha_records` | [src-tauri/src/commands/gacha.rs:148](backend/commands.md) | [src/pages/gacha-records.tsx](../../src/pages/gacha-records.tsx) |
 | `get_saved_weapon_gacha_records` | [src-tauri/src/commands/gacha.rs:215](backend/commands.md) | [src/pages/gacha-records.tsx](../../src/pages/gacha-records.tsx) |
 | `get_selected_account` | [src-tauri/src/commands/account.rs:253](backend/commands.md) | [src/utils/accountService.ts](../../src/utils/accountService.ts) |
@@ -92,6 +97,7 @@
 | `refresh_accounts` | [src-tauri/src/commands/account.rs:167](backend/commands.md) | [src/utils/accountService.ts](../../src/utils/accountService.ts) |
 | `remove_card_settings` | [src-tauri/src/commands/card_config.rs:66](backend/commands.md) | [src/utils/cardConfigService.ts](../../src/utils/cardConfigService.ts) |
 | `remove_config` | [src-tauri/src/commands/config.rs:27](backend/commands.md) | [src/utils/configService.ts](../../src/utils/configService.ts) |
+| `reset_api_health` | [src-tauri/src/commands/diagnostics.rs:43](backend/commands.md) | [src/components/crash-report-host.tsx](../../src/components/crash-report-host.tsx) |
 | `reset_download_cancel` | [src-tauri/src/commands/updater.rs:141](backend/commands.md) | —（前端未调用） |
 | `resolve_gacha_avatar_map` | [src-tauri/src/commands/gacha.rs:359](backend/commands.md) | [src/components/gacha-pity-chart.tsx](../../src/components/gacha-pity-chart.tsx) |
 | `run_installer` | [src-tauri/src/commands/updater.rs:234](backend/commands.md) | —（前端未调用） |

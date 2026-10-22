@@ -1,17 +1,17 @@
 # 后端工具层 — 文件功能参考
 
 > 逐文件精读源码生成。行号基于当前工作区版本，仅用于快速定位。
-> 本文件覆盖：`src-tauri/src/utils/` 下全部 10 个文件（mod / error / hg_crypto / http_client / logger / official_launcher / paths / capture / game_playtime / process）。
+> 本文件覆盖：`src-tauri/src/utils/` 下全部 13 个文件（mod / api_health / error / crash / diagnostics / hg_crypto / http_client / logger / official_launcher / paths / capture / game_playtime / process）。
 
 ## `src-tauri/src/utils/mod.rs`
-**职责**：工具层模块清单（11 行）。声明 9 个子模块并统一再导出统一错误类型。
-**导出**：`pub mod capture`、`pub mod error`、`pub mod game_playtime`、`pub mod hg_crypto`、`pub mod http_client`、`pub mod logger`、`pub mod official_launcher`、`pub mod paths`、`pub mod process`；`pub use error::AppError`（mod.rs:11）。
+**职责**：工具层模块清单（13 行）。声明 12 个子模块并统一再导出统一错误类型。
+**导出**：`pub mod api_health`、`pub mod capture`、`pub mod crash`、`pub mod diagnostics`、`pub mod error`、`pub mod game_playtime`、`pub mod hg_crypto`、`pub mod http_client`、`pub mod logger`、`pub mod official_launcher`、`pub mod paths`、`pub mod process`；`pub use error::AppError`。
 **主要依赖**：`crate::utils::error`。
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
-| `pub mod capture/error/game_playtime/hg_crypto/http_client/logger/official_launcher/paths/process` | mod.rs:1-9 | 9 个子模块声明，全部 `pub` |
-| `pub use error::AppError` | mod.rs:11 | 别名导出，使调用方写作 `crate::utils::AppError` |
+| `pub mod api_health/capture/crash/diagnostics/error/game_playtime/hg_crypto/http_client/logger/official_launcher/paths/process` | mod.rs:1-12 | 12 个子模块声明，全部 `pub` |
+| `pub use error::AppError` | mod.rs:14 | 别名导出，使调用方写作 `crate::utils::AppError` |
 
 **备注**：全 crate 通过 `crate::utils::{capture, paths, http_client, AppError}` 这类分组导入使用（如 services/account_service.rs:20、services/avatar_cache_service.rs:6、services/config_service.rs:8）。
 
@@ -76,7 +76,7 @@
 
 ## `src-tauri/src/utils/logger.rs`
 **职责**：自研日志系统（387 行）：控制台彩色输出 + 按日期文件落盘 + 内存环形缓冲（供前端读取），并提供 `tracing` 桥接层与 9 个导出宏。
-**导出**：`LogLevel`、`LogEntry`、`LoggerConfig`、`Logger`、`console_available`、`eprint_console`、`init_logger`、`get_logger`、`init_tracing_subscriber`、宏 `log_debug!` / `log_info!` / `log_warn!` / `log_error!` / `log_debug_module!` / `log_info_module!` / `log_warn_module!` / `log_error_module!` / `safe_eprintln!`。私有项：`TracingBridgeLayer`、`TracingVisitor`、`GLOBAL_LOGGER`。
+**导出**：`LogLevel`、`LogEntry`、`LoggerConfig`、`Logger`、`console_available`、`eprint_console`、`init_logger`、`get_logger`、`try_get_logger`、`init_tracing_subscriber`、宏 `log_debug!` / `log_info!` / `log_warn!` / `log_error!` / `log_debug_module!` / `log_info_module!` / `log_warn_module!` / `log_error_module!` / `safe_eprintln!`。私有项：`TracingBridgeLayer`、`TracingVisitor`、`GLOBAL_LOGGER`。
 **主要依赖**：`chrono`（Local 时间）、`serde::Serialize`、`tracing` / `tracing-subscriber`、`super::paths`、`std::sync::Mutex`。
 
 ### 日志级别与条目
@@ -119,6 +119,7 @@
 | `static GLOBAL_LOGGER: OnceLock<Logger>` | logger.rs:229 | 全局单例，`std::sync::OnceLock`（线程安全，无 `unsafe`） |
 | `init_logger() -> Result<(), Box<dyn Error>>` | logger.rs:231 | 用 `LoggerConfig::default()` 建实例并 `GLOBAL_LOGGER.set(logger)`（重复初始化返回 `Err("Logger already initialized")`），随后 `info("Logger initialized successfully")`；调用方 lib.rs:99、utils/official_launcher.rs:1081（提权 helper 进程，失败不中断启动，仅 `eprintln`） |
 | `get_logger() -> &'static Logger` | logger.rs:241 | `GLOBAL_LOGGER.get().expect("Logger not initialized. Call init_logger() first.")`；未初始化即调用会 panic |
+| `try_get_logger() -> Option<&'static Logger>` | logger.rs:248 | 未初始化时返回 `None`；供 panic hook 与诊断导出等「日志可能尚未就绪」的路径安全使用 |
 | `struct TracingBridgeLayer` + `impl Layer<S>` | logger.rs:247-279 | `on_event`：取 `metadata.level()/module_path()/target()`，用 `TracingVisitor` 收集字段，拼成 `[{target}] {fields}` 后按 ERROR/WARN/INFO/DEBUG\|TRACE 映射到 `*_with_module`（logger.rs:270-277） |
 | `struct TracingVisitor(String)` + `impl field::Visit` | logger.rs:281-318 | 实现 `record_debug/record_str/record_i64/record_u64/record_bool`，字段以 `name=value` 空格连接（未实现 record_f64 等） |
 | `init_tracing_subscriber()` | logger.rs:322 | `registry().with(TracingBridgeLayer).try_init().ok()`，已初始化则忽略；调用方 lib.rs:104。之后所有 `tracing::info!/debug!`（如 game_launcher_service 的 `tracing::info!`）都汇入本 Logger |
@@ -331,6 +332,71 @@
 | `is_process_running(process_name) -> bool`（pub async） | :8 | Windows：`tasklist /FI "IMAGENAME eq <name>" /NH`，`CREATE_NO_WINDOW`，命中 stdout 含进程名即 true，命令失败记 debug 日志并返回 false；非 Windows 恒 false。调用方：commands/launcher.rs（`launcher_check_game_running`）、utils/game_playtime.rs（`poll_loop`） |
 
 **备注**：探测基于 `tasklist` 镜像名匹配（与旧 `launcher_check_game_running` 实现一致），非 Windows 是空实现（游戏仅支持 Windows）。
+
+---
+
+## `src-tauri/src/utils/api_health.rs`
+**职责**：API 连续失败熔断器（约 197 行）。记录森空岛接口连续失败次数、分类与服务器时间偏差；达到阈值后置位全局 `BLOCKED`，后续 `call_skland_api` 立即失败，避免前端无限等待，并通过 `app:api-health` 事件通知前端弹出提示。
+**导出**：`ApiFailureKind`、`ApiHealthSnapshot`、`CLOCK_SKEW_THRESHOLD_SECONDS`、`init`、`ensure_available`、`record_success`、`record_failure`、`reset`、`snapshot`、`classify_error`。私有：`BLOCK_THRESHOLD`、`SIGNATURE_BLOCK_THRESHOLD`、`APP_HANDLE`、`BLOCKED`、`STATE`、`state`。
+**主要依赖**：`chrono`、`serde::Serialize`、`std::sync::{Mutex, OnceLock}`、`std::sync::atomic`、`tauri::{AppHandle, Emitter}`、`crate::utils::AppError`。
+
+| 符号 | 位置 | 说明 |
+| --- | --- | --- |
+| `BLOCK_THRESHOLD` / `SIGNATURE_BLOCK_THRESHOLD` | :10 / :12 | 普通错误连续 5 次、签名类错误连续 3 次触发熔断 |
+| `CLOCK_SKEW_THRESHOLD_SECONDS` | :14 | 服务器时间与本地时间偏差 ≥180 秒即判定为时钟异常，单次失败也直接熔断 |
+| `ApiFailureKind`（`Serialize`、`snake_case`） | :20-30 | `ClockSkew / Signature / Auth / Network / Server / Parse / Unknown`，作为事件与导出清单的枚举值 |
+| `ApiHealthSnapshot`（`Serialize`） | :32-40 | `blocked`、`consecutive_failures`、`kind`、`message`、`clock_skew_seconds`、`last_failure_at`；`Default` 为未熔断空状态 |
+| `init(app)` | :60 | 保存 `AppHandle` 供事件广播；状态惰性初始化 |
+| `ensure_available()` | :66 | 已熔断时返回 `AppError::AuthError`，消息包含失败次数与最后一次错误；`call_skland_api` 在每次请求前调用 |
+| `record_success()` | :82 | 未熔断时把计数/分类/偏差清零（任一成功请求即解除连续失败累计） |
+| `record_failure(kind, message, clock_skew_seconds)` | :91 | 累计失败；确认时钟偏差或达到阈值时置 `BLOCKED` 并 `emit("app:api-health", snapshot)`，否则只记 warn 日志 |
+| `reset()` | :153 | 用户修复问题后清空熔断与计数（命令 `reset_api_health`） |
+| `snapshot()` | :165 | 返回当前状态（命令 `get_api_health`、诊断 manifest） |
+| `classify_error(code, message, clock_skew_seconds)` | :172 | 按服务器时间偏差、sign/timestamp/签名/过期、cred/token/401/403、5xx 等关键字分类 |
+
+**备注**：
+- 由 `services/skland_service.rs` 的 `call_skland_api` 调用：请求前 `ensure_available`，成功置 `record_success`，HTTP/JSON/业务错误按类型 `record_failure`；并从响应头 `Date` 计算本地时钟偏差。
+- 事件名 `app:api-health`；payload 即 `ApiHealthSnapshot`。前端 `src/utils/crashReporting.ts` 监听后停止启动进度并弹出崩溃提示。
+- 静默模式不初始化该服务（不建立 WebView，也无业务请求）。
+
+---
+
+## `src-tauri/src/utils/crash.rs`
+**职责**：崩溃捕获与崩溃报告管理（约 250 行）。安装全局 panic hook，把 panic 消息、线程、位置、回溯、应用版本与系统信息写入 `logs/crashes/crash-*.log`；运行中通过 `app:crash` 事件通知前端；启动时读取未确认报告供弹窗展示，并提供 `.ack` 标记。
+**导出**：`CrashReportInfo`、`CrashEventPayload`、`set_app_handle`、`install_panic_hook`、`crash_dir`、`pending_reports`、`acknowledge`。私有：`APP_HANDLE`、`HOOK_INSTALLED`、`IN_HOOK`、`handle_panic`、`panic_message`、`write_report`、`ack_path`、`truncate_chars`。
+**主要依赖**：`chrono`、`serde::Serialize`、`std::backtrace::Backtrace`、`std::panic`、`tauri::{AppHandle, Emitter}`、`super::paths`、`super::logger::try_get_logger`。
+
+| 符号 | 位置 | 说明 |
+| --- | --- | --- |
+| `CrashReportInfo`（`Serialize`） | :17-25 | `path`、`file_name`、`timestamp`、`message`、`content`（截断到 24000 字符）、`acknowledged` |
+| `CrashEventPayload`（`Serialize`） | :27-35 | `message`、`location`、`thread`、`backtrace`、`report_path`、`timestamp`；`app:crash` 事件体 |
+| `set_app_handle(app)` | :37 | 在 Tauri `setup` 中保存 `AppHandle`，供 hook 广播事件 |
+| `install_panic_hook()` | :43 | 幂等替换全局 panic hook；`lib.rs` 在业务初始化前调用 |
+| `handle_panic(info)`（私有） | :50 | `IN_HOOK` 防递归；捕获 payload/位置/线程/回溯；写报告、写后端日志、安全写 stderr；有 handle 时 `emit("app:crash")` |
+| `crash_dir()` | :132 | `%LOCALAPPDATA%\cn.msk-network.endprotocol\logs\crashes` |
+| `write_report(content)`（私有） | :138 | 文件名为 `crash-YYYYMMDD-HHMMSS-<pid>.log` |
+| `pending_reports()` | :152 | 扫描 `crash-*.log`，跳过已有 `.log.ack` 的文件；按时间倒序取最近 5 条 |
+| `acknowledge(paths)` | :211 | 仅接受崩溃目录内的 `.log`，写入 `crash-*.log.ack` 标记已读；防路径穿越 |
+| `truncate_chars` / `ack_path`（私有） | :240 / :244 | 字符级截断；ack 文件路径 |
+
+**备注**：崩溃目录与 `app-YYYY-MM-DD.log` 同属 `logs/`；`export_diagnostics` 会把所有 `crash-*.log` 一并打包。`write_report` 失败时仅通过 `safe_eprintln` 输出，不再递归触发 hook。
+
+---
+
+## `src-tauri/src/utils/diagnostics.rs`
+**职责**：诊断日志导出（约 163 行）。把前端日志、后端内存日志、当日 `app-*.log` / `startup.log`、崩溃报告与系统/API 状态清单打包成 zip，写入 `logs/exports/`。
+**导出**：`FrontendLogEntry`、`export`。私有：`DiagnosticsManifest`、`write_archive_contents`、`add_text`、`add_file`。
+**主要依赖**：`chrono`、`serde`、`zip`（`ZipWriter` / `SimpleFileOptions` / `CompressionMethod`）、`super::{api_health, crash, logger, paths}`、`tauri::AppHandle`。
+
+| 符号 | 位置 | 说明 |
+| --- | --- | --- |
+| `FrontendLogEntry`（`Deserialize`/`Serialize`） | :13-22 | 与 `src/utils/logger.ts` 的 `LogEntry` 对齐：`timestamp`、`level`（数字）、`message`、`module`、`source`、`data?` |
+| `DiagnosticsManifest`（`Serialize`） | :24-32 | 应用名、版本（`app.package_info()`）、ISO 时间、OS/架构、调用方上下文、`ApiHealthSnapshot` |
+| `export(app, frontend_logs, context)` | :34 | 创建 `endprotocol-diagnostics-YYYYMMDD-HHMMSS.zip`；失败时删除半成品并返回错误 |
+| `write_archive_contents(...)`（私有） | :62 | 依次写入 `manifest.json`、`frontend-logs.json`、`backend-logs.txt`、`logs/app-*.log`、`logs/startup.log`、`crashes/crash-*.log` |
+| `add_text` / `add_file`（私有） | :143 / :155 | 向 zip 写入字符串 / 文件字节（Deflated 压缩） |
+
+**备注**：不打包 `app_config.json`、网络抓包或图片缓存，避免泄露凭证；由命令 `export_diagnostics`（`commands/diagnostics.rs:15`）调用，前端在崩溃弹窗、Splash 错误面板与开发者页「导出诊断日志」按钮中使用。
 
 ---
 

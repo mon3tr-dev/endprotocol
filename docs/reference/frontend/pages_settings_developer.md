@@ -114,7 +114,7 @@
 | developer.tsx:443-450 | 页头（`settings.developer.title` + `settings.developer.enable_desc`） |
 | developer.tsx:452-648 | 图片缓存卡 `#developer-cache`：骨架屏 459-468；模式开关 471-491；manual 模式下条数输入 497-520、容量输入 522-545；统计/清理 549-587；缓存明细表折叠 589-643 |
 | developer.tsx:650-1017 | 网络录制卡 `#developer-capture`：标题与开始/停止/目录/刷新按钮 651-715；功能说明 717-721；启动自动录制开关 723-745；错误提示 747-749；状态条 751-768；会话表 770-844；会话内条目表 846-927；单条详情面板 929-1014 |
-| developer.tsx:1019-1138 | 日志卡 `#developer-logs`：标题与刷新/清除 1021-1034；来源 tabs 1036-1060；级别过滤 chips 1062-1085；日志列表 1087-1137 |
+| developer.tsx:1019-1138 | 日志卡 `#developer-logs`：标题与导出诊断/刷新/清除 1021-1034；来源 tabs 1036-1060；级别过滤 chips 1062-1085；日志列表 1087-1137 |
 | developer.tsx:1139-1142 | 收尾闭合 |
 
 ### 组件与函数清单
@@ -158,11 +158,13 @@
 | `handleCacheMaxSizeMBChange` | developer.tsx:412-418 | 夹取 10–10000 → configure + 写 `cache_max_size_mb` |
 | `refreshCacheStats` | developer.tsx:420-422 | 重取 `cacheManager.getStats()` |
 | `cleanInactive` | developer.tsx:424-427 | `cacheManager.evictInactive()` 后刷新统计 |
-| `clearLogs` | developer.tsx:429-434 | 清前端日志 + 空置后端缓存与去重集合 + 递增 `displayKey` |
-| `truncateMessage` | developer.tsx:436-441 | 消息超 300 字符截断 |
+| `clearLogs` | developer.tsx:432 | 清前端日志 + 空置后端缓存与去重集合 + 递增 `displayKey` |
+| `handleExportDiagnostics` | developer.tsx:439 | `exportDiagnostics("Developer log export")` → `revealDiagnostics(path)` → 成功/失败 `pushGlobalAlert` |
+| `truncateMessage` | developer.tsx:461 | 消息超 300 字符截断 |
 
 **备注**：
 - **invoke 命令名（全部）**：`capture_status`（:172）、`capture_list_sessions`（:173）、`capture_read_entries`（:185，参数 `id`/`offset`/`limit`）、`capture_start`（:206）、`capture_stop`（:220）、`capture_delete_session`（:251，参数 `id`）、`capture_dir`（:264）、`get_backend_logs`（:322）。
+- **诊断导出**：日志卡「导出诊断日志」经 `@/utils/diagnostics`（`export_diagnostics`）打包前后端日志、崩溃报告与系统信息，成功后用 `revealItemInDir` 定位 zip；失败通过 `pushGlobalAlert` 提示。
 - **配置键**：`capture_autostart`（读 :284，写 :275）、`cache_mode`（读 :299，写 :400）、`cache_max_entries`（读 :300，写 :408）、`cache_max_size_mb`（读 :301，写 :416）。缓存参数同步下发给 `cacheManager.configure`，改完立即刷新 `getStats()`。
 - **i18n key 前缀**：`settings.cache.*`（title/mode/mode_smart_desc/mode_manual_desc/max_entries*/max_size_mb*/current_cache/clean_inactive/entries_count/size_usage/cached_resources/filename/size/status/status_pinned/status_active/status_inactive/open_file_location/no_cached）、`settings.logs.title`、`settings.developer.title`、`settings.developer.enable_desc`、`common.refresh`。
 - **未走 i18n 的文案**：网络录制整卡（标题、按钮、说明、表头、详情面板，:650-1016）与日志卡的清除按钮、tabs、级别 chips、空态（:1031-1131）均使用 `i18n.language === "zh"` 三元硬编码中英双语，未接入翻译资源。

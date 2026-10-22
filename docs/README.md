@@ -48,12 +48,13 @@
 
 | 需求 | 位置 | 详细参考 |
 | --- | --- | --- |
-| **IPC 命令在哪定义 / 前端谁调用** | 生成的对照表 | [ipc_index.md](reference/ipc_index.md)（106 个命令全表） |
+| **IPC 命令在哪定义 / 前端谁调用** | 生成的对照表 | [ipc_index.md](reference/ipc_index.md)（113 个命令全表） |
 | 新增/修改一个 Tauri 命令 | `src-tauri/src/commands/`、`src-tauri/src/lib.rs` | [commands.md](reference/backend/commands.md)、[bootstrap.md](reference/backend/bootstrap.md)、[backend_development.md](backend_development.md) |
 | 错误类型与转换 | `src-tauri/src/utils/error.rs` | [utils.md](reference/backend/utils.md) |
 | 加密与签名（RSA/AES/DES/HMAC） | `src-tauri/src/utils/hg_crypto.rs`、`services/skland_service.rs` | [utils.md](reference/backend/utils.md)、[services_skland.md](reference/backend/services_skland.md) |
 | HTTP 客户端与超时 | `src-tauri/src/utils/http_client.rs` | [utils.md](reference/backend/utils.md) |
 | 日志（前端/后端） | `src/utils/logger.ts`、`src-tauri/src/utils/logger.rs` | [utils_services_b.md](reference/frontend/utils_services_b.md)、[utils.md](reference/backend/utils.md) |
+| 崩溃提示 / 日志导出 / 错因判断 / API 熔断 | `src/utils/crashReporting.ts`、`src/components/crash-report-host.tsx`、`src-tauri/src/utils/{crash,api_health,diagnostics}.rs` | [utils_services_b.md](reference/frontend/utils_services_b.md)、[ui_components.md](reference/frontend/ui_components.md)、[utils.md](reference/backend/utils.md) |
 | 数据模型（结构体定义） | `src-tauri/src/models/` | [models.md](reference/backend/models.md) |
 | TypeScript 类型 | `src/types/` | [types_locales_styles.md](reference/frontend/types_locales_styles.md) |
 | 国际化文案 | `src/locales/{zh,en}/translation.json`、`src/i18n.ts` | [types_locales_styles.md](reference/frontend/types_locales_styles.md) |
@@ -85,13 +86,13 @@
 | 文件 | 覆盖范围 |
 | --- | --- |
 | [reference/backend/bootstrap.md](reference/backend/bootstrap.md) | `main.rs`、`lib.rs`（含全部命令注册清单）、`tray.rs`、`build.rs`、`Cargo.toml`、`tauri.conf.json`、`capabilities/*`、`examples/sign_test.rs` |
-| [reference/backend/commands.md](reference/backend/commands.md) | `commands/` 全部 15 个文件、**110 处 `#[tauri::command]` 注解**：参数、返回值、内部调用链 |
+| [reference/backend/commands.md](reference/backend/commands.md) | `commands/` 全部 16 个文件、**116 处 `#[tauri::command]` 注解**：参数、返回值、内部调用链 |
 | [reference/backend/models.md](reference/backend/models.md) | `models/` 全部 7 个文件：79 个结构体/枚举的字段与 serde 映射 |
 | [reference/backend/services_account.md](reference/backend/services_account.md) | `services/account_service.rs`（约 3100 行）：登录、凭证刷新、角色数据、状态中枢 |
 | [reference/backend/services_skland.md](reference/backend/services_skland.md) | `services/skland_service.rs`：森空岛 API 端点总表、签名与加密流程 |
 | [reference/backend/services_launcher.md](reference/backend/services_launcher.md) | `services/game_launcher_service.rs`（约 2960 行）：下载/校验/切服/进度事件 |
 | [reference/backend/services_others.md](reference/backend/services_others.md) | `gacha_service`、`char_detail_service`、`char_wiki_detail_service`、`avatar_cache_service`、`config_service`、`data_query`、`network_service` |
-| [reference/backend/utils.md](reference/backend/utils.md) | `utils/`：错误类型、加密、HTTP、日志、路径、抓包、进程探测（`process`）、游戏时长统计（`game_playtime`） |
+| [reference/backend/utils.md](reference/backend/utils.md) | `utils/`：错误类型、加密、HTTP、日志、路径、抓包、进程探测（`process`）、游戏时长统计（`game_playtime`）、崩溃捕获（`crash`）、API 熔断（`api_health`）、诊断导出（`diagnostics`） |
 | [reference/ipc_index.md](reference/ipc_index.md) | 命令名 ↔ 后端定义位置 ↔ 前端调用方（脚本生成的对照表） |
 
 ### 3.2 前端 `src/`
@@ -114,7 +115,7 @@
 | [reference/frontend/cards_attendance_domain_spaceship.md](reference/frontend/cards_attendance_domain_spaceship.md) | `attendance/`、`domain-info/`、`spaceship/` |
 | [reference/frontend/cards_system_todo.md](reference/frontend/cards_system_todo.md) | `system-resource/`、`todo/` 两类新卡片（含 `todoStore`、相关 types/utils/设置分区/`pages/todo.tsx`） |
 | [reference/frontend/utils_services_a.md](reference/frontend/utils_services_a.md) | 账户/配置/卡片配置/仪表板/角色/标签页/启动器等 11 个服务封装（含每个函数对应的命令名） |
-| [reference/frontend/utils_services_b.md](reference/frontend/utils_services_b.md) | 更新、Wiki 解析、图片缓存、技能描述解析、日志、滚动条 |
+| [reference/frontend/utils_services_b.md](reference/frontend/utils_services_b.md) | 更新、Wiki 解析、图片缓存、技能描述解析、日志、崩溃上报、诊断导出、滚动条、启动进度 |
 | [reference/frontend/ui_components.md](reference/frontend/ui_components.md) | `src/components/ui/` 全部 36 个通用组件 + `primitives`/`icons`/`morph-icon`（含每个组件的 props） |
 | [reference/frontend/types_locales_styles.md](reference/frontend/types_locales_styles.md) | `src/types/*`、`locales/*`（命名空间清单）、`globals.css`（主题变量体系） |
 

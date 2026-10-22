@@ -44,6 +44,9 @@ pub fn run() {
         std::process::exit(code);
     }
 
+    // 在任何业务逻辑之前安装崩溃捕获，确保初始化阶段 panic 也能落盘。
+    utils::crash::install_panic_hook();
+
     let args = std::env::args().collect::<Vec<_>>();
 
     if let Some(parent_pid) = arg_value(&args, WAIT_FOR_PARENT_ARG).and_then(|pid| pid.parse().ok())
@@ -82,6 +85,7 @@ pub fn run() {
         tauri::Builder::default()
             .plugin(single_instance_plugin)
             .setup(move |app| {
+                utils::crash::set_app_handle(app.handle().clone());
                 let config_service = create_config_service()?;
                 app.manage(config_service.clone());
                 utils::game_playtime::init(config_service.clone());
@@ -195,6 +199,13 @@ pub fn run() {
             commands::color_picker::finish_screen_pick,
             // Logger commands
             commands::logs::get_backend_logs,
+            // Diagnostics & crash handling commands
+            commands::diagnostics::get_log_dir,
+            commands::diagnostics::export_diagnostics,
+            commands::diagnostics::get_pending_crash_reports,
+            commands::diagnostics::ack_crash_reports,
+            commands::diagnostics::get_api_health,
+            commands::diagnostics::reset_api_health,
             // Network capture commands
             commands::capture::capture_start,
             commands::capture::capture_stop,
@@ -256,6 +267,8 @@ pub fn run() {
         ])
         .setup(move |app| {
             // 主窗口与托盘面板仅在完整模式创建，静默模式不建立 WebView。
+            utils::crash::set_app_handle(app.handle().clone());
+            utils::api_health::init(app.handle().clone());
             let config_service = create_config_service()?;
             app.manage(config_service.clone());
             utils::game_playtime::init(config_service.clone());
