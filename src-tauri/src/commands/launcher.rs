@@ -61,6 +61,8 @@ pub async fn launcher_install_or_update(
     service: tauri::State<'_, Arc<Mutex<GameLauncherService>>>,
     channel: String,
     install_path: String,
+    max_concurrent: Option<usize>,
+    resume: Option<bool>,
 ) -> Result<LauncherResult, String> {
     tracing::info!(
         "[cmd] launcher_install_or_update: channel={}, install_path={}",
@@ -84,7 +86,16 @@ pub async fn launcher_install_or_update(
         let _ = app_handle.emit("launcher-progress", &progress);
     });
 
-    match svc.install_or_update(&ch, &install_path, progress_cb).await {
+    match svc
+        .install_or_update(
+            &ch,
+            &install_path,
+            progress_cb,
+            max_concurrent.unwrap_or(8),
+            resume.unwrap_or(true),
+        )
+        .await
+    {
         Ok(version) => {
             tracing::info!("[cmd] Install OK: version={}", version);
             Ok(LauncherResult {
@@ -115,6 +126,7 @@ pub async fn launcher_verify_and_repair(
     install_path: String,
     max_concurrent: Option<usize>,
     quick: Option<bool>,
+    resume: Option<bool>,
 ) -> Result<LauncherResult, String> {
     let ch = parse_channel(&channel)?;
     let svc = service.lock().await;
@@ -136,6 +148,7 @@ pub async fn launcher_verify_and_repair(
             progress_cb,
             max_concurrent.unwrap_or(12),
             quick.unwrap_or(false),
+            resume.unwrap_or(true),
         )
         .await
     {
@@ -182,6 +195,7 @@ pub async fn launcher_preload_download(
     channel: String,
     install_path: String,
     max_concurrent: Option<usize>,
+    resume: Option<bool>,
 ) -> Result<LauncherResult, String> {
     let ch = parse_channel(&channel)?;
     let svc = service.lock().await;
@@ -197,6 +211,7 @@ pub async fn launcher_preload_download(
             &install_path,
             progress_cb,
             max_concurrent.unwrap_or(8),
+            resume.unwrap_or(true),
             None,
         )
         .await
@@ -224,6 +239,7 @@ pub async fn launcher_install_preload(
     channel: String,
     install_path: String,
     max_concurrent: Option<usize>,
+    resume: Option<bool>,
 ) -> Result<LauncherResult, String> {
     let ch = parse_channel(&channel)?;
     let svc = service.lock().await;
@@ -234,7 +250,13 @@ pub async fn launcher_install_preload(
     });
 
     match svc
-        .install_preload(&ch, &install_path, progress_cb, max_concurrent.unwrap_or(8))
+        .install_preload(
+            &ch,
+            &install_path,
+            progress_cb,
+            max_concurrent.unwrap_or(8),
+            resume.unwrap_or(true),
+        )
         .await
     {
         Ok(version) => Ok(LauncherResult {
@@ -266,6 +288,12 @@ pub async fn launcher_get_payload_state(
 /// 取消正在进行的下载并清理缓存文件
 #[tauri::command]
 pub async fn launcher_cancel_download(install_path: Option<String>) -> Result<(), String> {
+    // 先记录清理意图再取消，避免后台任务先退出导致缓存被保留
+    if let Some(path) = install_path.as_deref() {
+        if !path.is_empty() {
+            crate::services::game_launcher_service::request_cancel_cleanup();
+        }
+    }
     crate::services::game_launcher_service::cancel_download();
     if let Some(path) = install_path {
         if !path.is_empty() {

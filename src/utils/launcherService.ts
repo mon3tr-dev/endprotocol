@@ -155,10 +155,14 @@ export async function checkGameStatus(
 export async function installOrUpdate(
   channel: GameChannel,
   installPath: string,
+  maxConcurrent?: number,
+  resume?: boolean,
 ): Promise<LauncherResult> {
   return invoke<LauncherResult>("launcher_install_or_update", {
     channel,
     installPath,
+    maxConcurrent: maxConcurrent ?? null,
+    resume: resume ?? true,
   });
 }
 
@@ -167,12 +171,14 @@ export async function verifyAndRepair(
   installPath: string,
   maxConcurrent?: number,
   quick?: boolean,
+  resume?: boolean,
 ): Promise<LauncherResult> {
   const result = await invoke<LauncherResult>("launcher_verify_and_repair", {
     channel,
     installPath,
     maxConcurrent: maxConcurrent ?? null,
     quick: quick ?? false,
+    resume: resume ?? true,
   });
   if (!result.success) {
     throw result.message;
@@ -204,11 +210,13 @@ export async function preloadDownload(
   channel: GameChannel,
   installPath: string,
   maxConcurrent?: number,
+  resume?: boolean,
 ): Promise<LauncherResult> {
   return invoke<LauncherResult>("launcher_preload_download", {
     channel,
     installPath,
     maxConcurrent: maxConcurrent ?? null,
+    resume: resume ?? true,
   });
 }
 
@@ -216,11 +224,13 @@ export async function installPreload(
   channel: GameChannel,
   installPath: string,
   maxConcurrent?: number,
+  resume?: boolean,
 ): Promise<LauncherResult> {
   return invoke<LauncherResult>("launcher_install_preload", {
     channel,
     installPath,
     maxConcurrent: maxConcurrent ?? null,
+    resume: resume ?? true,
   });
 }
 

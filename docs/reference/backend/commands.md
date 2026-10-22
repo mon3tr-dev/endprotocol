@@ -64,18 +64,18 @@
 | `delete_background_image` | commands/image.rs:190 | 无 | `Result<(), String>` | `paths::backgrounds_dir` + 删除目录下全部文件 |
 | `launcher_get_process_read_bytes` | commands/launcher.rs:13 | 无 | `Result<u64, String>` | Win32 `GetProcessIoCounters`（非 Windows 返回 0） |
 | `launcher_check_status` | commands/launcher.rs:31 | `service: State<Arc<Mutex<GameLauncherService>>>`、`channel: String`、`install_path: String` | `Result<GameStatus, String>` | 本地 `parse_channel`、`GameLauncherService::check_status` |
-| `launcher_install_or_update` | commands/launcher.rs:52 | `app: AppHandle`、`service`、`channel`、`install_path` | `Result<LauncherResult, String>` | `GameLauncherService::install_or_update`，进度回调 emit `launcher-progress` |
-| `launcher_verify_and_repair` | commands/launcher.rs:104 | `app`、`service`、`channel`、`install_path`、`max_concurrent: Option<usize>`、`quick: Option<bool>` | `Result<LauncherResult, String>` | `GameLauncherService::verify_and_repair`，emit `launcher-progress`；失败时额外发出 `error` 终态事件 |
-| `launcher_get_remote_version` | commands/launcher.rs:161 | `service`、`channel` | `Result<RemotePackage, String>` | `GameLauncherService::get_latest_package` |
-| `launcher_preload_download` | commands/launcher.rs:172 | `app`、`service`、`channel`、`install_path`、`max_concurrent: Option<usize>` | `Result<LauncherResult, String>` | `GameLauncherService::preload_download`（独立预下载传入 `None`，由服务获取包信息），emit `launcher-progress` |
-| `launcher_install_preload` | commands/launcher.rs:214 | `app`、`service`、`channel`、`install_path`、`max_concurrent: Option<usize>` | `Result<LauncherResult, String>` | `GameLauncherService::install_preload`：校验并下载分卷、解密安装，emit `launcher-progress`；前端安装成功后另行触发快速校验 |
-| `launcher_get_payload_state` | commands/launcher.rs:250 | `service`、`channel` | `Result<Option<PayloadState>, String>` | `GameLauncherService::get_payload_state` |
-| `launcher_cancel_download` | commands/launcher.rs:261 | `install_path: Option<String>` | `Result<(), String>` | `game_launcher_service::cancel_download`、`cleanup_staging_files`（静态函数） |
-| `launcher_has_download_cache` | commands/launcher.rs:274 | `install_path: String` | `Result<bool, String>` | `game_launcher_service::has_download_cache` |
-| `launcher_reset_download_cancel` | commands/launcher.rs:282 | 无 | `Result<(), String>` | `game_launcher_service::reset_download_cancel` |
-| `launcher_cancel_switch` | commands/launcher.rs:288 | 无 | `Result<(), String>` | `game_launcher_service::cancel_switch` |
-| `launcher_cancel_all` | commands/launcher.rs:294 | 无 | `Result<(), String>` | `game_launcher_service::cancel_download` + `cancel_switch` |
-| `launcher_decrypt_file` | commands/launcher.rs:301 | `file_path: String` | `Result<String, String>` | `utils::hg_crypto::decrypt_file_to_string` |
+| `launcher_install_or_update` | commands/launcher.rs:59 | `app: AppHandle`、`service`、`channel`、`install_path`、`max_concurrent: Option<usize>`（默认 8）、`resume: Option<bool>`（默认 true） | `Result<LauncherResult, String>` | `GameLauncherService::install_or_update`，按线程数并发下载、可断点续传，进度回调 emit `launcher-progress` |
+| `launcher_verify_and_repair` | commands/launcher.rs:122 | `app`、`service`、`channel`、`install_path`、`max_concurrent: Option<usize>`、`quick: Option<bool>`、`resume: Option<bool>`（默认 true） | `Result<LauncherResult, String>` | `GameLauncherService::verify_and_repair`，emit `launcher-progress`；失败时额外发出 `error` 终态事件 |
+| `launcher_get_remote_version` | commands/launcher.rs:179 | `service`、`channel` | `Result<RemotePackage, String>` | `GameLauncherService::get_latest_package` |
+| `launcher_preload_download` | commands/launcher.rs:192 | `app`、`service`、`channel`、`install_path`、`max_concurrent: Option<usize>`（默认 8）、`resume: Option<bool>`（默认 true） | `Result<LauncherResult, String>` | `GameLauncherService::preload_download`（独立预下载传入 `None`，由服务获取包信息），emit `launcher-progress` |
+| `launcher_install_preload` | commands/launcher.rs:236 | `app`、`service`、`channel`、`install_path`、`max_concurrent: Option<usize>`（默认 8）、`resume: Option<bool>`（默认 true） | `Result<LauncherResult, String>` | `GameLauncherService::install_preload`：校验并下载分卷、解密安装，emit `launcher-progress`；前端安装成功后另行触发快速校验 |
+| `launcher_get_payload_state` | commands/launcher.rs:279 | `service`、`channel` | `Result<Option<PayloadState>, String>` | `GameLauncherService::get_payload_state` |
+| `launcher_cancel_download` | commands/launcher.rs:290 | `install_path: Option<String>` | `Result<(), String>` | 带非空路径时先 `request_cancel_cleanup`（记录删除意图）再 `cancel_download`/`cleanup_staging_files`；不带路径仅置取消标志、保留缓存 |
+| `launcher_has_download_cache` | commands/launcher.rs:309 | `install_path: String` | `Result<bool, String>` | `game_launcher_service::has_download_cache` |
+| `launcher_reset_download_cancel` | commands/launcher.rs:317 | 无 | `Result<(), String>` | `game_launcher_service::reset_download_cancel` |
+| `launcher_cancel_switch` | commands/launcher.rs:323 | 无 | `Result<(), String>` | `game_launcher_service::cancel_switch` |
+| `launcher_cancel_all` | commands/launcher.rs:329 | 无 | `Result<(), String>` | `game_launcher_service::cancel_download` + `cancel_switch` |
+| `launcher_decrypt_file` | commands/launcher.rs:336 | `file_path: String` | `Result<String, String>` | `utils::hg_crypto::decrypt_file_to_string` |
 | `launcher_get_banners` | commands/launcher.rs:307 | `service`、`channel` | `Result<Vec<BannerItem>, String>` | `GameLauncherService::get_banners` |
 | `launcher_get_announcements` | commands/launcher.rs:318 | `service`、`channel` | `Result<Vec<AnnouncementItem>, String>` | `GameLauncherService::get_announcements` |
 | `launcher_get_notice_content` | commands/launcher.rs:329 | `service`、`channel` | `Result<LauncherNoticeContent, String>` | `GameLauncherService::get_notice_content`（Banner + 公告合并内容） |
@@ -509,45 +509,45 @@
 - 位置：launcher.rs:31（async）；参数：`service`、`channel: String`、`install_path: String`；返回：`Result<GameStatus, String>`；逻辑：`parse_channel` → 加锁 → `GameLauncherService::check_status(&ch, &install_path).await`。
 
 ### `launcher_install_or_update`
-- 位置：launcher.rs:52（async）
-- 参数：`app: AppHandle`、`service`、`channel`、`install_path`
+- 位置：launcher.rs:59（async）
+- 参数：`app: AppHandle`、`service`、`channel`、`install_path`、`max_concurrent: Option<usize>`（缺省 8）、`resume: Option<bool>`（缺省 true）
 - 返回：`Result<LauncherResult, String>`（业务失败也包成 `success:false` 的 `LauncherResult`，不返回 `Err`）
-- 逻辑：构造 `progress_cb` 回调，每阶段 `app.emit("launcher-progress", &DownloadProgress)`；调 `GameLauncherService::install_or_update(&ch, &install_path, progress_cb)`，成功填 `version` 与 "Update to {v} completed"，失败填错误串。
+- 逻辑：构造 `progress_cb` 回调，每阶段 `app.emit("launcher-progress", &DownloadProgress)`；调 `GameLauncherService::install_or_update(&ch, &install_path, progress_cb, max_concurrent, resume)`，成功填 `version` 与 "Update to {v} completed"，失败填错误串。`resume` 决定取消/失败后是否保留分片与暂存。
 - 事件：`launcher-progress`
 
 ### `launcher_verify_and_repair`
-- 位置：launcher.rs:104（async）
-- 参数：`app`、`service`、`channel`、`install_path`、`max_concurrent: Option<usize>`、`quick: Option<bool>`
+- 位置：launcher.rs:122（async）
+- 参数：`app`、`service`、`channel`、`install_path`、`max_concurrent: Option<usize>`、`quick: Option<bool>`、`resume: Option<bool>`
 - 返回：`Result<LauncherResult, String>`
-- 逻辑：`GameLauncherService::verify_and_repair(..., max_concurrent.unwrap_or(12), quick.unwrap_or(false))`，进度同样 emit `launcher-progress`；结果包成 `LauncherResult`，发生错误时额外 emit `stage = "error"` 以结束前端进度状态。
+- 逻辑：`GameLauncherService::verify_and_repair(..., max_concurrent.unwrap_or(12), quick.unwrap_or(false), resume.unwrap_or(true))`，进度同样 emit `launcher-progress`；结果包成 `LauncherResult`，发生错误时额外 emit `stage = "error"` 以结束前端进度状态。
 
 ### `launcher_get_remote_version`
-- 位置：launcher.rs:161（async）；参数：`service`、`channel`；返回：`Result<RemotePackage, String>`；逻辑：`GameLauncherService::get_latest_package(&ch, None)` 取远程版本包（不带本地版本，因此不会返回 `pre_patch` 预下载信息）。
+- 位置：launcher.rs:179（async）；参数：`service`、`channel`；返回：`Result<RemotePackage, String>`；逻辑：`GameLauncherService::get_latest_package(&ch, None)` 取远程版本包（不带本地版本，因此不会返回 `pre_patch` 预下载信息）。
 
 ### `launcher_preload_download`
-- 位置：launcher.rs:172（async）
-- 参数：`app`、`service`、`channel`、`install_path`、`max_concurrent: Option<usize>`
+- 位置：launcher.rs:192（async）
+- 参数：`app`、`service`、`channel`、`install_path`、`max_concurrent: Option<usize>`、`resume: Option<bool>`
 - 返回：`Result<LauncherResult, String>`
-- 逻辑：`GameLauncherService::preload_download(..., max_concurrent.unwrap_or(8), None)` 预下载官方预发布补丁分卷（服务内自行读本地版本以取 `pre_patch`），进度 emit `launcher-progress`。
+- 逻辑：`GameLauncherService::preload_download(..., max_concurrent.unwrap_or(8), resume.unwrap_or(true), None)` 预下载官方预发布补丁分卷（服务内自行读本地版本以取 `pre_patch`），进度 emit `launcher-progress`。
 
 ### `launcher_install_preload`
-- 位置：launcher.rs:214（async）
-- 参数：`app`、`service`、`channel`、`install_path`、`max_concurrent: Option<usize>`
+- 位置：launcher.rs:236（async）
+- 参数：`app`、`service`、`channel`、`install_path`、`max_concurrent: Option<usize>`、`resume: Option<bool>`
 - 返回：`Result<LauncherResult, String>`
 - 逻辑：调用 `GameLauncherService::install_preload`；复用已下载分卷或先下载并 MD5 校验，使用官方 `pkg.cd_key` 解压到暂存区并应用文件。命令完成后由前端再调用快速校验与修复；解压密码只保留在后端。
 - 事件：`launcher-progress`
 
 ### `launcher_get_payload_state`
-- 位置：launcher.rs:250（async）；参数：`service`、`channel`；返回：`Result<Option<PayloadState>, String>`；逻辑：`GameLauncherService::get_payload_state(&ch)`，返回上次安装/更新的 payload 状态。
+- 位置：launcher.rs:279（async）；参数：`service`、`channel`；返回：`Result<Option<PayloadState>, String>`；逻辑：`GameLauncherService::get_payload_state(&ch)`，返回上次安装/更新的 payload 状态。
 
 ### `launcher_cancel_download`
-- 位置：launcher.rs:261（async）；参数：`install_path: Option<String>`；返回：`Result<(), String>`；逻辑：调模块静态函数 `game_launcher_service::cancel_download()` 置取消标志；若给了非空路径再 `cleanup_staging_files(&path)` 清暂存文件。**不加 service 锁**。
+- 位置：launcher.rs:290（async）；参数：`install_path: Option<String>`；返回：`Result<(), String>`；逻辑：给了非空路径时先调 `game_launcher_service::request_cancel_cleanup()` 记录删除意图，再置取消标志并 `cleanup_staging_files(&path)`；不给路径时仅 `cancel_download()`，后台任务会保留分片与暂存以便续传。**不加 service 锁**。
 
 ### `launcher_has_download_cache`
-- 位置：launcher.rs:274（async）；参数：`install_path: String`；返回：`Result<bool, String>`；逻辑：`game_launcher_service::has_download_cache(&path)` 判断是否有暂存目录或 `.download` 文件。
+- 位置：launcher.rs:309（async）；参数：`install_path: String`；返回：`Result<bool, String>`；逻辑：`game_launcher_service::has_download_cache(&path)` 判断是否有暂存目录或 `.download` 文件。
 
 ### `launcher_reset_download_cancel`
-- 位置：launcher.rs:282（async）；参数：无；返回：`Result<(), String>`；逻辑：`game_launcher_service::reset_download_cancel()`。
+- 位置：launcher.rs:317（async）；参数：无；返回：`Result<(), String>`；逻辑：`game_launcher_service::reset_download_cancel()`。
 
 ### `launcher_cancel_switch`
 - 位置：launcher.rs:288（async）；参数：无；返回：`Result<(), String>`；逻辑：`game_launcher_service::cancel_switch()` 取消渠道切换。

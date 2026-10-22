@@ -1,5 +1,5 @@
 use std::fs;
-use std::io::{Read, Seek, SeekFrom, Write};
+use std::io::{BufWriter, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -18,9 +18,23 @@ use crate::utils::{capture, hg_crypto};
 /// 全局下载取消标志
 static DOWNLOAD_CANCELLED: AtomicBool = AtomicBool::new(false);
 static SWITCH_CANCELLED: AtomicBool = AtomicBool::new(false);
+/// 本次取消是否同时删除下载缓存（由 launcher_cancel_download 带 install_path 时置位）
+static CANCEL_CLEANUP_REQUESTED: AtomicBool = AtomicBool::new(false);
+
+/// 安装暂存目录后缀：固定名称，保证取消/失败后下次运行仍能续传
+const INSTALL_STAGING_SUFFIX: &str = ".staging.resume";
+/// 安装暂存目录对应的版本标记文件后缀（与暂存目录同级，避免被当作游戏文件应用）
+const INSTALL_STAGING_VERSION_SUFFIX: &str = ".staging.resume.version";
+/// 小文件复用前重新校验 MD5 的尺寸上限（大文件下载完成时已校验）
+const STAGED_REUSE_HASH_LIMIT: u64 = 16 * 1024 * 1024;
 
 pub fn cancel_download() {
     DOWNLOAD_CANCELLED.store(true, Ordering::SeqCst);
+}
+
+/// 标记本次取消需要连带删除缓存文件（必须在 cancel_download 之前调用）
+pub fn request_cancel_cleanup() {
+    CANCEL_CLEANUP_REQUESTED.store(true, Ordering::SeqCst);
 }
 
 pub fn reset_download_cancel() {
@@ -57,7 +71,11 @@ pub fn cleanup_staging_files(install_path: &str) {
                     {
                         let path = entry.path();
                         tracing::info!("[cleanup] Removing old dir: {}", path.display());
-                        let _ = fs::remove_dir_all(&path);
+                        if path.is_dir() {
+                            let _ = fs::remove_dir_all(&path);
+                        } else {
+                            let _ = fs::remove_file(&path);
+                        }
                     }
                 }
             }
@@ -79,6 +97,14 @@ pub fn cleanup_staging_files(install_path: &str) {
     }
 }
 
+/// 目录内是否存在任意文件（用于判断暂存区是否值得保留）
+fn dir_has_files(dir: &Path) -> bool {
+    WalkDir::new(dir)
+        .into_iter()
+        .flatten()
+        .any(|entry| entry.file_type().is_file())
+}
+
 /// 检查指定安装路径下是否存在下载缓存（暂存目录或 .download 文件）
 pub fn has_download_cache(install_path: &str) -> bool {
     let install_dir = Path::new(install_path);
@@ -89,7 +115,8 @@ pub fn has_download_cache(install_path: &str) -> bool {
                 let name = entry.file_name();
                 let name_str = name.to_string_lossy();
                 if let Some(stem) = install_dir.file_name().and_then(|s| s.to_str()) {
-                    if name_str.starts_with(&format!("{}.staging.", stem)) {
+                    if name_str.starts_with(&format!("{}.staging.", stem)) && entry.path().is_dir()
+                    {
                         return true;
                     }
                 }
@@ -216,7 +243,9 @@ impl GameLauncherService {
             .expect("Failed to create HTTP client");
 
         let download_client = Client::builder()
-            .timeout(Duration::from_secs(1800)) // 30 min for downloads
+            .connect_timeout(Duration::from_secs(30))
+            // 单文件可能下载数十分钟，这里只限制读超时，避免大文件被总超时中断
+            .read_timeout(Duration::from_secs(120))
             .user_agent("EndProtocol/0.1.0")
             .build()
             .expect("Failed to create download HTTP client");
@@ -979,12 +1008,18 @@ impl GameLauncherService {
 
     /// 执行完整的安装或更新流程
     /// 返回下载的总字节数
+    ///
+    /// `max_concurrent` 为同时下载的文件数，`resume` 控制中断后是否保留分片以便续传。
     pub async fn install_or_update(
         &self,
         channel: &GameChannel,
         install_path: &str,
         progress_callback: Arc<dyn Fn(DownloadProgress) + Send + Sync>,
+        max_concurrent: usize,
+        resume: bool,
     ) -> Result<String, String> {
+        let max_concurrent = max_concurrent.clamp(1, 32);
+        CANCEL_CLEANUP_REQUESTED.store(false, Ordering::SeqCst);
         if self.has_active_operation().await {
             return Err("Another operation is in progress".to_string());
         }
@@ -1048,19 +1083,40 @@ impl GameLauncherService {
         );
 
         if files_to_download.is_empty() {
-            // 已经是最新版本
+            // 已经是最新版本：清理可能残留的续传暂存
+            let stale_staging = format!("{}{}", install_path, INSTALL_STAGING_SUFFIX);
+            let stale_marker = format!("{}{}", install_path, INSTALL_STAGING_VERSION_SUFFIX);
+            if Path::new(&stale_staging).exists() {
+                let _ = fs::remove_dir_all(&stale_staging);
+                let _ = fs::remove_file(&stale_marker);
+            }
             tracing::info!("[install] Already up to date, saving state");
             self.save_payload_state(channel, &remote.version, &manifest_sha256, &manifest)?;
             return Ok(remote.version);
         }
 
-        // 4. 创建暂存目录
-        let staging_dir = format!("{}.staging.{}", install_path, uuid::Uuid::new_v4());
+        // 4. 创建/复用固定暂存目录（固定名称让取消或失败后的分片在下次继续使用）
+        let staging_dir = format!("{}{}", install_path, INSTALL_STAGING_SUFFIX);
+        let staging_version_marker = format!("{}{}", install_path, INSTALL_STAGING_VERSION_SUFFIX);
         tracing::info!("[install] Staging dir: {}", staging_dir);
-        fs::create_dir_all(&staging_dir)
-            .map_err(|e| format!("Failed to create staging dir: {}", e))?;
-
         let staging_path = PathBuf::from(&staging_dir);
+        let previous_version = fs::read_to_string(&staging_version_marker).ok();
+        if staging_path.exists()
+            && previous_version.as_deref().map(str::trim) != Some(remote.version.as_str())
+        {
+            tracing::info!(
+                "[install] Discarding stale staging for version {:?}",
+                previous_version
+            );
+            let _ = fs::remove_dir_all(&staging_path);
+        }
+        if !staging_path.exists() {
+            fs::create_dir_all(&staging_path)
+                .map_err(|e| format!("Failed to create staging dir: {}", e))?;
+            fs::write(&staging_version_marker, &remote.version)
+                .map_err(|e| format!("Failed to write staging version: {}", e))?;
+        }
+
         let install_dir = Path::new(install_path);
 
         let result = async {
@@ -1120,15 +1176,61 @@ impl GameLauncherService {
                 }
             }
 
+            // 复用上次中断时已下载完成的暂存文件；未完成的分片计入已完成字节，
+            // 下载时由 download_single_file 按 Range 续传。关闭续传时不复用。
+            let mut resumed_bytes = reused_bytes;
+            let mut staged_reused = 0u64;
+            if resume {
+                files_to_download.retain(|plan| {
+                    let dest = staging_path.join(&plan.manifest.path);
+                    let size = plan.manifest.size.max(0) as u64;
+                    let Ok(meta) = fs::metadata(&dest) else {
+                        return true;
+                    };
+                    if meta.len() != size {
+                        return true;
+                    }
+                    // 小文件重新校验 MD5（大文件下载完成时已经校验过）
+                    if size <= STAGED_REUSE_HASH_LIMIT
+                        && !hg_crypto::verify_md5(dest.to_str().unwrap_or(""), &plan.manifest.md5)
+                            .unwrap_or(false)
+                    {
+                        let _ = fs::remove_file(&dest);
+                        return true;
+                    }
+                    staged_reused += size;
+                    false
+                });
+                if staged_reused > 0 {
+                    tracing::info!(
+                        "[install] Reused {} bytes from previous staging files",
+                        staged_reused
+                    );
+                }
+                for plan in &files_to_download {
+                    let partial = format!(
+                        "{}.download",
+                        staging_path.join(&plan.manifest.path).display()
+                    );
+                    if let Ok(meta) = fs::metadata(&partial) {
+                        if meta.is_file() {
+                            resumed_bytes += meta.len().min(plan.manifest.size.max(0) as u64);
+                        }
+                    }
+                }
+            }
+
             let file_count = files_to_download.len();
             tracing::info!(
-                "[install] Downloading {} files, total {} bytes",
+                "[install] Downloading {} files, total {} bytes (resume={}, concurrent={}, already={})",
                 file_count,
-                total_bytes
+                total_bytes,
+                resume,
+                max_concurrent,
+                resumed_bytes
             );
 
-            let downloaded_bytes = Arc::new(AtomicU64::new(0));
-            let max_concurrent = 8;
+            let downloaded_bytes = Arc::new(AtomicU64::new(resumed_bytes));
             let semaphore = Arc::new(Semaphore::new(max_concurrent));
             let mut join_set = tokio::task::JoinSet::new();
 
@@ -1141,7 +1243,7 @@ impl GameLauncherService {
                 let mut interval = tokio::time::interval(Duration::from_millis(500));
                 loop {
                     interval.tick().await;
-                    let current = dl_bytes_bg.load(Ordering::Relaxed);
+                    let current = dl_bytes_bg.load(Ordering::Relaxed).min(total_bytes_bg);
                     if current >= total_bytes_bg && total_bytes_bg > 0 {
                         break;
                     }
@@ -1170,6 +1272,7 @@ impl GameLauncherService {
                 let resource_url = remote.resource_base_url.clone();
                 let dl_bytes = downloaded_bytes.clone();
                 let sem = semaphore.clone();
+                let client = self.download_client.clone();
                 let download_url = format!("{}/{}", resource_url, plan.manifest.path);
 
                 tracing::debug!(
@@ -1183,21 +1286,23 @@ impl GameLauncherService {
                 join_set.spawn(async move {
                     let permit = match sem.acquire().await {
                         Ok(p) => p,
-                        Err(e) => return (Err(format!("Semaphore: {}", e)), file_name, file_size),
+                        Err(e) => return (Err(format!("Semaphore: {}", e)), file_name),
                     };
                     let result = download_single_file(
+                        &client,
                         &download_url,
                         &dest_str,
                         &expected_md5,
                         dl_bytes.clone(),
                         file_size,
+                        resume,
                     )
                     .await;
                     drop(permit);
                     if let Err(ref e) = result {
                         tracing::error!("[install] Download FAILED: {} — {}", file_name, e);
                     }
-                    (result, file_name, file_size)
+                    (result, file_name)
                 });
             }
 
@@ -1205,7 +1310,7 @@ impl GameLauncherService {
             let mut completed = 0u32;
             let mut failed_files = Vec::new();
             while let Some(res) = join_set.join_next().await {
-                let (result, file_name, file_size) =
+                let (result, file_name) =
                     res.map_err(|e| format!("Task join error: {}", e))?;
                 completed += 1;
                 match result {
@@ -1276,9 +1381,21 @@ impl GameLauncherService {
         }
         .await;
 
-        // 清理暂存目录
-        tracing::info!("[install] Cleaning up staging dir: {}", staging_dir);
-        let _ = fs::remove_dir_all(&staging_path);
+        // 成功时清理暂存；失败/取消且启用续传时保留，供下次安装复用与续传。
+        let cleanup_requested = CANCEL_CLEANUP_REQUESTED.load(Ordering::SeqCst);
+        let keep_staging =
+            result.is_err() && resume && !cleanup_requested && dir_has_files(&staging_path);
+        if keep_staging {
+            tracing::info!(
+                "[install] Keeping staging dir for resume: {} (cleanup_requested={})",
+                staging_dir,
+                cleanup_requested
+            );
+        } else {
+            tracing::info!("[install] Cleaning up staging dir: {}", staging_dir);
+            let _ = fs::remove_dir_all(&staging_path);
+            let _ = fs::remove_file(&staging_version_marker);
+        }
 
         match result {
             Ok(version) => {
@@ -1343,6 +1460,7 @@ impl GameLauncherService {
         progress_callback: Arc<dyn Fn(DownloadProgress) + Send + Sync>,
         max_concurrent: usize,
         quick: bool,
+        resume: bool,
     ) -> Result<String, String> {
         let max_concurrent = max_concurrent.max(1).min(32);
         if self.has_active_operation().await {
@@ -1682,6 +1800,7 @@ impl GameLauncherService {
             let sem = sem2.clone();
             let rb = repaired_bytes.clone();
             let rc = repaired_count.clone();
+            let client = self.download_client.clone();
 
             repair_set.spawn(async move {
                 let _permit = sem.acquire().await.unwrap();
@@ -1709,11 +1828,13 @@ impl GameLauncherService {
                     entry_md5
                 );
                 match download_single_file(
+                    &client,
                     &download_url,
                     &dest_str,
                     &entry_md5,
                     Arc::new(AtomicU64::new(0)),
                     entry_size,
+                    resume,
                 )
                 .await
                 {
@@ -1802,8 +1923,10 @@ impl GameLauncherService {
         install_path: &str,
         progress_callback: Arc<dyn Fn(DownloadProgress) + Send + Sync>,
         max_concurrent: usize,
+        resume: bool,
         remote_package: Option<RemotePackage>,
     ) -> Result<String, String> {
+        CANCEL_CLEANUP_REQUESTED.store(false, Ordering::SeqCst);
         // 1. 读取本地版本（接口只在上报本地版本时返回 pre_patch）
         let local_version = self.read_local_version(install_path).ok();
 
@@ -1923,6 +2046,7 @@ impl GameLauncherService {
             let sem = semaphore.clone();
             let db = downloaded_bytes.clone();
             let fp = finished_parts.clone();
+            let client = self.download_client.clone();
 
             join_set.spawn(async move {
                 let _permit = match sem.acquire().await {
@@ -1944,8 +2068,10 @@ impl GameLauncherService {
                     return Ok(());
                 }
 
-                let result =
-                    download_single_file(&part_url, &dest_str, &part_md5, db, part_size).await;
+                let result = download_single_file(
+                    &client, &part_url, &dest_str, &part_md5, db, part_size, resume,
+                )
+                .await;
 
                 match result {
                     Ok(()) => {
@@ -1981,7 +2107,15 @@ impl GameLauncherService {
                 file_count: 0,
                 verified_bytes: 0,
             });
-            let _ = fs::remove_dir_all(&staging_path);
+            // 启用续传且未要求清理时保留已下载分卷，下次预下载可继续
+            if !resume || CANCEL_CLEANUP_REQUESTED.load(Ordering::SeqCst) {
+                let _ = fs::remove_dir_all(&staging_path);
+            } else {
+                tracing::info!(
+                    "[preload] Keeping staging for resume after cancel: {}",
+                    staging_path.display()
+                );
+            }
             return Err("Download cancelled".to_string());
         }
 
@@ -2044,6 +2178,7 @@ impl GameLauncherService {
         install_path: &str,
         progress_callback: Arc<dyn Fn(DownloadProgress) + Send + Sync>,
         max_concurrent: usize,
+        resume: bool,
     ) -> Result<String, String> {
         if self.has_active_operation().await {
             return Err("Another operation is in progress".to_string());
@@ -2085,6 +2220,7 @@ impl GameLauncherService {
                 install_path,
                 preload_progress,
                 max_concurrent,
+                resume,
                 Some(remote.clone()),
             )
             .await?;
@@ -3099,11 +3235,13 @@ impl GameLauncherService {
             let url_clone = download_url.clone();
 
             let result = download_single_file(
+                &self.download_client,
                 &url_clone,
                 &dest_clone,
                 &md5_clone,
                 dl_counter_clone,
                 file_size,
+                false,
             )
             .await;
             match result {
@@ -3237,16 +3375,25 @@ impl GameLauncherService {
     }
 }
 
+/// 原子地回退已累计的下载进度（避免并发任务下溢）
+fn subtract_download_progress(counter: &AtomicU64, bytes: u64) {
+    let _ = counter.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |value| {
+        Some(value.saturating_sub(bytes))
+    });
+}
+
 /// 单文件下载+验证（供并发下载使用）
-/// - Streams chunks to disk, updates shared `dl_bytes` counter incrementally
-/// - Single-pass MD5: reads file once after download for verification
-/// - Retries up to 3 times with exponential backoff
+/// - 流式 MD5 校验，避免把大文件整体读入内存
+/// - 断点续传：`resume` 为真时保留 `.download` 分片并按 Range 继续
+/// - 最多重试 3 次，期间保留已写入的分片
 async fn download_single_file(
+    client: &Client,
     url: &str,
     dest_path: &str,
     expected_md5: &str,
     dl_bytes: Arc<AtomicU64>,
     file_size: u64,
+    resume: bool,
 ) -> Result<(), String> {
     let download_path = format!("{}.download", dest_path);
     let download_file = Path::new(&download_path);
@@ -3256,29 +3403,32 @@ async fn download_single_file(
             .map_err(|e| format!("Failed to create directory {}: {}", parent.display(), e))?;
     }
 
-    let mut start_byte: u64 = 0;
-    if download_file.exists() {
-        if let Ok(meta) = fs::metadata(download_file) {
-            start_byte = meta.len();
-            if start_byte > 0 {
-                tracing::debug!(
-                    "[download] Resuming {} from byte {}/{}",
-                    dest_path,
-                    start_byte,
-                    file_size
-                );
-            }
+    if !resume {
+        let _ = fs::remove_file(download_file);
+    }
+
+    if resume {
+        // 上次已完整下载但未及重命名：校验通过后直接改名，不再重新下载
+        let existing_len = fs::metadata(download_file).map(|m| m.len()).unwrap_or(0);
+        if file_size > 0
+            && existing_len == file_size
+            && (expected_md5.is_empty()
+                || hg_crypto::verify_md5(&download_path, expected_md5).unwrap_or(false))
+        {
+            tracing::info!("[download] Completing interrupted rename: {}", dest_path);
+            fs::rename(&download_path, dest_path).map_err(|e| format!("Rename: {}", e))?;
+            return Ok(());
+        }
+        // 长度超过预期说明是旧数据的残留，直接丢弃
+        if file_size > 0 && existing_len >= file_size {
+            let _ = fs::remove_file(download_file);
         }
     }
 
-    let client = Client::builder()
-        .timeout(Duration::from_secs(600))
-        .user_agent("EndProtocol/0.1.0")
-        .build()
-        .map_err(|e| format!("HTTP client: {}", e))?;
-
     let max_retries = 3u32;
     let mut last_error = String::new();
+    // 本次调用累计写入 dl_bytes 的字节数，重试前回退
+    let mut counted_bytes: u64 = 0;
 
     for attempt in 0..max_retries {
         if attempt > 0 {
@@ -3292,7 +3442,32 @@ async fn download_single_file(
                 last_error
             );
             tokio::time::sleep(delay).await;
+            if counted_bytes > 0 {
+                subtract_download_progress(&dl_bytes, counted_bytes);
+                counted_bytes = 0;
+            }
+        }
+
+        if DOWNLOAD_CANCELLED.load(Ordering::SeqCst) {
+            tracing::info!("[download] Cancelled before request: {}", dest_path);
+            return Err("Download cancelled".to_string());
+        }
+
+        let mut start_byte = if resume {
+            fs::metadata(download_file).map(|m| m.len()).unwrap_or(0)
+        } else {
+            0
+        };
+        if file_size > 0 && start_byte >= file_size {
             start_byte = 0;
+        }
+        if start_byte > 0 {
+            tracing::debug!(
+                "[download] Resuming {} from byte {}/{}",
+                dest_path,
+                start_byte,
+                file_size
+            );
         }
 
         let mut req = client.get(url);
@@ -3300,7 +3475,7 @@ async fn download_single_file(
             req = req.header("Range", format!("bytes={}-", start_byte));
         }
 
-        match capture::send_stream(&client, req).await {
+        match capture::send_stream(client, req).await {
             Ok(resp) => {
                 let status = resp.status();
                 let is_partial = status == 206;
@@ -3323,6 +3498,8 @@ async fn download_single_file(
                         "[download] Server ignored Range for {}, restarting from 0",
                         dest_path
                     );
+                    // 服务端忽略 Range：丢弃旧前缀，避免进度重复累计
+                    subtract_download_progress(&dl_bytes, start_byte);
                     start_byte = 0;
                 }
 
@@ -3336,7 +3513,7 @@ async fn download_single_file(
                     status
                 );
 
-                let mut file = if start_byte > 0 && is_partial {
+                let file = if start_byte > 0 && is_partial {
                     fs::OpenOptions::new()
                         .create(true)
                         .append(true)
@@ -3345,24 +3522,37 @@ async fn download_single_file(
                 } else {
                     fs::File::create(&download_path).map_err(|e| format!("Create file: {}", e))?
                 };
+                let mut writer = BufWriter::with_capacity(1024 * 1024, file);
 
                 let mut stream = resp.bytes_stream();
                 let mut downloaded = start_byte;
                 let mut last_log = start_byte;
                 let log_interval = 4 * 1024 * 1024; // log every 4 MB
+                let mut stream_error: Option<String> = None;
 
                 while let Some(chunk) = stream.next().await {
                     if DOWNLOAD_CANCELLED.load(Ordering::SeqCst) {
-                        drop(file);
-                        let _ = fs::remove_file(&download_path);
+                        let _ = writer.flush();
+                        drop(writer);
+                        if !resume {
+                            let _ = fs::remove_file(&download_path);
+                        }
                         tracing::info!("[download] Cancelled: {}", dest_path);
                         return Err("Download cancelled".to_string());
                     }
-                    let chunk = chunk.map_err(|e| format!("Stream: {}", e))?;
-                    file.write_all(&chunk)
+                    let chunk = match chunk {
+                        Ok(chunk) => chunk,
+                        Err(e) => {
+                            stream_error = Some(format!("Stream: {}", e));
+                            break;
+                        }
+                    };
+                    writer
+                        .write_all(&chunk)
                         .map_err(|e| format!("Write: {}", e))?;
                     let chunk_len = chunk.len() as u64;
                     downloaded += chunk_len;
+                    counted_bytes += chunk_len;
                     dl_bytes.fetch_add(chunk_len, Ordering::Relaxed);
 
                     // Log progress periodically
@@ -3381,30 +3571,40 @@ async fn download_single_file(
                         last_log = downloaded;
                     }
                 }
-                file.flush().map_err(|e| format!("Flush: {}", e))?;
-                drop(file);
+                writer.flush().map_err(|e| format!("Flush: {}", e))?;
+                drop(writer);
+
+                if let Some(error) = stream_error {
+                    last_error = error;
+                    tracing::warn!(
+                        "[download] Stream interrupted for {} (attempt {}/{}), keeping {}/{} bytes",
+                        dest_path,
+                        attempt + 1,
+                        max_retries,
+                        downloaded,
+                        total
+                    );
+                    continue;
+                }
 
                 tracing::debug!(
                     "[download] Stream complete for {}, verifying MD5",
                     dest_path
                 );
 
-                // Single-pass MD5: read file once, compute hash
-                let data = fs::read(&download_path).map_err(|e| format!("Read for MD5: {}", e))?;
-                let actual_md5 = hg_crypto::md5_hex(&data);
-                drop(data); // free memory immediately
-
-                if !expected_md5.is_empty() && !actual_md5.eq_ignore_ascii_case(expected_md5) {
+                // 流式 MD5 校验，避免大文件占用大量内存
+                let verified = expected_md5.is_empty()
+                    || hg_crypto::verify_md5(&download_path, expected_md5).unwrap_or(false);
+                if !verified {
                     let _ = fs::remove_file(&download_path);
                     tracing::error!(
-                        "[download] MD5 mismatch for {}: expected={}, got={}",
+                        "[download] MD5 mismatch for {}: expected={}",
                         dest_path,
-                        expected_md5,
-                        actual_md5
+                        expected_md5
                     );
                     return Err(format!(
-                        "MD5 mismatch: expected {}, got {}",
-                        expected_md5, actual_md5
+                        "MD5 mismatch for {}: expected {}",
+                        dest_path, expected_md5
                     ));
                 }
 
@@ -3428,6 +3628,9 @@ async fn download_single_file(
         }
     }
 
+    if !resume {
+        let _ = fs::remove_file(&download_path);
+    }
     tracing::error!(
         "[download] FAILED after {} attempts: {} — {}",
         max_retries,

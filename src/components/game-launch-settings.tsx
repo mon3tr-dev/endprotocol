@@ -32,10 +32,13 @@ import {
 export const CLOSE_AFTER_LAUNCH_KEY = "launcher_close_after_launch";
 export const CANCEL_BEHAVIOR_KEY = "launcher_cancel_behavior";
 export const VERIFY_THREADS_KEY = "launcher_verify_threads";
+export const DOWNLOAD_THREADS_KEY = "launcher_download_threads";
+export const DOWNLOAD_RESUME_KEY = "launcher_download_resume";
 export const DX11_KEY = "launcher_dx11";
 export const GAME_LAUNCH_SYNC_EVENT = "game-launch-settings-sync";
 
 const COPY_FEEDBACK_MS = 3000;
+const DEFAULT_DOWNLOAD_THREADS = 8;
 
 export const readCancelBehavior = (): string => {
   try {
@@ -51,6 +54,30 @@ export const readVerifyThreads = (): number => {
     return Number.isFinite(parsed) ? Math.min(32, Math.max(1, parsed)) : 12;
   } catch {
     return 12;
+  }
+};
+
+export const readDownloadThreads = (): number => {
+  try {
+    const parsed = parseInt(
+      localStorage.getItem(DOWNLOAD_THREADS_KEY) ||
+        String(DEFAULT_DOWNLOAD_THREADS),
+      10,
+    );
+    return Number.isFinite(parsed)
+      ? Math.min(32, Math.max(1, parsed))
+      : DEFAULT_DOWNLOAD_THREADS;
+  } catch {
+    return DEFAULT_DOWNLOAD_THREADS;
+  }
+};
+
+/** 断点续传默认开启：仅当用户显式关闭时返回 false。 */
+export const readDownloadResume = (): boolean => {
+  try {
+    return localStorage.getItem(DOWNLOAD_RESUME_KEY) !== "false";
+  } catch {
+    return true;
   }
 };
 
@@ -76,13 +103,15 @@ export const setDx11Setting = (value: boolean) => {
 };
 
 /**
- * 游戏启动设置字段（取消下载行为 / DX11 / 校验线程数 / 界面背景）。
+ * 游戏启动设置字段（取消下载行为 / 下载线程数 / 断点续传 / DX11 / 校验线程数 / 界面背景）。
  * 设置页与游戏行动面板的「游戏设置」弹窗共用本组件，任意一处修改立即同步到另一处。
  */
 export function GameLaunchSettingsFields() {
   const { t } = useTranslation();
   const [cancelBehavior, setCancelBehavior] = useState(readCancelBehavior);
   const [verifyThreads, setVerifyThreads] = useState(readVerifyThreads);
+  const [downloadThreads, setDownloadThreads] = useState(readDownloadThreads);
+  const [downloadResume, setDownloadResume] = useState(readDownloadResume);
   const [bgMediaMode, setBgMediaMode] = useState<GameBgMode>(getGameBgMode);
   const [dx11, setDx11] = useState(readDx11);
 
@@ -90,6 +119,8 @@ export function GameLaunchSettingsFields() {
     const sync = () => {
       setCancelBehavior(readCancelBehavior());
       setVerifyThreads(readVerifyThreads());
+      setDownloadThreads(readDownloadThreads());
+      setDownloadResume(readDownloadResume());
       setDx11(readDx11());
     };
     window.addEventListener(GAME_LAUNCH_SYNC_EVENT, sync);
@@ -110,6 +141,16 @@ export function GameLaunchSettingsFields() {
   const handleThreadsChange = (value: number) => {
     setVerifyThreads(value);
     persistGameLaunchSetting(VERIFY_THREADS_KEY, String(value));
+  };
+
+  const handleDownloadThreadsChange = (value: number) => {
+    setDownloadThreads(value);
+    persistGameLaunchSetting(DOWNLOAD_THREADS_KEY, String(value));
+  };
+
+  const handleDownloadResumeChange = (value: boolean) => {
+    setDownloadResume(value);
+    persistGameLaunchSetting(DOWNLOAD_RESUME_KEY, String(value));
   };
 
   const handleBgMediaChange = (value: GameBgMode) => {
@@ -173,6 +214,60 @@ export function GameLaunchSettingsFields() {
             </p>
           </div>
           <GlassSwitch isSelected={dx11} onValueChange={handleDx11Change}>
+            <GlassSwitch.Control>
+              <GlassSwitch.Thumb />
+            </GlassSwitch.Control>
+          </GlassSwitch>
+        </div>
+      </div>
+
+      <SettingsDivider />
+
+      {/* Download Threads */}
+      <div id="settings-download-threads">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="min-w-0">
+            <p className="font-medium text-foreground">
+              {t("settings.game_launch.download_threads")}
+            </p>
+            <p className="text-sm text-muted mt-0.5">
+              {t("settings.game_launch.download_threads_desc")}
+            </p>
+          </div>
+          <div className="flex items-center gap-3 sm:w-56 shrink-0">
+            <Slider
+              min={1}
+              max={32}
+              step={1}
+              value={[downloadThreads]}
+              aria-label={t("settings.game_launch.download_threads")}
+              className="w-full"
+              onValueChange={([value]) => handleDownloadThreadsChange(value)}
+            />
+            <span className="w-8 text-right text-sm tabular-nums text-muted">
+              {downloadThreads}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <SettingsDivider />
+
+      {/* Download Resume */}
+      <div id="settings-download-resume">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="min-w-0">
+            <p className="font-medium text-foreground whitespace-nowrap">
+              {t("settings.game_launch.download_resume")}
+            </p>
+            <p className="text-sm text-muted mt-0.5">
+              {t("settings.game_launch.download_resume_desc")}
+            </p>
+          </div>
+          <GlassSwitch
+            isSelected={downloadResume}
+            onValueChange={handleDownloadResumeChange}
+          >
             <GlassSwitch.Control>
               <GlassSwitch.Thumb />
             </GlassSwitch.Control>
@@ -255,7 +350,7 @@ export function GameLaunchSettingsFields() {
 }
 
 /**
- * 游戏启动设置项（取消下载行为 / DX11 / 校验线程数 / 界面背景）。
+ * 游戏启动设置项（取消下载行为 / 下载线程数 / 断点续传 / DX11 / 校验线程数 / 界面背景）。
  * 与游戏行动面板的「游戏设置」弹窗共用同一份存储，任意一处修改立即同步到另一处。
  */
 export function GameLaunchSettings() {

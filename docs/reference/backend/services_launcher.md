@@ -21,16 +21,15 @@
 | 122-202 | `MultipartZipReader`：将多个 ZIP 分卷作为可随机访问的 ZIP 读取器 |
 | 204-454 | `GameLauncherService` 初始化、API 版本检查与游戏状态检查 |
 | 456-811 | 安装扫描、本地版本解析、清单下载/校验与更新计划（小文件按 MD5、大文件按大小） |
-| 813-1143 | 常规安装/更新及暂存文件应用 |
-| 1145-1168 | `apply_staged_files`：暂存内容逐文件复制到目标目录 |
-| 1170-1628 | 完整性校验与修复：`verify_and_repair` |
-| 1630-1870 | 预下载：`preload_download` 与分卷暂存管理 |
-| 1872-2174 | 预下载安装：`install_preload`、加密 ZIP 分卷解压、暂存文件应用 |
+| 1000-1450 | 常规安装/更新、稳定暂存复用、暂存文件应用 |
+| 1443-1902 | 完整性校验与修复：`verify_and_repair` |
+| 1907-2158 | 预下载：`preload_download` |
+| 2162-2341 | 预下载安装：`install_preload`、加密 ZIP 分卷解压、暂存文件应用 |
 | 2176-2320 | 分卷/暂存辅助函数与 payload 状态持久化 |
 | 2322-2505 | Web 批量代理、Banner/公告获取 |
 | 2507-2743 | 公告内容与背景媒体获取 |
 | 2745-3073 | 渠道切换 `switch_channel`（5 阶段 + 回滚） |
-| 3075-3272 | 模块级 `async fn download_single_file`（批量下载的主力实现） |
+| 3351-3630 | 模块级 `async fn download_single_file`（批量下载的主力实现） |
 | — | 文件内**不**包含进程启动/检测/杀死、磁盘空间、渠道 DLL 识别（见 `commands/launcher.rs`，见「关键流程」末两节） |
 
 ## 结构体与字段
@@ -48,6 +47,9 @@
 | --- | --- | --- |
 | `DOWNLOAD_CANCELLED` (L19) | `AtomicBool` | 全局下载/校验取消标志，被下载流、校验任务与 `verify_md5_with_cancel` 读取 |
 | `SWITCH_CANCELLED` (L20) | `AtomicBool` | 切服取消标志，仅 `switch_channel` 各阶段检查 |
+| `CANCEL_CLEANUP_REQUESTED` (L22) | `AtomicBool` | 带路径取消时置位，服务在操作结束时据此删除续传暂存；安装/预下载开始时复位 |
+| `INSTALL_STAGING_SUFFIX` (L25) | `&str` | 安装暂存目录固定后缀 `.staging.resume`，保证跨次续传 |
+| `INSTALL_STAGING_VERSION_SUFFIX` (L27) | `&str` | 暂存版本标记后缀 `.staging.resume.version`，版本变化时丢弃旧暂存 |
 
 ### 关键 payload 结构（定义均在 `models/game.rs`，本文件只使用）
 
@@ -72,20 +74,21 @@
 
 | 方法 | 位置 | 说明（输入 → 做什么 → 输出） |
 | --- | --- | --- |
-| `pub fn cancel_download` | L21-23 | 无输入 → 将 `DOWNLOAD_CANCELLED` 置 true → 无返回 |
-| `pub fn reset_download_cancel` | L25-27 | 无输入 → 复位下载取消标志 → 无返回 |
-| `pub fn cancel_switch` | L29-31 | 无输入 → 将 `SWITCH_CANCELLED` 置 true → 无返回 |
-| `pub fn reset_switch_cancel` | L33-35 | 无输入 → 复位切服取消标志 → 无返回 |
+| `pub fn cancel_download` | L31-33 | 无输入 → 将 `DOWNLOAD_CANCELLED` 置 true → 无返回 |
+| `pub fn request_cancel_cleanup` | L35-38 | 无输入 → 置 `CANCEL_CLEANUP_REQUESTED`，表示本次取消要删除续传缓存（须在 `cancel_download` 前调用） → 无返回 |
+| `pub fn reset_download_cancel` | L40-42 | 无输入 → 复位下载取消标志 → 无返回 |
+| `pub fn cancel_switch` | L44-46 | 无输入 → 将 `SWITCH_CANCELLED` 置 true → 无返回 |
+| `pub fn reset_switch_cancel` | L48-50 | 无输入 → 复位切服取消标志 → 无返回 |
 | `pub fn cleanup_staging_files` | L39-81 | 输入 `install_path` → 删除 `{install_path}.switch.download`、父目录下 `{stem}.staging.*`/`{stem}.switch.*`/`{stem}.backup.*` 目录、安装目录内所有 `.download` 文件 → 无返回（失败忽略） |
 | `pub fn has_download_cache` | L83-111 | 输入 `install_path` → 扫父目录 `{stem}.staging.*` 与安装目录内 `.download` 文件 → `bool` |
-| `async fn download_single_file`（私有） | L3075-3272 | 输入 `url`、`dest_path`、`expected_md5`、共享 `dl_bytes: Arc<AtomicU64>`、`file_size` → 断点续传、重试并校验 MD5 |
+| `async fn download_single_file`（私有） | L3351-3630 | 输入共享 `Client`、`url`、`dest_path`、`expected_md5`、共享 `dl_bytes: Arc<AtomicU64>`、`file_size`、`resume` → 流式写盘 + 流式 MD5 校验；`resume` 为真时保留 `.download` 分片并按 Range 续传（含完整未重命名的补全），否则取消/失败时删除分片 |
 
 ### `impl GameLauncherService` 方法
 
 | 方法 | 位置 | 说明（输入 → 做什么 → 输出） |
 | --- | --- | --- |
 | `MultipartZipReader::new` / `Read::read` / `Seek::seek` | L122-202 | 将多个分卷文件作为一个可随机读取的 ZIP 输入流，无需拼接生成完整归档副本 |
-| `pub fn new` | L210-222 | 无输入 → 构造 30s `Client` 与空 `active_operation` → `Self` |
+| `pub fn new` | L210-236 | 无输入 → 构造 30s `Client`、下载 `Client`（30s 连接超时 + 120s 读超时，不设总超时以支持大文件）与空 `active_operation` → `Self` |
 | `pub async fn has_active_operation` | L223-225 | 无输入 → 读锁判断 `active_operation.is_some()` → `bool` |
 | `pub async fn set_active_operation` | L227-229 | 输入 `Option<ActiveOperation>` → 覆盖写入 → 无返回 |
 | `pub async fn get_active_operation` | L231-233 | 无输入 → 克隆当前活跃操作 → `Option<ActiveOperation>` |
@@ -99,11 +102,11 @@
 | `fn parse_manifest`（私有） | L632-683 | 解析并校验清单路径、MD5、size 与条目数 → `Vec<ManifestFile>` |
 | `fn validate_path`（私有关联 fn） | L685-724 | 拒绝绝对路径、`.`/`..` 路径段及 Windows 保留名 → `Result<(),String>` |
 | `async fn plan_updates`（私有） | L726-811 | 比对清单与本地文件并生成更新计划：先按「存在 + 大小一致」筛选，再对其中 ≤16MB 的文件并发计算 MD5 以识别“内容变化但大小不变”（如 `config.ini` 版本号），大文件仅按大小判断 → `Vec<FilePlan>` |
-| `pub async fn install_or_update` | L813-1143 | 常规安装/更新：比对后只下载缺失/大小不符/小文件内容变化的文件到暂存区（不再整目录拷贝已有文件，也不全量哈希大文件），下载即校验 MD5，直接应用变更文件并保存状态；不做安装内全量校验 |
-| `fn apply_staged_files`（私有） | L1145-1168 | 将安装暂存内容逐文件复制到目标目录 |
-| `pub async fn verify_and_repair` | L1170-1628 | 并发检查文件并重新下载损坏文件；返回校验结果 JSON |
-| `pub async fn preload_download` | L1630-1870 | 下载 `pre_patch` 分卷到版本标记暂存目录；可复用安装流程已获取的远端包信息以避免重复请求；复用完整且 MD5 一致的分卷，否则断点续传并校验 |
-| `pub async fn install_preload` | L1872-2000 | 获取 `pkg.cd_key` 与补丁信息后立即进入分卷下载（复用同一份远端包信息，不再二次查询），随后直接解密 ZIP 并解压到暂存区，应用文件后保存 payload 状态并清理暂存；安装内不再重复校验分卷，全量校验由前端后续触发快速校验替代 |
+| `pub async fn install_or_update` | L1000-1421 | 常规安装/更新：输入 `max_concurrent`（下载文件并发数，1-32）与 `resume`（是否保留分片续传）；比对后只下载缺失/大小不符/小文件内容变化的文件到固定暂存区，复用上次已完成的暂存文件与未完成分片，下载即校验 MD5，直接应用变更文件并保存状态；失败/取消且开启续传时保留暂存 |
+| `fn apply_staged_files`（私有） | L1429-1450 | 将安装暂存内容逐文件复制到目标目录 |
+| `pub async fn verify_and_repair` | L1443-1902 | 并发检查文件并重新下载损坏文件；`resume` 控制修复下载的分片保留；返回校验结果 JSON |
+| `pub async fn preload_download` | L1907-2158 | 下载 `pre_patch` 分卷到版本标记暂存目录；可复用安装流程已获取的远端包信息以避免重复请求；复用完整且 MD5 一致的分卷，否则断点续传并校验；`resume` 为真时取消后保留分卷 |
+| `pub async fn install_preload` | L2162-2341 | 获取 `pkg.cd_key` 与补丁信息后立即进入分卷下载（复用同一份远端包信息，不再二次查询，透传 `resume`），随后直接解密 ZIP 并解压到暂存区，应用文件后保存 payload 状态并清理暂存；安装内不再重复校验分卷，全量校验由前端后续触发快速校验替代 |
 | `fn extract_preload_archive`（私有） | L2002-2102 | 使用 `MultipartZipReader` 按 API 顺序读取分卷 ZIP，以后端 `cd_key` 解密并安全解压到暂存目录 |
 | `fn apply_preload_files`（私有） | L2104-2174 | 将解压暂存文件复制到游戏安装目录 |
 | `fn preload_part_file_name`（私有） | L2176-2185 | 根据分卷 URL 提取安全文件名，非法时回退到编号名 |
@@ -116,7 +119,7 @@
 | `pub async fn get_notice_content` / `get_background_image` / `classify_media_type` | L2507-2743 | 获取公告内容与背景媒体 |
 | `pub async fn switch_channel` | L2745-3073 | 输入 `from_channel`、`to_channel`、`install_path`、`app` → 计算清单差异、下载差异文件、备份并应用，支持取消回滚 → `Ok(to_remote.version)` / `Err` |
 
-> 方法总数 48：模块级 7、`MultipartZipReader` 3、`GameLauncherService` impl 内 38（其中公开方法 19）。上表列出服务 API 与预下载安装相关辅助方法。`download_file_with_resume` / `download_and_verify` 为死代码，已删除。
+> 方法总数 48：模块级 7、`MultipartZipReader` 3、`GameLauncherService` impl 内 38（其中公开方法 19）。上表列出服务 API 与预下载安装相关辅助方法。`download_file_with_resume` / `download_and_verify` 仍保留在代码中，但没有任何调用方（死代码）。
 
 ## 关键流程
 
@@ -131,21 +134,28 @@
 - 获取 `{resource_base_url}/game_files` 后计算密文 SHA-256，再 AES-256-CBC 解密并解析 NDJSON。
 - 校验路径安全、MD5、文件大小、重复路径与条目数上限。
 
-### 下载（L3075-3272）
-- 批量下载统一使用模块级 `download_single_file`，支持取消、重试、断点续传和 MD5 校验。
+### 下载（L3351-3630）
+- 批量下载统一使用模块级 `download_single_file`，参数包含共享 `reqwest::Client`、并发数由调用方信号量控制、`resume` 控制分片保留；支持取消、重试、断点续传和 MD5 校验。
+- 磁盘写入使用 1MB `BufWriter`，MD5 使用 `hg_crypto::verify_md5` 流式读取（4MB 缓冲），不再 `fs::read` 整个文件。
+- 续传策略：存在 `{dest}.download` 时按文件长度发起 `Range`；服务端忽略 Range 则从头写；中断重试从磁盘实际长度继续；若分片已等于目标大小则校验后直接改名，避免重下。
+- 取消/失败时 `resume = true` 保留分片，`resume = false` 删除分片。
 
-### 完整安装/更新（L813-1168）
-- `plan_updates` 生成 `FilePlan`：先按「是否存在 + 大小是否一致」筛选，再对其中 ≤16MB 的文件并发计算 MD5 以识别「内容变化但大小不变」的文件（典型如 `config.ini` 的版本号——若不更新会永远提示可更新）；大文件仅按大小判断（游戏大资源多为内容寻址，内容变化会改变文件名或大小）。由此避免对数 10GB 本地文件做全量哈希。`install_or_update` 只将缺失/大小不符/内容变化（小文件）的文件并发下载到暂存目录（已有且一致的文件保持原样，不再整目录拷贝），下载在 `download_single_file` 内完成 MD5 校验后直接应用变更文件并保存安装状态。
+### 完整安装/更新（L1000-1450）
+- `plan_updates` 生成 `FilePlan`：先按「是否存在 + 大小是否一致」筛选，再对其中 ≤16MB 的文件并发计算 MD5 以识别「内容变化但大小不变」的文件（典型如 `config.ini` 的版本号——若不更新会永远提示可更新）；大文件仅按大小判断（游戏大资源多为内容寻址，内容变化会改变文件名或大小）。由此避免对数 10GB 本地文件做全量哈希。
+- `install_or_update` 使用固定暂存目录 `{install_path}.staging.resume`，并写入 `{install_path}.staging.resume.version` 标记：仅当版本一致时复用，否则清理重建。
+- 下载前先复用暂存区中已完成文件（小文件复验 MD5，大文件信任下载时的校验）和预下载文件，并把未完成 `.download` 分片长度计入初始进度；随后按 `max_concurrent` 并发下载剩余文件。
+- 全部成功后才应用暂存文件；失败/取消且 `resume` 为真时保留暂存与分片，下次继续；成功或关闭续传时清空暂存与标记。若用户取消时选择了删除，`CANCEL_CLEANUP_REQUESTED` 保证最终清理。
 - 安装阶段不做二次全量校验；完整性兜底由安装完成后前端触发的快速校验（仅查缺失/大小）负责。下载进度通过 `launcher-progress` 发出。
 
-### 校验与修复（L1170-1628）
+### 校验与修复（L1443-1902）
 - 扫描安装清单中的缺失、大小不符及 MD5 不符文件，并并发下载修复；`quick=false` 时执行完整 MD5 校验。
+- 修复下载同样使用 `download_single_file`，`resume` 决定取消后是否保留 `.download` 分片。
 
-### 预下载与安装（L1630-2174）
-`preload_download` L1630-1870：读取本地版本、获取或复用已获取的 `pre_patch` 分卷信息，立即发出下载进度并准备可复用的版本暂存目录，并发下载且逐卷校验 MD5；失败时保留可续传分卷，成功后标记预下载完成。
+### 预下载与安装（L1907-2341）
+`preload_download` L1907-2158：读取本地版本、获取或复用已获取的 `pre_patch` 分卷信息，立即发出下载进度并准备可复用的版本暂存目录，并发下载且逐卷校验 MD5；失败时保留可续传分卷，成功后标记预下载完成；取消时若 `resume` 为真则保留分卷暂存，若取消要求删除或关闭续传则清理。
 阶段取值：进行中一律 `stage = "preloading"`（`InstallStage::Preloading`），终态为 `completed`（成功/已是最新）或 `error`（失败/取消）；前端按 `stage === "preloading"` 把进度画在预下载按钮上，收到其它 stage 即视为预下载结束。
 下载内容为官方预发布补丁分卷（`.zip.001`…，WinZip AES 加密）。当 `pkg.cd_key` 可用时，`check_status` 将其标记为可安装更新；`install_preload` 会复用或下载分卷（下载/复用时已由 `download_single_file` 逐卷校验 MD5）、使用后端密钥解压并直接应用补丁，然后保存 payload 状态并清理暂存。安装流程不将 `cd_key` 返回前端；安装阶段不再重复校验分卷、也不做全量 MD5 扫描，安装完成后由前端执行快速校验（仅检查缺失/大小异常文件并按需修复）。
-安装步骤：取最新包与解压密钥 → 确认预下载版本和分卷可用 → 将已取到的包信息传给 `preload_download`（不重复请求 API；已有完整分卷会复用，否则立即下载）→ 直接解密解压到暂存目录 → 应用暂存文件 → 拉取安装后清单并保存 payload 状态 → 清理暂存目录 → 前端执行快速校验。安装失败时保留分卷暂存以便重试。
+安装步骤：取最新包与解压密钥 → 确认预下载版本和分卷可用 → 将已取到的包信息传给 `preload_download`（不重复请求 API，透传 `max_concurrent` 与 `resume`；已有完整分卷会复用，否则立即下载）→ 直接解密解压到暂存目录 → 应用暂存文件 → 拉取安装后清单并保存 payload 状态 → 清理暂存目录 → 前端执行快速校验。安装失败时保留分卷暂存以便重试。
 目录定位/清理见 L2200-2225；版本标记文件与建目录见 L2176-2198。
 
 ### 渠道检测与切换
@@ -162,10 +172,10 @@
 - 要取到 `pre_patch`，`get_latest_game` 请求必须携带本地版本；没有本地分卷时，安装流程会下载同一组 `pre_patch.patches[]`，之后仍按相同的分卷校验、解密和安装步骤处理。
 
 ### 本地路径与持久化
-- 安装暂存：`{install_path}.staging.{uuid}`；预下载暂存：`{install_path}.staging.preload.{uuid}`，含 `.preload_version` 标记、补丁分卷和解压临时目录。
+- 安装暂存：`{install_path}.staging.resume`（固定目录，跨次续传），版本标记 `{install_path}.staging.resume.version`；预下载暂存：`{install_path}.staging.preload.{uuid}`，含 `.preload_version` 标记、补丁分卷和解压临时目录。
 - Payload 状态：`%LOCALAPPDATA%\cn.msk-network.endprotocol\game_state\{channel}.json`，由 `save_payload_state` / `save_preload_state` 更新。
-- 普通下载临时文件为 `{dest}.download`；取消与清理由 launcher command 和服务模块级清理函数处理。
-- 本服务不读写 `app_config.json`；前端设置保存在 `launcher_install_path`、`launcher_channel`、`launcher_verify_threads` 等 localStorage 键中。
+- 普通下载临时文件为 `{dest}.download`；取消与清理由 launcher command 和服务模块级清理函数处理。续传开启时取消会保留该文件，下次按 Range 继续。
+- 本服务不读写 `app_config.json`；前端设置保存在 `launcher_install_path`、`launcher_channel`、`launcher_verify_threads`、`launcher_download_threads`（默认 8）、`launcher_download_resume`（默认 true）等 localStorage 键中。
 
 ### 进度事件
 - 服务内渠道切换发出 `launcher://switch-progress`（`SwitchProgress`）和 `launcher://progress`（`ActiveOperation`）。

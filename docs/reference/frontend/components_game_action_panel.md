@@ -7,7 +7,7 @@
 **导出**：`GameActionPanel`（无 props 的函数组件，行 52）。
 
 **主要依赖**：
-- 项目内：`@/components/ui/modal`（`GlassAlertDialogCompound`、`GlassModalCompound`）、`@/components/ui/button`（`GlassButton`）、`@/utils/launcherService`（全部 Tauri 后端调用与事件订阅的封装）、`@/utils/messageStore`（`addMessage`）、`@/components/game-launch-settings`（`QuickLaunchModal`、`GameLaunchSettingsFields`、`readDx11`）、`@/components/ui/settings-row`（`SettingsDivider`）。
+- 项目内：`@/components/ui/modal`（`GlassAlertDialogCompound`、`GlassModalCompound`）、`@/components/ui/button`（`GlassButton`）、`@/utils/launcherService`（全部 Tauri 后端调用与事件订阅的封装）、`@/utils/messageStore`（`addMessage`）、`@/components/game-launch-settings`（`QuickLaunchModal`、`GameLaunchSettingsFields`、`readDownloadThreads`、`readDownloadResume`、`readDx11`）、`@/components/ui/settings-row`（`SettingsDivider`）。
 - 第三方：React（`useState`/`useEffect`/`useLayoutEffect`/`useRef`/`useCallback`）、`react-dom`（`createPortal`）、`react-i18next`（`useTranslation`）。Tauri API 不直接引用，全部经 `launcherService` 间接调用。
 
 ## 内部结构总览
@@ -59,18 +59,18 @@
 | `checkRunning` | 259–266 | `useCallback`：查询游戏是否在运行 |
 | `refreshPlaytime` | 531–539 | `useCallback`：调 `getGamePlaytime` 刷新 `playtime` 快照并清零本地补间 `playtimeTick`；失败保留上一次快照 |
 | `handleLocate` | 590–610 | 选择目录、持久化、检测渠道 |
-| `startInstall` | 612–631 | 执行安装/更新，成功后自动做一次 quick 校验 |
+| `startInstall` | 612–631 | 执行安装/更新：`installOrUpdate` 透传 `readDownloadThreads()` 与 `readDownloadResume()`，成功后自动做一次 quick 校验 |
 | `handleInstall` | 633–681 | 首次安装编排（选目录 → 检测渠道 → 缓存续传/渠道选择） |
 | `handleChannelSelected` | 683–717 | 渠道选定后并行扫描目录与磁盘空间，弹扫描结果 |
 | `handleSwitchChannel` | 719–727 | 记录切换目标，转确认态 |
 | `handleConfirmSwitch` | 729–774 | 定位进度浮层坐标并执行渠道切换，失败发 urgent 消息 |
 | `handleStart` | 820–876 | 启动游戏（无路径时先定位并检测渠道）；调用 `startGame(installPath, channel, readDx11())`，把返回结果按 `<token>: <detail>` 契约转成 `addMessage` 提示（失败 → urgent，回退 → warn） |
 | `formatVerifyResult` | 881–908 | 解析校验结果 JSON，生成 i18n 文本与 info/warn 级别 |
-| `handleUpdate` | 914–979 | 更新；优先安装官方补丁，成功后执行快速校验；失败分别提示更新或校验错误 |
+| `handleUpdate` | 914–979 | 更新；优先安装官方补丁（`installPreload`）否则 `installOrUpdate`，两者均透传下载线程数与续传设置，成功后执行快速校验；失败分别提示更新或校验错误 |
 | `handleVerify` | 981–1004 | 完整校验（线程数取 `launcher_verify_threads`，默认 12） |
 | `handleQuickVerify` | 1006–1029 | 快速校验（`quick=true`） |
 | `handleCancel` | 1031–1040 | 取消当前下载/校验 |
-| `handlePreload` | 1042–1065 | 预下载官方预发布补丁分卷（**由确认框确认后调用**）：先置 `preloadProgress`（0/总量）并重置取消标志，调 `preloadDownload`；`finally` 清 `preloadProgress` + 刷新状态 |
+| `handlePreload` | 1042–1065 | 预下载官方预发布补丁分卷（**由确认框确认后调用**）：先置 `preloadProgress`（0/总量）并重置取消标志，调 `preloadDownload` 并透传下载线程数与续传设置；`finally` 清 `preloadProgress` + 刷新状态 |
 | `handlePreloadCancel` | 1067–1075 | 取消预下载（点「预下载中/取消预下载」按钮触发）：按「取消下载行为」决定保留/删除分卷，不动主按钮状态 |
 | `handlePreloadClick` | 1077–1087 | 点「预下载」按钮：拉取 `getDiskSpace` 并打开预下载确认框 |
 | `updatePreloadFlyoutPos` | 1089–1101 | 依 `preloadBtnRef` 计算预下载进度浮层坐标（与主按钮同一套边界处理） |
@@ -80,7 +80,7 @@
 | `handleButtonClick` | 1256–1299 | 主按钮统一分发：取消切换/停止/取消校验/取消下载/安装/更新/启动 |
 | `handleConfirmAction` | 1301–1373 | 确认对话框回调，按 5 种 `confirmAction` 分支执行 |
 | `GameSettingsModalProps` | 2878–2882 | 内部弹窗 props 类型：`initialPath`、`onClose`、`onSave(path)` |
-| `GameSettingsModal` | 2884–3040 | 游戏设置弹窗：安装路径 + 浏览，分隔线后渲染 `GameLaunchSettingsFields`（取消下载行为 / DX11 启动 / 校验线程数 / 背景媒体，与设置页实时同步）；`handleBrowse` 于 2892–2895；容器 `size="lg"`（720px）以避免控件换行 |
+| `GameSettingsModal` | 2884–3040 | 游戏设置弹窗：安装路径 + 浏览，分隔线后渲染 `GameLaunchSettingsFields`（取消下载行为 / DX11 启动 / 下载线程数 / 断点续传 / 校验线程数 / 背景媒体，与设置页实时同步）；`handleBrowse` 于 2892–2895；容器 `size="lg"`（720px）以避免控件换行 |
 
 ## 关键功能分区
 

@@ -301,14 +301,14 @@
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
 | `checkGameStatus` | launcherService.ts:109 | invoke `launcher_check_status`，参数 `{channel, installPath}`，返回 `GameStatus`；无本地错误处理（错误上抛） |
-| `installOrUpdate` | launcherService.ts:116 | invoke `launcher_install_or_update`，参数 `{channel, installPath}`，返回 `LauncherResult`；无本地错误处理 |
-| `verifyAndRepair` | launcherService.ts:126 | invoke `launcher_verify_and_repair`，参数 `{channel, installPath, maxConcurrent ?? null, quick ?? false}`；**若 `result.success === false` 则 `throw result.message`**（抛字符串），否则返回 `LauncherResult` |
+| `installOrUpdate` | launcherService.ts:155 | invoke `launcher_install_or_update`，参数 `{channel, installPath, maxConcurrent ?? null, resume ?? true}`，返回 `LauncherResult`；无本地错误处理 |
+| `verifyAndRepair` | launcherService.ts:169 | invoke `launcher_verify_and_repair`，参数 `{channel, installPath, maxConcurrent ?? null, quick ?? false, resume ?? true}`；**若 `result.success === false` 则 `throw result.message`**（抛字符串），否则返回 `LauncherResult` |
 | `getProcessReadBytes` | launcherService.ts:144 | invoke `launcher_get_process_read_bytes`，无参，返回 `number`（进程已读字节） |
 | `getRemoteVersion` | launcherService.ts:148 | invoke `launcher_get_remote_version`，参数 `{channel}`，返回 `RemotePackage` |
 | `getPayloadState` | launcherService.ts:154 | invoke `launcher_get_payload_state`，参数 `{channel}`，返回 `PayloadState \| null` |
 | `cancelDownload` | launcherService.ts:160 | invoke `launcher_cancel_download`，参数 `{installPath ?? null}`，返回 `void` |
-| `preloadDownload` | launcherService.ts:164 | invoke `launcher_preload_download`，参数 `{channel, installPath, maxConcurrent ?? null}`，返回 `LauncherResult` |
-| `installPreload` | launcherService.ts:205 | invoke `launcher_install_preload`，参数 `{channel, installPath, maxConcurrent ?? null}`，返回 `LauncherResult` |
+| `preloadDownload` | launcherService.ts:209 | invoke `launcher_preload_download`，参数 `{channel, installPath, maxConcurrent ?? null, resume ?? true}`，返回 `LauncherResult` |
+| `installPreload` | launcherService.ts:223 | invoke `launcher_install_preload`，参数 `{channel, installPath, maxConcurrent ?? null, resume ?? true}`，返回 `LauncherResult` |
 | `resetDownloadCancel` | launcherService.ts:176 | invoke `launcher_reset_download_cancel`，无参，返回 `void` |
 | `hasDownloadCache` | launcherService.ts:180 | invoke `launcher_has_download_cache`，参数 `{installPath}`，返回 `boolean` |
 | `getBanners` | launcherService.ts:184 | invoke `launcher_get_banners`，参数 `{channel}`，返回 `BannerItem[]` |

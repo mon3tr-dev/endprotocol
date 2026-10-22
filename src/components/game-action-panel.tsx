@@ -54,6 +54,8 @@ import { addMessage } from "@/utils/messageStore";
 import {
   GameLaunchSettingsFields,
   QuickLaunchModal,
+  readDownloadResume,
+  readDownloadThreads,
   readDx11,
 } from "@/components/game-launch-settings";
 import { SettingsDivider } from "@/components/ui/settings-row";
@@ -736,10 +738,21 @@ export function GameActionPanel() {
       cancellingRef.current = false;
       await resetDownloadCancel();
       try {
-        const result = await installOrUpdate(channel, installPath);
+        const result = await installOrUpdate(
+          channel,
+          installPath,
+          readDownloadThreads(),
+          readDownloadResume(),
+        );
         // After successful install, run quick verify
         if (result.success) {
-          await verifyAndRepair(channel, installPath, 4, true);
+          await verifyAndRepair(
+            channel,
+            installPath,
+            4,
+            true,
+            readDownloadResume(),
+          );
         }
       } catch {
         // error handled by progress
@@ -990,8 +1003,18 @@ export function GameActionPanel() {
     let result: LauncherResult;
     try {
       result = gameStatus?.preload_installable
-        ? await installPreload(channel, installPath)
-        : await installOrUpdate(channel, installPath);
+        ? await installPreload(
+            channel,
+            installPath,
+            readDownloadThreads(),
+            readDownloadResume(),
+          )
+        : await installOrUpdate(
+            channel,
+            installPath,
+            readDownloadThreads(),
+            readDownloadResume(),
+          );
     } catch (error) {
       addMessage({
         type: "urgent",
@@ -1023,6 +1046,7 @@ export function GameActionPanel() {
         installPath,
         threads,
         true,
+        readDownloadResume(),
       );
       const { type, body } = formatVerifyResult(verification.message);
       addMessage({
@@ -1060,7 +1084,13 @@ export function GameActionPanel() {
       10,
     );
     try {
-      const result = await verifyAndRepair(channel, installPath, threads);
+      const result = await verifyAndRepair(
+        channel,
+        installPath,
+        threads,
+        false,
+        readDownloadResume(),
+      );
       const { type, body } = formatVerifyResult(result.message);
       addMessage({
         type,
@@ -1085,7 +1115,13 @@ export function GameActionPanel() {
       10,
     );
     try {
-      const result = await verifyAndRepair(channel, installPath, threads, true);
+      const result = await verifyAndRepair(
+        channel,
+        installPath,
+        threads,
+        true,
+        readDownloadResume(),
+      );
       const { type, body } = formatVerifyResult(result.message);
       addMessage({
         type,
@@ -1125,7 +1161,12 @@ export function GameActionPanel() {
       verified_bytes: 0,
     });
     try {
-      await preloadDownload(channel, installPath);
+      await preloadDownload(
+        channel,
+        installPath,
+        readDownloadThreads(),
+        readDownloadResume(),
+      );
     } catch {
       // error handled by progress
     } finally {
