@@ -27,11 +27,11 @@
 | settings.tsx:710-741 | Windows 上显示游戏启动设置卡 `#settings-game-launch`（整卡委托给 `GameLaunchSettings`，settings.tsx:739） |
 | settings.tsx:743-763 | 外观设置卡 `#settings-appearance`（整卡委托给 `AppearanceSettings`，settings.tsx:762） |
 | settings.tsx:765-819 | 开发者模式卡 `#settings-developer`：骨架屏 770-779，开关 797-815 |
-| settings.tsx:821-1337 | 更新与关于卡 `#settings-about`：应用头像/更新状态徽标 843-874；更新通道 878-948；更新源 952-1022；版本四宫格 1026-1070；发布日期 1072-1077；「更新到 vX」按钮 1079-1105；「检查更新」按钮 1107-1136；identifier 1140-1143；License 1147-1158；开源致谢列表（20 项）1162-1293；GitHub/License 链接 1297-1335 |
-| settings.tsx:1340-1372 | 开发者模式警告对话框（`GlassAlertDialog`） |
-| settings.tsx:1374-1440 | 测试版通道警告对话框（内容为内联中英双语） |
-| settings.tsx:1442-1513 | GitHub 源警告对话框（内容为内联中英双语） |
-| settings.tsx:1515-1519 | `<UpdateDialog>` 更新安装对话框 |
+| settings.tsx:821-1433 | 更新与关于卡 `#settings-about`：应用头像/更新状态徽标 843-874；更新通道 878-948；更新源 952-1022；版本四宫格 1026-1070；发布日期 1072-1077；「更新到 vX」按钮 1079-1105；「检查更新」按钮 1107-1136；identifier 1140-1143；License 1147-1158；开源致谢列表（20 项）1162-1293；特别鸣谢列表（2 项：Xel-Launcher / Better-Endfield，带致谢说明）1349-1389；GitHub/License 链接 1393-1431 |
+| settings.tsx:1436-1468 | 开发者模式警告对话框（`GlassAlertDialog`） |
+| settings.tsx:1471-1536 | 测试版通道警告对话框（内容为内联中英双语） |
+| settings.tsx:1539-1609 | GitHub 源警告对话框（内容为内联中英双语） |
+| settings.tsx:1611-1615 | `<UpdateDialog>` 更新安装对话框 |
 
 ### 组件与函数清单
 | 符号 | 位置 | 说明 |
@@ -73,9 +73,9 @@
 | 启动时预加载 Wiki 详情 | 配置键 `wiki_detail_preload`（state `wikiDetailPreload`） | `GlassSwitch` | `false` | state 54；读 102/111；写 192；UI 612-636 |
 | 关闭窗口行为 | 配置键 `close_action`（state `closeAction`，取值 `close`/`minimize_to_tray`/`ask`） | 三段式文字按钮组 | `ask` | state 55；读 106/116；写 197；UI 641-680 |
 | 托盘显示角色 | 配置键 `tray_user_role_id` + invoke `set_tray_user`、`update_tray_user_data`（state `trayUserRoleId`） | `GlassSelect`（选项来自 `getAccounts()` 账号昵称） | 空串（未选择） | state 56；读 107/117；写 200-240；UI 685-705 |
-| 开发者模式 | 配置键 `developer_mode` + 窗口事件 `developerModeChange`（state `developerMode`） | `GlassSwitch` + `GlassAlertDialog` 二次确认 | `false` | state 61-62；读 101/112；写 247/256；UI 797-815；对话框 1340-1372 |
-| 更新通道 | 配置键 `update_channel`（由 `updateService.getChannel/setChannel` 读写；state `updateChannel`） | 双卡片单选按钮（stable / preview） | `stable` | state 70；读 137；写 297-313、333-345；UI 878-948；警告框 1374-1440 |
-| 更新源 | 配置键 `update_source`（由 `updateService.getSource/setSource` 读写；state `updateSource`） | 双卡片单选按钮（github / mirror） | `github` | state 71；读 138；写 315-331、347-359；UI 952-1022；警告框 1442-1513 |
+| 开发者模式 | 配置键 `developer_mode` + 窗口事件 `developerModeChange`（state `developerMode`） | `GlassSwitch` + `GlassAlertDialog` 二次确认 | `false` | state 61-62；读 101/112；写 247/256；UI 797-815；对话框 1436-1468 |
+| 更新通道 | 配置键 `update_channel`（由 `updateService.getChannel/setChannel` 读写；state `updateChannel`） | 双卡片单选按钮（stable / preview） | `stable` | state 70；读 137；写 297-313、333-345；UI 878-948；警告框 1471-1536 |
+| 更新源 | 配置键 `update_source`（由 `updateService.getSource/setSource` 读写；state `updateSource`） | 双卡片单选按钮（github / mirror） | `github` | state 71；读 138；写 315-331、347-359；UI 952-1022；警告框 1539-1609 |
 | 游戏启动设置（整卡委托） | 子组件内：`@/stores/launcherMode`（zustand）与 `localStorage` 键（如 `CANCEL_BEHAVIOR_KEY`、`VERIFY_THREADS_KEY`），本文件不读写 | 子组件 `GameLaunchSettings` | 见子组件 | 710-741（渲染 739） |
 | 外观设置（整卡委托） | 子组件内配置键：`theme_mode`、`theme_color`、`theme_custom_colors`、`bg_image_path`、`bg_image_opacity`、`bg_blur`、`glass_clarity` | 子组件 `AppearanceSettings` | 见子组件 | 743-763（渲染 762） |
 
@@ -83,10 +83,10 @@
 - **invoke 命令名（本文件直接调用）**：`set_tray_user`（settings.tsx:204）、`update_tray_user_data`（settings.tsx:219，payload 为 `userInfo`：roleId/nickname/avatar/curStamina/maxStamina/maxTs/dailyActivation/maxDailyActivation/weeklyScore/weeklyTotal/bpCurLevel/bpMaxLevel，数值均 `Number(...) || 0` 兜底）。
 - **invoke 命令名（经服务间接触发）**：`query_role_data`（`roleDataService.queryData`，roleDataService.ts:83）、`is_lazy_load_enabled` / `set_lazy_load_enabled`（roleDetailService.ts:45 / :33）、`fetch_url`（updateService 内部拉取更新元数据，updateService.ts:255、:323）。
 - **配置键**：`refresh_on_account_switch`、`wiki_detail_preload`、`close_action`、`tray_user_role_id`、`developer_mode`（本文件直接读写）；`update_channel`、`update_source`（经 updateService 间接读写）；委托组件另用 `app.language`、`theme_mode`、`theme_color`、`theme_custom_colors`、`bg_image_path`、`bg_image_opacity`、`bg_blur`、`glass_clarity`。
-- **i18n key 前缀**：`settings.title`、`common.managePreferences`、`settings.general.*`（含 `language`、`close_action*`、`tray_user*`、`title`）、`settings.game_launch.title`、`settings.appearance.title`、`settings.developer.*`（`title`/`enable`/`enable_desc`/`warning_*`）、`settings.update_channel.*`、`settings.update_source.*`、`settings.update.*`（`app_version`/`tauri_version`/`platform`/`latest_version`/`release_date`/`license*`/`open_source_credits`）。
+- **i18n key 前缀**：`settings.title`、`common.managePreferences`、`settings.general.*`（含 `language`、`close_action*`、`tray_user*`、`title`）、`settings.game_launch.title`、`settings.appearance.title`、`settings.developer.*`（`title`/`enable`/`enable_desc`/`warning_*`）、`settings.update_channel.*`、`settings.update_source.*`、`settings.update.*`（`app_version`/`tauri_version`/`platform`/`latest_version`/`release_date`/`license*`/`open_source_credits`/`special_thanks`/`xel_launcher_desc`/`better_endfield_desc`）。
 - **窗口事件**：`openUpdateDialog`（监听，settings.tsx:364）、`developerModeChange`（派发两次，settings.tsx:248、:258，detail 为 `{enabled:boolean}`）。
 - **DOM 锚点 id**：`settings-general`、`settings-language`、`settings-refresh-on-switch`、`settings-lazy-load`、`settings-wiki-detail-preload`、`settings-close-action`、`settings-tray-user`、`settings-game-launch`、`settings-appearance`、`settings-developer`、`settings-about`。
-- 非持久化展示项：远端版本徽标、版本四宫格、发布日期、identifier、License、20 条开源致谢（settings.tsx:1168-1269 内联数组）、GitHub/License 外链、「检查更新」与「更新到 vX」按钮。
+- 非持久化展示项：远端版本徽标、版本四宫格、发布日期、identifier、License、20 条开源致谢（settings.tsx:1168-1269 内联数组）、2 条特别鸣谢（Xel-Launcher / Better-Endfield，settings.tsx:1355-1365 内联数组，说明文案走 i18n）、GitHub/License 外链、「检查更新」与「更新到 vX」按钮。
 
 ## `src/pages/developer.tsx`
 **文件职责**：应用「开发者」路由页（`/developer`）。自上而下提供三块能力：图片缓存调优（模式/容量/统计/逐项浏览）、网络请求录制与会话回放（启动停止、分页读取、请求/响应详情）、前后端合并日志查看器（来源与级别过滤、轮询刷新）。

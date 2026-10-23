@@ -334,7 +334,10 @@
       "about": "About",
       "license": "License",
       "license_desc": "This software is open source under the AGPL-3.0 license",
-      "open_source_credits": "Open Source Credits"
+      "open_source_credits": "Open Source Credits",
+      "special_thanks": "Special Thanks",
+      "xel_launcher_desc": "Provided the launcher implementation approach",
+      "better_endfield_desc": "Provided the approach for bypassing the official launcher"
     },
     "account": {
       "title": "Account Management",

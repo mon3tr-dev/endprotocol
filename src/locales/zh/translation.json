@@ -334,7 +334,10 @@
       "about": "关于",
       "license": "许可证",
       "license_desc": "本软件采用 AGPL-3.0 许可证开源",
-      "open_source_credits": "开源致谢"
+      "open_source_credits": "开源致谢",
+      "special_thanks": "特别鸣谢",
+      "xel_launcher_desc": "提供了启动器实现思路",
+      "better_endfield_desc": "提供了绕过官方启动器启动游戏的思路"
     },
     "account": {
       "title": "账户管理",

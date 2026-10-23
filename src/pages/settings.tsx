@@ -1346,6 +1346,50 @@ export default function SettingsPage() {
 
             <SettingsDivider />
 
+            {/* Special Thanks */}
+            <div>
+              <h4 className="text-sm font-semibold text-foreground mb-3">
+                {t("settings.update.special_thanks")}
+              </h4>
+              <div className="space-y-2.5">
+                {[
+                  {
+                    name: "Xel-Launcher",
+                    url: "https://github.com/lTinchl/Xel-Launcher",
+                    desc: t("settings.update.xel_launcher_desc"),
+                  },
+                  {
+                    name: "Better-Endfield",
+                    url: "https://github.com/Dr-hydra/Better-Endfield",
+                    desc: t("settings.update.better_endfield_desc"),
+                  },
+                ].map((proj) => (
+                  <div key={proj.name} className="py-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-medium text-foreground">
+                        {proj.name}
+                      </span>
+                      <a
+                        href={proj.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-[11px] text-primary hover:text-primary/80 hover:underline shrink-0"
+                      >
+                        {proj.url
+                          .replace(/^https?:\/\//, "")
+                          .replace(/\/$/, "")}
+                      </a>
+                    </div>
+                    <p className="text-[11px] text-muted/60 mt-0.5">
+                      {proj.desc}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <SettingsDivider />
+
             {/* Links */}
             <div className="flex items-center gap-3">
               <a
