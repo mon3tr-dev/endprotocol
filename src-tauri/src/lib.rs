@@ -22,10 +22,7 @@ use services::system_resource_service::SystemResourceService;
 
 const SILENT_ARG: &str = "--silent";
 const LAUNCH_GAME_ARG: &str = "--launch-game";
-pub(crate) const CLOSE_AFTER_LAUNCH_ARG: &str = "--close-after-launch";
 const DX11_ARG: &str = "--dx11";
-const WAIT_FOR_PARENT_ARG: &str = "--endprotocol-wait-for-parent";
-static PROMOTION_STARTED: AtomicBool = AtomicBool::new(false);
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -44,72 +41,36 @@ pub fn run() {
         std::process::exit(code);
     }
 
+    let args = std::env::args().collect::<Vec<_>>();
+    let silent_mode = args.iter().any(|arg| arg == SILENT_ARG);
+    let launch_game = args.iter().any(|arg| arg == LAUNCH_GAME_ARG);
+
+    // 单独的 `--silent` 不做任何事：不启动应用、不创建驻守进程。
+    if silent_mode && !launch_game {
+        return;
+    }
+
     // 在任何业务逻辑之前安装崩溃捕获，确保初始化阶段 panic 也能落盘。
     utils::crash::install_panic_hook();
 
-    let args = std::env::args().collect::<Vec<_>>();
-
-    if let Some(parent_pid) = arg_value(&args, WAIT_FOR_PARENT_ARG).and_then(|pid| pid.parse().ok())
-    {
-        wait_for_parent(parent_pid);
-    }
-
-    let silent_mode = args.iter().any(|arg| arg == SILENT_ARG);
-    let launch_game = args.iter().any(|arg| arg == LAUNCH_GAME_ARG);
-    let close_after_launch = silent_mode && args.iter().any(|arg| arg == CLOSE_AFTER_LAUNCH_ARG);
     // `--dx11` 只与 `--launch-game` 组合生效；缺省时在 start_game_from_config 中读取应用设置。
     let requested_dx11 = args.iter().any(|arg| arg == DX11_ARG).then_some(true);
-    let mode = Arc::new(AtomicBool::new(silent_mode));
-    let app_ready = Arc::new(AtomicBool::new(false));
-    let pending_requests = Arc::new(StdMutex::new(Vec::<Vec<String>>::new()));
-
-    let mode_for_callback = mode.clone();
-    let ready_for_callback = app_ready.clone();
-    let pending_for_callback = pending_requests.clone();
-    let single_instance_plugin = tauri_plugin_single_instance::init(move |app, argv, _cwd| {
-        if ready_for_callback.load(Ordering::Acquire) {
-            dispatch_instance_request(app, &argv, mode_for_callback.load(Ordering::Acquire));
-        } else if let Ok(mut pending) = pending_for_callback.lock() {
-            pending.push(argv);
-        } else {
-            write_startup_error("Could not queue a second-instance launch request.");
-        }
-    });
 
     if silent_mode {
-        let ready_for_setup = app_ready.clone();
-        let pending_for_setup = pending_requests.clone();
-        let initial_launch = launch_game;
-        let initial_close_after_launch = close_after_launch;
+        // 驻守实例（`--silent --launch-game`）：不可见、无托盘、不计时、不注册单实例插件，
+        // 因此可与主实例及其它驻守实例同时存在；游戏退出后本进程退出。
         let initial_dx11 = requested_dx11;
         tauri::Builder::default()
-            .plugin(single_instance_plugin)
             .setup(move |app| {
                 utils::crash::set_app_handle(app.handle().clone());
                 let config_service = create_config_service()?;
-                app.manage(config_service.clone());
-                utils::game_playtime::init(config_service.clone());
-                tray::setup_silent_tray(app.handle(), config_service)
-                    .map_err(|error| error.to_string())?;
-
-                if initial_launch {
-                    start_game_from_config(
-                        app.handle(),
-                        initial_close_after_launch,
-                        initial_dx11,
-                    );
-                }
-                ready_for_setup.store(true, Ordering::Release);
-                dispatch_pending_requests(app.handle(), &pending_for_setup, true);
+                app.manage(config_service);
+                start_game_from_config(app.handle(), initial_dx11, true);
                 Ok(())
             })
             .build(tauri::generate_context!())
             .expect("error while running silent tauri application")
-            .run(|_app_handle, event| {
-                if let tauri::RunEvent::Exit = event {
-                    utils::game_playtime::finalize();
-                }
-            });
+            .run(|_, _| {});
         return;
     }
 
@@ -120,6 +81,20 @@ pub fn run() {
 
     // 初始化 tracing subscriber，将 tracing 事件桥接到自定义 Logger
     utils::logger::init_tracing_subscriber();
+
+    let app_ready = Arc::new(AtomicBool::new(false));
+    let pending_requests = Arc::new(StdMutex::new(Vec::<Vec<String>>::new()));
+    let ready_for_callback = app_ready.clone();
+    let pending_for_callback = pending_requests.clone();
+    let single_instance_plugin = tauri_plugin_single_instance::init(move |app, argv, _cwd| {
+        if ready_for_callback.load(Ordering::Acquire) {
+            dispatch_instance_request(app, &argv);
+        } else if let Ok(mut pending) = pending_for_callback.lock() {
+            pending.push(argv);
+        } else {
+            write_startup_error("Could not queue a second-instance launch request.");
+        }
+    });
 
     let builder = tauri::Builder::default()
         .plugin(single_instance_plugin)
@@ -263,7 +238,11 @@ pub fn run() {
             commands::launcher::launcher_cancel_all,
             commands::startup::get_game_launch_command,
             commands::startup::create_game_shortcut,
-            commands::startup::create_launch_bat,
+            commands::startup::steam_shortcut_defaults,
+            commands::startup::pick_steam_icon,
+            commands::startup::pick_steam_icon_source,
+            commands::startup::extract_steam_icon,
+            commands::startup::add_steam_shortcut,
         ])
         .setup(move |app| {
             // 主窗口与托盘面板仅在完整模式创建，静默模式不建立 WebView。
@@ -333,10 +312,10 @@ pub fn run() {
             AccountService::start_auto_refresh(timer_service);
 
             if launch_game {
-                start_game_from_config(app.handle(), false, requested_dx11);
+                start_game_from_config(app.handle(), requested_dx11, false);
             }
 
-            app_ready_for_full_instance(app.handle(), &mode, &app_ready, &pending_requests);
+            app_ready_for_full_instance(app.handle(), &app_ready, &pending_requests);
             Ok(())
         })
         .build(tauri::generate_context!())
@@ -346,13 +325,6 @@ pub fn run() {
                 utils::game_playtime::finalize();
             }
         });
-}
-
-fn arg_value<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
-    args.iter()
-        .position(|arg| arg == name)
-        .and_then(|index| args.get(index + 1))
-        .map(String::as_str)
 }
 
 #[cfg(all(target_os = "windows", debug_assertions))]
@@ -374,18 +346,16 @@ fn create_config_service() -> Result<Arc<StdMutex<ConfigService>>, String> {
 
 fn app_ready_for_full_instance<R: Runtime>(
     app: &tauri::AppHandle<R>,
-    mode: &Arc<AtomicBool>,
     ready: &Arc<AtomicBool>,
     pending: &Arc<StdMutex<Vec<Vec<String>>>>,
 ) {
     ready.store(true, Ordering::Release);
-    dispatch_pending_requests(app, pending, mode.load(Ordering::Acquire));
+    dispatch_pending_requests(app, pending);
 }
 
 fn dispatch_pending_requests<R: Runtime>(
     app: &tauri::AppHandle<R>,
     pending: &Arc<StdMutex<Vec<Vec<String>>>>,
-    silent_mode: bool,
 ) {
     let requests = match pending.lock() {
         Ok(mut requests) => std::mem::take(&mut *requests),
@@ -397,39 +367,48 @@ fn dispatch_pending_requests<R: Runtime>(
         }
     };
     for args in requests {
-        dispatch_instance_request(app, &args, silent_mode);
+        dispatch_instance_request(app, &args);
     }
 }
 
-fn dispatch_instance_request<R: Runtime>(
-    app: &tauri::AppHandle<R>,
-    args: &[String],
-    silent_mode: bool,
-) {
-    let request_silent = args.iter().any(|arg| arg == SILENT_ARG);
-    let request_launch_game = args.iter().any(|arg| arg == LAUNCH_GAME_ARG);
-    let request_close_after_launch =
-        request_silent && args.iter().any(|arg| arg == CLOSE_AFTER_LAUNCH_ARG);
-    let request_dx11 = args.iter().any(|arg| arg == DX11_ARG).then_some(true);
-
-    if silent_mode && !request_silent {
-        promote_to_full_with_game(app, request_launch_game, request_dx11);
-        return;
+/// 主实例收到第二实例转交的启动参数：按需启动游戏并显示主窗口。
+fn dispatch_instance_request<R: Runtime>(app: &tauri::AppHandle<R>, args: &[String]) {
+    if args.iter().any(|arg| arg == LAUNCH_GAME_ARG) {
+        let dx11 = args.iter().any(|arg| arg == DX11_ARG).then_some(true);
+        start_game_from_config(app, dx11, false);
     }
+    tray::show_main_window_focus(app);
+}
 
-    if request_launch_game {
-        start_game_from_config(app, request_close_after_launch, request_dx11);
-    }
+/// 驻留等待本次游戏会话结束。
+///
+/// 驻守实例被 Steam 等外部启动器拉起的进程退出后会立刻停止「游戏中」状态并停止计时，
+/// 因此驻守实例在游戏运行期间保持存活，游戏退出后再退出应用。
+/// 游戏在 120 秒内未出现（启动失败/被取消）时同样结束等待。
+async fn wait_for_game_session() {
+    use std::time::{Duration, Instant};
 
-    if !request_silent {
-        tray::show_main_window_focus(app);
+    const POLL_INTERVAL: Duration = Duration::from_secs(2);
+    const GAME_LAUNCH_GRACE: Duration = Duration::from_secs(120);
+
+    let process_name = models::game::GameChannel::Official.process_name();
+    let started = Instant::now();
+    let mut seen = false;
+
+    loop {
+        if utils::process::is_process_running(process_name).await {
+            seen = true;
+        } else if seen || started.elapsed() >= GAME_LAUNCH_GRACE {
+            return;
+        }
+        tokio::time::sleep(POLL_INTERVAL).await;
     }
 }
 
 fn start_game_from_config<R: Runtime>(
     app: &tauri::AppHandle<R>,
-    close_after_launch: bool,
     dx11: Option<bool>,
+    exit_when_game_ends: bool,
 ) {
     let config = match app.try_state::<Arc<StdMutex<ConfigService>>>() {
         Some(config) => config.inner().clone(),
@@ -466,12 +445,23 @@ fn start_game_from_config<R: Runtime>(
                 if let Some(warning) = result.warning {
                     write_startup_error(&format!("Game launch warning: {warning}"));
                 }
-                if close_after_launch {
+                if exit_when_game_ends {
+                    wait_for_game_session().await;
                     app_handle.exit(0);
                 }
             }
-            Ok(result) => write_startup_error(result.message.as_str()),
-            Err(error) => write_startup_error(&format!("Game launch failed: {error}")),
+            Ok(result) => {
+                write_startup_error(result.message.as_str());
+                if exit_when_game_ends {
+                    app_handle.exit(0);
+                }
+            }
+            Err(error) => {
+                write_startup_error(&format!("Game launch failed: {error}"));
+                if exit_when_game_ends {
+                    app_handle.exit(0);
+                }
+            }
         }
     });
 }
@@ -501,70 +491,6 @@ fn write_startup_error(message: &str) {
         }
         Err(error) => crate::safe_eprintln!("{message}; could not open startup log: {error}"),
     }
-}
-
-pub(crate) fn promote_to_full<R: Runtime>(app: &tauri::AppHandle<R>) {
-    promote_to_full_with_game(app, false, None);
-}
-
-fn promote_to_full_with_game<R: Runtime>(
-    app: &tauri::AppHandle<R>,
-    launch_game: bool,
-    dx11: Option<bool>,
-) {
-    if PROMOTION_STARTED.swap(true, Ordering::AcqRel) {
-        return;
-    }
-
-    let exe = match std::env::current_exe() {
-        Ok(exe) => exe,
-        Err(error) => {
-            PROMOTION_STARTED.store(false, Ordering::Release);
-            write_startup_error(&format!("Could not relaunch the full application: {error}"));
-            return;
-        }
-    };
-    let mut command = std::process::Command::new(exe);
-    command
-        .arg(WAIT_FOR_PARENT_ARG)
-        .arg(std::process::id().to_string());
-    if launch_game {
-        command.arg(LAUNCH_GAME_ARG);
-        if dx11 == Some(true) {
-            command.arg(DX11_ARG);
-        }
-    }
-    match command.spawn() {
-        Ok(_) => app.exit(0),
-        Err(error) => {
-            PROMOTION_STARTED.store(false, Ordering::Release);
-            write_startup_error(&format!("Could not relaunch the full application: {error}"))
-        }
-    }
-}
-
-#[cfg(target_os = "windows")]
-fn wait_for_parent(parent_pid: u32) {
-    use windows_sys::Win32::Foundation::{CloseHandle, WAIT_OBJECT_0};
-    use windows_sys::Win32::System::Threading::{
-        OpenProcess, WaitForSingleObject, INFINITE, PROCESS_SYNCHRONIZE,
-    };
-
-    unsafe {
-        let process = OpenProcess(PROCESS_SYNCHRONIZE, 0, parent_pid);
-        if !process.is_null() {
-            let result = WaitForSingleObject(process, INFINITE);
-            CloseHandle(process);
-            if result != WAIT_OBJECT_0 {
-                write_startup_error("Could not wait for the previous silent instance to exit.");
-            }
-        }
-    }
-}
-
-#[cfg(not(target_os = "windows"))]
-fn wait_for_parent(_parent_pid: u32) {
-    std::thread::sleep(std::time::Duration::from_millis(500));
 }
 
 fn create_full_windows<R: Runtime>(app: &tauri::AppHandle<R>) -> Result<(), String> {

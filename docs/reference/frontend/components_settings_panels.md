@@ -126,44 +126,49 @@
 **备注**：`invoke`：无；`listen`：无；Tauri `emit`：`theme-changed`（63、77）；window 事件：监听 `themeChange`（53）、派发 `themeChange`（76）；配置键 `theme_mode`（读 36/48，写 75）。未使用的 `btnRef` 仅绑定在按钮上。
 
 ## `src/components/game-launch-settings.tsx`
-**职责**：游戏启动相关设置组（取消下载行为 / DX11 启动 / 下载线程数 / 断点续传 / 校验线程数 / 启动界面背景媒体）；这些字段由 `GameLaunchSettingsFields` 统一渲染，设置页与游戏行动面板的「游戏设置」弹窗共用。静默启动命令、`--dx11` 选项与 Windows `.lnk` / `.bat` 创建在独立弹窗 `QuickLaunchModal`。
-**导出**：`GameLaunchSettings`、`GameLaunchSettingsFields`、`QuickLaunchModal`、`CLOSE_AFTER_LAUNCH_KEY`、`CANCEL_BEHAVIOR_KEY`、`VERIFY_THREADS_KEY`、`DOWNLOAD_THREADS_KEY`、`DOWNLOAD_RESUME_KEY`、`DX11_KEY`、`GAME_LAUNCH_SYNC_EVENT`、`readCancelBehavior`、`readVerifyThreads`、`readDownloadThreads`、`readDownloadResume`、`readDx11`、`persistGameLaunchSetting`、`setDx11Setting`。
-**主要依赖**：`react`、`react-i18next`、`@/components/ui/glass`（`GlassButton`、`GlassSwitch`）、`@/components/ui/slider`（`Slider`）、`@/components/ui/settings-row`（`SettingsDivider`）、`@/components/ui/modal`（`GlassModalCompound`）、`@/components/icons`（`TerminalIcon`/`ExternalLinkIcon`/`FileCodeIcon`）、`@/stores/launcherMode`、`@/utils/launcherService`（静默启动 IPC）、`@/utils/configService`（`setConfig`）、`@/utils/platform`、`@tauri-apps/plugin-opener`。
+**职责**：游戏启动相关设置组（取消下载行为 / DX11 启动 / 下载线程数 / 断点续传 / 校验线程数 / 启动界面背景媒体）；这些字段由 `GameLaunchSettingsFields` 统一渲染，设置页与游戏行动面板的「游戏设置」弹窗共用。静默启动命令、`--dx11` 选项、Windows `.lnk` 快捷方式在独立弹窗 `QuickLaunchModal`；Steam 第三方游戏条目的参数调整再套一层独立弹窗 `SteamShortcutModal`。已不再支持 `--close-after-launch`（该开关与相关文案一并移除）。
+**导出**：`GameLaunchSettings`、`GameLaunchSettingsFields`、`QuickLaunchModal`、`SteamShortcutModal`、`CANCEL_BEHAVIOR_KEY`、`VERIFY_THREADS_KEY`、`DOWNLOAD_THREADS_KEY`、`DOWNLOAD_RESUME_KEY`、`DX11_KEY`、`GAME_LAUNCH_SYNC_EVENT`、`readCancelBehavior`、`readVerifyThreads`、`readDownloadThreads`、`readDownloadResume`、`readDx11`、`persistGameLaunchSetting`、`setDx11Setting`。
+**主要依赖**：`react`、`react-i18next`、`@tauri-apps/api/core`（`invoke` 读图标字节）、`@/components/ui/glass`（`GlassButton`、`GlassSwitch`、`GlassInput`）、`@/components/ui/slider`（`Slider`）、`@/components/ui/settings-row`（`SettingsDivider`）、`@/components/ui/modal`（`GlassModalCompound`）、`@/components/icons`（`TerminalIcon`/`ExternalLinkIcon`/`GamepadIcon`）、`@/stores/launcherMode`、`@/utils/launcherService`（静默启动 + Steam IPC）、`@/utils/configService`（`setConfig`）、`@/utils/platform`、`@tauri-apps/plugin-opener`。
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
-| `CLOSE_AFTER_LAUNCH_KEY`（export） | 32 | localStorage 键 `launcher_close_after_launch` |
-| `CANCEL_BEHAVIOR_KEY`（export） | 33 | localStorage 键 `launcher_cancel_behavior` |
-| `VERIFY_THREADS_KEY`（export） | 34 | localStorage 键 `launcher_verify_threads` |
-| `DOWNLOAD_THREADS_KEY`（export） | 35 | localStorage 键 `launcher_download_threads` |
-| `DOWNLOAD_RESUME_KEY`（export） | 36 | localStorage 键 `launcher_download_resume` |
-| `DX11_KEY`（export） | 37 | localStorage 键 `launcher_dx11` |
-| `GAME_LAUNCH_SYNC_EVENT`（export） | 38 | window 事件名 `game-launch-settings-sync` |
-| `readCancelBehavior()`（export） | 43-49 | 读取消行为，默认 `"ask"` |
-| `readVerifyThreads()`（export） | 51-58 | 读线程数并夹取 1-32，默认 12 |
-| `readDownloadThreads()`（export） | 60-73 | 读下载线程数并夹取 1-32，默认 8 |
-| `readDownloadResume()`（export） | 75-82 | 读断点续传开关，默认 `true`（仅显式 `"false"` 时关闭） |
-| `readDx11()`（export） | 84-90 | 读 DX11 开关，默认 `false` |
-| `persistGameLaunchSetting(key, value)`（export） | 92-97 | 写 localStorage 并广播 `GAME_LAUNCH_SYNC_EVENT` |
-| `setDx11Setting(value)`（export） | 99-103 | DX11 开关：写 localStorage（界面同步）+ `setConfig("launcher_dx11", value)`（后端静默启动读取） |
-| `GameLaunchSettingsFields`（export） | 109-350 | 共享设置字段（取消下载行为 / DX11 / 下载线程数 / 断点续传 / 校验线程数 / 背景媒体，分隔线分隔）；监听同步事件与 `subscribeGameBgMode`，任意一处修改立即广播 |
-| `GameLaunchSettings`（export） | 261-295 | 设置页分区：`GameLaunchSettingsFields` + 静默启动入口（打开 `QuickLaunchModal`） |
-| `QuickLaunchModal`（export） | 300-591 | 独立弹窗；props：`onClose: () => void`；左栏「启动选项」含 DX11 与「启动后自动退出」两个 `GlassSwitch` |
-| 命令加载 effect | 313-334 | `syncSilentLaunchConfig()` 同步游戏路径/渠道/DX11 到 app config，再取基础命令（`baseCommand`） |
-| `closeAfterLaunch` state | 303-305 | 从 localStorage 初始化；切换即写回（350-355） |
-| `dx11` state | 306 | 从 `readDx11()` 初始化；监听 `GAME_LAUNCH_SYNC_EVENT`（336-340）；切换调用 `setDx11Setting`（357-360） |
-| 派生 `launchCommand` | 344-350 | `baseCommand` + 开启时追加 ` --dx11` / ` --close-after-launch` |
-| `handleCopyCommand` | 362-379 | 复制当前命令到剪贴板；成功仅触发 icon morph（Copy→Check）3 秒；失败经 `addMessage`（warn，tag `quick-launch-command`） |
-| `runExport` | 381-423 | 快捷方式 / bat 保存共用骨架：`syncSilentLaunchConfig` → invoke → 成功/失败均进消息队列（tag `quick-launch-shortcut` / `quick-launch-bat`） |
-| `handleCreateShortcut` | 425-432 | `createGameShortcut({closeAfterLaunch, dx11})` |
-| `handleSaveBat` | 434-441 | `createLaunchBat({closeAfterLaunch, dx11})` |
+| `CANCEL_BEHAVIOR_KEY`（export） | 37 | localStorage 键 `launcher_cancel_behavior` |
+| `VERIFY_THREADS_KEY`（export） | 38 | localStorage 键 `launcher_verify_threads` |
+| `DOWNLOAD_THREADS_KEY`（export） | 39 | localStorage 键 `launcher_download_threads` |
+| `DOWNLOAD_RESUME_KEY`（export） | 40 | localStorage 键 `launcher_download_resume` |
+| `DX11_KEY`（export） | 41 | localStorage 键 `launcher_dx11` |
+| `GAME_LAUNCH_SYNC_EVENT`（export） | 42 | window 事件名 `game-launch-settings-sync` |
+| `readCancelBehavior()`（export） | 47-53 | 读取消行为，默认 `"ask"` |
+| `readVerifyThreads()`（export） | 55-62 | 读线程数并夹取 1-32，默认 12 |
+| `readDownloadThreads()`（export） | 64-78 | 读下载线程数并夹取 1-32，默认 8 |
+| `readDownloadResume()`（export） | 80-86 | 读断点续传开关，默认 `true`（仅显式 `"false"` 时关闭） |
+| `readDx11()`（export） | 88-94 | 读 DX11 开关，默认 `false` |
+| `persistGameLaunchSetting(key, value)`（export） | 96-101 | 写 localStorage 并广播 `GAME_LAUNCH_SYNC_EVENT` |
+| `setDx11Setting(value)`（export） | 104-107 | DX11 开关：写 localStorage（界面同步）+ `setConfig("launcher_dx11", value)`（后端静默启动读取） |
+| `GameLaunchSettingsFields`（export） | 113-354 | 共享设置字段（取消下载行为 / DX11 / 下载线程数 / 断点续传 / 校验线程数 / 背景媒体，分隔线分隔）；监听同步事件与 `subscribeGameBgMode`，任意一处修改立即广播 |
+| `GameLaunchSettings`（export） | 360-394 | 设置页分区：`GameLaunchSettingsFields` + 静默启动入口（打开 `QuickLaunchModal`） |
+| `QuickLaunchModal`（export） | 399-636 | 独立弹窗；props：`onClose: () => void`；左栏「启动选项」只剩 DX11 一个 `GlassSwitch` |
+| 命令加载 effect | 409-430 | `syncSilentLaunchConfig()` 同步游戏路径/渠道/DX11 到 app config，再取基础命令（`baseCommand`） |
+| `dx11` state | 402 | 从 `readDx11()` 初始化；监听 `GAME_LAUNCH_SYNC_EVENT`（432-436）；切换调用 `setDx11Setting`（444-447） |
+| 派生 `launchCommand` | 440-442 | `baseCommand` + 开启时追加 ` --dx11` |
+| `handleCopyCommand` | 449-466 | 复制当前命令到剪贴板；成功仅触发 icon morph（Copy→Check）3 秒；失败经 `addMessage`（warn，tag `quick-launch-command`） |
+| `handleCreateShortcut` | 468-500 | `createGameShortcut({dx11})`；成功后消息带「打开所在文件夹」动作 |
+| `SteamShortcutModal` 挂载 | 634 | 由 `steamOpen` 控制，`onClose` 只关闭该子弹窗（父弹窗保持打开） |
+| `IconPreview`（私有） | 639-672 | 用 `invoke("read_image_file")` 读 `.ico` 字节并转 blob URL 预览；失败回退 `GamepadIcon` 占位 |
+| `SteamShortcutModal`（export） | 682 起 | Steam 条目参数弹窗；props：`onClose: () => void`（见下） |
 
-**内部结构**：
-- Body 为左右两栏：左栏（`sm:w-56`，`justify-center items-center text-center`，右侧竖分隔线）顶部为「启动选项」小标题（`launch_options`），其下依次为 DX11 开关与「启动后自动退出」开关（标题/描述 + `GlassSwitch`）；右栏由 `divide-y` 在板块间划分割线，每个板块以左侧图标开篇——①「启动命令」（`TerminalIcon`）：单行截断（`truncate`）的 code 条 + 条内右端复制按钮为同一 `MorphIcon`（`Copy`/`Check` 间切换，成功保持 3 秒）；②「Windows 快捷方式」（`ExternalLinkIcon`）；③「bat 启动脚本」（`FileCodeIcon`）。所有完成/失败反馈进全局消息队列。backdrop `z-[300]`，容器 `size="lg"`。
+**`SteamShortcutModal` 内部结构**：
+- 挂载时 `syncSilentLaunchConfig()` → `getSteamShortcutDefaults()` 填充全部默认值；加载失败进消息队列（tag `quick-launch-steam`）。
+- 字段：①「名字」`GlassInput`（默认「明日方舟：终末地」）；②「图标」左侧预览 + 路径文本（附一行说明：已从 `Endfield.exe` 提取 / 提取失败已回退 exe / 未找到游戏需自选）+ 右侧「选择…」（`pickSteamIcon`）、「从 exe 提取…」（`pickSteamIconSource` → `extractSteamIcon`）；③「DX11」`GlassSwitch`，切换同时写 localStorage 与后端配置；④分隔线后是 Overlay 提示区（按后端 `is_elevated` 选 `steam_overlay_hint` 或 `steam_overlay_hint_elevated`）+ 两个复选框：「创建以管理员身份启动 Steam 的快捷方式」（勾选后提交时弹保存对话框）、「将开始菜单中的 Steam 提升为管理员运行」（`start_menu_shortcut_count` 为 0 时禁用并显示 `*_none` 文案）。
+- 提交：`addSteamShortcut({name, iconPath, dx11, createAdminShortcut, elevateStartMenu})` → 成功消息 `steam_created_title/body`（提示重启 Steam），有 `admin_shortcut` 时附带「打开所在文件夹」动作，然后 `onClose()`；失败进消息队列。
+- backdrop `z-[320]`（高于父弹窗的 `z-[300]`），容器 `size="md"`。
+
+**内部结构**（`QuickLaunchModal`）：
+- Body 为左右两栏：左栏（`sm:w-56`，`justify-center items-center text-center`，右侧竖分隔线）顶部为「启动选项」小标题（`launch_options`），其下只剩 DX11 开关（标题/描述 + `GlassSwitch`）；右栏由 `divide-y` 在板块间划分割线，每个板块以左侧图标开篇——①「启动命令」（`TerminalIcon`）：单行截断（`truncate`）的 code 条 + 条内右端复制按钮为同一 `MorphIcon`（`Copy`/`Check` 间切换，成功保持 3 秒）；②「Windows 快捷方式」（`ExternalLinkIcon`）；③「Steam 第三方游戏」（`GamepadIcon`），按钮改为打开 `SteamShortcutModal`（不再直接执行添加）。所有完成/失败反馈进全局消息队列。backdrop `z-[300]`，容器 `size="lg"`。
 - 两个打开入口：设置页「静默启动」区块内按钮，以及游戏行动面板汉堡菜单的「游戏设置」项。
-- `.lnk` / `.bat` 目标命令为 `--silent --launch-game`，按开关追加 `--dx11` / `--close-after-launch`；游戏目录、渠道与 DX11 设置同步到后端 `ConfigService`。
+- `.lnk` 与 Steam 条目的启动命令为 `--silent --launch-game`，按开关追加 `--dx11`；游戏目录、渠道与 DX11 设置同步到后端 `ConfigService`。
 
-**备注**：通过 `launcherService` 调用 `get_game_launch_command` / `create_game_shortcut` / `create_launch_bat` 并用 `set_config` 同步 `launcher_install_path` / `launcher_channel` / `launcher_dx11`；剪贴板使用浏览器 Clipboard API。localStorage 键：`launcher_cancel_behavior`、`launcher_verify_threads`、`launcher_download_threads`、`launcher_download_resume`、`launcher_dx11`、`launcher_install_path`、`launcher_channel`、`launcher_close_after_launch`；window 事件：`game-launch-settings-sync`。下载线程数与断点续传由下载调用方（`game-action-panel.tsx`）在发起安装/预下载时读取并透传后端。文案位于 `settings.game_launch.*` 与 `launcher.*`。
+**备注**：通过 `launcherService` 调用 `get_game_launch_command` / `create_game_shortcut` / `steam_shortcut_defaults` / `pick_steam_icon` / `pick_steam_icon_source` / `extract_steam_icon` / `add_steam_shortcut`，并用 `set_config` 同步 `launcher_install_path` / `launcher_channel` / `launcher_dx11`；图标预览额外 `invoke("read_image_file")`。剪贴板使用浏览器 Clipboard API。localStorage 键：`launcher_cancel_behavior`、`launcher_verify_threads`、`launcher_download_threads`、`launcher_download_resume`、`launcher_dx11`、`launcher_install_path`、`launcher_channel`；window 事件：`game-launch-settings-sync`。下载线程数与断点续传由下载调用方（`game-action-panel.tsx`）在发起安装/预下载时读取并透传后端。文案位于 `settings.game_launch.*` 与 `launcher.*`。
 
 ## `src/components/in-app-browser.tsx`
 **职责**：应用内嵌浏览器覆盖层——玻璃工具栏（前进/后退/刷新/地址栏/关闭）+ 加载进度条 + 沙箱 `iframe`，开合与地址由 `@/stores/inAppBrowser` 状态驱动。

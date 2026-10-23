@@ -98,29 +98,12 @@ pub fn setup_tray<R: Runtime>(
 
     let tooltip = user_info.nickname.as_deref().unwrap_or("EndProtocol");
 
-    build_tray(app, tooltip, false)
-}
-
-/// Setup an icon-only tray for silent startup.
-pub fn setup_silent_tray<R: Runtime>(
-    app: &tauri::AppHandle<R>,
-    config_service: Arc<std::sync::Mutex<ConfigService>>,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let tooltip = config_service
-        .lock()
-        .map_err(|error| error.to_string())?
-        .get::<TrayUserInfo>("tray_user_info")
-        .unwrap_or_default()
-        .nickname
-        .unwrap_or_else(|| "EndProtocol".to_string());
-
-    build_tray(app, &tooltip, true)
+    build_tray(app, tooltip)
 }
 
 fn build_tray<R: Runtime>(
     app: &tauri::AppHandle<R>,
     tooltip: &str,
-    silent: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let _tray = TrayIconBuilder::with_id(TRAY_ID)
         .icon(app.default_window_icon().unwrap().clone())
@@ -133,19 +116,15 @@ fn build_tray<R: Runtime>(
                     button: MouseButton::Left,
                     ..
                 } => {
-                    if silent {
-                        crate::promote_to_full(app);
-                    } else {
-                        show_main_window_focus(app);
-                        let _ = hide_tray_panel(app);
-                    }
+                    show_main_window_focus(app);
+                    let _ = hide_tray_panel(app);
                 }
                 TrayIconEvent::Click {
                     button: MouseButton::Right,
                     button_state: tauri::tray::MouseButtonState::Up,
                     position,
                     ..
-                } if !silent => {
+                } => {
                     // Right click → show tray panel
                     show_panel_at_position(app, position);
                 }

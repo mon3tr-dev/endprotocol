@@ -583,15 +583,15 @@
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
-| `Logo` | icons.tsx:39 | 品牌 Logo SVG（32x32 viewBox），props：`size`（默认 36）/`height` + 全部 SVGProps |
-| `DiscordIcon` | icons.tsx:60 | 内联路径的 Discord 图标（createMorphIcon 接收路径数组） |
-| `TwitterIcon` | icons.tsx:64 | Twitter/X 图标 |
-| `GithubIcon` | icons.tsx:68 | GitHub 图标 |
-| `MoonIcon`/`SunIcon`/`ComputerIcon`/`HeartIcon`/`SearchIcon`/`HomeIcon`/`ChartIcon`/`SettingsIcon`/`UsersIcon`/`ProjectsIcon`/`CalendarIcon`/`HelpIcon`/`DeveloperIcon`/`AccountIcon`/`StarIcon`/`GachaIcon`/`MedalIcon`/`BookmarkIcon`/`TagIcon`/`FolderIcon`/`BellIcon`/`PlusIcon`/`ChevronLeftIcon`/`EditIcon`/`TrashIcon` | icons.tsx:72-96 | lucide 图标（Moon/Sun/Monitor/Heart/Search/Home/BarChart3/Settings/Users/FolderOpen/Calendar/HelpCircle/Code/User/Star/Sparkles/Award/Bookmark/Tag/Folder/Bell/Plus/ChevronLeft/Pencil/Trash2）的 MorphIcon 封装 |
-| `TerminalIcon`/`CopyIcon`/`ExternalLinkIcon`/`FileCodeIcon` | icons.tsx:97-100 | lucide 图标（Terminal/Copy/ExternalLink/FileCode）的 MorphIcon 封装，用于游戏启动快捷弹窗的命令/快捷方式/bat 板块 |
-| `MoonFilledIcon`/`SunFilledIcon`/`HeartFilledIcon` | icons.tsx:98 | 上述三个图标的再导出别名 |
-| `CARD_ICON_MAP` | icons.tsx:100 | 23 个 key（home/chart/users/star/heart/bookmark/tag/folder/calendar/bell/settings/account/search/developer/projects/file/map/satellite/award/user/help/factory/sprout）→ lucide 图标数据 |
-| `CardIcon` | icons.tsx:126 | props：`iconKey`（必填）、`size`（默认 24）、`className` + SVGProps；**key 未命中映射时回退为纯文本 span 显示 key 本身**（:133）；渲染前剥离 `from/to/ref`（:134） |
+| `Logo` | icons.tsx:43 | 品牌 Logo SVG（32x32 viewBox），props：`size`（默认 36）/`height` + 全部 SVGProps |
+| `DiscordIcon` | icons.tsx:64 | 内联路径的 Discord 图标（createMorphIcon 接收路径数组） |
+| `TwitterIcon` | icons.tsx:68 | Twitter/X 图标 |
+| `GithubIcon` | icons.tsx:72 | GitHub 图标 |
+| `MoonIcon`/`SunIcon`/`ComputerIcon`/`HeartIcon`/`SearchIcon`/`HomeIcon`/`ChartIcon`/`SettingsIcon`/`UsersIcon`/`ProjectsIcon`/`CalendarIcon`/`HelpIcon`/`DeveloperIcon`/`AccountIcon`/`StarIcon`/`GachaIcon`/`MedalIcon`/`BookmarkIcon`/`TagIcon`/`FolderIcon`/`BellIcon`/`PlusIcon`/`ChevronLeftIcon`/`EditIcon`/`TrashIcon` | icons.tsx:76-100 | lucide 图标（Moon/Sun/Monitor/Heart/Search/Home/BarChart3/Settings/Users/FolderOpen/Calendar/HelpCircle/Code/User/Star/Sparkles/Award/Bookmark/Tag/Folder/Bell/Plus/ChevronLeft/Pencil/Trash2）的 MorphIcon 封装 |
+| `TerminalIcon`/`CopyIcon`/`ExternalLinkIcon`/`GamepadIcon` | icons.tsx:101-104 | lucide 图标（Terminal/Copy/ExternalLink/Gamepad2）的 MorphIcon 封装，用于游戏启动快捷弹窗的命令/快捷方式/Steam 板块 |
+| `MoonFilledIcon`/`SunFilledIcon`/`HeartFilledIcon` | icons.tsx:106 | 上述三个图标的再导出别名 |
+| `CARD_ICON_MAP` | icons.tsx:108 | 23 个 key（home/chart/users/star/heart/bookmark/tag/folder/calendar/bell/settings/account/search/developer/projects/file/map/satellite/award/user/help/factory/sprout）→ lucide 图标数据 |
+| `CardIcon` | icons.tsx:134 | props：`iconKey`（必填）、`size`（默认 24）、`className` + SVGProps；**key 未命中映射时回退为纯文本 span 显示 key 本身**（:141）；渲染前剥离 `from/to/ref`（:142） |
 
 **备注**：`PlusIcon`/`ChevronLeftIcon`/`EditIcon`/`BellIcon` 等名称与 `ui/app-icon.tsx` 中的同名导出重复，来自不同模块，import 时务必确认路径。
 

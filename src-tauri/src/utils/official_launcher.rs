@@ -79,6 +79,8 @@ pub enum LaunchToken {
     WaitFailed,
     /// 回退到直接启动（不是失败，是提示）。
     Fallback,
+    /// 游戏以管理员运行而 Steam 未提权，Steam overlay 无法注入（不是失败，是提示）。
+    OverlayUnavailable,
     /// 其它。
     Unknown,
 }
@@ -92,6 +94,7 @@ impl LaunchToken {
             LaunchToken::Create => "create",
             LaunchToken::WaitFailed => "wait_failed",
             LaunchToken::Fallback => "fallback",
+            LaunchToken::OverlayUnavailable => "overlay_unavailable",
             LaunchToken::Unknown => "unknown",
         }
     }
@@ -126,6 +129,7 @@ impl LaunchError {
             LaunchToken::Create
             | LaunchToken::Cancelled
             | LaunchToken::Fallback
+            | LaunchToken::OverlayUnavailable
             | LaunchToken::Unknown => exit_code::CREATE_FAILED,
         }
     }
@@ -139,11 +143,11 @@ impl std::fmt::Display for LaunchError {
 
 impl std::error::Error for LaunchError {}
 
-/// 提权 helper 已经建立并接管后续流程。
+/// 启动请求已被接受。
 #[derive(Debug, Clone, Copy)]
 pub struct ElevatedLaunch {
-    /// helper 进程 pid（0 表示系统未回传句柄、pid 未知）。
-    pub helper_pid: u32,
+    /// 提权 helper 的 pid；`None` 表示当前进程已提权并直接创建了游戏。
+    pub helper_pid: Option<u32>,
 }
 
 // ============================ 可移植的纯逻辑 ============================
@@ -322,6 +326,9 @@ mod win {
         CloseHandle, GetLastError, LocalFree, ERROR_CANCELLED, ERROR_NO_MORE_ITEMS, ERROR_SUCCESS,
         HANDLE, INVALID_HANDLE_VALUE, WAIT_OBJECT_0, WAIT_TIMEOUT,
     };
+    use windows_sys::Win32::Security::{
+        GetTokenInformation, TokenElevation, TOKEN_ELEVATION, TOKEN_QUERY,
+    };
     use windows_sys::Win32::Security::Cryptography::{
         szOID_ORGANIZATION_NAME, CertGetNameStringW, CERT_NAME_ATTR_TYPE,
     };
@@ -339,16 +346,21 @@ mod win {
     use windows_sys::Win32::System::Environment::{
         ExpandEnvironmentStringsW, GetEnvironmentVariableW,
     };
+    use windows_sys::Win32::System::JobObjects::{
+        AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation,
+        SetInformationJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
+        JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+    };
     use windows_sys::Win32::System::Registry::{
         RegCloseKey, RegEnumKeyExW, RegOpenKeyExW, RegQueryValueExW, HKEY, HKEY_CLASSES_ROOT,
         HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, KEY_ENUMERATE_SUB_KEYS, KEY_QUERY_VALUE,
         KEY_WOW64_32KEY, KEY_WOW64_64KEY, REG_EXPAND_SZ, REG_SZ,
     };
     use windows_sys::Win32::System::Threading::{
-        CreateProcessW, DeleteProcThreadAttributeList, GetExitCodeProcess, GetProcessId,
-        InitializeProcThreadAttributeList, TerminateProcess, UpdateProcThreadAttribute,
-        WaitForSingleObject, CREATE_NO_WINDOW, CREATE_SUSPENDED, EXTENDED_STARTUPINFO_PRESENT,
-        INFINITE, LPPROC_THREAD_ATTRIBUTE_LIST, PROCESS_INFORMATION,
+        CreateProcessW, DeleteProcThreadAttributeList, GetCurrentProcess, GetExitCodeProcess,
+        GetProcessId, InitializeProcThreadAttributeList, OpenProcessToken, TerminateProcess,
+        UpdateProcThreadAttribute, WaitForSingleObject, CREATE_NO_WINDOW, CREATE_SUSPENDED,
+        EXTENDED_STARTUPINFO_PRESENT, INFINITE, LPPROC_THREAD_ATTRIBUTE_LIST, PROCESS_INFORMATION,
         PROC_THREAD_ATTRIBUTE_PARENT_PROCESS, STARTF_USESHOWWINDOW, STARTUPINFOEXW, STARTUPINFOW,
     };
     use windows_sys::Win32::UI::Shell::{
@@ -394,6 +406,33 @@ mod win {
             if self.is_valid() {
                 unsafe { CloseHandle(self.0) };
             }
+        }
+    }
+
+    // 内核句柄是进程级对象，WaitForSingleObject / TerminateProcess / CloseHandle 都允许
+    // 在任意线程调用；直接启动路径需要把游戏与挂起父进程的句柄移交给后台清理线程。
+    unsafe impl Send for OwnedHandle {}
+
+    /// 当前进程是否以管理员权限运行（令牌的 `TokenElevation` 为真）。
+    ///
+    /// 用于决定游戏由谁创建：已提权时直接在本进程创建，未提权时才走 runas helper。
+    pub fn process_is_elevated() -> bool {
+        unsafe {
+            let mut token: HANDLE = ptr::null_mut();
+            if OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token) == 0 {
+                return false;
+            }
+            let mut elevation = TOKEN_ELEVATION { TokenIsElevated: 0 };
+            let mut returned = 0u32;
+            let read = GetTokenInformation(
+                token,
+                TokenElevation,
+                &mut elevation as *mut TOKEN_ELEVATION as *mut c_void,
+                std::mem::size_of::<TOKEN_ELEVATION>() as u32,
+                &mut returned,
+            );
+            CloseHandle(token);
+            read != 0 && elevation.TokenIsElevated != 0
         }
     }
 
@@ -1057,6 +1096,108 @@ mod win {
         }
     }
 
+    // ---------------------------- 当前进程直接启动（已提权） ----------------------------
+
+    /// 随本进程关闭的 Job：进程退出（含崩溃）时关闭句柄，内核会终止挂起的官方启动器，
+    /// 避免「游戏还在运行、应用先退出」时留下一个永不恢复的 `Games.exe`。
+    struct LauncherJob(OwnedHandle);
+
+    impl LauncherJob {
+        fn create() -> Result<Self, String> {
+            let handle = unsafe { CreateJobObjectW(ptr::null(), ptr::null()) };
+            if handle.is_null() {
+                return Err(windows_error("Create launcher cleanup job", last_error()));
+            }
+            let mut info: JOBOBJECT_EXTENDED_LIMIT_INFORMATION =
+                unsafe { std::mem::zeroed() };
+            info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+            let configured = unsafe {
+                SetInformationJobObject(
+                    handle,
+                    JobObjectExtendedLimitInformation,
+                    &info as *const JOBOBJECT_EXTENDED_LIMIT_INFORMATION as *const c_void,
+                    std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
+                )
+            };
+            if configured == 0 {
+                let error = windows_error("Configure launcher cleanup job", last_error());
+                unsafe { CloseHandle(handle) };
+                return Err(error);
+            }
+            Ok(Self(OwnedHandle::new(handle)))
+        }
+
+        fn assign(&self, process: HANDLE) -> Result<(), String> {
+            if unsafe { AssignProcessToJobObject(self.0.get(), process) } == 0 {
+                return Err(windows_error("Assign launcher to cleanup job", last_error()));
+            }
+            Ok(())
+        }
+    }
+
+    /// 已提权时在本进程内完成「挂起官方父进程 + 创建游戏」。
+    ///
+    /// 与 helper 路径的差别只在**由谁创建游戏**：Steam 以非 Steam 游戏方式拉起本应用时，
+    /// `gameoverlayrenderer64.dll` 注入的是本进程；保持这条 CreateProcess 链，overlay 才能
+    /// 继续注入到游戏。若改由 runas helper 创建，overlay 的注入链会在提权边界处断开。
+    fn launch_in_process(
+        mut launcher: VerifiedLauncher,
+        game: &Path,
+        arguments: &[String],
+        status_file: Option<&Path>,
+    ) -> Result<ElevatedLaunch, LaunchError> {
+        let parent = OfficialParent::start(&launcher)
+            .map_err(|error| LaunchError::new(LaunchToken::Create, error))?;
+        tracing::info!(
+            "[launcher] suspended official parent created in-process, pid {}",
+            parent.pid
+        );
+        // 映像已映射、签名已读；释放文件句柄，好让官方更新器能在游戏运行期间替换启动器。
+        launcher.file = None;
+
+        let (game_process, game_pid) = parent
+            .create_game(game, arguments)
+            .map_err(|error| LaunchError::new(LaunchToken::Create, error))?;
+        tracing::info!("[launcher] game process created in-process, pid {game_pid}");
+        if let Some(status_file) = status_file {
+            write_status_file(status_file, game_pid);
+        }
+
+        // 清理 Job 失败不影响启动；最坏情况只是应用提前退出时挂起父进程残留。
+        let job = match LauncherJob::create() {
+            Ok(job) => {
+                if let Err(error) = job.assign(parent.process.get()) {
+                    tracing::warn!(
+                        "[launcher] {error} — the suspended launcher may outlive this process"
+                    );
+                }
+                Some(job)
+            }
+            Err(error) => {
+                tracing::warn!(
+                    "[launcher] {error} — the suspended launcher may outlive this process"
+                );
+                None
+            }
+        };
+
+        // 游戏退出后终止挂起的官方父进程；应用先退出时由 Job 兜底。
+        std::thread::spawn(move || {
+            match wait_for_game(game_process.get()) {
+                Ok(code) => tracing::info!(
+                    "[launcher] game exited with code {code}; cleaning up suspended parent"
+                ),
+                Err(error) => tracing::error!("[launcher] {error}"),
+            }
+            // 先让 OfficialParent 主动终止父进程，再关闭 Job（两者都做是幂等的）。
+            drop(parent);
+            drop(job);
+            drop(game_process);
+        });
+
+        Ok(ElevatedLaunch { helper_pid: None })
+    }
+
     // ---------------------------- helper：完整启动流程 ----------------------------
 
     /// 当前进程是否由 `launcher_start_game` 以提权 helper 身份启动；是则跑完整个流程并
@@ -1117,9 +1258,31 @@ mod win {
         }
     }
 
+    /// 启动前清理同名旧游戏进程（含崩溃/挂起后残留的提权进程）。
+    ///
+    /// helper 以管理员权限运行，能终止由它自己创建的游戏进程；应用本身未提权时，
+    /// `launch_game` 里的 `taskkill` 无法结束后者的残留。
+    fn kill_existing_game(game: &Path) {
+        let Some(file_name) = game.file_name().and_then(|name| name.to_str()) else {
+            return;
+        };
+        use std::os::windows::process::CommandExt;
+
+        let mut command = std::process::Command::new("taskkill");
+        command.creation_flags(CREATE_NO_WINDOW);
+        match command.args(["/F", "/T", "/IM", file_name]).output() {
+            Ok(output) if output.status.success() => {
+                tracing::info!("[launcher] terminated existing game processes ({file_name})");
+            }
+            Ok(_) => {}
+            Err(error) => tracing::warn!("[launcher] could not run taskkill: {error}"),
+        }
+    }
+
     /// 全部 RAII 对象都活在本函数作用域内：返回值先算出来，析构（终止挂起的启动器）
     /// 完成之后调用方才退出进程。
     fn launch(options: &HelperOptions) -> Result<i32, LaunchError> {
+        kill_existing_game(&options.game);
         let mut launcher = find_official_launcher(options.parent.as_deref())?;
         tracing::info!(
             "[launcher] official launcher: {}",
@@ -1190,7 +1353,7 @@ mod win {
             if raw.is_null() || raw == INVALID_HANDLE_VALUE {
                 return;
             }
-            // 内核句柄是进程级的，跨线程传递安全；这里转成 usize 以免引入 unsafe impl Send。
+            // 内核句柄是进程级的，跨线程传递安全；转成 usize 后由后台线程重新接管。
             let bits = raw as usize;
             std::thread::spawn(move || {
                 let handle = bits as HANDLE;
@@ -1298,8 +1461,12 @@ mod win {
         String::from_utf16(&wide_line).unwrap_or_else(|_| parts.join(" "))
     }
 
-    /// 未提权一侧的入口：先校验官方启动器（失败即 [`LaunchToken::NoLauncher`]，调用方据此
-    /// 回退到直接启动），再以提权 helper 完成真正的创建。
+    /// 启动入口：先校验官方启动器（失败即 [`LaunchToken::NoLauncher`]，调用方据此回退到
+    /// 直接启动）。
+    ///
+    /// - 当前进程**已提权**：直接在本进程创建挂起父进程与游戏，保持 Steam overlay 的
+    ///   `CreateProcess` 注入链（见 [`launch_in_process`]）。
+    /// - 当前进程**未提权**：以 runas helper 完成真正的创建（游戏 manifest 要求管理员）。
     pub fn launch_via_official_parent(
         game: &Path,
         parent: Option<&Path>,
@@ -1311,6 +1478,11 @@ mod win {
             "[launcher] official launcher verified: {}",
             launcher.executable.display()
         );
+
+        if process_is_elevated() {
+            return launch_in_process(launcher, game, arguments, status_file);
+        }
+
         let launcher_path = launcher.executable.clone();
         // 句柄不能跨越提权边界；helper 会重新验签并保持自己的独占只读句柄。
         drop(launcher);
@@ -1338,13 +1510,17 @@ mod win {
                 tracing::warn!(
                     "[launcher] helper exited with code {code} after creating the game process"
                 );
-                return Ok(ElevatedLaunch { helper_pid });
+                return Ok(ElevatedLaunch {
+                    helper_pid: Some(helper_pid),
+                });
             }
             return Err(helper_exit_message(code));
         }
 
         helper.watch_to_completion();
-        Ok(ElevatedLaunch { helper_pid })
+        Ok(ElevatedLaunch {
+            helper_pid: Some(helper_pid),
+        })
     }
 
     /// 直接以 `ShellExecuteW` 启动游戏（回退路径，与旧实现一致：靠 shell 自动提权）。
@@ -1382,7 +1558,7 @@ mod win {
 }
 
 #[cfg(target_os = "windows")]
-pub use win::{launch_via_official_parent, shell_execute_game, try_run_helper};
+pub use win::{launch_via_official_parent, process_is_elevated, shell_execute_game, try_run_helper};
 
 // ============================ 非 Windows 桩 ============================
 // 本模块只在 Windows 上有意义；其它平台（CI 也会构建 macOS / Linux）保持可编译。
@@ -1408,6 +1584,11 @@ pub fn shell_execute_game(_game: &Path, _arguments: &[String]) -> Result<(), Str
 #[cfg(not(target_os = "windows"))]
 pub fn try_run_helper() -> Option<i32> {
     None
+}
+
+#[cfg(not(target_os = "windows"))]
+pub fn process_is_elevated() -> bool {
+    false
 }
 
 // ============================ 单元测试 ============================

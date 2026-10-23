@@ -48,6 +48,7 @@ import {
   formatBytes,
   CHANNEL_LABELS,
   LAUNCH_TOKEN_KEYS,
+  LAUNCH_WARNING_TITLE_KEYS,
   splitLaunchToken,
 } from "@/utils/launcherService";
 import { addMessage } from "@/utils/messageStore";
@@ -941,11 +942,14 @@ export function GameActionPanel() {
           tag: "launch-error",
         });
       } else if (result.warning) {
-        // 例如：没找到签名有效的官方启动器，已回退到直接启动。
+        // 例如：没找到签名有效的官方启动器，已回退到直接启动；或 Steam 未提权导致
+        // overlay 无法注入到需要管理员的游戏进程。
         const { token, detail } = splitLaunchToken(result.warning);
         addMessage({
           type: "warn",
-          title: t("launcher.launch_fallback_title"),
+          title: t(
+            LAUNCH_WARNING_TITLE_KEYS[token] ?? "launcher.launch_fallback_title",
+          ),
           body: t(LAUNCH_TOKEN_KEYS[token] ?? "launcher.launch_fallback_body", {
             detail,
           }),
@@ -2944,8 +2948,8 @@ function GameSettingsModal({
     <GlassModal isOpen onOpenChange={(open) => !open && onClose()}>
       <GlassModal.Backdrop isDismissable>
         <GlassModal.Container size="lg">
-          <GlassModal.Dialog>
-            <GlassModal.Header>
+          <GlassModal.Dialog className="flex max-h-[calc(100vh-3rem)] flex-col overflow-hidden">
+            <GlassModal.Header className="shrink-0">
               <div className="flex items-center justify-between px-5 py-4 border-b border-separator/50">
                 <GlassModal.Heading className="text-sm">
                   {t("launcher.game_settings")}
@@ -2953,7 +2957,7 @@ function GameSettingsModal({
                 <GlassModal.CloseTrigger />
               </div>
             </GlassModal.Header>
-            <GlassModal.Body>
+            <GlassModal.Body className="min-h-0 flex-1">
               <div className="px-5 py-4 space-y-5">
                 <div>
                   <label className="block text-xs font-medium text-muted mb-1.5">
@@ -2982,7 +2986,7 @@ function GameSettingsModal({
                 <GameLaunchSettingsFields />
               </div>
             </GlassModal.Body>
-            <GlassModal.Footer>
+            <GlassModal.Footer className="shrink-0">
               <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-separator/50">
                 <button
                   type="button"

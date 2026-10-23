@@ -34,7 +34,7 @@ import {
   Terminal,
   Copy,
   ExternalLink,
-  FileCode,
+  Gamepad2,
 } from "lucide";
 import { MorphIcon } from "morphicons/react";
 import { createMorphIcon, type IconSvgProps } from "@/components/morph-icon";
@@ -101,7 +101,7 @@ export const TrashIcon = createMorphIcon(Trash2);
 export const TerminalIcon = createMorphIcon(Terminal);
 export const CopyIcon = createMorphIcon(Copy);
 export const ExternalLinkIcon = createMorphIcon(ExternalLink);
-export const FileCodeIcon = createMorphIcon(FileCode);
+export const GamepadIcon = createMorphIcon(Gamepad2);
 
 export { MoonIcon as MoonFilledIcon, SunIcon as SunFilledIcon, HeartIcon as HeartFilledIcon };
 

@@ -38,7 +38,7 @@
 | 2600–2778 | 扫描结果 + 磁盘空间占用条对话框（同样复用 `DiskSpaceBar`） |
 | 2781–2858 | 渠道切换：目标渠道选择对话框 |
 | 2861–2901 | 渠道切换确认对话框 |
-| 2906–3040 | `GameSettingsModalProps` 接口与 `GameSettingsModal` 内部组件（未导出）：安装路径 + `GameLaunchSettingsFields` 四项共享设置，容器 `size="lg"` |
+| 2928–3012 | `GameSettingsModalProps` 接口与 `GameSettingsModal` 内部组件（未导出）：安装路径 + `GameLaunchSettingsFields` 共享设置，容器 `size="lg"`；`Dialog` 限制最大高度 `calc(100vh-3rem)` 并让 `Body` 内部滚动 |
 
 ## 组件与函数清单
 
@@ -79,8 +79,8 @@
 | `getButtonIcon` | 1084–1254 | 依状态返回 SVG 图标（旋转/暂停/下载/刷新/播放） |
 | `handleButtonClick` | 1256–1299 | 主按钮统一分发：取消切换/停止/取消校验/取消下载/安装/更新/启动 |
 | `handleConfirmAction` | 1301–1373 | 确认对话框回调，按 5 种 `confirmAction` 分支执行 |
-| `GameSettingsModalProps` | 2878–2882 | 内部弹窗 props 类型：`initialPath`、`onClose`、`onSave(path)` |
-| `GameSettingsModal` | 2884–3040 | 游戏设置弹窗：安装路径 + 浏览，分隔线后渲染 `GameLaunchSettingsFields`（取消下载行为 / DX11 启动 / 下载线程数 / 断点续传 / 校验线程数 / 背景媒体，与设置页实时同步）；`handleBrowse` 于 2892–2895；容器 `size="lg"`（720px）以避免控件换行 |
+| `GameSettingsModalProps` | 2928–2932 | 内部弹窗 props 类型：`initialPath`、`onClose`、`onSave(path)` |
+| `GameSettingsModal` | 2934–3012 | 游戏设置弹窗：安装路径 + 浏览，分隔线后渲染 `GameLaunchSettingsFields`（取消下载行为 / DX11 启动 / 下载线程数 / 断点续传 / 校验线程数 / 背景媒体，与设置页实时同步）；`handleBrowse` 于 2942–2945；容器 `size="lg"`（720px）以避免控件换行；`Dialog` 为 `flex-col max-h-[calc(100vh-3rem)] overflow-hidden`，Header/Footer 固定、`Body` 为 `min-h-0 flex-1` 内部滚动 |
 
 ## 关键功能分区
 
@@ -125,7 +125,7 @@
 下载阶段主按钮周围显示从正上方开始顺时针环绕的百分比进度环；悬停取消下载或关闭游戏时，主按钮背景显示透明浅红。按钮 hover 时计算 `progressFlyoutPos`（另见按钮定位 effect）；浮层经 `ProgressFlyout`（`createPortal` 到 `document.body`）挂出，按 `preparing`/`isDownloading`/`isVerifying`/`isComparing`/`isRepairing`/`isApplying`/`switching` 分支渲染进度条、速度、ETA、当前文件与切换阶段文案（阶段 → 文案映射）。预下载**不进入**该浮层，而是用自己的浮层实例（同为 `ProgressFlyout`，锚在预下载按钮上）。
 
 **菜单与设置入口（1882–2060）**
-汉堡按钮切换菜单浮层并即时 `hasDownloadCache` 刷新 `hasTempFiles`；菜单项：游戏设置（打开 `GameSettingsModal`，安装路径）、启动设置（直接打开独立的 `QuickLaunchModal`：静默启动命令 + 复制 + 创建快捷方式，不再先套完整启动设置面板）、校验完整性（`verify-confirm`）、快速校验、清理临时文件（`delete-temp`，需 `hasTempFiles`）、定位游戏。启动设置入口原先是最右侧的独立 ⚙ 按钮，现已并入该菜单；菜单里的校验/快速校验/清理项以 `busyWithDownload` 禁用（预下载进行中不可发起）。
+汉堡按钮切换菜单浮层并即时 `hasDownloadCache` 刷新 `hasTempFiles`；菜单项：游戏设置（打开 `GameSettingsModal`，安装路径）、启动设置（直接打开独立的 `QuickLaunchModal`：静默启动命令 + 复制 + 创建快捷方式，以及再套一层 `SteamShortcutModal` 调整 Steam 条目参数）、校验完整性（`verify-confirm`）、快速校验、清理临时文件（`delete-temp`，需 `hasTempFiles`）、定位游戏。启动设置入口原先是最右侧的独立 ⚙ 按钮，现已并入该菜单；菜单里的校验/快速校验/清理项以 `busyWithDownload` 禁用（预下载进行中不可发起）。
 
 **对话框族（2081–2901）**
 通用确认框（2081，5 分支 + footer 按钮组合各不相同）、**预下载确认框（2426，`preload_confirm_title/desc` + `DiskSpaceBar`，空间不足禁用「开始预下载」）**、渠道选择框（2520，`ALL_CHANNELS` 列表 + `scanning` 指示）、扫描结果框（2600，同样用 `DiskSpaceBar` 画三色磁盘占用条，空间不足时禁用确认按钮并显示红色提示）、切换选择框（2781，当前渠道禁用并标注）、切换确认框（2861，`switch_confirm_desc` 插入 from/to 渠道名）。

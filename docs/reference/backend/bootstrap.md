@@ -26,64 +26,65 @@
 | --- | --- | --- |
 | `mod commands/models/services/tray/utils` | lib.rs:7-11 | 后端模块声明（全部私有） |
 | `use services::*` | lib.rs:14-21 | 导入 8 个服务类型（Account/AvatarCache/Config/Gacha/GameLauncher/Network/Skland/SystemResource） |
-| `run` | lib.rs:31 | 解析 `--silent` / `--launch-game` / `--close-after-launch` / `--dx11` 并分流到静默或完整模式；两种模式均改用 `.build(context)?.run(|_, event| …)`，在 `RunEvent::Exit` 调用 `utils::game_playtime::finalize()` 将当前会话落盘 |
-| `utils::crash::install_panic_hook()` | lib.rs:48 | 在 helper 截获后、业务初始化之前安装 panic hook；崩溃写入 `logs/crashes/crash-*.log` 并广播 `app:crash` |
-| `create_config_service` | lib.rs:369 | 初始化现有 `ConfigService`，并校验/更新配置键 `main_exe_path` |
-| `crash::set_app_handle` / `api_health::init` | lib.rs:88 / 263 | 静默模式设置崩溃广播 handle；完整模式额外初始化 API 熔断器，二者均在 `.setup()` 最前调用 |
-| `attach_parent_console`（私有，仅 Windows debug） | lib.rs:324 | `main.rs` 已无条件使用 GUI 子系统，进程本身不再创建控制台（根除黑窗口闪现：控制台在进程创建期生成，进程内 `ShowWindow(SW_HIDE)` 只能事后隐藏、仍会闪一瞬间）。此函数在 `run()` 最开头（logger / Tauri 初始化之前）尝试 `AttachConsole(ATTACH_PARENT_PROCESS)`：手动 `cargo run` 时附接父终端使日志可见，被 Steam / 快捷方式拉起时附接失败即静默无窗口。附接必须发生在首次 stdio 写入前（`eprintln!` 在 GUI 进程无控制台时会 panic，所有 stderr 写入均需经 `logger::safe_eprintln!`） |
-| `dispatch_instance_request` | lib.rs:394 | 将第二实例的参数路由为静默启动、启动游戏或显示主窗口；解析 `--dx11` 并一并转发 |
-| `start_game_from_config` | lib.rs:416 | 读取 `launcher_install_path` / `launcher_channel` / `launcher_dx11` 并调用 `commands::launcher::launch_game`；`dx11: Option<bool>` 优先取命令行 `--dx11`，`None` 时回退配置 `launcher_dx11`（默认 false）；`close_after_launch: bool` 为 true（仅静默模式传入）时启动成功即退出本进程 |
-| `promote_to_full_with_game` | lib.rs:497 | 静默实例接到普通启动/托盘双击时，等待当前进程退出后重新启动完整模式；`launch_game` 时把 `--dx11` 一并转发给新实例 |
-| `create_full_windows` / `create_main_window` / `app_webview_url` / `dev_asset_url` | lib.rs:498 / 522 / 566 / 614 | 普通模式按需创建窗口；debug 优先连 Vite，开发服务器不可用时改由自定义协议 `endprotocol` 提供 `frontendDist` 资源 |
-| `register_dev_asset_protocol` / `dev_asset_error_response` | lib.rs:626 / 655 | debug 专用：注册 `endprotocol` URI scheme，经 `asset_resolver()` 提供构建产物（含 `.html`、目录 `index.html` 与入口 `index.html` 回退） |
+| `run` | lib.rs:28 | 解析 `--silent` / `--launch-game` / `--dx11`：仅 `--silent` → 直接返回（不做任何事）；`--silent --launch-game` → 不可见驻守实例（无托盘/无窗口/不计时/不注册单实例插件）；仅 `--launch-game` 或普通启动 → 完整模式（单实例）并在需要时启动游戏。完整模式在 `RunEvent::Exit` 调用 `utils::game_playtime::finalize()` |
+| `utils::crash::install_panic_hook()` | lib.rs:54 | 在 helper 截获与 `--silent` 空操作检查之后、业务初始化之前安装 panic hook；崩溃写入 `logs/crashes/crash-*.log` 并广播 `app:crash` |
+| `create_config_service` | lib.rs:335 | 初始化现有 `ConfigService`，并校验/更新配置键 `main_exe_path` |
+| `crash::set_app_handle` / `api_health::init` | lib.rs:65 / 246 | 驻守/完整模式设置崩溃广播 handle；完整模式额外初始化 API 熔断器，二者均在 `.setup()` 最前调用 |
+| `attach_parent_console`（私有，仅 Windows debug） | lib.rs:327 | `main.rs` 已无条件使用 GUI 子系统，进程本身不再创建控制台（根除黑窗口闪现：控制台在进程创建期生成，进程内 `ShowWindow(SW_HIDE)` 只能事后隐藏、仍会闪一瞬间）。此函数在 `run()` 最开头（logger / Tauri 初始化之前）尝试 `AttachConsole(ATTACH_PARENT_PROCESS)`：手动 `cargo run` 时附接父终端使日志可见，被 Steam / 快捷方式拉起时附接失败即静默无窗口。附接必须发生在首次 stdio 写入前（`eprintln!` 在 GUI 进程无控制台时会 panic，所有 stderr 写入均需经 `logger::safe_eprintln!`） |
+| `app_ready_for_full_instance` / `dispatch_pending_requests` | lib.rs:343 / 352 | 完整模式 setup 完成后标记就绪，并处理插件在 setup 完成前排队的第二实例请求 |
+| `dispatch_instance_request` | lib.rs:371 | 主实例收到第二实例转交的参数：含 `--launch-game` 时以 `--dx11` 转发启动游戏（`exit_when_game_ends=false`），随后显示主窗口 |
+| `wait_for_game_session`（async） | lib.rs:384 | 驻守实例的驻留等待：每 2 秒通过 `utils::process::is_process_running`（窗口/90 秒启动宽限判定，排除无窗口挂起残留）探测 `Endfield.exe`；检测到运行后等待其退出；若 120 秒内未出现（启动失败/被取消）也结束等待，供 Steam 判定「游戏中」并记录时长 |
+| `start_game_from_config` | lib.rs:404 | 读取 `launcher_install_path` / `launcher_channel` / `launcher_dx11` 并调用 `commands::launcher::launch_game`；`dx11: Option<bool>` 优先取命令行 `--dx11`，`None` 时回退配置 `launcher_dx11`（默认 false）；`exit_when_game_ends=true`（仅驻守实例）时启动成功后调用 `wait_for_game_session`，游戏退出后才退出本进程；启动失败时同样退出 |
+| `create_full_windows` / `create_main_window` / `app_webview_url` / `dev_asset_url` | lib.rs:492 / 516 / 560 / 608 | 完整模式按需创建窗口；debug 优先连 Vite，开发服务器不可用时改由自定义协议 `endprotocol` 提供 `frontendDist` 资源 |
+| `register_dev_asset_protocol` / `dev_asset_error_response` | lib.rs:620 / 649 | debug 专用：注册 `endprotocol` URI scheme，经 `asset_resolver()` 提供构建产物（含 `.html`、目录 `index.html` 与入口 `index.html` 回退） |
 
 ### 内部结构
 
 | 行号区间 | 内容 |
 | --- | --- |
 | lib.rs:27 | `#[cfg_attr(mobile, tauri::mobile_entry_point)]` 属性 |
-| lib.rs:29-36 | **提权启动 helper 截获**：`utils::official_launcher::try_run_helper()` 命中 `--endfield-launch-helper` 时以游戏退出码退出，不做 Tauri 初始化 |
-| lib.rs:39-50 | 解析内部父进程交接参数、`--silent`、`--launch-game`、`--close-after-launch`（后者仅在静默模式下为 true）与 `--dx11`（`Option<bool>`，仅与 `--launch-game` 组合生效） |
-| lib.rs:53-61 | 注册单实例插件；第二实例的参数在主实例 setup 完成前先排队 |
-| lib.rs:63-82 | 静默模式不注册 IPC 命令，初始化 config 和 icon-only tray；`utils::game_playtime::init()` 启动时长统计；请求启动游戏时调用既有启动器命令 |
-| lib.rs:88-109 | 普通模式初始化日志，注册单实例及原有 updater/process/opener/fs 插件与完整命令集 |
-| lib.rs:231-309 | 普通模式 setup：动态窗口、全量服务、原托盘面板和账户刷新 |
-| lib.rs:316-566 | 配置校正、实例参数转发、按需启动游戏、窗口动态创建与关闭行为 |
-| lib.rs:609-661 | debug 专用：`endprotocol` 自定义协议，经 `asset_resolver()` 提供 `frontendDist` 构建产物 |
+| lib.rs:35-42 | **提权启动 helper 截获**：`utils::official_launcher::try_run_helper()` 命中 `--endfield-launch-helper` 时以游戏退出码退出，不做 Tauri 初始化 |
+| lib.rs:44-57 | 解析 `--silent` / `--launch-game`；仅 `--silent` 直接返回（不做任何事）；随后安装 panic hook 并解析 `--dx11`（`Option<bool>`，仅与 `--launch-game` 组合生效） |
+| lib.rs:59-75 | **驻守实例**（`--silent --launch-game`）：不注册单实例插件、不创建窗口/托盘、不初始化 `game_playtime`；初始化 config 后启动游戏，由 `wait_for_game_session` 驻留到游戏退出，再随进程结束退出 |
+| lib.rs:77-241 | 完整模式：初始化日志、创建单实例插件、注册 updater/process/opener/fs 插件与完整命令集 |
+| lib.rs:243-317 | 完整模式 setup：动态窗口、全量服务、原托盘面板和账户刷新；`--launch-game` 时启动游戏 |
+| lib.rs:325-491 | 配置初始化、第二实例请求转发（仅主实例）、按需启动游戏与驻留等待（`wait_for_game_session`） |
+| lib.rs:492-607 | 完整模式窗口动态创建与关闭行为 |
+| lib.rs:608-655 | debug 专用：`endprotocol` 自定义协议，经 `asset_resolver()` 提供 `frontendDist` 构建产物 |
 
 **插件注册**：
 | 插件 | 行 | 对应 capability |
 | --- | --- | --- |
-| `tauri_plugin_single_instance` | lib.rs:53 | 两种模式都启用；Windows 命名互斥体默认按当前 Windows 会话隔离 |
-| `tauri_plugin_updater` | lib.rs:98 | 仅完整模式，`updater:default`（desktop.json） |
-| `tauri_plugin_process` | lib.rs:99 | 仅完整模式，`process:allow-restart`（desktop.json） |
-| `tauri_plugin_opener` | lib.rs:100 | 仅完整模式，`opener:default` / `opener:allow-open-url`（default.json）、`opener:allow-open-path`（desktop.json） |
-| `tauri_plugin_fs` | lib.rs:101 | 仅完整模式；**未授予任何 `fs:*` 权限**（见文末异常） |
+| `tauri_plugin_single_instance` | lib.rs:89（注册 lib.rs:100） | **仅完整模式启用**；保证同时只有一个主实例；驻守实例（`--silent --launch-game`）不注册插件，可同时存在任意多个；Windows 命名互斥体默认按当前 Windows 会话隔离 |
+| `tauri_plugin_updater` | lib.rs:101 | 仅完整模式，`updater:default`（desktop.json） |
+| `tauri_plugin_process` | lib.rs:102 | 仅完整模式，`process:allow-restart`（desktop.json） |
+| `tauri_plugin_opener` | lib.rs:103 | 仅完整模式，`opener:default` / `opener:allow-open-url`（default.json）、`opener:allow-open-path`（desktop.json） |
+| `tauri_plugin_fs` | lib.rs:104 | 仅完整模式；**未授予任何 `fs:*` 权限**（见文末异常） |
 
-**稳定命令行参数**：`--silent` 不创建完整界面；`--launch-game` 启动 config 中配置的游戏路径与渠道（静默/完整模式均生效）；`--dx11` 仅与 `--launch-game` 组合生效——存在时给游戏进程追加 `-force-d3d11`，不存在时使用应用内设置 `launcher_dx11`（默认 false）；`--close-after-launch` 仅在 `--silent` 存在时生效——游戏启动成功后本进程立即退出（游戏由提权 helper 及其挂起的官方父进程持有，`launcher_start_game` 在 helper 建立后即返回成功，不等待游戏退出）；组合使用即静默启动游戏后收尾退出。第二实例通过插件转交参数（第二实例请求中同时带 `--silent` 与 `--close-after-launch` 时同样在启动后退出；`--dx11` 同样随请求转发）。静默实例收到普通启动请求时先退出并由自身以隐藏的父进程等待参数交接启动完整模式，避免插件和业务服务重复初始化。debug 模式优先使用配置的 Vite `devUrl`；若开发服务器未运行，则在同一进程内注册自定义协议 `endprotocol`（Windows 为 `http://endprotocol.localhost`，其余平台为 `endprotocol://localhost`），由 `asset_resolver()` 回退读取 `frontendDist` 中构建好的文件（注册于 `register_dev_asset_protocol`），二者均不可用时返回明确错误。注意不能用 `tauri://localhost` / `http://tauri.localhost`：dev 构建不含内嵌资源，Tauri 协议处理器会直接报 `asset not found`。
+**稳定命令行参数**：`--silent` 单独出现时不启动应用、不创建窗口/托盘/驻守进程，直接退出；`--silent --launch-game` 启动一个**不可见驻守实例**（无窗口、无托盘、不计时、不注册单实例插件）并启动 config 中配置的游戏，每 2 秒探测 `Endfield.exe`，游戏退出（或 120 秒内未检测到游戏进程）后退出；仅 `--launch-game` 时以正常完整模式启动应用并一并启动游戏；`--dx11` 仅与 `--launch-game` 组合生效——存在时给游戏进程追加 `-force-d3d11`，不存在时使用应用内设置 `launcher_dx11`（默认 false）。完整模式注册单实例插件，因此同时只允许一个主实例；驻守实例彼此独立，且不受主实例或其它驻守实例启停影响。第二实例按普通启动方式转发给主实例并显示主窗口（`--dx11` 随请求转发）。debug 模式优先使用配置的 Vite `devUrl`；若开发服务器未运行，则在同一进程内注册自定义协议 `endprotocol`（Windows 为 `http://endprotocol.localhost`，其余平台为 `endprotocol://localhost`），由 `asset_resolver()` 回退读取 `frontendDist` 中构建好的文件（注册于 `register_dev_asset_protocol`），二者均不可用时返回明确错误。注意不能用 `tauri://localhost` / `http://tauri.localhost`：dev 构建不含内嵌资源，Tauri 协议处理器会直接报 `asset not found`。
 
 ### `.setup()` 初始化步骤顺序（完整模式）
 | 步骤 | 行号 | 内容 |
 | --- | --- | --- |
-| 1 | lib.rs:251-254 | 初始化 `ConfigService`，校验并更新 `main_exe_path`，`.manage()` 注册；随后 `utils::game_playtime::init(config_service.clone())` 启动时长统计；再动态创建完整 WebView 窗口 |
-| 2 | lib.rs:238-255 | 读配置键 `capture_autostart`（默认 false），为 true 时调用 `utils::capture::start()` 自动录制；成功/失败只记日志 |
-| 3 | lib.rs:254 | `tray::setup_tray(app.handle(), config_service)`，沿用完整模式的右键托盘面板 |
-| 4 | lib.rs:258 | `SklandService::new(config_service)` — **不** manage，作为依赖注入下游 |
-| 5 | lib.rs:261-262 | `AvatarCacheService::new()` — 不 manage |
-| 6 | lib.rs:265-266 | `GachaService::new(app.handle())` → `.manage()` |
-| 7 | lib.rs:269-273 | `NetworkService::new(skland, avatar_cache)` — 不 manage |
-| 8 | lib.rs:275-284 | `AccountService::new(config, skland, avatar_cache, network, app_handle)` 包进 `Arc<tokio::sync::Mutex<>>` → `.manage()` |
-| 9 | lib.rs:287-288 | `Arc::new(Mutex::new(GameLauncherService::new()))` → `.manage()`（tokio Mutex） |
-| 10 | lib.rs:291-292 | `Arc::new(std::sync::Mutex::new(SystemResourceService::new()))` → `.manage()` |
-| 11 | lib.rs:296 | `AccountService::start_auto_refresh(timer_service)` 启动账户自动刷新定时器 |
-| 12 | lib.rs:548 | 创建 `main` 窗口时挂 `CloseRequested`：按 `close_action` 配置决定退出或最小化托盘 |
+| 1 | lib.rs:247-250 | 初始化 `ConfigService`，校验并更新 `main_exe_path`，`.manage()` 注册；随后 `utils::game_playtime::init(config_service.clone())` 启动时长统计；再动态创建完整 WebView 窗口 |
+| 2 | lib.rs:252-267 | 读配置键 `capture_autostart`（默认 false），为 true 时调用 `utils::capture::start()` 自动录制；成功/失败只记日志 |
+| 3 | lib.rs:269-270 | `tray::setup_tray(app.handle(), config_service)`，沿用完整模式的右键托盘面板 |
+| 4 | lib.rs:273 | `SklandService::new(config_service)` — **不** manage，作为依赖注入下游 |
+| 5 | lib.rs:276-277 | `AvatarCacheService::new()` — 不 manage |
+| 6 | lib.rs:280-281 | `GachaService::new(app.handle())` → `.manage()` |
+| 7 | lib.rs:284 | `NetworkService::new(skland, avatar_cache)` — 不 manage |
+| 8 | lib.rs:287-296 | `AccountService::new(config, skland, avatar_cache, network, app_handle)` 包进 `Arc<tokio::sync::Mutex<>>` → `.manage()` |
+| 9 | lib.rs:299-300 | `Arc::new(Mutex::new(GameLauncherService::new()))` → `.manage()`（tokio Mutex） |
+| 10 | lib.rs:302-305 | `Arc::new(std::sync::Mutex::new(SystemResourceService::new()))` → `.manage()` |
+| 11 | lib.rs:308 | `AccountService::start_auto_refresh(timer_service)` 启动账户自动刷新定时器 |
+| 12 | lib.rs:543 | 创建 `main` 窗口时挂 `CloseRequested`：按 `close_action` 配置决定退出或最小化托盘 |
 
-**静默模式初始化**（lib.rs:63-82）：仅创建配置服务、记录/更新 `main_exe_path`、注册无菜单托盘并视参数调用 `launcher_start_game`；不注册 IPC 命令，不启动 logger、账户自动刷新、缓存、抽卡/系统资源服务，不创建 `main` / `tray-panel` WebView。
+**静默/驻守模式初始化**（lib.rs:59-75）：仅 `--silent` 在进入 Tauri 之前直接返回（lib.rs:48-51），不做任何事；`--silent --launch-game` 创建不可见驻守实例：只初始化配置服务、记录/更新 `main_exe_path` 并启动游戏，不注册 IPC 命令与单实例插件，不创建窗口/托盘，不启动 logger、`game_playtime`、账户自动刷新、缓存、抽卡/系统资源服务；启动成功后由 `wait_for_game_session` 驻留等待游戏退出，再结束进程。
 
-### `.manage()` 的完整模式状态（5 个；静默模式仅注册 config）
+### `.manage()` 的完整模式状态（5 个；驻守模式仅注册 config）
 | State 类型 | 注册处 | 说明 |
 | --- | --- | --- |
-| `Arc<std::sync::Mutex<ConfigService>>` | lib.rs:252 | 全局配置（JSON 文件 + 内存缓存），完整/静默启动共用 |
+| `Arc<std::sync::Mutex<ConfigService>>` | lib.rs:248 | 全局配置（JSON 文件 + 内存缓存），完整/驻守模式共用 |
 | `Arc<GachaService>` | lib.rs:266 | 抽卡记录服务（持有 AppHandle） |
 | `Arc<tokio::sync::Mutex<AccountService>>` | lib.rs:284 | 账户服务（异步方法，tokio 锁） |
 | `Arc<tokio::sync::Mutex<GameLauncherService>>` | lib.rs:288 | 游戏启动器服务（仅完整模式） |
@@ -93,9 +94,9 @@
 
 **备注**：`lib.rs` 本身**没有任何 `emit`/`listen`**，也**没有全局应用菜单**；完整模式右键托盘仍打开原有托盘面板。
 
-### 命令总表（完整模式 `.invoke_handler` 注册 113 个命令；静默模式不注册 IPC 命令）
+### 命令总表（完整模式 `.invoke_handler` 注册 113 个命令；驻守模式不注册 IPC 命令）
 
-完整命令清单与定义/调用关系见 [commands.md](commands.md) 和 [ipc_index.md](../ipc_index.md)；静默分支为纯 `Builder::default().plugin(单实例).setup(...)`（lib.rs:78-100），无 `.invoke_handler`。
+完整命令清单与定义/调用关系见 [commands.md](commands.md) 和 [ipc_index.md](../ipc_index.md)；驻守分支为纯 `Builder::default().setup(...)`（lib.rs:59-75），不注册单实例插件，也无 `.invoke_handler`。
 
 ### 后端 emit 事件（全局，非 lib.rs 内发起）
 | 事件名 | 发出位置 | 载荷 |
@@ -113,8 +114,8 @@
 ---
 
 ## `src-tauri/src/tray.rs`
-**职责**：系统托盘图标与托盘悬浮面板（tray-panel 窗口）的创建、定位、显隐与 tooltip 更新（195 行）。
-**导出**：`TrayUserInfo`、`show_main_window_focus`、`setup_tray`、`setup_silent_tray`、`update_tray_menu`、`show_tray_panel`、`hide_tray_panel`；私有 `show_panel_at_position`、`build_tray`。
+**职责**：系统托盘图标与托盘悬浮面板（tray-panel 窗口）的创建、定位、显隐与 tooltip 更新（175 行）。仅在完整模式创建；`--silent --launch-game` 驻守实例不显示托盘。
+**导出**：`TrayUserInfo`、`show_main_window_focus`、`setup_tray`、`update_tray_menu`、`show_tray_panel`、`hide_tray_panel`；私有 `show_panel_at_position`、`build_tray`。
 **主要依赖**：`tauri::tray::{TrayIconBuilder, TrayIconEvent, MouseButton}`、`tauri::{Emitter, Manager, Runtime}`、`windows-sys`（仅 Windows 分支）、`crate::services::config_service::ConfigService`。
 
 ### 内部结构
@@ -128,13 +129,12 @@
 | `show_main_window_focus` | tray.rs:34 | 取或动态创建 `main` 窗口 → `unminimize()` + `show()`；Windows 分支额外 `ShowWindow(SW_SHOW)` + `SetForegroundWindow` |
 | `show_panel_at_position`（私有） | tray.rs:64 | 面板可见则隐藏；否则定位在托盘图标正上方并显示、聚焦 |
 | `setup_tray` | tray.rs:88 | 完整模式读配置 `tray_user_info`，创建唯一托盘图标；**左键双击**显示主窗并关面板，**右键抬起**弹出原有面板 |
-| `setup_silent_tray` | tray.rs:105 | 静默模式创建同 ID 的图标，无菜单/通知；右键无操作，左键双击触发完整模式交接 |
-| `build_tray` | tray.rs:120 | 共用唯一图标构建逻辑；按 `silent` 参数启用或禁用右键面板 |
-| `update_tray_menu` | tray.rs:161 | 按 `TrayUserInfo.nickname` 更新 tooltip，并向 tray-panel 窗口发送 `tray-user-info-updated` |
-| `show_tray_panel` | tray.rs:178 | 命令入口的 toggle 显隐（可见→hide，否则 show+focus） |
-| `hide_tray_panel` | tray.rs:191 | 强制隐藏面板（无错误时返回 Ok） |
+| `build_tray` | tray.rs:104 | 唯一图标构建逻辑；左键双击显示主窗并隐藏面板，右键抬起弹出面板 |
+| `update_tray_menu` | tray.rs:140 | 按 `TrayUserInfo.nickname` 更新 tooltip，并向 tray-panel 窗口发送 `tray-user-info-updated` |
+| `show_tray_panel` | tray.rs:157 | 命令入口的 toggle 显隐（可见→hide，否则 show+focus） |
+| `hide_tray_panel` | tray.rs:170 | 强制隐藏面板（无错误时返回 Ok） |
 
-**备注**：完整模式托盘保留右键面板；静默模式只保留图标，双击会交接到完整应用。`update_tray_menu`、`show_tray_panel`、`hide_tray_panel` 被 `commands/tray.rs` 调用。
+**备注**：托盘只在完整模式创建；`--silent` 实例不显示托盘、不进入托盘交接流程。`update_tray_menu`、`show_tray_panel`、`hide_tray_panel` 被 `commands/tray.rs` 调用。
 
 ---
 
@@ -216,7 +216,7 @@
 | `build.devUrl` | :8 | `http://localhost:1420` |
 | `build.beforeBuildCommand` | :9 | `pnpm build` |
 | `build.frontendDist` | :10 | `../dist` |
-| `app.windows` | :13 | 空数组；主窗口与 tray-panel 仅在完整模式由 `lib.rs:create_full_windows` 创建，静默模式不创建 WebView |
+| `app.windows` | :13 | 空数组；主窗口与 tray-panel 仅在完整模式由 `lib.rs:create_full_windows` 创建，驻守模式不创建 WebView |
 | `app.security.csp` | :15 | `null` — 关闭 CSP（未设置内容安全策略） |
 | `bundle.active` | :19 | `true` — 启用打包 |
 | `bundle.createUpdaterArtifacts` | :20 | `true` — 生成 updater 用的签名产物 |

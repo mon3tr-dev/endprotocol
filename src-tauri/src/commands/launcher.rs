@@ -15,6 +15,19 @@ use crate::utils::official_launcher::{LaunchError, LaunchToken};
 const DX11_GAME_ARG: &str = "-force-d3d11";
 const DX11_CONFIG_KEY: &str = "launcher_dx11";
 
+/// Steam 启动游戏时写入的环境变量（非 Steam 快捷方式同样适用）。
+/// 任一项存在即可认为当前进程由 Steam 拉起。
+#[cfg(target_os = "windows")]
+const STEAM_LAUNCH_MARKERS: [&str; 4] =
+    ["SteamClientLaunch", "SteamAppId", "SteamGameId", "SteamOverlayGameId"];
+
+#[cfg(target_os = "windows")]
+fn launched_by_steam() -> bool {
+    STEAM_LAUNCH_MARKERS
+        .iter()
+        .any(|name| std::env::var_os(name).is_some())
+}
+
 /// Return the process-level bytes read counter used by Task Manager's disk rate.
 #[tauri::command]
 pub fn launcher_get_process_read_bytes() -> Result<u64, String> {
@@ -543,15 +556,32 @@ pub(crate) async fn launch_game(
                 })
             }
             Ok(Ok(elevated)) => {
-                tracing::info!(
-                    "[launcher] game created through the official launcher parent (helper pid {})",
-                    elevated.helper_pid
-                );
+                match elevated.helper_pid {
+                    Some(pid) => tracing::info!(
+                        "[launcher] game created through the official launcher parent (helper pid {pid})"
+                    ),
+                    None => tracing::info!(
+                        "[launcher] game created through the official launcher parent (in-process)"
+                    ),
+                }
+                // Steam 只能把 overlay 注入到与自己同权限级别的进程。游戏 manifest 要求
+                // 管理员；本进程未提权时只能经 runas helper 创建游戏，overlay 无法越过
+                // 这条完整性级别边界。提权后（Steam 以管理员运行）游戏由本进程直接创建，
+                // 注入链得以保留。
+                let warning = (launched_by_steam()
+                    && !crate::utils::official_launcher::process_is_elevated())
+                .then(|| {
+                    LaunchError::new(
+                        LaunchToken::OverlayUnavailable,
+                        "the game runs elevated while Steam does not; run Steam as administrator for the overlay",
+                    )
+                    .message()
+                });
                 Ok(LauncherResult {
                     success: true,
                     message: format!("{exe_name} launched"),
                     version: None,
-                    warning: None,
+                    warning,
                 })
             }
         }

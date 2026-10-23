@@ -295,7 +295,7 @@
 
 ## `src/utils/launcherService.ts`
 **职责**：游戏启动器（安装/更新/校验修复/预下载/渠道切换/启动/进程控制/公告背景资源）的全部 Tauri IPC 封装 + 三个进度事件监听 + 渠道/阶段标签与字节格式化工具。
-**导出**：类型 `GameChannel`、`GameStatus`、`ActiveOperation`、`RemotePackage`、`DownloadProgress`、`BackgroundMedia`、`LauncherResult`、`PayloadState`、`BannerItem`、`AnnouncementItem`、`LauncherNoticeContent`、`FileScanResult`、`DiskSpace`、`GamePlaytime`；函数 `checkGameStatus`、`installOrUpdate`、`verifyAndRepair`、`getProcessReadBytes`、`getRemoteVersion`、`getPayloadState`、`cancelDownload`、`preloadDownload`、`installPreload`、`resetDownloadCancel`、`hasDownloadCache`、`getBanners`、`getAnnouncements`、`getNoticeContent`、`getBackgroundImage`、`startGame`、`syncSilentLaunchConfig`、`restoreLaunchConfig`、`getGameLaunchCommand`、`createGameShortcut`、`browseFolder`、`checkExecutable`、`checkGameRunning`、`killGame`、`getGamePlaytime`、`detectChannel`、`scanInstallDir`、`getDiskSpace`、`switchChannel`、`cancelSwitch`、`cancelAll`、`onLauncherProgress`、`onProgress`、`onSwitchProgress`、`formatBytes`；常量 `CHANNEL_LABELS`、`ALL_CHANNELS`、`STAGE_LABELS`、`LAUNCH_TOKEN_KEYS`；函数 `splitLaunchToken`（解析 `<token>: <detail>` 契约串）。
+**导出**：类型 `GameChannel`、`GameStatus`、`ActiveOperation`、`RemotePackage`、`DownloadProgress`、`BackgroundMedia`、`LauncherResult`、`PayloadState`、`BannerItem`、`AnnouncementItem`、`LauncherNoticeContent`、`FileScanResult`、`DiskSpace`、`GamePlaytime`、`LaunchExportOptions`、`SteamShortcutOptions`、`SteamShortcutDefaults`、`AddSteamShortcutResult`；函数 `checkGameStatus`、`installOrUpdate`、`verifyAndRepair`、`getProcessReadBytes`、`getRemoteVersion`、`getPayloadState`、`cancelDownload`、`preloadDownload`、`installPreload`、`resetDownloadCancel`、`hasDownloadCache`、`getBanners`、`getAnnouncements`、`getNoticeContent`、`getBackgroundImage`、`startGame`、`syncSilentLaunchConfig`、`restoreLaunchConfig`、`getGameLaunchCommand`、`createGameShortcut`、`getSteamShortcutDefaults`、`pickSteamIcon`、`pickSteamIconSource`、`extractSteamIcon`、`addSteamShortcut`、`browseFolder`、`checkExecutable`、`checkGameRunning`、`killGame`、`getGamePlaytime`、`detectChannel`、`scanInstallDir`、`getDiskSpace`、`switchChannel`、`cancelSwitch`、`cancelAll`、`onLauncherProgress`、`onProgress`、`onSwitchProgress`、`formatBytes`；常量 `CHANNEL_LABELS`、`ALL_CHANNELS`、`STAGE_LABELS`、`LAUNCH_TOKEN_KEYS`、`LAUNCH_WARNING_TITLE_KEYS`；函数 `splitLaunchToken`（解析 `<token>: <detail>` 契约串）。
 **主要依赖**：`@tauri-apps/api/core` 的 `invoke`、`@tauri-apps/api/event` 的 `listen` / 类型 `UnlistenFn`。
 
 | 符号 | 位置 | 说明 |
@@ -315,13 +315,17 @@
 | `getAnnouncements` | launcherService.ts:190 | invoke `launcher_get_announcements`，参数 `{channel}`，返回 `AnnouncementItem[]` |
 | `getNoticeContent` | launcherService.ts:196 | invoke `launcher_get_notice_content`，参数 `{channel}`，返回 `LauncherNoticeContent`（横幅+公告合并结构） |
 | `getBackgroundImage` | launcherService.ts:204 | invoke `launcher_get_background_image`，参数 `{channel}`，返回 `BackgroundMedia \| null` |
-| `startGame` | launcherService.ts:263 | invoke `launcher_start_game`，参数 `{installPath, channel, dx11?}`，返回 `LauncherResult`；`dx11` 为 true 时后端给游戏进程追加 `-force-d3d11`，省略时后端读取配置 `launcher_dx11`；失败时 `message` 为 `<token>: <detail>`（token 见 `LAUNCH_TOKEN_KEYS`），回退直接启动时该提示在 `warning` 字段 |
-| `syncSilentLaunchConfig` | launcherService.ts:280 | 从 localStorage 将 `launcher_install_path`、`launcher_channel`、`launcher_dx11` 通过 `set_config` 写入 app config |
-| `restoreLaunchConfig` | launcherService.ts:301 | **反向同步**：invoke `get_config` 读取 app config 中非空的 `launcher_install_path`、`launcher_channel` 与布尔 `launcher_dx11` 回写 localStorage；后端不可用时静默保留 localStorage 现状。修复静默命令行启动后打开完整版时游戏面板因 localStorage 缺失而显示「定位游戏」的问题 |
-| `getGameLaunchCommand` | launcherService.ts:326 | invoke `get_game_launch_command`，返回包含 exe 路径与 `--silent --launch-game` 的完整命令（`--dx11` 由前端按开关追加展示） |
-| `createGameShortcut` | launcherService.ts:335 | invoke `create_game_shortcut`，参数 `LaunchExportOptions {closeAfterLaunch?, dx11?}`（缺省 false / 后端配置）；弹出用户选定保存位置的对话框，返回 `.lnk` 路径或 `null`（取消） |
-| `createLaunchBat` | launcherService.ts:344 | invoke `create_launch_bat`，参数 `LaunchExportOptions {closeAfterLaunch?, dx11?}`；保存 `.bat` 脚本，返回路径或 `null`（取消） |
-| `browseFolder` | launcherService.ts:222 | invoke `launcher_browse_folder`，无参，返回 `string \| null`（用户选择的目录） |
+| `startGame` | launcherService.ts:280 | invoke `launcher_start_game`，参数 `{installPath, channel, dx11?}`，返回 `LauncherResult`；`dx11` 为 true 时后端给游戏进程追加 `-force-d3d11`，省略时后端读取配置 `launcher_dx11`；失败时 `message` 为 `<token>: <detail>`（token 见 `LAUNCH_TOKEN_KEYS`），回退直接启动或 Steam 未提权时的提示在 `warning` 字段（标题见 `LAUNCH_WARNING_TITLE_KEYS`） |
+| `syncSilentLaunchConfig` | launcherService.ts:297 | 从 localStorage 将 `launcher_install_path`、`launcher_channel`、`launcher_dx11` 通过 `set_config` 写入 app config |
+| `restoreLaunchConfig` | launcherService.ts:318 | **反向同步**：invoke `get_config` 读取 app config 中非空的 `launcher_install_path`、`launcher_channel` 与布尔 `launcher_dx11` 回写 localStorage；后端不可用时静默保留 localStorage 现状。修复静默命令行启动后打开完整版时游戏面板因 localStorage 缺失而显示「定位游戏」的问题 |
+| `getGameLaunchCommand` | launcherService.ts:343 | invoke `get_game_launch_command`，返回包含 exe 路径与 `--silent --launch-game` 的完整命令（`--dx11` 由前端按开关追加展示） |
+| `createGameShortcut` | launcherService.ts:351 | invoke `create_game_shortcut`，参数 `LaunchExportOptions {dx11?}`（缺省读后端配置 `launcher_dx11`）；弹出用户选定保存位置的对话框，返回 `.lnk` 路径或 `null`（取消）。**不再接受 `closeAfterLaunch`** |
+| `getSteamShortcutDefaults` | launcherService.ts:387 | invoke `steam_shortcut_defaults`，无参，返回 `SteamShortcutDefaults`（名字、默认 `.ico`、是否提取成功、游戏是否存在、DX11、两项 Overlay 选项、开始菜单快捷方式数量、当前是否已提权） |
+| `pickSteamIcon` | launcherService.ts:391 | invoke `pick_steam_icon`，无参，返回图标路径或 `null`（取消） |
+| `pickSteamIconSource` | launcherService.ts:395 | invoke `pick_steam_icon_source`，无参，返回用于提取图标的 exe 路径或 `null` |
+| `extractSteamIcon` | launcherService.ts:399 | invoke `extract_steam_icon`，参数 `{exePath}`，返回生成的 `.ico` 路径 |
+| `addSteamShortcut` | launcherService.ts:403 | invoke `add_steam_shortcut`，参数 `{options: SteamShortcutOptions}`（`name`/`icon_path`/`dx11`/`create_admin_shortcut`/`elevate_start_menu`，调用处把 camelCase 转成后端字段名）；返回 `AddSteamShortcutResult {shortcuts_path, admin_shortcut, elevated_start_menu}`。**允许 Steam 运行中写入**，成功后需重启 Steam 才可见 |
+| `browseFolder` | launcherService.ts:363 | invoke `launcher_browse_folder`，无参，返回 `string \| null`（用户选择的目录） |
 | `checkExecutable` | launcherService.ts:226 | invoke `launcher_check_executable`，参数 `{installPath, channel}`，返回 `boolean` |
 | `checkGameRunning` | launcherService.ts:236 | invoke `launcher_check_game_running`，参数 `{channel}`，返回 `boolean` |
 | `killGame` | launcherService.ts:244 | invoke `launcher_kill_game`，参数 `{channel}`，返回 `boolean` |
@@ -335,7 +339,10 @@
 | `onLauncherProgress` | launcherService.ts:294 | `listen<DownloadProgress>('launcher-progress', ...)`，参数为回调，返回 `Promise<UnlistenFn>`；**事件名为 `launcher-progress`（无 `://`）** |
 | `onProgress` | launcherService.ts:302 | `listen<ActiveOperation>('launcher://progress', ...)`，返回 `Promise<UnlistenFn>` |
 | `onSwitchProgress` | launcherService.ts:310 | `listen<DownloadProgress>('launcher://switch-progress', ...)`，返回 `Promise<UnlistenFn>` |
-| `formatBytes` | launcherService.ts:335 | 纯函数：1024 进制格式化为 `B/KB/MB/GB/TB`（保留 2 位小数），`0` 返回 `"0 B"` |
+| `formatBytes` | launcherService.ts:486 | 纯函数：1024 进制格式化为 `B/KB/MB/GB/TB`（保留 2 位小数），`0` 返回 `"0 B"` |
+| `LAUNCH_TOKEN_KEYS` | launcherService.ts:60 | 启动结果 `<token>` → i18n 文案键的映射；新增 `overlay_unavailable` → `launcher.launch_overlay_unavailable` |
+| `LAUNCH_WARNING_TITLE_KEYS` | launcherService.ts:72 | `warning` 的标题映射：`fallback` → `launcher.launch_fallback_title`、`overlay_unavailable` → `launcher.launch_overlay_title`；缺省沿用 `fallback` 标题 |
+| `splitLaunchToken` | launcherService.ts:77 | 按第一个 `:` 拆成 `{token, detail}`；无冒号时 `token=""`、`detail=原文` |
 
 **内部结构**：
 
@@ -365,3 +372,6 @@
 | `setSystemResourceDefaults(patch)` | 读-改-写合并保存 |
 
 **备注**：封装的 invoke 命令：`get_system_snapshot`；配置键：`system_resource_defaults`、`system_resource_defaults_version`（另经 `configService` 间接使用 `get_config`/`set_config`）。
+
+
+

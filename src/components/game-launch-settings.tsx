@@ -1,21 +1,26 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { invoke } from "@tauri-apps/api/core";
 import { Check, Copy } from "lucide";
 import { MorphIcon } from "morphicons/react";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
-import { GlassButton, GlassSwitch } from "@/components/ui/glass";
+import { GlassButton, GlassSwitch, GlassInput } from "@/components/ui/glass";
 import { Slider } from "@/components/ui/slider";
 import { SettingsDivider } from "@/components/ui/settings-row";
 import { GlassModalCompound as GlassModal } from "@/components/ui/modal";
 import {
   ExternalLinkIcon,
-  FileCodeIcon,
+  GamepadIcon,
   TerminalIcon,
 } from "@/components/icons";
 import {
+  addSteamShortcut,
   createGameShortcut,
-  createLaunchBat,
+  extractSteamIcon,
   getGameLaunchCommand,
+  getSteamShortcutDefaults,
+  pickSteamIcon,
+  pickSteamIconSource,
   syncSilentLaunchConfig,
 } from "@/utils/launcherService";
 import { isWindowsPlatform } from "@/utils/platform";
@@ -29,7 +34,6 @@ import {
   type GameBgMode,
 } from "@/stores/launcherMode";
 
-export const CLOSE_AFTER_LAUNCH_KEY = "launcher_close_after_launch";
 export const CANCEL_BEHAVIOR_KEY = "launcher_cancel_behavior";
 export const VERIFY_THREADS_KEY = "launcher_verify_threads";
 export const DOWNLOAD_THREADS_KEY = "launcher_download_threads";
@@ -390,18 +394,15 @@ export function GameLaunchSettings() {
 }
 
 /**
- * 静默启动游戏独立弹窗：展示启动命令、复制命令，并可创建 Windows 快捷方式。
+ * 静默启动游戏独立弹窗：展示启动命令、复制命令，并可创建 Windows 快捷方式或添加 Steam 条目。
  */
 export function QuickLaunchModal({ onClose }: { onClose: () => void }) {
   const { t } = useTranslation();
   const [baseCommand, setBaseCommand] = useState("");
-  const [closeAfterLaunch, setCloseAfterLaunch] = useState(
-    () => localStorage.getItem(CLOSE_AFTER_LAUNCH_KEY) === "true",
-  );
   const [dx11, setDx11] = useState(readDx11);
   const [copied, setCopied] = useState(false);
   const [creatingShortcut, setCreatingShortcut] = useState(false);
-  const [savingBat, setSavingBat] = useState(false);
+  const [steamOpen, setSteamOpen] = useState(false);
   const copyResetTimer = useRef<number | undefined>(undefined);
   const supportsWindows = isWindowsPlatform();
 
@@ -436,18 +437,9 @@ export function QuickLaunchModal({ onClose }: { onClose: () => void }) {
 
   useEffect(() => () => window.clearTimeout(copyResetTimer.current), []);
 
-  const launchCommand = [
-    baseCommand,
-    dx11 ? "--dx11" : "",
-    closeAfterLaunch ? "--close-after-launch" : "",
-  ]
+  const launchCommand = [baseCommand, dx11 ? "--dx11" : ""]
     .filter(Boolean)
     .join(" ");
-
-  const handleToggleCloseAfterLaunch = (value: boolean) => {
-    setCloseAfterLaunch(value);
-    localStorage.setItem(CLOSE_AFTER_LAUNCH_KEY, String(value));
-  };
 
   const handleToggleDx11 = (value: boolean) => {
     setDx11(value);
@@ -473,23 +465,17 @@ export function QuickLaunchModal({ onClose }: { onClose: () => void }) {
     }
   };
 
-  const runExport = async (
-    run: () => Promise<string | null>,
-    saving: (busy: boolean) => void,
-    createdKey: string,
-    errorKey: string,
-    successTag: string,
-  ) => {
-    saving(true);
+  const handleCreateShortcut = async () => {
+    setCreatingShortcut(true);
     try {
       await syncSilentLaunchConfig();
-      const savedPath = await run();
+      const savedPath = await createGameShortcut({ dx11 });
       if (savedPath) {
         addMessage({
           type: "info",
-          title: t(createdKey),
+          title: t("settings.game_launch.shortcut_created"),
           body: savedPath,
-          tag: successTag,
+          tag: "quick-launch-shortcut",
           actions: [
             {
               label: t("settings.game_launch.open_folder"),
@@ -508,32 +494,14 @@ export function QuickLaunchModal({ onClose }: { onClose: () => void }) {
     } catch (error) {
       addMessage({
         type: "warn",
-        title: t(errorKey),
+        title: t("settings.game_launch.shortcut_error"),
         body: `${String(error)} ${t("settings.game_launch.command_fallback")}`,
-        tag: successTag,
+        tag: "quick-launch-shortcut",
       });
     } finally {
-      saving(false);
+      setCreatingShortcut(false);
     }
   };
-
-  const handleCreateShortcut = () =>
-    runExport(
-      () => createGameShortcut({ closeAfterLaunch, dx11 }),
-      setCreatingShortcut,
-      "settings.game_launch.shortcut_created",
-      "settings.game_launch.shortcut_error",
-      "quick-launch-shortcut",
-    );
-
-  const handleSaveBat = () =>
-    runExport(
-      () => createLaunchBat({ closeAfterLaunch, dx11 }),
-      setSavingBat,
-      "settings.game_launch.bat_created",
-      "settings.game_launch.bat_error",
-      "quick-launch-bat",
-    );
 
   const sectionTitle = "text-sm font-medium text-foreground";
   const sectionHint = "text-xs text-muted mt-0.5";
@@ -571,22 +539,6 @@ export function QuickLaunchModal({ onClose }: { onClose: () => void }) {
                       <GlassSwitch
                         isSelected={dx11}
                         onValueChange={handleToggleDx11}
-                      >
-                        <GlassSwitch.Control>
-                          <GlassSwitch.Thumb />
-                        </GlassSwitch.Control>
-                      </GlassSwitch>
-                    </div>
-                    <div className="flex flex-col items-center gap-2">
-                      <p className={`${sectionTitle} whitespace-nowrap`}>
-                        {t("settings.game_launch.close_after_launch")}
-                      </p>
-                      <p className={sectionHint}>
-                        {t("settings.game_launch.close_after_launch_desc")}
-                      </p>
-                      <GlassSwitch
-                        isSelected={closeAfterLaunch}
-                        onValueChange={handleToggleCloseAfterLaunch}
                       >
                         <GlassSwitch.Control>
                           <GlassSwitch.Thumb />
@@ -650,25 +602,22 @@ export function QuickLaunchModal({ onClose }: { onClose: () => void }) {
                     </section>
 
                     <section className="flex items-start gap-3 pt-4">
-                      <FileCodeIcon size={18} className="mt-0.5 shrink-0 text-muted" />
+                      <GamepadIcon size={18} className="mt-0.5 shrink-0 text-muted" />
                       <div className="min-w-0 flex-1 space-y-2">
                         <p className={sectionTitle}>
-                          {t("settings.game_launch.bat_title")}
+                          {t("settings.game_launch.steam_title")}
                         </p>
                         <p className={sectionHint}>
-                          {t("settings.game_launch.bat_hint")}
+                          {t("settings.game_launch.steam_hint")}
                         </p>
                         {supportsWindows && (
                           <GlassButton
                             variant="secondary"
-                            onPress={handleSaveBat}
-                            isDisabled={savingBat}
+                            onPress={() => setSteamOpen(true)}
                           >
                             <span className="inline-flex items-center gap-2">
-                              <FileCodeIcon size={14} />
-                              {savingBat
-                                ? t("settings.game_launch.bat_saving")
-                                : t("settings.game_launch.save_bat")}
+                              <GamepadIcon size={14} />
+                              {t("settings.game_launch.add_to_steam")}
                             </span>
                           </GlassButton>
                         )}
@@ -678,6 +627,368 @@ export function QuickLaunchModal({ onClose }: { onClose: () => void }) {
                 </div>
               </div>
             </GlassModal.Body>
+          </GlassModal.Dialog>
+        </GlassModal.Container>
+      </GlassModal.Backdrop>
+      {steamOpen && <SteamShortcutModal onClose={() => setSteamOpen(false)} />}
+    </GlassModal>
+  );
+}
+
+/** 图标预览：.ico 由后端读取后转成 blob URL；读取失败时显示占位图标。 */
+function IconPreview({ path }: { path: string }) {
+  const [url, setUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    let objectUrl: string | null = null;
+    setUrl(null);
+    if (!path) return;
+    void (async () => {
+      try {
+        const bytes = await invoke<number[]>("read_image_file", { path });
+        const blob = new Blob([new Uint8Array(bytes)], { type: "image/x-icon" });
+        objectUrl = URL.createObjectURL(blob);
+        if (active) setUrl(objectUrl);
+      } catch {
+        if (active) setUrl(null);
+      }
+    })();
+    return () => {
+      active = false;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [path]);
+
+  return (
+    <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-separator/50 bg-default-100/40">
+      {url ? (
+        <img src={url} alt="" className="h-full w-full object-contain" />
+      ) : (
+        <GamepadIcon size={16} className="text-muted" />
+      )}
+    </span>
+  );
+}
+
+/**
+ * Steam 第三方游戏条目参数弹窗。
+ *
+ * 名字默认「明日方舟：终末地」，图标默认从游戏 `Endfield.exe` 提取（失败时回退 exe 自身），
+ * 启动选项固定为 `--silent --launch-game`，并按 DX11 开关附加 `--dx11`。
+ * Steam Overlay 需要 Steam 与游戏同权限，因此底部提供「创建管理员 Steam 快捷方式」
+ * 与「把开始菜单里的 Steam 提升为管理员运行」两个选项。
+ */
+export function SteamShortcutModal({ onClose }: { onClose: () => void }) {
+  const { t } = useTranslation();
+  const [loading, setLoading] = useState(true);
+  const [name, setName] = useState("");
+  const [iconPath, setIconPath] = useState("");
+  const [iconExtracted, setIconExtracted] = useState(false);
+  const [gameExeFound, setGameExeFound] = useState(false);
+  const [dx11, setDx11] = useState(readDx11);
+  const [createAdminShortcut, setCreateAdminShortcut] = useState(false);
+  const [elevateStartMenu, setElevateStartMenu] = useState(false);
+  const [startMenuCount, setStartMenuCount] = useState(0);
+  const [isElevated, setIsElevated] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    // 外层 QuickLaunchModal 也监听 window 的 Escape；跳过顶层交互，避免一次按键关掉两层弹窗。
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") event.stopPropagation();
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    void (async () => {
+      try {
+        await syncSilentLaunchConfig();
+        const defaults = await getSteamShortcutDefaults();
+        if (!active) return;
+        setName(defaults.name);
+        setIconPath(defaults.icon_path);
+        setIconExtracted(defaults.icon_extracted);
+        setGameExeFound(defaults.game_exe_found);
+        setDx11(defaults.dx11);
+        setCreateAdminShortcut(defaults.create_admin_shortcut);
+        setElevateStartMenu(defaults.elevate_start_menu);
+        setStartMenuCount(defaults.start_menu_shortcut_count);
+        setIsElevated(defaults.is_elevated);
+      } catch (error) {
+        if (active) {
+          addMessage({
+            type: "warn",
+            title: t("settings.game_launch.steam_error"),
+            body: String(error),
+            tag: "quick-launch-steam",
+          });
+        }
+      } finally {
+        if (active) setLoading(false);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [t]);
+
+  const handlePickIcon = async () => {
+    try {
+      const picked = await pickSteamIcon();
+      if (picked) {
+        setIconPath(picked);
+        setIconExtracted(false);
+      }
+    } catch (error) {
+      logError("Failed to pick a Steam icon", error);
+    }
+  };
+
+  const handleExtractIcon = async () => {
+    try {
+      const picked = await pickSteamIconSource();
+      if (!picked) return;
+      const extracted = await extractSteamIcon(picked);
+      setIconPath(extracted);
+      setIconExtracted(true);
+    } catch (error) {
+      addMessage({
+        type: "warn",
+        title: t("settings.game_launch.steam_icon_extract_error"),
+        body: String(error),
+        tag: "quick-launch-steam",
+      });
+    }
+  };
+
+  const handleSubmit = async () => {
+    setBusy(true);
+    try {
+      await syncSilentLaunchConfig();
+      const result = await addSteamShortcut({
+        name: name.trim(),
+        iconPath: iconPath.trim() || null,
+        dx11,
+        createAdminShortcut,
+        elevateStartMenu,
+      });
+      addMessage({
+        type: "info",
+        title: t("settings.game_launch.steam_created_title"),
+        body: t("settings.game_launch.steam_created_body", {
+          name: name.trim(),
+        }),
+        tag: "quick-launch-steam",
+        actions: result.admin_shortcut
+          ? [
+              {
+                label: t("settings.game_launch.open_folder"),
+                variant: "secondary",
+                onClick: async () => {
+                  try {
+                    await revealItemInDir(result.admin_shortcut as string);
+                  } catch (error) {
+                    logError("Failed to reveal the Steam shortcut", error);
+                  }
+                },
+              },
+            ]
+          : undefined,
+      });
+      onClose();
+    } catch (error) {
+      addMessage({
+        type: "warn",
+        title: t("settings.game_launch.steam_error"),
+        body: String(error),
+        tag: "quick-launch-steam",
+      });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const fieldLabel = "text-xs font-medium text-muted";
+
+  return (
+    <GlassModal isOpen onOpenChange={(open) => !open && onClose()}>
+      <GlassModal.Backdrop isDismissable className="z-[320] backdrop-blur-md">
+        <GlassModal.Container size="md">
+          <GlassModal.Dialog className="flex max-h-[calc(100vh-3rem)] flex-col overflow-hidden glass-surface-strong border border-separator/70 shadow-2xl">
+            <GlassModal.Header className="shrink-0">
+              <div className="flex items-center justify-between px-5 py-4 border-b border-separator/50">
+                <GlassModal.Heading className="text-sm">
+                  {t("settings.game_launch.steam_modal_title")}
+                </GlassModal.Heading>
+                <GlassModal.CloseTrigger />
+              </div>
+            </GlassModal.Header>
+            <GlassModal.Body className="min-h-0 flex-1">
+              <div className="flex flex-col gap-4 px-5 py-4">
+                <div className="space-y-1.5">
+                  <label className={fieldLabel} htmlFor="steam-shortcut-name">
+                    {t("settings.game_launch.steam_name")}
+                  </label>
+                  <GlassInput
+                    id="steam-shortcut-name"
+                    value={name}
+                    onValueChange={setName}
+                    isDisabled={loading || busy}
+                    placeholder={t("settings.game_launch.steam_name")}
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className={fieldLabel}>
+                    {t("settings.game_launch.steam_icon")}
+                  </label>
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                    <IconPreview path={iconPath} />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-xs text-foreground">
+                        {iconPath || t("settings.game_launch.steam_icon_none")}
+                      </p>
+                      <p className="text-[11px] text-muted">
+                        {iconExtracted
+                          ? t("settings.game_launch.steam_icon_extracted")
+                          : gameExeFound
+                            ? t("settings.game_launch.steam_icon_fallback")
+                            : t("settings.game_launch.steam_icon_missing_game")}
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 gap-2">
+                      <GlassButton
+                        variant="tertiary"
+                        size="sm"
+                        onPress={handlePickIcon}
+                        isDisabled={loading || busy}
+                      >
+                        {t("settings.game_launch.steam_icon_choose")}
+                      </GlassButton>
+                      <GlassButton
+                        variant="tertiary"
+                        size="sm"
+                        onPress={handleExtractIcon}
+                        isDisabled={loading || busy}
+                      >
+                        {t("settings.game_launch.steam_icon_extract")}
+                      </GlassButton>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between gap-4 rounded-xl border border-separator/40 px-3 py-2.5">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-foreground">
+                      {t("settings.game_launch.dx11")}
+                    </p>
+                    <p className="text-xs text-muted mt-0.5">
+                      {t("settings.game_launch.steam_dx11_desc")}
+                    </p>
+                  </div>
+                  <GlassSwitch
+                    isSelected={dx11}
+                    onValueChange={(value) => {
+                      setDx11(value);
+                      setDx11Setting(value);
+                    }}
+                  >
+                    <GlassSwitch.Control>
+                      <GlassSwitch.Thumb />
+                    </GlassSwitch.Control>
+                  </GlassSwitch>
+                </div>
+
+                <SettingsDivider />
+
+                <div className="space-y-1">
+                  <p className="text-sm font-medium text-foreground">
+                    {t("settings.game_launch.steam_overlay_title")}
+                  </p>
+                  <p className="text-xs text-warning">
+                    {isElevated
+                      ? t("settings.game_launch.steam_overlay_hint_elevated")
+                      : t("settings.game_launch.steam_overlay_hint")}
+                  </p>
+                </div>
+
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={createAdminShortcut}
+                    onChange={(event) =>
+                      setCreateAdminShortcut(event.currentTarget.checked)
+                    }
+                    disabled={loading || busy}
+                    className="mt-0.5 h-4 w-4 shrink-0 accent-primary"
+                  />
+                  <span className="min-w-0">
+                    <span className="block text-sm text-foreground">
+                      {t("settings.game_launch.steam_admin_shortcut")}
+                    </span>
+                    <span className="block text-xs text-muted mt-0.5">
+                      {t("settings.game_launch.steam_admin_shortcut_desc")}
+                    </span>
+                  </span>
+                </label>
+
+                <label
+                  className={`flex items-start gap-3 ${
+                    startMenuCount > 0
+                      ? "cursor-pointer"
+                      : "cursor-not-allowed opacity-60"
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={elevateStartMenu && startMenuCount > 0}
+                    onChange={(event) =>
+                      setElevateStartMenu(event.currentTarget.checked)
+                    }
+                    disabled={loading || busy || startMenuCount === 0}
+                    className="mt-0.5 h-4 w-4 shrink-0 accent-primary"
+                  />
+                  <span className="min-w-0">
+                    <span className="block text-sm text-foreground">
+                      {t("settings.game_launch.steam_elevate_start_menu")}
+                    </span>
+                    <span className="block text-xs text-muted mt-0.5">
+                      {startMenuCount > 0
+                        ? t(
+                            "settings.game_launch.steam_elevate_start_menu_found",
+                            { count: startMenuCount },
+                          )
+                        : t(
+                            "settings.game_launch.steam_elevate_start_menu_none",
+                          )}
+                    </span>
+                  </span>
+                </label>
+              </div>
+            </GlassModal.Body>
+            <GlassModal.Footer className="shrink-0">
+              <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-separator/50">
+                <GlassButton
+                  variant="tertiary"
+                  onPress={onClose}
+                  isDisabled={busy}
+                >
+                  {t("common.cancel")}
+                </GlassButton>
+                <GlassButton
+                  variant="primary"
+                  onPress={handleSubmit}
+                  isDisabled={loading || busy || !name.trim()}
+                  isLoading={busy}
+                >
+                  {t("settings.game_launch.steam_add_confirm")}
+                </GlassButton>
+              </div>
+            </GlassModal.Footer>
           </GlassModal.Dialog>
         </GlassModal.Container>
       </GlassModal.Backdrop>

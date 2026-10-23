@@ -25,9 +25,10 @@ EndProtocol/
 │   ├── card_development.md        # 卡片开发指南
 │   ├── card_configuration.md      # 卡片配置系统
 │   └── reference/                 # ★ 逐文件功能参考（27 篇）
-│       ├── ipc_index.md           # 113 个命令 ↔ 定义 ↔ 调用方
+│       ├── ipc_index.md           # 117 个命令 ↔ 定义 ↔ 调用方
 │       ├── frontend/  (18 篇)
 │       └── backend/   (9 篇)
+├── Cargo.toml / Cargo.lock        # ★ cargo workspace 根（members = ["src-tauri"]），根锁文件唯一有效
 ├── index.html                     # 主窗口入口
 ├── tray-panel.html                # 托盘面板入口
 ├── promotional-cover.html / promotional-demo.html   # 宣传页
@@ -61,8 +62,8 @@ EndProtocol/
 │   │                              #   （含 todoStore.ts：To-Do 单一数据源）
 ├── src-tauri/                     # ===== 后端源码 =====
 │   ├── src/main.rs                # 进程入口
-│   ├── src/lib.rs                 # 启动模式分流、单实例、插件/状态/托盘/命令注册
-│   ├── src/tray.rs                # 完整模式面板托盘与静默图标托盘
+│   ├── src/lib.rs                 # 启动模式分流、完整模式单实例、驻守实例、插件/状态/托盘/命令注册
+│   ├── src/tray.rs                # 完整模式托盘与悬浮面板（驻守实例无托盘）
 │   ├── src/commands/              # 16 个文件：IPC 命令入口
 │   ├── src/services/              # 12 个服务：account、skland、game_launcher、
 │   │                              #   gacha、char_detail、char_wiki、config、
@@ -71,7 +72,9 @@ EndProtocol/
 │   ├── src/models/                # 7 个文件：序列化数据结构
 │   ├── src/utils/                 # error、hg_crypto、http_client、
 │   │                              #   logger、official_launcher、paths、capture、
-│   │                              #   game_playtime（游戏时长统计）、process（进程探测）
+│   │                              #   game_playtime（游戏时长统计）、process（进程探测）、
+│   │                              #   game_icon（exe 图标提取）、
+│   │                              #   steam（Steam 第三方游戏注入与管理员快捷方式）
 │   ├── capabilities/  tauri.conf.json  Cargo.toml
 │   └── gen/                       # Tauri 自动生成（勿手改）
 ├── dist/  target/  node_modules/  # 构建产物与依赖（勿读）
@@ -81,7 +84,7 @@ EndProtocol/
 ## 4. 项目运行流程
 
 1. **启动阶段**：
-   - `src-tauri/src/main.rs` 启动 Tauri 应用；`lib.rs` 先处理游戏提权 helper 与单实例转发，再按参数分流。普通模式创建主窗口和托盘面板并初始化完整服务；`--silent` 模式只初始化 LocalAppData 配置、单实例、无菜单托盘和游戏启动链，不创建 WebView。
+   - `src-tauri/src/main.rs` 启动 Tauri 应用；`lib.rs` 先处理游戏提权 helper，再按参数分流。普通模式创建主窗口和托盘面板并初始化完整服务，且注册单实例插件（同时只允许一个主实例）；`--silent --launch-game` 创建不可见驻守实例（只初始化 LocalAppData 配置和游戏启动链，不创建 WebView/托盘、不计时、不注册单实例插件，可与主实例及多个驻守实例并存）；仅 `--silent` 直接退出，不做任何事。
    - 前端 `src/main.tsx` 挂载 React、初始化 i18n、主题、日志与托盘事件监听。
 2. **前端加载**：
    - `src/App.tsx` 挂载路由，根据用户登录状态跳转至仪表板或账户页。
@@ -102,7 +105,7 @@ EndProtocol/
 - **系统资源卡片**：`system-resource/index.tsx` 按 `refreshMs` 轮询 `get_system_snapshot`（`SystemResourceService`，`spawn_blocking` + `sysinfo`/`nvidia-smi`），按 `layout` 渲染单指标或卡片组；默认值存 `system_resource_defaults`。
 - **To-Do**：`todoStore.ts` 是全应用唯一数据源（持久化 `todo_lists`），卡片内联、`pages/todo.tsx` 页面与 `todo-modal.tsx` 弹窗三处共用 `TodoDetail`，经订阅 + `todoChanged` 事件实时同步。
 - **启动器**：`game-action-panel.tsx` → `launcherService.ts` → `commands/launcher.rs` → `GameLauncherService`（下载/校验/切服/进程），进度经事件推送。
-- **静默游戏启动**：`--silent --launch-game` 通过 `ConfigService` 中的 `launcher_install_path` / `launcher_channel` 调用既有 `launcher_start_game`；单实例收到普通启动请求时，静默进程等待旧进程退出后交接到完整模式。
+- **静默游戏启动**：`--silent --launch-game` 通过 `ConfigService` 中的 `launcher_install_path` / `launcher_channel` 调用既有 `launcher_start_game`，并驻留到游戏退出后结束；仅 `--launch-game` 以完整模式启动并一并启动游戏。
 
 ## 6. 本文件与其他文档的关系
 
@@ -114,3 +117,4 @@ EndProtocol/
 | 理解 IPC 与数据流 | [api_communication.md](api_communication.md) |
 | 新增卡片 | [card_development.md](card_development.md) |
 | 卡片配置存储 | [card_configuration.md](card_configuration.md) |
+

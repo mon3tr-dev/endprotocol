@@ -45,7 +45,7 @@
 | `capture_screen` | commands/color_picker.rs:36 | `window: WebviewWindow` | `Result<ScreenCapture, String>` | Windows：`window` 控制 + GDI 截屏；非 Windows：返回仅支持 Windows 的错误 |
 | `finish_screen_pick` | commands/color_picker.rs:56 | `window: WebviewWindow` | `()`（无返回） | Windows：退出全屏并聚焦；非 Windows：空实现 |
 | `get_config` | commands/config.rs:9 | `state: State<Arc<Mutex<ConfigService>>>`、`key: String` | `Option<Value>` | `ConfigService::get` |
-| `get_game_launch_command` | commands/startup.rs:57 | `config_service: State<Arc<Mutex<ConfigService>>>` | `Result<String, String>` | 校验/更新 `main_exe_path` 并返回含 `--silent --launch-game` 的带引号命令 |
+| `get_game_launch_command` | commands/startup.rs:185 | `config_service: State<Arc<Mutex<ConfigService>>>` | `Result<String, String>` | 校验/更新 `main_exe_path` 并返回含 `--silent --launch-game` 的带引号命令 |
 | `set_config` | commands/config.rs:16 | `state`、`key: String`、`value: Value` | `Result<(), String>` | `ConfigService::set` |
 | `remove_config` | commands/config.rs:27 | `state`、`key: String` | `bool` | `ConfigService::remove` |
 | `get_all_configs` | commands/config.rs:34 | `state` | `HashMap<String, Value>` | `ConfigService::get_all` |
@@ -80,13 +80,13 @@
 | `launcher_get_announcements` | commands/launcher.rs:318 | `service`、`channel` | `Result<Vec<AnnouncementItem>, String>` | `GameLauncherService::get_announcements` |
 | `launcher_get_notice_content` | commands/launcher.rs:329 | `service`、`channel` | `Result<LauncherNoticeContent, String>` | `GameLauncherService::get_notice_content`（Banner + 公告合并内容） |
 | `launcher_get_background_image` | commands/launcher.rs:340 | `service`、`channel` | `Result<Option<BackgroundMedia>, String>` | `GameLauncherService::get_background_image` |
-| `launcher_start_game` | commands/launcher.rs:402 | `config_service: State<Arc<StdMutex<ConfigService>>>`、`install_path: String`、`channel: String`、`dx11: Option<bool>`（省略时读配置 `launcher_dx11`，默认 false） | `Result<LauncherResult, String>` | `parse_channel`、`taskkill /F /IM`、`official_launcher::launch_via_official_parent`（提权 helper 伪造官方父进程）/ 回退 `direct_launch` → `shell_execute_game`；DX11 开启时给游戏参数追加 `-force-d3d11` |
+| `launcher_start_game` | commands/launcher.rs:443 | `config_service: State<Arc<StdMutex<ConfigService>>>`、`install_path: String`、`channel: String`、`dx11: Option<bool>`（省略时读配置 `launcher_dx11`，默认 false） | `Result<LauncherResult, String>` | `parse_channel`、`taskkill /F /IM`、`official_launcher::launch_via_official_parent`（已提权时本进程直接伪造官方父进程；否则提权 helper）/ 回退 `direct_launch` → `shell_execute_game`；DX11 开启时给游戏参数追加 `-force-d3d11`；Steam 启动且应用未提权时在 `warning` 返回 `overlay_unavailable` |
 | `launcher_browse_folder` | commands/launcher.rs:523 | 无 | `Result<Option<String>, String>` | `rfd::FileDialog::pick_folder` |
 | `launcher_get_disk_space` | commands/launcher.rs:540 | `path: String` | `Result<DiskSpace, String>` | 调用 `powershell Get-PSDrive` 子进程解析 used/free |
 | `launcher_scan_install_dir` | commands/launcher.rs:599 | `service`、`channel`、`install_path` | `Result<FileScanResult, String>` | `GameLauncherService::scan_install_dir` |
 | `launcher_detect_channel` | commands/launcher.rs:611 | `install_path: String` | `Result<Option<String>, String>` | 纯本地特征文件探测（hgsdk.dll / PCGameSDK.dll / gfsdk.dll 等） |
 | `launcher_check_executable` | commands/launcher.rs:662 | `install_path: String`、`channel: String` | `Result<bool, String>` | `parse_channel` + `GameChannel::executable_name` + `Path::exists` |
-| `launcher_check_game_running` | commands/launcher.rs:670 | `channel: String` | `Result<bool, String>` | `parse_channel` + `utils::process::is_process_running`（`tasklist`）；游戏面板每 3 秒轮询 |
+| `launcher_check_game_running` | commands/launcher.rs:670 | `channel: String` | `Result<bool, String>` | `parse_channel` + `utils::process::is_process_running`（同名进程需有顶层窗口或在 90 秒启动宽限内，排除无窗口挂起残留）；游戏面板每 3 秒轮询 |
 | `launcher_get_game_playtime` | commands/launcher.rs:677 | 无 | `GamePlaytime`（同步返回） | `utils::game_playtime::snapshot`（累计总时长 + 实时会话 + 运行态） |
 | `launcher_kill_game` | commands/launcher.rs:682 | `channel: String` | `Result<bool, String>` | 隐藏控制台执行 `taskkill /T /F /IM`（两次）→ `wmic process … terminate` 兜底 |
 | `launcher_switch_channel` | commands/launcher.rs:731 | `service`、`from_channel`、`to_channel`、`install_path`、`app: AppHandle` | `Result<String, String>` | `GameLauncherService::switch_channel` |
@@ -98,8 +98,12 @@
 | `get_api_health` | commands/diagnostics.rs:37 | 无 | `ApiHealthSnapshot` | `utils::api_health::snapshot` |
 | `reset_api_health` | commands/diagnostics.rs:43 | 无 | `()` | `utils::api_health::reset` |
 | `get_tray_user_info` | commands/tray.rs:8 | `config_service: State<Arc<Mutex<ConfigService>>>` | `Result<TrayUserInfo, String>` | `ConfigService::get::<TrayUserInfo>("tray_user_info")` |
-| `create_game_shortcut` | commands/startup.rs:78 | `config_service: State<Arc<Mutex<ConfigService>>>`、`close_after_launch: Option<bool>`（前端传 `closeAfterLaunch`，缺省 false）、`dx11: Option<bool>`（缺省读配置 `launcher_dx11`） | `Result<Option<String>, String>` | 用户通过 `rfd` 选择 `.lnk` 路径；PowerShell COM 创建快捷方式，启动参数按开关包含 `--dx11`，返回路径；取消选择返回 `None` |
-| `create_launch_bat` | commands/startup.rs:217 | `config_service: State<Arc<Mutex<ConfigService>>>`、`close_after_launch: Option<bool>`、`dx11: Option<bool>`（缺省读配置 `launcher_dx11`） | `Result<Option<String>, String>` | 用户通过 `rfd` 选择 `.bat` 保存路径；写入 `@echo off` + `chcp 65001>nul` + `start "" <exe> <args>`（参数含可选 `--dx11`，UTF-8 无 BOM，保证中文路径在 cmd 下可解析），返回路径；取消选择返回 `None`；非 Windows 返回 `Err` |
+| `steam_shortcut_defaults` | commands/startup.rs:194 | `config_service: State<Arc<Mutex<ConfigService>>>` | `Result<SteamShortcutDefaults, String>` | Steam 弹窗默认值：名字、从 `Endfield.exe` 提取的 `.ico`、DX11、上次勾选的两项 Overlay 选项、开始菜单 Steam 快捷方式数量、当前是否已提权 |
+| `pick_steam_icon` | commands/startup.rs:243 | 无 | `Result<Option<String>, String>` | `rfd` 选择 `ico`/`png`/`exe`，取消返回 `None` |
+| `pick_steam_icon_source` | commands/startup.rs:253 | 无 | `Result<Option<String>, String>` | `rfd` 选择用于提取图标的 exe，取消返回 `None` |
+| `extract_steam_icon` | commands/startup.rs:265 | `exe_path: String` | `Result<String, String>` | `utils::game_icon::extract_icon` 重新组装 `RT_GROUP_ICON` 为 `.ico`，写出到应用数据目录并返回路径 |
+| `create_game_shortcut` | commands/startup.rs:272 | `config_service: State<Arc<Mutex<ConfigService>>>`、`dx11: Option<bool>`（缺省读配置 `launcher_dx11`） | `Result<Option<String>, String>` | 用户通过 `rfd` 选择 `.lnk` 路径；PowerShell COM 创建快捷方式，启动参数按开关包含 `--dx11`，返回路径；取消选择返回 `None` |
+| `add_steam_shortcut` | commands/startup.rs:345 | `config_service: State<Arc<Mutex<ConfigService>>>`、`options: SteamShortcutOptions`（`name`、`icon_path`、`dx11`、`create_admin_shortcut`、`elevate_start_menu`） | `Result<AddSteamShortcutResult, String>` | 允许 Steam 运行中写入：`utils::steam::add_shortcut` 按名字 upsert 当前账户 `userdata/<id>/config/shortcuts.vdf`；按勾选创建管理员 Steam 快捷方式（用户选路径）并提升开始菜单 Steam 快捷方式；返回 vdf 路径与新建/提升结果；非 Windows 返回 `Err` |
 | `set_tray_user` | commands/tray.rs:17 | `app: AppHandle`、`config_service`、`role_id: String` | `Result<(), String>` | `ConfigService::set("tray_user_info", …)`、`tray::update_tray_menu` |
 | `update_tray_user_data` | commands/tray.rs:38 | `app`、`config_service`、`user_info: TrayUserInfo` | `Result<(), String>` | `ConfigService::set("tray_user_info", …)`、`tray::update_tray_menu` |
 | `show_tray_panel` | commands/tray.rs:56 | `app: AppHandle` | `Result<(), String>` | `tray::show_tray_panel` |
@@ -127,21 +131,33 @@
 **职责**：纯模块声明文件，导出 `account`、`attendance`、`capture`、`card_config`、`color_picker`、`config`、`gacha`、`image`、`launcher`、`logs`、`startup`、`system_resource`、`tray`、`updater`、`window` 共 15 个子模块。无命令定义，无逻辑。
 
 ## `src-tauri/src/commands/startup.rs`
-**职责**：静默游戏启动命令的配置、命令行文本与 Windows `.lnk` / `.bat` 导出入口（不在磁盘上生成图标文件）。
-**导出**：`refresh_main_exe_path`（启动初始化辅助函数）、Tauri 命令 `get_game_launch_command`、`create_game_shortcut`、`create_launch_bat`。
-**主要依赖**：`ConfigService`、`rfd::FileDialog`、Windows PowerShell `WScript.Shell` COM。
+**职责**：静默游戏启动命令的配置、命令行文本、Windows `.lnk` 快捷方式，以及 Steam 第三方游戏条目的参数弹窗支撑（默认值、图标提取、写入）。Steam 条目允许在 Steam 运行时写入（写完需重启 Steam 才可见）。
+**导出**：`refresh_main_exe_path`（启动初始化辅助函数）、`SteamShortcutOptions`、`SteamShortcutDefaults`、`AddSteamShortcutResult`、Tauri 命令 `get_game_launch_command`、`steam_shortcut_defaults`、`pick_steam_icon`、`pick_steam_icon_source`、`extract_steam_icon`、`create_game_shortcut`、`add_steam_shortcut`。
+**主要依赖**：`ConfigService`、`rfd::FileDialog`、Windows PowerShell `WScript.Shell` COM、`utils::steam`、`utils::game_icon`、`utils::official_launcher`（`process_is_elevated`）。
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
-| `normalize_path` | startup.rs:13 | 剥除 `canonicalize()` 返回的 `\\?\` / `\\?\UNC\` 扩展长度前缀，避开 UNC 的还原为 `\\`，保证命令行与快捷方式目标路径干净 |
-| `ensure_main_exe_path` | startup.rs:25 | 规范化当前 exe 路径；当配置缺失、无效或已变化时更新 `main_exe_path` |
-| `refresh_main_exe_path` | startup.rs:58 | 应用初始化时同步 exe 路径 |
-| `launch_args`（`pub(crate)`） | startup.rs:15 | 组合 `--silent --launch-game`，按需追加 `--dx11`；是否追加 `--close-after-launch` 由入参控制（常量在 lib.rs:23-26）；`get_game_launch_command` 只返回基础参数，追加由前端完成 |
-| `get_game_launch_command` | startup.rs:70 | 返回带引号的当前 exe 路径及 `--silent --launch-game` |
-| `create_game_shortcut` | startup.rs:78 | 读取 `launcher_install_path` / `launcher_channel` / `launcher_dx11`，用户选择保存路径后创建 Windows `.lnk`；取消选择返回 `None` |
-| `powershell_literal`（私有，仅 Windows） | startup.rs:202 | 单引号转义（`'` → `''`），用于嵌入脚本路径串 |
+| `SteamShortcutOptions`（`Serialize`/`Deserialize`） | startup.rs:36 | 弹窗提交值：`name`、`icon_path: Option<String>`、`dx11: Option<bool>`、`create_admin_shortcut`、`elevate_start_menu`（后两项 `#[serde(default)]`） |
+| `SteamShortcutDefaults`（`Serialize`） | startup.rs:53 | `steam_shortcut_defaults` 的返回：`name`、`icon_path`、`icon_extracted`、`game_exe_found`、`dx11`、`create_admin_shortcut`、`elevate_start_menu`、`start_menu_shortcut_count`、`is_elevated` |
+| `AddSteamShortcutResult`（`Serialize`） | startup.rs:73 | `add_steam_shortcut` 的返回：`shortcuts_path`、`admin_shortcut: Option<String>`、`elevated_start_menu: Vec<String>` |
+| `normalize_path` | startup.rs:82 | 剥除 `canonicalize()` 返回的 `\\?\` / `\\?\UNC\` 扩展长度前缀，避开 UNC 的还原为 `\\` |
+| `ensure_main_exe_path` | startup.rs:94 | 规范化当前 exe 路径；当配置缺失、无效或已变化时更新 `main_exe_path` |
+| `refresh_main_exe_path` | startup.rs:119 | 应用初始化时同步 exe 路径 |
+| `launch_args`（`pub(crate)`） | startup.rs:26 | 组合 `--silent --launch-game`，按需追加 `--dx11`；不再支持 `--close-after-launch` |
+| `resolve_install` | startup.rs:124 | 读取并校验 `launcher_install_path` / `launcher_channel`，返回游戏 `Endfield.exe` 路径 |
+| `steam_icon_path` | startup.rs:158 | 图标缓存路径 `%LOCALAPPDATA%\\cn.msk-network.endprotocol\\steam\\endfield.ico` |
+| `default_icon` | startup.rs:165 | 从游戏 exe 提取 `.ico`，返回 `(路径, 是否提取成功, 游戏是否存在)`；提取失败回退为 exe 自身路径 |
+| `get_game_launch_command` | startup.rs:186 | 返回带引号的当前 exe 路径及 `--silent --launch-game` |
+| `steam_shortcut_defaults` | startup.rs:195 | 弹窗默认值：名字缺省「明日方舟：终末地」、图标优先沿用上次保存的自定义图标否则重新提取、DX11 与应用设置同源、两项 Overlay 选项取上次保存值；附带开始菜单 Steam 快捷方式数量与当前进程是否已提权 |
+| `pick_steam_icon` | startup.rs:244 | `rfd` 选择图标文件（`ico`/`png`/`exe`），取消返回 `None` |
+| `pick_steam_icon_source` | startup.rs:254 | `rfd` 选择用于提取图标的 exe，取消返回 `None` |
+| `extract_steam_icon` | startup.rs:266 | 对指定 exe 调用 `utils::game_icon::extract_icon`，返回生成的 `.ico` 路径 |
+| `create_game_shortcut` | startup.rs:273 | 读取 `dx11`（缺省读 `launcher_dx11`），用户选择保存路径后创建 Windows `.lnk`；exe 缺失时不设置图标；取消返回 `None` |
+| `add_steam_shortcut`（async） | startup.rs:346 | 校验名字非空 → `utils::steam::add_shortcut` 写 `shortcuts.vdf`（同名条目更新）→ 回写 `steam_shortcut_name` / `steam_shortcut_icon` / 两个 Overlay 选项 → 按勾选创建管理员 Steam 快捷方式（`rfd` 选保存路径，取消即报错）与提升开始菜单 Steam 快捷方式 |
+| `powershell_literal`（私有，仅 Windows） | startup.rs:469 | 单引号转义（`'` → `''`），用于嵌入脚本路径串 |
+| `run_powershell`（私有，仅 Windows） | startup.rs:474 | `-EncodedCommand` 执行脚本并收集 stderr/stdout 作为错误详情 |
 
-**备注**：配置文件仍为 `%LOCALAPPDATA%\\cn.msk-network.endprotocol\\app_config.json`；键为 `main_exe_path`、`launcher_install_path`、`launcher_channel`、`launcher_dx11`。`main_exe_path` 不含 `\\?\` 前缀。快捷方式目标为主程序 exe，工作目录为 exe 所在目录；`Endfield.exe` 存在时其内嵌图标直接通过 `$shortcut.IconLocation = '<Endfield.exe>,0'` 引用（`executable_name()` 与渠道无关），不再提取/落盘 `.ico`；exe 缺失则不设置图标。
+**备注**：配置文件仍为 `%LOCALAPPDATA%\\cn.msk-network.endprotocol\\app_config.json`；键为 `main_exe_path`、`launcher_install_path`、`launcher_channel`、`launcher_dx11`，以及 Steam 弹窗记忆键 `steam_shortcut_name`、`steam_shortcut_icon`、`steam_create_admin_shortcut`、`steam_elevate_start_menu`。`main_exe_path` 不含 `\\?\` 前缀。`.lnk` 快捷方式目标为主程序 exe，工作目录为 exe 所在目录；`Endfield.exe` 存在时其内嵌图标直接通过 `$shortcut.IconLocation = '<Endfield.exe>,0'` 引用；exe 缺失则不设置图标。Steam 条目的 `Exe` 为主程序 exe、`LaunchOptions` 为静默启动参数，`icon` 为提取出的 `.ico`。**不再检查 `steam.exe` 是否正在运行**——改为成功提示里告知用户需重启 Steam。
 
 ---
 
@@ -577,11 +593,11 @@
 - 位置：launcher.rs:340（async）；参数：`service`、`channel`；返回：`Result<Option<BackgroundMedia>, String>`；逻辑：`GameLauncherService::get_background_image(&ch)`。
 
 ### `launcher_start_game`
-- 位置：launcher.rs:402（async）
+- 位置：launcher.rs:443（async）
 - 参数：`config_service: State<Arc<StdMutex<ConfigService>>>`、`install_path: String`、`channel: String`、`dx11: Option<bool>`（为 `None` 时读取配置 `launcher_dx11`，缺省 false）
 - 返回：`Result<LauncherResult, String>`
-- 逻辑：用 `ch.executable_name()` 拼 exe 路径，不存在直接返回 `success:false`；启用 DX11 时构造游戏参数 `vec!["-force-d3d11"]`；先 `taskkill /F /IM <exe>` 杀残留进程并 `sleep(500ms)`；随后（Windows）在 `spawn_blocking` 中调用 `official_launcher::launch_via_official_parent` —— **游戏会校验自己的直接父进程必须是签名有效的官方 `Games.exe`**，该函数先查找 + 验签官方启动器（失败即 `no_launcher`），再用 `ShellExecuteExW("runas")` 以 `--endfield-launch-helper` 提权重启自身，由提权实例创建「挂起且永不运行的官方启动器 + 以其为父进程的游戏进程」；命令侧用 2.5s 宽限期 + 状态文件判断 helper 是启动阶段失败还是游戏已创建。找不到签名有效的官方启动器时回退 `direct_launch`（`ShellExecuteW(SW_SHOWNORMAL)` + 游戏参数，即旧行为）并把原因放进 `LauncherResult.warning`。非 Windows 走 `Command::spawn` 并传入 `game_arguments`。实际实现在 `launch_game`（launcher.rs:418），供静默启动直接调用。
-- 并发保护：`static LAUNCH_IN_FLIGHT`（launcher.rs:356）保证同一时刻只有一次启动，避免重复点击弹出两次 UAC / 留下两套挂起的父进程。
+- 逻辑：用 `ch.executable_name()` 拼 exe 路径，不存在直接返回 `success:false`；启用 DX11 时构造游戏参数 `vec!["-force-d3d11"]`；先 `taskkill /F /IM <exe>` 杀残留进程并 `sleep(500ms)`；随后（Windows）在 `spawn_blocking` 中调用 `official_launcher::launch_via_official_parent` —— **游戏会校验自己的直接父进程必须是签名有效的官方 `Games.exe`**，该函数先查找 + 验签官方启动器（失败即 `no_launcher`），然后分两条路径：应用**已提权**时由当前进程直接创建「挂起且永不运行的官方启动器 + 以其为父进程的游戏进程」（保留 Steam overlay 的 `CreateProcess` 注入链）；**未提权**时用 `ShellExecuteExW("runas")` 以 `--endfield-launch-helper` 提权重启自身完成创建，命令侧用 2.5s 宽限期 + 状态文件判断 helper 是启动阶段失败还是游戏已创建。找不到签名有效的官方启动器时回退 `direct_launch`（`ShellExecuteW(SW_SHOWNORMAL)` + 游戏参数，即旧行为）并把原因放进 `LauncherResult.warning`。若当前进程由 Steam 拉起（`SteamClientLaunch` / `SteamAppId` / `SteamGameId` / `SteamOverlayGameId` 之一存在）且未提权，额外在 `warning` 返回 `overlay_unavailable`。非 Windows 走 `Command::spawn` 并传入 `game_arguments`。实际实现在 `launch_game`（launcher.rs:459），供静默启动直接调用。启动前先以应用权限执行 `taskkill /F /IM <exe>`；应用未提权时该命令无法结束上一局由提权进程创建的残留，提权 helper 在创建新游戏前会再执行 `taskkill /F /T /IM <exe>` 清理。
+- 并发保护：`static LAUNCH_IN_FLIGHT`（launcher.rs:405）保证同一时刻只有一次启动，避免重复点击弹出两次 UAC / 留下两套挂起的父进程。
 
 #### `launcher_start_game` 的 `message` / `warning` token 契约
 
@@ -595,6 +611,7 @@
 | `create` | 创建启动器父进程 / 游戏进程失败 | helper 退出码 2 / 4 |
 | `wait_failed` | 等待游戏退出失败 | helper 退出码 8 |
 | `fallback` | 已回退到直接启动（`warning` 字段专用，不是失败） | `no_launcher` 回退成功后 |
+| `overlay_unavailable` | Steam 未提权，Overlay 无法注入到管理员游戏（`warning` 字段专用，不是失败） | Steam 启动上下文 + 当前进程未提权 |
 | `unknown` | 其它（含 helper 提前退出的未知码、启动中重复点击） | 兜底 |
 
 ### `launcher_browse_folder`
@@ -616,7 +633,7 @@
 - 位置：launcher.rs:662（同步）；参数：`install_path: String`、`channel: String`；返回：`Result<bool, String>`；逻辑：`parse_channel` → `Path::exists` 判断渠道对应 exe 是否存在。
 
 ### `launcher_check_game_running`
-- 位置：launcher.rs:670（异步）；参数：`channel: String`；返回：`Result<bool, String>`；逻辑：`parse_channel` → `utils::process::is_process_running(ch.process_name())`（隐藏控制台执行 `tasklist /FI "IMAGENAME eq <process>" /NH`，stdout 含进程名即视为运行中）。前端游戏面板每 3 秒调用，避免同步子进程阻塞 Tauri 主线程。
+- 位置：launcher.rs:670（异步）；参数：`channel: String`；返回：`Result<bool, String>`；逻辑：`parse_channel` → `utils::process::is_process_running(ch.process_name())`（`tasklist` CSV 取得同名 PID，任一 PID 拥有顶层窗口或在 90 秒启动宽限内才视为运行中；无窗口的崩溃/挂起残留返回 false）。前端游戏面板每 3 秒调用，避免同步子进程阻塞 Tauri 主线程。
 
 ### `launcher_get_game_playtime`
 - 位置：launcher.rs:677（同步）；参数：无；返回：`GamePlaytime`（`{ total_seconds, session_seconds, running }`）；逻辑：`utils::game_playtime::snapshot()`，返回累计总时长（不含当前会话）+ 当前会话时长 + 运行态。由后台探测任务 `utils::game_playtime` 维护，仅在 EndProtocol 运行期间统计。
@@ -801,3 +818,4 @@
 - 事件 emit：`launcher-progress`（launcher.rs）、`download-progress`（updater.rs）。
 - 关键配置键：`account_token_*`（含 `cred`/`token`/`u8token`/`roles[]`）、`selected_account_id`、`card_settings.{card_id}`、`tray_user_info`，以及前端侧的 `system_resource_defaults` / `todo_lists` / `todo_defaults`（经 config 命令读写）；相关本地文件：`gacha_avatar_map.json`、`total.json`、`backgrounds/bg.webp`。
 - 主要状态（managed state）：`Arc<std::sync::Mutex<ConfigService>>`（config/tray 直接用）、`Arc<tokio::sync::Mutex<AccountService>>`（account/attendance/card_config/gacha）、`Arc<GachaService>`、`Arc<Mutex<GameLauncherService>>`、`Arc<std::sync::Mutex<SystemResourceService>>`（见 `lib.rs` 的 `setup`）。
+

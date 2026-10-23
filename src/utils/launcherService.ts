@@ -64,7 +64,14 @@ export const LAUNCH_TOKEN_KEYS: Record<string, string> = {
   create: "launcher.launch_err_create",
   wait_failed: "launcher.launch_err_wait",
   fallback: "launcher.launch_fallback_body",
+  overlay_unavailable: "launcher.launch_overlay_unavailable",
   unknown: "launcher.launch_err_unknown",
+};
+
+/** 非致命提示的标题文案：按 token 区分，缺省沿用「已直接启动」。 */
+export const LAUNCH_WARNING_TITLE_KEYS: Record<string, string> = {
+  fallback: "launcher.launch_fallback_title",
+  overlay_unavailable: "launcher.launch_overlay_title",
 };
 
 export function splitLaunchToken(message: string): {
@@ -338,7 +345,6 @@ export async function getGameLaunchCommand(): Promise<string> {
 }
 
 export interface LaunchExportOptions {
-  closeAfterLaunch?: boolean;
   dx11?: boolean;
 }
 
@@ -346,17 +352,65 @@ export async function createGameShortcut(
   options?: LaunchExportOptions,
 ): Promise<string | null> {
   return invoke<string | null>("create_game_shortcut", {
-    closeAfterLaunch: options?.closeAfterLaunch ?? false,
     dx11: options?.dx11,
   });
 }
 
-export async function createLaunchBat(
-  options?: LaunchExportOptions,
-): Promise<string | null> {
-  return invoke<string | null>("create_launch_bat", {
-    closeAfterLaunch: options?.closeAfterLaunch ?? false,
-    dx11: options?.dx11,
+/** Steam 第三方游戏条目的可编辑参数（对应后端 `SteamShortcutOptions`）。 */
+export interface SteamShortcutOptions extends LaunchExportOptions {
+  name: string;
+  iconPath: string | null;
+  createAdminShortcut: boolean;
+  elevateStartMenu: boolean;
+}
+
+/** Steam 弹窗默认值（对应后端 `SteamShortcutDefaults`）。 */
+export interface SteamShortcutDefaults {
+  name: string;
+  icon_path: string;
+  icon_extracted: boolean;
+  game_exe_found: boolean;
+  dx11: boolean;
+  create_admin_shortcut: boolean;
+  elevate_start_menu: boolean;
+  start_menu_shortcut_count: number;
+  is_elevated: boolean;
+}
+
+/** `add_steam_shortcut` 的返回值（对应后端 `AddSteamShortcutResult`）。 */
+export interface AddSteamShortcutResult {
+  shortcuts_path: string;
+  admin_shortcut: string | null;
+  elevated_start_menu: string[];
+}
+
+export async function getSteamShortcutDefaults(): Promise<SteamShortcutDefaults> {
+  return invoke<SteamShortcutDefaults>("steam_shortcut_defaults");
+}
+
+export async function pickSteamIcon(): Promise<string | null> {
+  return invoke<string | null>("pick_steam_icon");
+}
+
+export async function pickSteamIconSource(): Promise<string | null> {
+  return invoke<string | null>("pick_steam_icon_source");
+}
+
+export async function extractSteamIcon(exePath: string): Promise<string> {
+  return invoke<string>("extract_steam_icon", { exePath });
+}
+
+export async function addSteamShortcut(
+  options: SteamShortcutOptions,
+): Promise<AddSteamShortcutResult> {
+  return invoke<AddSteamShortcutResult>("add_steam_shortcut", {
+    options: {
+      name: options.name,
+      icon_path: options.iconPath,
+      dx11: options.dx11,
+      create_admin_shortcut: options.createAdminShortcut,
+      elevate_start_menu: options.elevateStartMenu,
+    },
   });
 }
 
