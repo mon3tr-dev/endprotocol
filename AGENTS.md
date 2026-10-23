@@ -7,7 +7,15 @@ Guidance for AI agents working in this repository.
 
 ---
 
-## 1. Use the indexes first — do not browse the tree
+## 1. 文档分工
+
+- **[README.md](../README.md)** — **面向用户的宣传文档**：产品介绍、功能特性、下载、快速上手。不包含技术实现细节。
+- **[docs/README.md](docs/README.md)** — **面向开发者的文档总入口**：快速定位表、文档索引、维护规范。查找代码位置优先读这里。
+- **[docs/reference/](docs/reference/)** — 逐文件功能参考（含符号行号、调用链）。
+
+---
+
+## 2. Use the indexes first — do not browse the tree
 
 Entry point: **[docs/README.md](docs/README.md)** — quick lookup table ("I want to find X → which file"), doc inventory, maintenance rules.
 
@@ -31,7 +39,7 @@ Do **not** start by listing directories or reading source files. Look up the tar
 2. you are about to change behaviour — read the whole file (and its reference section) first;
 3. you need exact current signatures/types for a call.
 
-## 2. Before writing code
+## 3. Before writing code
 
 - Read the relevant guide: `docs/frontend_development.md`, `docs/backend_development.md`, `docs/api_communication.md`, `docs/card_development.md`, `docs/card_configuration.md`.
 - Conventions that are enforced by review:
@@ -44,7 +52,7 @@ Do **not** start by listing directories or reading source files. Look up the tar
   - State/config: `ConfigService` on the backend (`app_config.json`, dotted keys) — no ad-hoc file writes.
 - Never read or modify: `dist/`, `target/`, `node_modules/`, `src-tauri/gen/` (generated).
 
-## 3. Verify
+## 4. Verify
 
 No lint or test scripts are configured in this repo. Use:
 
@@ -54,7 +62,7 @@ npm run dev        # vite dev server
 cargo check        # run inside src-tauri/ (existing warnings are expected)
 ```
 
-## 4. Keep the indexes updated (required before you finish)
+## 5. Keep the indexes updated (required before you finish)
 
 Documentation that is not updated becomes a trap for the next agent. If your change adds, removes or renames **any** of: files, exported symbols/components/methods, Tauri commands, config keys, events, card directories — update in the **same change**:
 
@@ -63,16 +71,19 @@ Documentation that is not updated becomes a trap for the next agent. If your cha
 3. **New page/component/service/card** → add a section to the matching `docs/reference/{frontend,backend}/*.md`.
 4. **New card** → also follow `docs/card_development.md` and record it in the relevant `cards_*.md`.
 5. **Changed entry point / directory layout / feature map** → update `docs/README.md` (quick lookup table) and `docs/project_structure.md`.
+6. **README.md** is a marketing document — do not add technical implementation details to it; move them to `docs/` instead.
 
 If a doc contradicts the code, **the code wins** — fix the doc and say so in your summary.
 
 Definition of done: code changed + verified + indexes updated, all in one commit-ready state.
 
-## 5. Docs map
+## 6. Docs map
 
 ```
 docs/
 ├── README.md                 # entry point: quick lookup table, doc inventory, maintenance rules
+├── user_guide.md             # user-facing usage guide
+├── development.md            # developer setup, build, CI/CD, commit rules
 ├── project_structure.md      # directory layout, runtime flow
 ├── frontend_development.md   # frontend conventions & extension points
 ├── backend_development.md    # Rust layering, conventions, crypto/signing
@@ -85,7 +96,7 @@ docs/
     └── backend/   (8 docs)
 ```
 
-## 6. Commit rules
+## 7. Commit rules
 
 Every commit message must follow [Conventional Commits](https://www.conventionalcommits.org/) and **carry a prefix**:
 
@@ -103,7 +114,7 @@ Every commit message must follow [Conventional Commits](https://www.conventional
 
 **Splitting is allowed (and preferred over mega-commits).** Keep one coherent change per commit:
 
-- code + its required doc-index updates (§4) → one commit;
+- code + its required doc-index updates (§5) → one commit;
 - unrelated work in the same working tree (e.g. repo meta docs, tooling, formatting) → separate commit with its own prefix.
 
-Before committing, run the verification in §3 (`npm run build`, `cargo check`) and make sure the indexes in §4 are updated. Never commit without a prefix, and never mix an unrelated feature into an existing commit unless explicitly asked to amend.
+Before committing, run the verification in §4 (`npm run build`, `cargo check`) and make sure the indexes in §5 are updated. Never commit without a prefix, and never mix an unrelated feature into an existing commit unless explicitly asked to amend.

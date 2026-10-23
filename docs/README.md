@@ -32,8 +32,8 @@
 | 抽卡记录同步与统计 | `src/pages/gacha-records.tsx`、`services/gacha_service.rs` | [pages_game_data.md](reference/frontend/pages_game_data.md)、[services_others.md](reference/backend/services_others.md) |
 | 抽卡图表与逐池六星间隔统计 | `src/components/gacha-pity-chart.tsx`、`gacha-stat-charts.tsx`、`src/utils/gachaIntervals.ts` | [components_sidebar_charts.md](reference/frontend/components_sidebar_charts.md)、[utils_services_b.md](reference/frontend/utils_services_b.md) |
 | 启动器：下载/校验/切服/进程管理 | `src/components/game-action-panel.tsx`、`src/utils/launcherService.ts` | [components_game_action_panel.md](reference/frontend/components_game_action_panel.md)、[utils_services_a.md](reference/frontend/utils_services_a.md)、[services_launcher.md](reference/backend/services_launcher.md) |
-| 启动游戏 / 免启动器启动 / 为什么要 UAC | `src-tauri/src/commands/launcher.rs`（`launcher_start_game`）、`src-tauri/src/utils/official_launcher.rs` | [commands.md](reference/backend/commands.md)、[utils.md](reference/backend/utils.md) |
-| 静默启动、单实例转发、游戏快捷方式与命令行、DX11 启动（`--dx11` / `-force-d3d11`） | `src-tauri/src/lib.rs`、`src-tauri/src/commands/startup.rs`、`src/components/game-launch-settings.tsx` | [bootstrap.md](reference/backend/bootstrap.md)、[commands.md](reference/backend/commands.md)、[components_settings_panels.md](reference/frontend/components_settings_panels.md) |
+| 启动游戏 / 免启动器启动 / 为什么要 UAC / Steam Overlay 注入链 | `src-tauri/src/commands/launcher.rs`（`launcher_start_game`）、`src-tauri/src/utils/official_launcher.rs` | [commands.md](reference/backend/commands.md)、[utils.md](reference/backend/utils.md) |
+| 静默启动、单实例转发、游戏快捷方式与命令行、Steam 第三方游戏注入（名字/图标/DX11/Overlay 管理员快捷方式）、DX11 启动（`--dx11` / `-force-d3d11`） | `src-tauri/src/lib.rs`、`src-tauri/src/commands/startup.rs`、`src-tauri/src/utils/steam.rs`、`src-tauri/src/utils/game_icon.rs`、`src/components/game-launch-settings.tsx` | [bootstrap.md](reference/backend/bootstrap.md)、[commands.md](reference/backend/commands.md)、[utils.md](reference/backend/utils.md)、[components_settings_panels.md](reference/frontend/components_settings_panels.md) |
 | 应用自更新 | `src/utils/updateService.ts`、`commands/updater.rs` | [utils_services_b.md](reference/frontend/utils_services_b.md)、[commands.md](reference/backend/commands.md) |
 | 外观设置（主题/背景/取色） | `src/components/appearance-settings.tsx` | [components_settings_panels.md](reference/frontend/components_settings_panels.md) |
 | 设置页 / 开发者页 | `src/pages/settings.tsx`、`src/pages/developer.tsx` | [pages_settings_developer.md](reference/frontend/pages_settings_developer.md) |
@@ -48,7 +48,7 @@
 
 | 需求 | 位置 | 详细参考 |
 | --- | --- | --- |
-| **IPC 命令在哪定义 / 前端谁调用** | 生成的对照表 | [ipc_index.md](reference/ipc_index.md)（113 个命令全表） |
+| **IPC 命令在哪定义 / 前端谁调用** | 生成的对照表 | [ipc_index.md](reference/ipc_index.md)（117 个命令全表） |
 | 新增/修改一个 Tauri 命令 | `src-tauri/src/commands/`、`src-tauri/src/lib.rs` | [commands.md](reference/backend/commands.md)、[bootstrap.md](reference/backend/bootstrap.md)、[backend_development.md](backend_development.md) |
 | 错误类型与转换 | `src-tauri/src/utils/error.rs` | [utils.md](reference/backend/utils.md) |
 | 加密与签名（RSA/AES/DES/HMAC） | `src-tauri/src/utils/hg_crypto.rs`、`services/skland_service.rs` | [utils.md](reference/backend/utils.md)、[services_skland.md](reference/backend/services_skland.md) |
@@ -92,7 +92,7 @@
 | [reference/backend/services_skland.md](reference/backend/services_skland.md) | `services/skland_service.rs`：森空岛 API 端点总表、签名与加密流程 |
 | [reference/backend/services_launcher.md](reference/backend/services_launcher.md) | `services/game_launcher_service.rs`（约 2960 行）：下载/校验/切服/进度事件 |
 | [reference/backend/services_others.md](reference/backend/services_others.md) | `gacha_service`、`char_detail_service`、`char_wiki_detail_service`、`avatar_cache_service`、`config_service`、`data_query`、`network_service` |
-| [reference/backend/utils.md](reference/backend/utils.md) | `utils/`：错误类型、加密、HTTP、日志、路径、抓包、进程探测（`process`）、游戏时长统计（`game_playtime`）、崩溃捕获（`crash`）、API 熔断（`api_health`）、诊断导出（`diagnostics`） |
+| [reference/backend/utils.md](reference/backend/utils.md) | `utils/`：错误类型、加密、HTTP、日志、路径、抓包、进程探测（`process`）、游戏时长统计（`game_playtime`）、Steam 第三方游戏注入（`steam`）、exe 图标提取（`game_icon`）、崩溃捕获（`crash`）、API 熔断（`api_health`）、诊断导出（`diagnostics`） |
 | [reference/ipc_index.md](reference/ipc_index.md) | 命令名 ↔ 后端定义位置 ↔ 前端调用方（脚本生成的对照表） |
 
 ### 3.2 前端 `src/`
@@ -165,3 +165,4 @@ Get-ChildItem src -Recurse -Include *.ts,*.tsx -File | ForEach-Object { $rel=$_.
 ```
 
 注意：正则里的 `<[^()]*>` 用于兼容 `invoke<Record<string, any>>(...)` 这类嵌套泛型写法；不要用 `<[^>]*>`，会漏掉 `query_role_data` 等调用。
+
