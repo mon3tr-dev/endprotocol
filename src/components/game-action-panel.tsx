@@ -13,6 +13,7 @@ import {
   GlassModalCompound as GlassModal,
 } from "@/components/ui/modal";
 import { GlassButton } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   type GameChannel,
   type GameStatus,
@@ -59,6 +60,8 @@ import {
   readDownloadResume,
   readDownloadThreads,
   readDx11,
+  setDx11Setting,
+  GAME_LAUNCH_SYNC_EVENT,
 } from "@/components/game-launch-settings";
 import { SettingsDivider } from "@/components/ui/settings-row";
 
@@ -149,7 +152,8 @@ function ProgressFlyout({
       style={{
         left: pos.x,
         top: pos.y,
-        transform: pos.y < 200 ? "translate(-50%, 0)" : "translate(-50%, -100%)",
+        transform:
+          pos.y < 200 ? "translate(-50%, 0)" : "translate(-50%, -100%)",
         animation: "switch-flyin 0.15s ease-out",
       }}
     >
@@ -196,7 +200,10 @@ function DownloadProgressBody({
         </span>
       </div>
       {currentFile && (
-        <div className="mt-1.5 text-[10px] text-white/30 truncate" title={currentFile}>
+        <div
+          className="mt-1.5 text-[10px] text-white/30 truncate"
+          title={currentFile}
+        >
           {currentFile.split("/").pop()}
         </div>
       )}
@@ -301,15 +308,15 @@ export function GameActionPanel() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [quickLaunchOpen, setQuickLaunchOpen] = useState(false);
   const [gameRunning, setGameRunning] = useState(false);
+  const [dx11, setDx11] = useState(readDx11());
   const [playtime, setPlaytime] = useState<GamePlaytime | null>(null);
   const [playtimeTick, setPlaytimeTick] = useState(0);
   const [btnHovered, setBtnHovered] = useState(false);
   const [btnLabelKey, setBtnLabelKey] = useState(0);
   const prevBtnLabelRef = useRef<string>("");
   /** 预下载进行中的进度（仅驱动预下载按钮，不占用主按钮） */
-  const [preloadProgress, setPreloadProgress] = useState<DownloadProgress | null>(
-    null,
-  );
+  const [preloadProgress, setPreloadProgress] =
+    useState<DownloadProgress | null>(null);
   const [preloadHovered, setPreloadHovered] = useState(false);
   const [preloadFlyoutPos, setPreloadFlyoutPos] = useState<{
     x: number;
@@ -423,7 +430,10 @@ export function GameActionPanel() {
         setInstallPath(backendPath);
       }
       const backendChannel = localStorage.getItem(STORAGE_KEY_CHANNEL);
-      if (backendChannel && ALL_CHANNELS.includes(backendChannel as GameChannel)) {
+      if (
+        backendChannel &&
+        ALL_CHANNELS.includes(backendChannel as GameChannel)
+      ) {
         setChannel(backendChannel as GameChannel);
       }
     });
@@ -535,6 +545,13 @@ export function GameActionPanel() {
     const timer = setInterval(checkRunning, 3000);
     return () => clearInterval(timer);
   }, [checkRunning]);
+
+  // 与设置页的 DX11 开关保持同步（localStorage 变更会触发 GAME_LAUNCH_SYNC_EVENT）
+  useEffect(() => {
+    const sync = () => setDx11(readDx11());
+    window.addEventListener(GAME_LAUNCH_SYNC_EVENT, sync);
+    return () => window.removeEventListener(GAME_LAUNCH_SYNC_EVENT, sync);
+  }, []);
 
   // Poll accumulated playtime (tracked by the backend while EndProtocol runs)
   const refreshPlaytime = useCallback(async () => {
@@ -949,7 +966,8 @@ export function GameActionPanel() {
         addMessage({
           type: "warn",
           title: t(
-            LAUNCH_WARNING_TITLE_KEYS[token] ?? "launcher.launch_fallback_title",
+            LAUNCH_WARNING_TITLE_KEYS[token] ??
+              "launcher.launch_fallback_title",
           ),
           body: t(LAUNCH_TOKEN_KEYS[token] ?? "launcher.launch_fallback_body", {
             detail,
@@ -1212,8 +1230,7 @@ export function GameActionPanel() {
     let x = r.left + r.width / 2;
     let y = r.top - 8;
     if (x - fw / 2 < 8) x = fw / 2 + 8;
-    if (x + fw / 2 > window.innerWidth - 8)
-      x = window.innerWidth - fw / 2 - 8;
+    if (x + fw / 2 > window.innerWidth - 8) x = window.innerWidth - fw / 2 - 8;
     if (y - fh < 8) y = r.bottom + 8;
     setPreloadFlyoutPos({ x, y });
   }, []);
@@ -1228,13 +1245,20 @@ export function GameActionPanel() {
       addMessage({
         type: "urgent",
         title: t("launcher.stop_failed_title"),
-        body: t(KILL_TOKEN_KEYS[token] ?? "launcher.stop_err_unknown", { detail }),
+        body: t(KILL_TOKEN_KEYS[token] ?? "launcher.stop_err_unknown", {
+          detail,
+        }),
         tag: "stop-error",
       });
     }
     checkRunning();
     refreshPlaytime();
   }, [channel, checkRunning, refreshPlaytime, t]);
+
+  const handleToggleDx11 = useCallback((checked: boolean) => {
+    setDx11(checked);
+    setDx11Setting(checked);
+  }, []);
 
   const isInstalled = gameStatus?.is_installed ?? false;
   const hasUpdate = gameStatus?.has_update ?? false;
@@ -1246,7 +1270,9 @@ export function GameActionPanel() {
     preloadProgress && preloadProgress.total > 0
       ? Math.min(
           100,
-          Math.floor((preloadProgress.downloaded / preloadProgress.total) * 100),
+          Math.floor(
+            (preloadProgress.downloaded / preloadProgress.total) * 100,
+          ),
         )
       : 0;
   const downloadPercent =
@@ -1770,81 +1796,95 @@ export function GameActionPanel() {
           !preloadInstallable &&
           isInstalled &&
           !preloading && (
-          <div className={`${PILL_BASE} ${PILL_TEXT} gap-1.5 px-3 text-emerald-400/80`}>
-            <svg
-              className="w-4 h-4"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
+            <div
+              className={`${PILL_BASE} ${PILL_TEXT} gap-1.5 px-3 text-emerald-400/80`}
             >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M5 13l4 4L19 7"
-              />
-            </svg>
-            <span>{t("launcher.preloaded")}</span>
-          </div>
-        )}
+              <svg
+                className="w-4 h-4"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M5 13l4 4L19 7"
+                />
+              </svg>
+              <span>{t("launcher.preloaded")}</span>
+            </div>
+          )}
 
-        <button
-          ref={btnRef}
-          type="button"
-          onClick={handleButtonClick}
-          onMouseEnter={() => {
-            setBtnHovered(true);
-            if (btnRef.current) {
-              const r = btnRef.current.getBoundingClientRect();
-              const fw = 256;
-              const fh = 140;
-              let x = r.left + r.width / 2;
-              let y = r.top - 8;
-              if (x - fw / 2 < 8) x = fw / 2 + 8;
-              if (x + fw / 2 > window.innerWidth - 8)
-                x = window.innerWidth - fw / 2 - 8;
-              if (y - fh < 8) {
-                y = r.bottom + 8;
+        {/* 主操作按钮：DX11 勾选绝对定位悬浮在按钮下方，不参与操作行布局高度 */}
+        <div className="relative self-center">
+          <button
+            ref={btnRef}
+            type="button"
+            onClick={handleButtonClick}
+            onMouseEnter={() => {
+              setBtnHovered(true);
+              if (btnRef.current) {
+                const r = btnRef.current.getBoundingClientRect();
+                const fw = 256;
+                const fh = 140;
+                let x = r.left + r.width / 2;
+                let y = r.top - 8;
+                if (x - fw / 2 < 8) x = fw / 2 + 8;
+                if (x + fw / 2 > window.innerWidth - 8)
+                  x = window.innerWidth - fw / 2 - 8;
+                if (y - fh < 8) {
+                  y = r.bottom + 8;
+                }
+                setProgressFlyoutPos({ x, y });
               }
-              setProgressFlyoutPos({ x, y });
-            }
-          }}
-          onMouseLeave={() => {
-            setBtnHovered(false);
-            setProgressFlyoutPos(null);
-          }}
-          disabled={!statusReady || (preloading && hasUpdate)}
-          className={`${PILL_BASE} ${PILL_INTERACTIVE} relative min-w-[120px] px-5 gap-2.5 text-sm font-semibold text-white overflow-hidden active:scale-95 justify-center ${
-              gameRunning || switching
-                ? "!border-danger/60 !text-danger"
-                : ""
+            }}
+            onMouseLeave={() => {
+              setBtnHovered(false);
+              setProgressFlyoutPos(null);
+            }}
+            disabled={!statusReady || (preloading && hasUpdate)}
+            className={`${PILL_BASE} ${PILL_INTERACTIVE} relative min-w-[120px] px-5 gap-2.5 text-sm font-semibold text-white overflow-hidden active:scale-95 justify-center ${
+              gameRunning || switching ? "!border-danger/60 !text-danger" : ""
             }`}
-        >
-          {/* Cancellation / stop warning overlay */}
-          <div
-            className={`absolute inset-0 z-0 rounded-full bg-rose-400/20 transition-opacity duration-300 pointer-events-none ${
-              (gameRunning ||
-                switching ||
-                preparing ||
-                isDownloading ||
-                isApplying ||
-                isVerifying ||
-                isComparing ||
-                isRepairing) &&
-              btnHovered
-                ? "opacity-100"
-                : "opacity-0"
-            }`}
-          />
-          {isDownloading && <ButtonProgressRing progress={downloadPercent} />}
-          {getButtonIcon()}
-          <span
-            key={btnLabelKey}
-            className="whitespace-nowrap animate-fade-in relative z-10"
           >
-            {getButtonLabel()}
-          </span>
-        </button>
+            {/* Cancellation / stop warning overlay */}
+            <div
+              className={`absolute inset-0 z-0 rounded-full bg-rose-400/20 transition-opacity duration-300 pointer-events-none ${
+                (gameRunning ||
+                  switching ||
+                  preparing ||
+                  isDownloading ||
+                  isApplying ||
+                  isVerifying ||
+                  isComparing ||
+                  isRepairing) &&
+                btnHovered
+                  ? "opacity-100"
+                  : "opacity-0"
+              }`}
+            />
+            {isDownloading && <ButtonProgressRing progress={downloadPercent} />}
+            {getButtonIcon()}
+            <span
+              key={btnLabelKey}
+              className="whitespace-nowrap animate-fade-in relative z-10"
+            >
+              {getButtonLabel()}
+            </span>
+          </button>
+
+          {/* DX11 快捷勾选：与设置页同步（方形复选框 + 文字，不加背景，悬浮于按钮下方并与左边缘对齐） */}
+          {isInstalled && (
+            <Checkbox
+              checked={dx11}
+              onCheckedChange={handleToggleDx11}
+              className="absolute left-[5px] top-full mt-1.5 whitespace-nowrap text-xs text-foreground/90 [&>span]:h-4 [&>span]:w-4 [&>span]:rounded-[4px]"
+            >
+              {t("settings.game_launch.dx11")}
+            </Checkbox>
+          )}
+        </div>
 
         {/* Progress flyout — fixed portal, auraglass styling */}
         {btnHovered &&
@@ -1858,8 +1898,7 @@ export function GameActionPanel() {
             isComparing ||
             isRepairing) &&
           progressFlyoutPos &&
-          !confirmAction &&
-          (
+          !confirmAction && (
             <ProgressFlyout pos={progressFlyoutPos}>
               {preparing && !progress && (
                 <div className="flex items-center gap-2 text-xs text-white/50">
@@ -2303,9 +2342,7 @@ export function GameActionPanel() {
                   setConfirmAction("delete-temp");
                   setConfirmCheckbox(false);
                 }}
-                disabled={
-                  busyWithDownload || !installPath || !hasTempFiles
-                }
+                disabled={busyWithDownload || !installPath || !hasTempFiles}
                 className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-foreground/80 hover:bg-white/10 hover:text-foreground transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <svg

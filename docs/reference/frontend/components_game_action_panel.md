@@ -7,7 +7,7 @@
 **导出**：`GameActionPanel`（无 props 的函数组件，行 52）。
 
 **主要依赖**：
-- 项目内：`@/components/ui/modal`（`GlassAlertDialogCompound`、`GlassModalCompound`）、`@/components/ui/button`（`GlassButton`）、`@/utils/launcherService`（全部 Tauri 后端调用与事件订阅的封装）、`@/utils/messageStore`（`addMessage`）、`@/components/game-launch-settings`（`QuickLaunchModal`、`GameLaunchSettingsFields`、`readDownloadThreads`、`readDownloadResume`、`readDx11`）、`@/components/ui/settings-row`（`SettingsDivider`）。
+- 项目内：`@/components/ui/modal`（`GlassAlertDialogCompound`、`GlassModalCompound`）、`@/components/ui/button`（`GlassButton`）、`@/utils/launcherService`（全部 Tauri 后端调用与事件订阅的封装）、`@/utils/messageStore`（`addMessage`）、`@/components/game-launch-settings`（`QuickLaunchModal`、`GameLaunchSettingsFields`、`readDownloadThreads`、`readDownloadResume`、`readDx11`、`setDx11Setting`、`GAME_LAUNCH_SYNC_EVENT`）、`@/components/ui/settings-row`（`SettingsDivider`）。
 - 第三方：React（`useState`/`useEffect`/`useLayoutEffect`/`useRef`/`useCallback`）、`react-dom`（`createPortal`）、`react-i18next`（`useTranslation`）。Tauri API 不直接引用，全部经 `launcherService` 间接调用。
 
 ## 内部结构总览
@@ -17,7 +17,7 @@
 | 1–47 | import：React 钩子（含 `ReactNode`）、Portal、i18n、UI 组件、launcherService 全量接口、messageStore、启动设置弹窗 |
 | 56–66 | 4 个 localStorage 键常量（56–59）+ 面板统一按钮风格常量 `PILL_BASE`/`PILL_INTERACTIVE`/`PILL_TEXT`（62–66，背景与左边 banner 同款 `bg-black/40 backdrop-blur-md border-white/10`，文字白色系） |
 | 62–247 | 本文件内部工具与子组件：`formatEta`(62)、`ButtonProgressRing`(72)、`ProgressFlyout`(114)、`DownloadProgressBody`(138)、`DiskSpaceBar`(183) |
-| 248–342 | `GameActionPanel` 组件声明与 30+ 个 useState / useRef 初始化 |
+| 248–342 | `GameActionPanel` 组件声明与 30+ 个 useState / useRef 初始化（含 `dx11` 状态，与设置页同步） |
 | 301–387 | 确认对话框状态、`activeOp`/`progress`/`preparing`/`switching`/`switchProgress`/`switchTarget` 派生值 |
 | 340–440 | 渠道持久化、状态查询 `checkStatus`、渠道自动检测 effect、静默刷新 `refreshStatus`、游戏运行 3 秒轮询；累计时长 5 秒轮询 `refreshPlaytime` + 运行中每秒本地补间 |
 | 441–545 | 进度事件订阅 effect（下载/校验/预下载/切换速度计算、完成态清理） |
@@ -27,7 +27,7 @@
 | 1008–1044 | 三个 `useLayoutEffect`（主按钮浮层 / 预下载浮层 / 菜单浮层定位） |
 | 1046–1254 | 主按钮文案 `getButtonLabel`、标签变更触发淡入、图标 `getButtonIcon` |
 | 1256–1373 | 主按钮点击分发 `handleButtonClick`、确认回调 `handleConfirmAction` |
-| 1376–1552 | JSX 操作行：累计时长徽章（操作行首个子元素，位于开始游戏按钮左侧）+ 预下载按钮（预下载/预下载中/已预下载）+ 预下载进度浮层、主操作按钮、汉堡菜单按钮；右上角状态栏（绝对定位在内容层右上角，1545–1578，纵向堆叠：服务器指示徽章 + 检测中指示，点击渠道徽章开切服对话框） |
+| 1376–1552 | JSX 操作行：累计时长徽章（操作行首个子元素，位于开始游戏按钮左侧）+ 主操作按钮 + 预下载按钮（预下载/预下载中/已预下载）+ 预下载进度浮层、汉堡菜单按钮；DX11 快捷勾选（`@/components/ui/checkbox` 的方形 `Checkbox`，`[&>span]:rounded-[4px]` 收小圆角，与设置页 `launcher_dx11` 同步）**绝对定位悬浮于主按钮下方**（`absolute left-[5px] top-full`，不参与操作行布局、不把按钮顶起，且与按钮左边缘对齐）；右上角状态栏（绝对定位在内容层右上角，1545–1578，纵向堆叠：服务器指示徽章 + 检测中指示，点击渠道徽章开切服对话框） |
 | 1554–1880 | 主按钮进度浮层（Portal）：准备/下载/校验/比较/修复/应用/切换 7 类进度展示 |
 | 1882–1884 | 汉堡菜单按钮（启动设置入口已并入菜单，不再单独占位） |
 | 1882–2060 | 汉堡菜单浮层（Portal）：游戏设置、启动设置、校验完整性、快速校验、清理临时文件、定位游戏 |
@@ -75,6 +75,7 @@
 | `handlePreloadClick` | 1077–1087 | 点「预下载」按钮：拉取 `getDiskSpace` 并打开预下载确认框 |
 | `updatePreloadFlyoutPos` | 1089–1101 | 依 `preloadBtnRef` 计算预下载进度浮层坐标（与主按钮同一套边界处理） |
 | `handleKill` | 1221–1236 | 调 `killGame` 杀掉游戏进程后 `checkRunning` + `refreshPlaytime` 刷新运行态与时长；**失败不再静默**：`killGame` reject 时按 `<token>: <detail>`（token 见 `KILL_TOKEN_KEYS`）弹 `launcher.stop_failed_title` 消息（tag `stop-error`），说明需要管理员授权（`cancelled`）或进程被反作弊保护（`kill_failed`） |
+| `handleToggleDx11` | 1147–1152 | 方形复选框点击处理：写入本地 `dx11` 状态并经 `setDx11Setting` 同步到 localStorage + `launcher_dx11` 后端配置，并派发 `GAME_LAUNCH_SYNC_EVENT` 让设置页实时同步 |
 | `getButtonLabel` | 1050–1075 | 依状态返回主按钮文案（hover 时切为取消类文案；预下载不参与） |
 | `getButtonIcon` | 1084–1254 | 依状态返回 SVG 图标（旋转/暂停/下载/刷新/播放） |
 | `handleButtonClick` | 1256–1299 | 主按钮统一分发：取消切换/停止/取消校验/取消下载/安装/更新/启动 |
