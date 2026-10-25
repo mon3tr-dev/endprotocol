@@ -125,6 +125,20 @@ pub async fn get_skland_games(
         .map_err(|error| error.to_string())
 }
 
+/// 用刚登录得到的 cred/token 读取森空岛用户资料（确认绑定页面展示头像/昵称）
+#[tauri::command]
+pub async fn get_skland_user_info_by_cred(
+    state: State<'_, Arc<Mutex<AccountService>>>,
+    cred: String,
+    token: String,
+) -> Result<SklandUserInfo, String> {
+    let service = state.lock().await;
+    service
+        .get_skland_user_info_by_cred(cred, token)
+        .await
+        .map_err(|error| error.to_string())
+}
+
 /// 添加账户（登录）
 #[tauri::command]
 pub async fn add_account(
@@ -223,10 +237,11 @@ pub async fn scan_status(
 pub async fn add_account_by_scan(
     state: State<'_, Arc<Mutex<AccountService>>>,
     scan_code: String,
+    expected_user_id: Option<String>,
 ) -> Result<AccountLoginResult, String> {
     let service = state.lock().await;
     service
-        .add_account_by_scan(scan_code)
+        .add_account_by_scan(scan_code, expected_user_id)
         .await
         .map_err(|e| e.to_string())
 }

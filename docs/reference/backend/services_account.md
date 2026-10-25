@@ -105,6 +105,7 @@
 | `refresh_u8token_for_user` | 686 | `user_id` → 读 hytoken+device_token（缺失跳过）→ `SklandService::get_u8_token_by_hytoken` → 成功则 `set_u8token_for_user` 并 `Ok(Some(u8))`；失败/缺字段 → `Ok(None)`（非致命，保留旧值）；被 commands/gacha.rs:70 在同步抽卡前调用 |
 | `get_local_device_token`（私有） | 747 | `user_id` → 读 `account_token_{user_id}.device_token`（空串视为无）→ `Option<String>` |
 | `set_device_token_for_user` | 759 | `user_id, device_token` → 写入 `device_token` 字段 → `Ok(())` |
+| `set_phone_for_user` | 652 | `user_id, phone` → 写入 `account_token_{user_id}.phone`（仅用于重新登录时短信/密码方式自动填充，不参与鉴权）→ `Ok(())` |
 | `notify_cache_refreshed`（私有） | 789 | `&AccountRefreshResult` → 有 `app_handle` 时 `emit("accounts-refreshed", result)` → 无 |
 | `cache_accounts_by_user`（私有） | 796 | `&[AccountInfo]` → 按 `user_id` 分组，按懒加载状态分别写精简/完整缓存 → 无 |
 | `get_auto_sign_roles` | 819 | 无 → 读配置 `card_auto_sign_users` → `Vec<String>`（role_id 列表） |
@@ -112,27 +113,28 @@
 | `do_attendance_for_role` | 896 | `role_id` → 同上定位凭据（额外取 user_id）→ `check_and_refresh_user_cred` 刷新 → `call_skland_api("POST", "/web/v1/game/endfield/attendance")` → `Ok(())` |
 | `start_auto_refresh`（静态） | 975 | `Arc<tokio::sync::Mutex<AccountService>>` → `async_runtime::spawn` 每 300 秒：`refresh_accounts()` → 对 `card_auto_sign_users` 中未签到角色执行 `do_attendance_for_role` → 无；由 `lib.rs:215` 启动 |
 | `get_accounts` | 1018 | 无 → 遍历 `account_token_*` 收集 roles → 逐角色 `check_and_refresh_user_cred` → `network_service.char_detail_service().get_with_cache(...)` → 成功取昵称/等级并 `avatar_cache_service.get_or_download_avatar` → 失败按错误串判定 `HYTOKEN_EXPIRED`/`FAILED`，并可用 hytoken `refresh_cred_by_hytoken` 后重试一次 → 按懒加载写缓存 → `Vec<AccountInfo>` |
-| `add_account` | 1401 | `LoginRequest` → `get_hypergryph_token`(密码) →（新设备错误经 `is_new_device_verification_error` 判定）返回 `error_message = "NEW_DEVICE_VERIFICATION_REQUIRED"` → 否则 `complete_login_from_token(RequireUserVerification)` → `AccountLoginResult`；command `add_account` |
+| `add_account` | 1401 | `LoginRequest`（含可选 `expectedUserId`）→ `get_hypergryph_token`(密码) →（新设备错误经 `is_new_device_verification_error` 判定）返回 `error_message = "NEW_DEVICE_VERIFICATION_REQUIRED"` → 否则 `complete_login_from_token(RequireUserVerification, expected_user_id, Some(phone))` → `AccountLoginResult`；command `add_account` |
 | `logout_account` | 1457 | `account_id`（实为 roleId）+ `keep_device_token` → 从各 `account_token_*` 的 `roles[]` 移除该角色；roles 清空且 `keep_device_token=false` 时删除 `device_token`；清对应用户缓存；从 `account_list` 移除 → 恒 `true`；command `logout_account` |
 | `batch_logout` | 1523 | `account_ids` → 从 `account_list` 移除，并 `config.remove("account_token_{id}")` → 恒 `true`；command `batch_logout` |
 | `refresh_accounts` | 1540 | 无 → 同 `get_accounts` 的收集/刷新逻辑，但角色详情走 `skland_service.get_role_detail`（绕过 char_detail 缓存），含 hytoken 自动刷新重试；完成后 `cache_accounts_by_user` + `notify_cache_refreshed`（emit）→ `AccountRefreshResult`；command `refresh_accounts` 与定时器 |
 | `send_verification_code` | 1842 | `SendCodeRequest` → `POST https://as.hypergryph.com/general/v1/send_phone_code`（body: phone/type）→ `status==0` → `Ok(true)`；command `send_verification_code` |
 | `get_hypergryph_token_by_code`（私有） | 1892 | `phone, code` → `POST https://as.hypergryph.com/user/auth/v2/token_by_phone_code` → `(token, deviceToken)` |
-| `add_account_by_code` | 1961 | `CodeLoginRequest` → 上一步换 hytoken（deviceToken 空则置 None）→ `complete_login_from_token(ContinueWithoutDeviceToken)` → `AccountLoginResult`；command `add_account_by_code` |
+| `add_account_by_code` | 1961 | `CodeLoginRequest`（含可选 `expectedUserId`）→ 上一步换 hytoken（deviceToken 空则置 None）→ `complete_login_from_token(ContinueWithoutDeviceToken, expected_user_id, Some(phone))` → `AccountLoginResult`；command `add_account_by_code` |
 | `gen_scan_login` | 1996 | 无 → `POST https://as.hypergryph.com/general/v1/gen_scan/login`（appCode `dd7b852d5f1dd9da`）→ `ScanLoginInfo { scan_id, scan_url }`；command `gen_scan_login` |
 | `scan_status` | 2063 | `scan_id` → `GET https://as.hypergryph.com/general/v1/scan_status?scanId=...` → `ScanStatus { status, scan_code, msg }`；command `scan_status` |
 | `token_by_scan_code`（私有） | 2120 | `scan_code` → `POST https://as.hypergryph.com/user/auth/v1/token_by_scan_code`（带 `X-AppCode/X-DeviceId/X-DeviceId2/X-DeviceModel/X-DeviceType/X-OSVer` 头）→ `(token, deviceToken, Option<hgld>)` |
-| `add_account_by_scan` | 2205 | `scan_code` → 上一步换 hytoken（deviceToken 空转 None）→ `complete_login_from_token(ContinueWithoutDeviceToken)` → `AccountLoginResult`；command `add_account_by_scan` |
-| `complete_login_from_token`（私有） | 2249 | `hy_token, device_token, missing_policy` → Step2 `get_skland_code`、Step3 `get_skland_cred` → 无 deviceToken 时用 userId 走 `get_local_device_token` 本地匹配 → 仍无则按策略返回 `NEW_DEVICE_VERIFICATION_REQUIRED` 或继续 → `set_hytoken_for_user` / `set_device_token_for_user` / `get_u8_token_by_hytoken`+`set_u8token_for_user` → `AccountLoginResult { success: true, cred, token, user_id }`（不返回角色，等用户确认绑定） |
+| `add_account_by_scan` | 2211 | `scan_code, expected_user_id` → 上一步换 hytoken（deviceToken 空转 None）→ `complete_login_from_token(ContinueWithoutDeviceToken, expected_user_id, None)` → `AccountLoginResult`；command `add_account_by_scan`（参数 `scanCode` + 可选 `expectedUserId`） |
+| `complete_login_from_token`（私有） | 2255 | `hy_token, device_token, missing_policy, expected_user_id, phone` → Step2 `get_skland_code`、Step3 `get_skland_cred` → **Step3.1 若 `expected_user_id` 非空且与登录得到的 `user_id` 不同，返回 `error_message = "ACCOUNT_MISMATCH:<实际userId>"` 且不落盘任何凭证** → 无 deviceToken 时用 userId 走 `get_local_device_token` 本地匹配 → 仍无则按策略返回 `NEW_DEVICE_VERIFICATION_REQUIRED` 或继续 → `set_hytoken_for_user` / `set_phone_for_user`（有手机号时）/ `set_device_token_for_user` / `get_u8_token_by_hytoken`+`set_u8token_for_user` → `AccountLoginResult { success: true, cred, token, user_id }`（不返回角色，等用户确认绑定） |
 | `fetch_endfield_roles`（私有） | 2392 | `cred, token, user_id` → `get_player_binding` + `SklandService::extract_endfield_roles` → 逐角色 `get_role_detail` + 头像缓存 → `Vec<RoleDisplayInfo>`（单角色失败仅记日志跳过） |
 | `read_skland_credentials`（私有） | 2434 | `user_id` → 读 `account_token_{user_id}` 的 cred/token → `(String, String)`；缺失抛 `AuthError`（"Skland account/cred/token was not found"） |
 | `cache_skland_user_info`（私有） | 2459 | `user_id, &SklandUserInfo` → 序列化写入 `account_token_{user_id}.user_info` → `Ok(())` |
-| `get_skland_user_info` | 2479 | `user_id` → `check_and_refresh_user_cred` → `read_skland_credentials` → `SklandService::get_user_info` → 缓存 `user_info`（失败仅告警）→ `SklandUserInfo`；command `get_skland_user_info` |
+| `get_skland_user_info` | 2485 | `user_id` → `check_and_refresh_user_cred` → `read_skland_credentials` → `SklandService::get_user_info` → 缓存 `user_info`（失败仅告警）→ `SklandUserInfo`；command `get_skland_user_info` |
+| `get_skland_user_info_by_cred` | 2504 | `cred, token` → `SklandService::get_user_info`（不读本地配置，用于「确认绑定森空岛账户」页展示头像/昵称，此时账户尚未保存）→ `SklandUserInfo`；command `get_skland_user_info_by_cred` |
 | `get_skland_games` | 2508 | `user_id, force` → 先读 `skland_games_cache`（12 小时 TTL，非 force 且未过期直接返回）→ 否则刷新 cred + `SklandService::get_game_list` 写缓存；失败回退旧缓存 → `Vec<SklandGameInfo>`；command `get_skland_games` |
 | `read_skland_games_cache`（私有） | 2550 | 无 → 读 `skland_games_cache` 的 `fetched_at`/`games` → `Option<(i64, Vec<SklandGameInfo>)>`（空列表视为无缓存） |
 | `cache_skland_games`（私有） | 2563 | `&[SklandGameInfo]` → 写 `skland_games_cache = { fetched_at, games }` → `Ok(())` |
 | `get_skland_account_roles` | 2575 | `user_id` → 刷新 cred → `read_skland_credentials` → `fetch_endfield_roles` → `AccountLoginResult { available_roles: Some(..) }`；command `get_skland_account_roles` |
-| `get_skland_accounts` | 2595 | 无 → 扫描 `account_token_*`，`skland_account_bound`（缺省时以 roles 非空判定）为真才收录，附带 `user_info` 的昵称/头像 → `Vec<SklandAccountInfo>`；command `get_skland_accounts` |
+| `get_skland_accounts` | 2601 | 无 → 扫描 `account_token_*`，`skland_account_bound`（缺省时以 roles 非空判定）为真才收录，附带 `user_info` 的昵称/头像与首次登录记录的 `phone` → `Vec<SklandAccountInfo>`；command `get_skland_accounts` |
 | `save_skland_account` | 2628 | `cred, token, user_id` → 写 `cred`/`token`/`skland_account_bound=true`，并保证 `roles` 存在（默认 `[]`）→ `Ok(())`；command `save_skland_account` |
 | `save_selected_roles` | 2654 | `cred, token, user_id, selected_roles` → 先 `migrate_roles_app_field`；读旧数据保留 `hytoken/u8token/device_token`；写入 `roles[{userId,serverId,roleId,app:"endfield"}]`、`skland_account_bound=true`；更新 `account_list`（移除旧 roleId、追加新 roleId）；锁释放后逐角色下载头像 → 写完整+精简双缓存 → `Vec<AccountInfo>`；command `save_selected_roles` |
 | `migrate_roles_app_field`（私有静态） | 2812 | `&mut ConfigService` → 遍历 `account_token_*`，为缺少 `app` 的 role 补 `"endfield"` 并写回 → `Ok(())` |
@@ -153,8 +155,14 @@
 ### 登录：扫码（1996-2247 行）
 `gen_scan_login`（`POST /general/v1/gen_scan/login`）产出二维码 `scanUrl` → 前端轮询 `scan_status`（`GET /general/v1/scan_status`）取 `scanCode` → `add_account_by_scan(scan_code)` → `token_by_scan_code`（`POST /user/auth/v1/token_by_scan_code`，附固定 X-Device* 头）→ `complete_login_from_token(ContinueWithoutDeviceToken)`。
 
-### 登录公共流程与新设备策略（286-293、2249-2390 行）
-Step 2 `get_skland_code`（`POST /user/oauth2/v2/grant`）→ Step 3 `get_skland_cred`（`POST zonai.skland.com/.../generate_cred_by_code`）得 `(cred, token, user_id)` → Step 3.5 服务器未下发 deviceToken 时用 `get_local_device_token(user_id)` 本地匹配 → 仍缺失时按 `MissingDeviceTokenPolicy` 分流（密码登录：返回 `NEW_DEVICE_VERIFICATION_REQUIRED`；验证码/扫码：继续但不取 u8token）→ 依次落盘 `hytoken`、`device_token`、`u8token`（`get_u8_token_by_hytoken`，失败不阻断）→ 返回父级凭据，角色绑定推迟到 `save_selected_roles`。
+### 登录公共流程与新设备策略（286-293、2255-2404 行）
+Step 2 `get_skland_code`（`POST /user/oauth2/v2/grant`）→ Step 3 `get_skland_cred`（`POST zonai.skland.com/.../generate_cred_by_code`）得 `(cred, token, user_id)` → **Step 3.1 重新登录校验**（`expected_user_id` 非空且与实际 `user_id` 不同 → 返回 `ACCOUNT_MISMATCH:<实际userId>`，不保存任何凭证，用于「扫码/短信授权到了别的账号」的拦截；前端据此清空本次登录结果并提示）→ Step 3.5 服务器未下发 deviceToken 时用 `get_local_device_token(user_id)` 本地匹配 → 仍缺失时按 `MissingDeviceTokenPolicy` 分流（密码登录：返回 `NEW_DEVICE_VERIFICATION_REQUIRED`；验证码/扫码：继续但不取 u8token）→ 依次落盘 `hytoken`、`phone`（本次登录带手机号时）、`device_token`、`u8token`（`get_u8_token_by_hytoken`，失败不阻断）→ 返回父级凭据，角色绑定推迟到 `save_selected_roles`。
+
+### 账户不可用与重新登录（前端配合）
+账户数据获取频繁失败时应用照常进入（`api_health` 的 `app:api-health` 只收起 Splash，非致命），账户页与侧边栏展示「账号不可用」并提供「重新登录」入口：
+- 登录方式选择页不要求输入手机号，只需选择方式；选短信/密码后才使用/输入手机号（首次登录成功即把手机号写入 `account_token_{user_id}.phone`，`get_skland_accounts` 一并返回，供自动填充）。
+- 扫码方式在授权成功后用 `expected_user_id` 校验是否为同一森空岛账户，不一致即拦截（上方 Step 3.1），凭证不会落盘。
+- 数美设备指纹接口连续失败（`ApiFailureKind::DeviceFingerprint`）时前端提示「重启电脑并同步时区」；修复后点击重试会调用 `reset_api_health` 解除熔断。
 
 ### token 与 cred 刷新（43-284、610-781 行）
 - 主入口 `check_and_refresh_user_cred`（610）转发到 `AsyncAccountService`（44）：`check_cred` 有效 → 顺带回填缺失的 u8token；失效或 `check_cred` 报错 → `refresh_cred_by_hytoken(hyt token, device_token)` 换新 cred/token/u8token 并写回 `account_token_{user_id}`；无 hytoken → `AuthError`（提示 re-login）。
@@ -208,7 +216,7 @@ Step 2 `get_skland_code`（`POST /user/oauth2/v2/grant`）→ Step 3 `get_skland
 - listen：无。
 
 **调用方（command / 内部）**
-- `commands/account.rs`：`get_accounts`、`get_skland_accounts`、`save_skland_account`、`get_skland_account_roles`、`get_skland_user_info`、`get_skland_games`、`add_account`、`logout_account`、`batch_logout`、`refresh_accounts`、`send_verification_code`、`add_account_by_code`、`gen_scan_login`、`scan_status`、`add_account_by_scan`、`save_selected_roles`、`get_selected_account`/`set_selected_account`（仅经 `get_config_service`）、`check_and_refresh_cred`、`set_lazy_load_enabled`、`is_lazy_load_enabled`、`set_current_role_id`、`query_role_data`。
+- `commands/account.rs`：`get_accounts`、`get_skland_accounts`、`save_skland_account`、`get_skland_account_roles`、`get_skland_user_info`、`get_skland_user_info_by_cred`、`get_skland_games`、`add_account`、`logout_account`、`batch_logout`、`refresh_accounts`、`send_verification_code`、`add_account_by_code`、`gen_scan_login`、`scan_status`、`add_account_by_scan`、`save_selected_roles`、`get_selected_account`/`set_selected_account`（仅经 `get_config_service`）、`check_and_refresh_cred`、`set_lazy_load_enabled`、`is_lazy_load_enabled`、`set_current_role_id`、`query_role_data`。
 - `commands/attendance.rs`：`get_attendance`/`do_attendance` 使用 `get_config_service`、`check_and_refresh_user_cred`、`skland_service`、`avatar_cache_service`。
 - `commands/gacha.rs`：`check_and_refresh_user_cred`、`refresh_u8token_for_user`、`query_role_data`（`wiki_catalog`）、`get_config_service`。
 - `commands/card_config.rs`：仅 `get_config_service`。

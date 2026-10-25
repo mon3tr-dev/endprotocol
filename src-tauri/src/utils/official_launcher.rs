@@ -49,6 +49,12 @@ use std::path::{Path, PathBuf};
 /// 提权重启自身时使用的私有首参数。helper 模式下本进程不初始化 Tauri。
 pub const HELPER_FLAG: &str = "--endfield-launch-helper";
 
+/// 以管理员权限结束游戏的私有首参数（与启动 helper 共用同一个 exe）。
+///
+/// 未提权的本进程只能结束与它同权限的进程；游戏由提权 helper 创建，因此结束它同样需要
+/// 管理员权限，否则 `taskkill` 只会得到 `Access is denied`。
+pub const KILL_HELPER_FLAG: &str = "--endfield-kill-helper";
+
 /// 官方发行方组织名，对应签名者证书的 `O` 字段（2.5.4.10）。
 const PUBLISHER: &str = "Shanghai Hypergryph Network Technology Co., Ltd.";
 
@@ -64,6 +70,14 @@ pub mod exit_code {
     pub const WAIT_FAILED: i32 = 8;
 }
 
+/// 结束游戏 helper 的退出码。
+pub mod kill_exit_code {
+    /// 命令行无效。
+    pub const INVALID_ARGUMENTS: i32 = 2;
+    /// `taskkill` 执行之后同名进程仍然存活（反作弊/驱动保护，管理员也无法结束）。
+    pub const STILL_RUNNING: i32 = 3;
+}
+
 /// 失败原因的机器可读标记。前端按它挑 i18n 文案，后端只提供 `token` 与技术细节。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LaunchToken {
@@ -77,6 +91,8 @@ pub enum LaunchToken {
     Create,
     /// 等待游戏退出失败。
     WaitFailed,
+    /// 结束游戏进程失败（提权被拒、或进程被反作弊保护无法终止）。
+    KillFailed,
     /// 回退到直接启动（不是失败，是提示）。
     Fallback,
     /// 游戏以管理员运行而 Steam 未提权，Steam overlay 无法注入（不是失败，是提示）。
@@ -93,6 +109,7 @@ impl LaunchToken {
             LaunchToken::Cancelled => "cancelled",
             LaunchToken::Create => "create",
             LaunchToken::WaitFailed => "wait_failed",
+            LaunchToken::KillFailed => "kill_failed",
             LaunchToken::Fallback => "fallback",
             LaunchToken::OverlayUnavailable => "overlay_unavailable",
             LaunchToken::Unknown => "unknown",
@@ -130,6 +147,7 @@ impl LaunchError {
             | LaunchToken::Cancelled
             | LaunchToken::Fallback
             | LaunchToken::OverlayUnavailable
+            | LaunchToken::KillFailed
             | LaunchToken::Unknown => exit_code::CREATE_FAILED,
         }
     }
@@ -247,8 +265,46 @@ pub struct HelperOptions {
 pub fn usage() -> String {
     format!(
         "{HELPER_FLAG} --game <Endfield.exe> [--parent <Games.exe>] [--status <file>] [-- <args>]\n\
-         由 EndProtocol 内部使用：以官方启动器为父进程启动游戏。不直接调用。\n"
+         {KILL_HELPER_FLAG} --name <Endfield.exe>\n\
+         由 EndProtocol 内部使用：以官方启动器为父进程启动游戏 / 以管理员权限结束游戏。不直接调用。\n"
     )
+}
+
+/// `--endfield-kill-helper` 的命令行参数。
+#[derive(Debug, Default, Clone)]
+pub struct KillOptions {
+    /// `--name`：要结束的进程名（`Endfield.exe`）。
+    pub process_name: String,
+    /// `--help` / `-h` / `/?`。
+    pub help: bool,
+}
+
+/// 解析结束游戏 helper 的命令行。
+///
+/// 与 [`parse_helper_options`] 一样只做纯字符串校验（不查进程表），以便单测。
+pub fn parse_kill_options(args: &[String]) -> Result<KillOptions, String> {
+    let mut options = KillOptions::default();
+    let mut index = 0usize;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--help" | "-h" | "/?" => {
+                options.help = true;
+                return Ok(options);
+            }
+            "--name" if index + 1 < args.len() && options.process_name.is_empty() => {
+                index += 1;
+                options.process_name = args[index].clone();
+            }
+            other => return Err(format!("invalid kill option: {other}")),
+        }
+        index += 1;
+    }
+    // 只允许 `<name>.exe`，避免这个提权入口被当作通用进程终止器使用。
+    let lower = options.process_name.to_ascii_lowercase();
+    if !lower.ends_with(".exe") || lower.contains(|c: char| c == '\\' || c == '/' || c == '"') {
+        return Err("specify --name <process.exe>".to_string());
+    }
+    Ok(options)
 }
 
 /// 解析 helper 的命令行。规则与上游 `ParseOptions` 一致：取值选项只能出现一次，
@@ -376,6 +432,10 @@ mod win {
     /// 等待 helper 确认「已创建游戏进程」的宽限期。helper 若在此窗口内就退出，说明它没走
     /// 到等待游戏那一步（启动阶段失败），据此把失败原因回传给界面。正常启动耗时远低于此值。
     const HELPER_GRACE: Duration = Duration::from_millis(2500);
+
+    /// 等待结束游戏 helper 的上限。helper 只执行 `taskkill` 与存活轮询（最长约 3 秒），
+    /// 因此这个值只需覆盖「UAC 确认之后的那一小段」。
+    const KILL_HELPER_TIMEOUT: Duration = Duration::from_secs(20);
 
     // ---------------------------- 句柄与错误文本 ----------------------------
 
@@ -1198,6 +1258,45 @@ mod win {
         Ok(ElevatedLaunch { helper_pid: None })
     }
 
+    // ---------------------------- helper：结束游戏 ----------------------------
+
+    /// 当前进程是否由 `launcher_kill_game` 以提权 kill helper 身份启动；是则结束游戏进程
+    /// 并返回应使用的退出码。
+    ///
+    /// 与 [`try_run_helper`] 一样由 `lib.rs::run()` 在 logger/Tauri 初始化之前调用，因此
+    /// 这个进程全程没有窗口、没有托盘，唯一副作用就是 `taskkill`。
+    pub fn try_run_kill_helper() -> Option<i32> {
+        let arguments: Vec<String> = std::env::args_os()
+            .map(|argument| argument.to_string_lossy().into_owned())
+            .collect();
+        if arguments.get(1).map(String::as_str) != Some(KILL_HELPER_FLAG) {
+            return None;
+        }
+        Some(run_kill_helper(&arguments[2..]))
+    }
+
+    fn run_kill_helper(arguments: &[String]) -> i32 {
+        ensure_console_hidden();
+        let options = match parse_kill_options(arguments) {
+            Ok(options) => options,
+            Err(error) => {
+                crate::safe_eprintln!("endfield kill helper: {error}");
+                return kill_exit_code::INVALID_ARGUMENTS;
+            }
+        };
+        if options.help {
+            crate::safe_eprintln!("{}", usage());
+            return 0;
+        }
+
+        // 提权进程直接结束同名进程（含子进程树），再按 PID 兜底。
+        crate::utils::process::terminate_processes(&options.process_name);
+        if crate::utils::process::has_processes(&options.process_name) {
+            return kill_exit_code::STILL_RUNNING;
+        }
+        0
+    }
+
     // ---------------------------- helper：完整启动流程 ----------------------------
 
     /// 当前进程是否由 `launcher_start_game` 以提权 helper 身份启动；是则跑完整个流程并
@@ -1340,6 +1439,13 @@ mod win {
                 }
                 Some(code)
             }
+        }
+
+        /// 阻塞等待 helper 退出并返回退出码；超时返回 `None`。
+        ///
+        /// 用完即弃，因此不需要 [`Self::watch_to_completion`] 那样的分离线程。
+        fn wait_to_exit(&self, timeout: Duration) -> Option<u32> {
+            self.wait_early_exit(timeout)
         }
 
         /// 把句柄交给一个分离线程，等 helper 结束（= 游戏退出）后记录退出码并关闭它。
@@ -1523,6 +1629,61 @@ mod win {
         })
     }
 
+    // ---------------------------- 结束游戏：提权重启自身 ----------------------------
+
+    /// 结束游戏进程；未提权时经 UAC 以管理员权限重试。
+    ///
+    /// 游戏由提权 helper 创建，本进程未提权时的 `taskkill` 只会拿到 `Access is denied`，
+    /// 因此真正的结束动作交给提权后的同一个 exe（`KILL_HELPER_FLAG`）。成功后返回 `Ok(true)`；
+    /// 进程在 UAC 之后仍存活（反作弊驱动保护 / 超时）返回 `kill_failed`，用户取消 UAC 返回
+    /// `cancelled`，前端据此给出可操作的提示。
+    pub fn kill_game_process(process_name: &str) -> Result<bool, LaunchError> {
+        // 先就地试一次：游戏由本进程直接创建（本进程已提权）时这一步就成功了，不弹 UAC。
+        crate::utils::process::terminate_processes(process_name);
+        if !crate::utils::process::has_processes(process_name) {
+            tracing::info!("[launcher] {process_name} terminated in-process");
+            return Ok(true);
+        }
+
+        let executable = std::env::current_exe().map_err(|error| {
+            LaunchError::new(
+                LaunchToken::Unknown,
+                format!("cannot resolve own executable: {error}"),
+            )
+        })?;
+        let parameters = kill_helper_parameters(process_name);
+        tracing::info!("[launcher] escalating to terminate {process_name}: {parameters}");
+        let helper = shell_execute_elevated(&executable, &parameters)?;
+
+        // helper 只跑一条 taskkill：等它结束（而不是提前返回），调用方拿到的才是最终状态。
+        let code = helper.wait_to_exit(KILL_HELPER_TIMEOUT);
+        tracing::info!("[launcher] kill helper exited with code {code:?}");
+        match code {
+            Some(code) if code == 0 => Ok(true),
+            Some(code) => Err(LaunchError::new(
+                LaunchToken::KillFailed,
+                format!("elevated kill helper exited with code {code}"),
+            )),
+            None => Err(LaunchError::new(
+                LaunchToken::KillFailed,
+                "timed out waiting for the elevated kill helper",
+            )),
+        }
+    }
+
+    /// 拼接 kill helper 的命令行（单个进程名，仍需转义以保持与启动 helper 一致）。
+    fn kill_helper_parameters(process_name: &str) -> String {
+        let mut line: Vec<u16> = Vec::new();
+        quote_argument(KILL_HELPER_FLAG, &mut line);
+        line.push(b' ' as u16);
+        quote_argument("--name", &mut line);
+        line.push(b' ' as u16);
+        quote_argument(process_name, &mut line);
+        String::from_utf16(&line).unwrap_or_else(|_| {
+            format!("{KILL_HELPER_FLAG} --name {process_name}")
+        })
+    }
+
     /// 直接以 `ShellExecuteW` 启动游戏（回退路径，与旧实现一致：靠 shell 自动提权）。
     pub fn shell_execute_game(game: &Path, arguments: &[String]) -> Result<(), String> {
         let executable = wide(&game.to_string_lossy());
@@ -1558,7 +1719,10 @@ mod win {
 }
 
 #[cfg(target_os = "windows")]
-pub use win::{launch_via_official_parent, process_is_elevated, shell_execute_game, try_run_helper};
+pub use win::{
+    kill_game_process, launch_via_official_parent, process_is_elevated, shell_execute_game,
+    try_run_helper, try_run_kill_helper,
+};
 
 // ============================ 非 Windows 桩 ============================
 // 本模块只在 Windows 上有意义；其它平台（CI 也会构建 macOS / Linux）保持可编译。
@@ -1584,6 +1748,16 @@ pub fn shell_execute_game(_game: &Path, _arguments: &[String]) -> Result<(), Str
 #[cfg(not(target_os = "windows"))]
 pub fn try_run_helper() -> Option<i32> {
     None
+}
+
+#[cfg(not(target_os = "windows"))]
+pub fn try_run_kill_helper() -> Option<i32> {
+    None
+}
+
+#[cfg(not(target_os = "windows"))]
+pub fn kill_game_process(_process_name: &str) -> Result<bool, LaunchError> {
+    Ok(false)
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -1715,6 +1889,23 @@ mod tests {
     fn help_short_circuits() {
         assert!(parse_helper_options(&["--help".into()]).unwrap().help);
         assert!(parse_helper_options(&["-h".into()]).unwrap().help);
+    }
+
+    #[test]
+    fn parses_kill_options() {
+        let options = parse_kill_options(&["--name".into(), "Endfield.exe".into()]).expect("parse");
+        assert_eq!(options.process_name, "Endfield.exe");
+        assert!(parse_kill_options(&["--help".into()]).unwrap().help);
+    }
+
+    #[test]
+    fn rejects_non_executable_kill_targets() {
+        // 提权入口只接受 `<name>.exe`，不能变成任意进程终止器。
+        assert!(parse_kill_options(&["--name".into(), "explorer".into()]).is_err());
+        assert!(parse_kill_options(&["--name".into(), r"C:\G\Endfield.exe".into()]).is_err());
+        assert!(parse_kill_options(&["--name".into()]).is_err());
+        assert!(parse_kill_options(&["--nope".into()]).is_err());
+        assert!(parse_kill_options(&[]).is_err());
     }
 
     #[test]

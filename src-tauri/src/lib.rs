@@ -41,6 +41,13 @@ pub fn run() {
         std::process::exit(code);
     }
 
+    // 提权结束游戏 helper 模式（见 utils/official_launcher.rs）：同样是 runas 拉起的第二个
+    // 实例，只执行 `taskkill` 然后退出。必须在 logger / tracing / Tauri 初始化之前截获 ——
+    // logger 会持有日志文件句柄，而本进程的全部使命只是一条命令。
+    if let Some(code) = utils::official_launcher::try_run_kill_helper() {
+        std::process::exit(code);
+    }
+
     let args = std::env::args().collect::<Vec<_>>();
     let silent_mode = args.iter().any(|arg| arg == SILENT_ARG);
     let launch_game = args.iter().any(|arg| arg == LAUNCH_GAME_ARG);
@@ -133,6 +140,7 @@ pub fn run() {
             commands::account::save_skland_account,
             commands::account::get_skland_account_roles,
             commands::account::get_skland_user_info,
+            commands::account::get_skland_user_info_by_cred,
             commands::account::get_skland_games,
             commands::account::add_account,
             commands::account::logout_account,

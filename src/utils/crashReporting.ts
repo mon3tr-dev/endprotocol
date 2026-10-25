@@ -19,6 +19,7 @@ export type ApiFailureKind =
   | "network"
   | "server"
   | "parse"
+  | "device_fingerprint"
   | "unknown";
 
 export interface ApiHealthSnapshot {
@@ -133,22 +134,31 @@ export function reportCrash(input: CrashInput) {
 }
 
 function handleApiBlocked(snapshot: ApiHealthSnapshot) {
-  // 停止启动进度等待并收起 Splash，让提示弹窗可见。
+  // 停止启动进度等待并收起 Splash，让应用可以「不获取任何账户数据也进入」。
   void import("./startupProgress").then(({ abortStartup }) => {
     abortStartup(i18n.t("crash.api_title"));
   });
 
+  // 账户数据获取频繁失败：标记账户不可用，账户页展示「账号不可用 / 重新登录」。
+  void import("./accountAvailability").then(({ reasonFromApiKind, setAccountUnavailable }) => {
+    setAccountUnavailable(reasonFromApiKind(snapshot.kind), snapshot.message ?? "");
+  });
+
   if (currentReport?.source === "api") return;
 
-  const body = i18n.t("crash.api_body", {
-    count: snapshot.consecutive_failures,
-  });
+  const isFingerprint = snapshot.kind === "device_fingerprint";
+  const body = isFingerprint
+    ? i18n.t("crash.api_fingerprint_body", {
+        count: snapshot.consecutive_failures,
+      })
+    : i18n.t("crash.api_body", { count: snapshot.consecutive_failures });
+  // 非致命：用户可以直接关闭弹窗继续使用应用（只是没有账户数据）。
   showCrashReport({
     title: i18n.t("crash.api_title"),
     message: snapshot.message || body,
     detail: body,
     source: "api",
-    fatal: true,
+    fatal: false,
     api: snapshot,
   });
 }
@@ -245,6 +255,12 @@ export async function loadPendingCrashReports() {
 export function diagnoseCrash(report: CrashReport): CrashDiagnosis {
   const api = report.api;
   if (api) {
+    if (api.kind === "device_fingerprint") {
+      return {
+        causeKey: "crash.cause_fingerprint",
+        suggestionKeys: ["crash.suggestion_fingerprint"],
+      };
+    }
     if (
       api.kind === "clock_skew" ||
       (api.clock_skew_seconds != null &&

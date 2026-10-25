@@ -25,7 +25,7 @@ EndProtocol/
 │   ├── card_development.md        # 卡片开发指南
 │   ├── card_configuration.md      # 卡片配置系统
 │   └── reference/                 # ★ 逐文件功能参考（27 篇）
-│       ├── ipc_index.md           # 117 个命令 ↔ 定义 ↔ 调用方
+│       ├── ipc_index.md           # 118 个命令 ↔ 定义 ↔ 调用方
 │       ├── frontend/  (18 篇)
 │       └── backend/   (9 篇)
 ├── Cargo.toml / Cargo.lock        # ★ cargo workspace 根（members = ["src-tauri"]），根锁文件唯一有效

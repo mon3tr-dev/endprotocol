@@ -47,6 +47,7 @@ import {
   onSwitchProgress,
   formatBytes,
   CHANNEL_LABELS,
+  KILL_TOKEN_KEYS,
   LAUNCH_TOKEN_KEYS,
   LAUNCH_WARNING_TITLE_KEYS,
   splitLaunchToken,
@@ -1218,10 +1219,22 @@ export function GameActionPanel() {
   }, []);
 
   const handleKill = useCallback(async () => {
-    await killGame(channel);
+    try {
+      await killGame(channel);
+    } catch (err) {
+      // 游戏以管理员权限运行，结束它同样需要 UAC：用户拒绝授权、或进程被反作弊驱动保护时
+      // 在这里说明原因，而不是让「停止」看起来毫无反应。
+      const { token, detail } = splitLaunchToken(String(err));
+      addMessage({
+        type: "urgent",
+        title: t("launcher.stop_failed_title"),
+        body: t(KILL_TOKEN_KEYS[token] ?? "launcher.stop_err_unknown", { detail }),
+        tag: "stop-error",
+      });
+    }
     checkRunning();
     refreshPlaytime();
-  }, [channel, checkRunning, refreshPlaytime]);
+  }, [channel, checkRunning, refreshPlaytime, t]);
 
   const isInstalled = gameStatus?.is_installed ?? false;
   const hasUpdate = gameStatus?.has_update ?? false;

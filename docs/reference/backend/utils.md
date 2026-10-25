@@ -142,42 +142,47 @@
 
 ## `src-tauri/src/utils/official_launcher.rs`
 **职责**：官方启动器父进程伪造 —— 在不打开鹰角启动器界面、不注入代码、不修改任何游戏文件的前提下启动《明日方舟：终末地》（约 1700 行，其中非 Windows 部分为返回错误的桩）。游戏会校验自己的**直接父进程**必须是签名有效的官方 `Games.exe`，本模块以 `CREATE_SUSPENDED` 创建官方启动器并永不恢复它（只有映像与签名存在），再用 `PROC_THREAD_ATTRIBUTE_PARENT_PROCESS` 把它指定为游戏进程的父进程，等待游戏退出后终止该挂起父进程并转发退出码。**已提权时由当前进程直接创建**（保留 Steam overlay 的 `CreateProcess` 注入链），未提权时才以 runas helper 完成创建。逻辑逐函数移植自 EndfieldNoLauncher 的 `src/launch.cpp`（AGPL-3.0，上游为 Better Endfield Next 的 `native/loaders/shared/official_launcher.cpp`，commit `514f6d6`），函数名与结构一一对应。
-**导出**：跨平台 —— `HELPER_FLAG`、`exit_code` 模块、`LaunchToken`、`LaunchError`、`ElevatedLaunch`、`HelperOptions`、`quote_argument`、`quote_command_line`、`is_official_publisher`、`version_key`、`parse_helper_options`、`usage`；Windows 专属 —— `launch_via_official_parent`、`process_is_elevated`、`shell_execute_game`、`try_run_helper`（其余全部私有）。
+**导出**：跨平台 —— `HELPER_FLAG`、`KILL_HELPER_FLAG`、`exit_code` 模块、`kill_exit_code` 模块、`LaunchToken`、`LaunchError`、`ElevatedLaunch`、`HelperOptions`、`KillOptions`、`quote_argument`、`quote_command_line`、`is_official_publisher`、`version_key`、`parse_helper_options`、`parse_kill_options`、`usage`；Windows 专属 —— `launch_via_official_parent`、`kill_game_process`、`process_is_elevated`、`shell_execute_game`、`try_run_helper`、`try_run_kill_helper`（其余全部私有）。
 **主要依赖**：`windows-sys`（`Win32_Security*` / `Win32_System_Threading` / `Win32_System_JobObjects` / `Win32_System_Registry` / `Win32_System_Environment` / `Win32_System_Console` / `Win32_System_Diagnostics_Debug` / `Win32_UI_Shell` / `Win32_UI_WindowsAndMessaging`）、`tracing`、`crate::utils::logger`（helper 写同一份日志文件）、`crate::utils::paths`（调用方算状态文件路径）。
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
-| `HELPER_FLAG` | :54 | `"--endfield-launch-helper"`，提权 helper 的私有首参数 |
-| `PUBLISHER`（私有） | :57 | `"Shanghai Hypergryph Network Technology Co., Ltd."`，签名者证书 `O` 字段期望值（对应 C++ `kPublisher`） |
-| `pub mod exit_code` | :60-70 | `INVALID_ARGUMENTS=2` / `CREATE_FAILED=4` / `NO_VALID_LAUNCHER=7` / `WAIT_FAILED=8` |
-| `LaunchToken` | :69-101 | 失败/提示的机器可读标记（`not_found`/`no_launcher`/`cancelled`/`create`/`wait_failed`/`fallback`/`overlay_unavailable`/`unknown`），前端据此选 i18n 文案 |
-| `LaunchError` | :103-141 | `{ token, detail }`；`message()` 产出 `"<token>: <detail>"` 契约串；私有 `exit_code()` 把 token 映射回退出码 |
-| `ElevatedLaunch` | :145-149 | `{ helper_pid: Option<u32> }`；`Some` = 提权 helper 已建立，`None` = 当前进程已提权并直接创建了游戏 |
-| `wide` / `quote_argument` / `quote_command_line` | :151-192 | UTF-16 编码与 `CreateProcessW` 引号转义（对应 `QuoteArgument`：反斜杠仅在引号前与结尾翻倍） |
-| `is_official_publisher` | :194 | `eq_ignore_ascii_case` 版 `_wcsicmp`（对应 `IsOfficialPublisher`） |
-| `version_key` | :201 | 解析 `…\1.6.0\Games.exe` 的父目录名 → `Vec<u64>`；非法名返回空（排序最低，对应 `Version`） |
-| `HelperOptions` / `usage` / `parse_helper_options` | :223-295 | helper 命令行（`--game`/`--parent`/`--status`/`--`，取值选项只允许一次、未知选项报错、只做纯字符串校验以便单测），对应 `Options`/`Usage`/`ParseOptions` |
-| `RegistryKey` / `read_registry` / `subkeys` / `add_root` / `installed_roots` | :448-685 | 发现安装位置（对应 `RegistryKey`/`ReadRegistry`/`Subkeys`/`AddRoot`/`InstalledRoots`） |
-| `OwnedHandle` | :366-412 | RAII 内核句柄（`CloseHandle`），null 与 `INVALID_HANDLE_VALUE` 视为无句柄；`take()` 用于移交所有权；`unsafe impl Send`（内核句柄是进程级对象，可跨线程等待/终止/关闭） |
-| `process_is_elevated` | :414-433 | 读当前进程令牌的 `TokenElevation`；用于决定游戏由当前进程直接创建还是交给 runas helper |
-| `windows_error` | :396 | `<操作> (Win32 <码>)` + `FormatMessageW` 本地化文本，740 额外附提权提示（对应 `WindowsError`） |
-| `ensure_console_hidden` | :436 | 仅 `GetConsoleWindow`+`ShowWindow(SW_HIDE)`，**不调用 `FreeConsole`**（原因见备注）；`main.rs` 全构建改用 GUI 子系统后，正常路径下本函数已是 no-op（无控制台可隐藏），纯防御性保留 |
-| `TrustState` / `verify_official_launcher` / `signer_organization` | :601-814 | 签名校验：独占只读句柄（`FILE_SHARE_READ`）+ `WINTRUST_FILE_INFO.hFile` + `WTD_UI_NONE`/`WTD_CHOICE_FILE`/`WTD_CACHE_ONLY_URL_RETRIEVAL\|WTD_REVOCATION_CHECK_NONE`，再取第 0 个签名者证书链 `pasCertChain[0].pCert` 的 `O` 字段比对（对应 `TrustState`/`VerifyOfficialLauncher`） |
-| `find_official_launcher` | :816-856 | 给定 `--parent` 时只校验它，否则枚举候选并按版本降序取第一个通过者（对应 `FindOfficialLauncher`） |
-| `OfficialParent` + `start` / `create_game` / `Drop` | :858-1025 | 挂起父进程（`CREATE_SUSPENDED\|CREATE_NO_WINDOW` + `SW_HIDE`，关线程句柄但永不 `ResumeThread`）与游戏创建（两段式属性列表 + `PROC_THREAD_ATTRIBUTE_PARENT_PROCESS` + `EXTENDED_STARTUPINFO_PRESENT`，`StartupInfo.cb = size_of::<STARTUPINFOEXW>()`）；`Drop` 只终止自己创建的进程并等 5s（对应 `OfficialParent`） |
-| `wait_for_game` / `write_status_file` | :1027-1093 | 等待游戏退出并读退出码（对应 `WaitForGame`）；创建成功后写 `pid=<n>` 状态文件 |
-| `LauncherJob` / `launch_in_process` | :1095-1195 | 直接启动路径：`CreateJobObjectW` + `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` 兜底终止挂起父进程；本进程创建「挂起官方父进程 + 游戏」，后台线程等待游戏退出并清理，返回 `ElevatedLaunch { helper_pid: None }` |
-| `try_run_helper` / `run_helper` / `launch` | :1205-1312 | helper 入口与完整流程；`launch()` 是唯一持有 RAII 的作用域，析构（终止挂起父进程）完成后调用方才 `process::exit` |
-| `kill_existing_game`（私有，helper） | :1265 | `launch()` 开头以管理员权限执行 `taskkill /F /T /IM <game>`，清理上一局残留（含应用未提权时无法结束的提权游戏进程） |
-| `HelperProcess` | :1319-1383 | `ShellExecuteExW` 返回的 helper 进程句柄；`wait_early_exit(2.5s)` 宽限期探测 + `watch_to_completion()` 分离线程收尾 |
-| `shell_execute_elevated` / `helper_parameters` | :1385-1465 | `ShellExecuteExW("runas", 自身 exe, ...)`，`SW_HIDE` + `SEE_MASK_NOCLOSEPROCESS\|NOASYNC\|FLAG_NO_UI\|NO_CONSOLE` |
-| `launch_via_official_parent` | :1470-1565 | 入口：先验签（失败即 `no_launcher`，调用方回退直接启动）→ **已提权时 `launch_in_process`**，否则 runas 重启自身 → 宽限期判定 |
-| `shell_execute_game` | :1500-1524 | 回退路径：`ShellExecuteW(SW_SHOWNORMAL)` 直接启动游戏（旧实现的行为）；新增 `arguments: &[String]` 参数，逐个经 `quote_argument` 拼接后作为 `lpParameters` 传入，用于转发 `-force-d3d11` |
-| `mod tests` | :1575-1706 | 12 个单测：引号转义（结尾反斜杠 / 内嵌引号）、组织名比对、版本解析与数值比较、helper 参数解析 |
+| `HELPER_FLAG` | :53 | `"--endfield-launch-helper"`，提权 helper 的私有首参数 |
+| `KILL_HELPER_FLAG` | :56 | `"--endfield-kill-helper"`，提权结束游戏 helper 的私有首参数（与启动 helper 共用同一个 exe） |
+| `PUBLISHER`（私有） | :59 | `"Shanghai Hypergryph Network Technology Co., Ltd."`，签名者证书 `O` 字段期望值（对应 C++ `kPublisher`） |
+| `pub mod exit_code` | :62-71 | `INVALID_ARGUMENTS=2` / `CREATE_FAILED=4` / `NO_VALID_LAUNCHER=7` / `WAIT_FAILED=8` |
+| `pub mod kill_exit_code` | :74-79 | `INVALID_ARGUMENTS=2` / `STILL_RUNNING=3`（提权 `taskkill` 之后同名进程仍存活） |
+| `LaunchToken` | :83-102 | 失败/提示的机器可读标记（`not_found`/`no_launcher`/`cancelled`/`create`/`wait_failed`/`kill_failed`/`fallback`/`overlay_unavailable`/`unknown`），前端据此选 i18n 文案 |
+| `LaunchError` | :122-153 | `{ token, detail }`；`message()` 产出 `"<token>: <detail>"` 契约串；私有 `exit_code()` 把 token 映射回退出码（`kill_failed` 归入 `CREATE_FAILED`，仅用于 helper 内部错误路径） |
+| `ElevatedLaunch` | :166-168 | `{ helper_pid: Option<u32> }`；`Some` = 提权 helper 已建立，`None` = 当前进程已提权并直接创建了游戏 |
+| `wide` / `quote_argument` / `quote_command_line` | :175-220 | UTF-16 编码与 `CreateProcessW` 引号转义（对应 `QuoteArgument`：反斜杠仅在引号前与结尾翻倍） |
+| `is_official_publisher` | :222 | `eq_ignore_ascii_case` 版 `_wcsicmp`（对应 `IsOfficialPublisher`） |
+| `version_key` | :229 | 解析 `…\1.6.0\Games.exe` 的父目录名 → `Vec<u64>`；非法名返回空（排序最低，对应 `Version`） |
+| `HelperOptions` / `usage` / `parse_helper_options` | :251-368 | helper 命令行（`--game`/`--parent`/`--status`/`--`，取值选项只允许一次、未知选项报错、只做纯字符串校验以便单测），对应 `Options`/`Usage`/`ParseOptions` |
+| `KillOptions` / `parse_kill_options` | :275-310 | kill helper 命令行（`--name <x.exe>`，`--help`）；只接受 `<name>.exe` 且拒绝路径/引号，避免提权入口被当作通用进程终止器 |
+| `RegistryKey` / `read_registry` / `subkeys` / `add_root` / `installed_roots` | :552-763 | 发现安装位置（对应 `RegistryKey`/`ReadRegistry`/`Subkeys`/`AddRoot`/`InstalledRoots`） |
+| `OwnedHandle` | :443-471 | RAII 内核句柄（`CloseHandle`），null 与 `INVALID_HANDLE_VALUE` 视为无句柄；`take()` 用于移交所有权；`unsafe impl Send`（内核句柄是进程级对象，可跨线程等待/终止/关闭） |
+| `process_is_elevated` | :479-498 | 读当前进程令牌的 `TokenElevation`；用于决定游戏由当前进程直接创建还是交给 runas helper |
+| `windows_error` | :500-529 | `<操作> (Win32 <码>)` + `FormatMessageW` 本地化文本，740 额外附提权提示（对应 `WindowsError`） |
+| `ensure_console_hidden` | :540-549 | 仅 `GetConsoleWindow`+`ShowWindow(SW_HIDE)`，**不调用 `FreeConsole`**（原因见备注）；`main.rs` 全构建改用 GUI 子系统后，正常路径下本函数已是 no-op（无控制台可隐藏），纯防御性保留 |
+| `TrustState` / `verify_official_launcher` / `signer_organization` | :770-924 | 签名校验：独占只读句柄（`FILE_SHARE_READ`）+ `WINTRUST_FILE_INFO.hFile` + `WTD_UI_NONE`/`WTD_CHOICE_FILE`/`WTD_CACHE_ONLY_URL_RETRIEVAL\|WTD_REVOCATION_CHECK_NONE`，再取第 0 个签名者证书链 `pasCertChain[0].pCert` 的 `O` 字段比对（对应 `TrustState`/`VerifyOfficialLauncher`） |
+| `find_official_launcher` | :925-964 | 给定 `--parent` 时只校验它，否则枚举候选并按版本降序取第一个通过者（对应 `FindOfficialLauncher`） |
+| `OfficialParent` + `start` / `create_game` / `Drop` | :967-1134 | 挂起父进程（`CREATE_SUSPENDED\|CREATE_NO_WINDOW` + `SW_HIDE`，关线程句柄但永不 `ResumeThread`）与游戏创建（两段式属性列表 + `PROC_THREAD_ATTRIBUTE_PARENT_PROCESS` + `EXTENDED_STARTUPINFO_PRESENT`，`StartupInfo.cb = size_of::<STARTUPINFOEXW>()`）；`Drop` 只终止自己创建的进程并等 5s（对应 `OfficialParent`） |
+| `wait_for_game` / `write_status_file` | :1136-1162 | 等待游戏退出并读退出码（对应 `WaitForGame`）；创建成功后写 `pid=<n>` 状态文件 |
+| `LauncherJob` / `launch_in_process` | :1163-1264 | 直接启动路径：`CreateJobObjectW` + `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` 兜底终止挂起父进程；本进程创建「挂起官方父进程 + 游戏」，后台线程等待游戏退出并清理，返回 `ElevatedLaunch { helper_pid: None }` |
+| `try_run_kill_helper` / `run_kill_helper` | :1268-1300 | 提权结束游戏 helper 入口：在 logger/Tauri 初始化前由 `lib.rs` 截获，`ensure_console_hidden` + `parse_kill_options` → `process::terminate_processes` + `has_processes`，退出码 `0` / `STILL_RUNNING` |
+| `try_run_helper` / `run_helper` / `launch` | :1304-1410 | helper 入口与完整流程；`launch()` 是唯一持有 RAII 的作用域，析构（终止挂起父进程）完成后调用方才 `process::exit` |
+| `kill_existing_game`（私有，helper） | :1364 | `launch()` 开头以管理员权限执行 `taskkill /F /T /IM <game>`，清理上一局残留（含应用未提权时无法结束的提权游戏进程） |
+| `HelperProcess` | :1418-1482 | `ShellExecuteExW` 返回的 helper 进程句柄；`wait_early_exit(2.5s)` 宽限期探测、`wait_to_exit(timeout)` 阻塞取退出码、`watch_to_completion()` 分离线程收尾 |
+| `shell_execute_elevated` / `helper_parameters` | :1491-1571 | `ShellExecuteExW("runas", 自身 exe, ...)`，`SW_HIDE` + `SEE_MASK_NOCLOSEPROCESS\|NOASYNC\|FLAG_NO_UI\|NO_CONSOLE` |
+| `launch_via_official_parent` | :1576-1670 | 入口：先验签（失败即 `no_launcher`，调用方回退直接启动）→ **已提权时 `launch_in_process`**，否则 runas 重启自身 → 宽限期判定 |
+| `kill_game_process` / `kill_helper_parameters` | :1640-1686 | 结束游戏入口：先就地 `process::terminate_processes` + `has_processes`（已提权时到此为止，不弹 UAC）；仍有残留则 runas 重启自身跑 `--endfield-kill-helper`，阻塞等待退出码（`KILL_HELPER_TIMEOUT = 20s`），失败映射为 `kill_failed`（helper 退出码非 0 / 超时） |
+| `shell_execute_game` | :1688-1730 | 回退路径：`ShellExecuteW(SW_SHOWNORMAL)` 直接启动游戏（旧实现的行为）；`arguments: &[String]` 逐个经 `quote_argument` 拼接后作为 `lpParameters` 传入，用于转发 `-force-d3d11` |
+| `mod tests` | :1771-1921 | 16 个单测：引号转义（结尾反斜杠 / 内嵌引号）、组织名比对、版本解析与数值比较、helper 参数解析、kill 参数解析与 `<name>.exe` 限制 |
 
 **备注（提权模型 / 契约 / 限制）**：
 - **两种启动路径**：当前进程**已提权**时由 `launch_in_process` 直接创建挂起父进程与游戏 —— 这是 Steam overlay 能进入游戏的前提：`gameoverlayrenderer64.dll` 注入的是 Steam 拉起的本进程，只有保持同一条 `CreateProcess` 链，overlay 才能继续注入；**未提权**时才走 `runas` helper（游戏与官方启动器 manifest 都要求管理员，未提权进程直接创建会得到 Win32 740）。helper 路径会引入提权边界，Steam（非管理员）的 overlay 无法跨边界注入到管理员游戏，因此命令层会在 `warning` 中返回 `overlay_unavailable`。
-- **`runas` 两阶段（恰好一次 UAC）**：未提权一侧只做「查找 + 验签」，失败时不弹 UAC 就能给出结论；成功则 `runas` 重启自身，提权后的同一 exe 由 `lib.rs:42` 的 `try_run_helper()` 在 logger/Tauri 初始化**之前**截获。
+- **`runas` 两阶段（恰好一次 UAC）**：未提权一侧只做「查找 + 验签」，失败时不弹 UAC 就能给出结论；成功则 `runas` 重启自身，提权后的同一 exe 由 `lib.rs:39` 的 `try_run_helper()` 在 logger/Tauri 初始化**之前**截获（结束游戏的 `try_run_kill_helper()` 紧随其后，`lib.rs:47`）。
 - **`process::exit` 不跑析构**：helper 的完整流程必须先在一个函数内返回（RAII 析构 → 终止挂起的 `Games.exe`），再由 `lib.rs` 退出进程；若在持有父进程句柄时直接退出，那个 `Games.exe` 会永久残留。
 - **直接启动的清理**：`LauncherJob` 用 `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` 绑定挂起的 `Games.exe`，应用先退出（含崩溃）时由内核兜底终止；游戏正常退出时后台线程先 `Drop` 挂起父进程再关闭 Job。Job 在游戏创建之后才创建/赋值，因此不会把游戏本身纳入 Job。
 - **启动前清理旧游戏进程**：helper 在 `launch()` 开头执行 `taskkill /F /T /IM <game>`。应用未提权时 `launch_game` 里的同名 `taskkill` 会因 `Access is denied` 失败，残留的提权游戏进程只能由提权 helper 清理。若残留进程被游戏反作弊驱动保护（管理员也无法终止），则只能重启系统；`is_process_running` 会通过窗口/启动宽限判定把这类无窗口残留排除在「游戏中」之外。
@@ -185,7 +190,10 @@
 - **签名句柄不跨提权边界**：helper 会重新验签并自己保持 `FILE_SHARE_READ` 句柄直到进程创建完成；未提权一侧的校验只是「不想让用户白弹一次 UAC」的 UX 过滤，**不要**因为「重复」而删掉 helper 里的那次。
 - **有意与上游一致的两处取舍**：`WTD_REVOCATION_CHECK_NONE`（不联网、不查吊销，离线可用）与只比对组织名不比指纹。
 - **状态文件**：`%LOCALAPPDATA%\cn.msk-network.endprotocol\launcher_helper_status`（路径由调用方传入），用于区分「helper 启动阶段失败」与「游戏创建成功但很快退出」——helper 退出码与游戏退出码共用同一段数值区间。
-- 非 Windows 平台：`launch_via_official_parent` 返回 `unknown` 错误、`try_run_helper` 返回 `None`、`process_is_elevated` 恒为 `false`，模块仍可编译（CI 会构建 macOS/Linux）。
+- **结束游戏同样要提权**：游戏进程由提权 helper 创建，未提权的 EndProtocol 执行 `taskkill` / `TerminateProcess` 只会得到 `Access is denied`。`kill_game_process` 因此先就地试一次（本进程已提权时足以成功，不弹 UAC），还有残留才 `runas` 重启自身跑 `KILL_HELPER_FLAG`（`--endfield-kill-helper --name <Endfield.exe>`），由 `lib.rs` 在 logger/Tauri 初始化前截获；helper 只做 `process::terminate_processes` + `has_processes`，退出码 `0` = 已结束、`STILL_RUNNING` = 仍存活。用户取消 UAC 会由 `shell_execute_elevated` 映射为 `cancelled`，命令层把它作为 `Err("<token>: <detail>")` 交给前端展示。
+- **kill helper 的命令行只接受 `<name>.exe`**：这个提权入口若允许任意参数，就等于给应用开了一个「以管理员权限终止任意进程」的后门；`parse_kill_options` 因此拒绝路径、引号与非 `.exe` 目标。
+- **旧实现的 `wmic` 兜底已移除**：`wmic` 在新版 Windows 已弃用，且同样跨不过完整性级别边界，留着只会掩盖真正的原因（权限不足）。
+- 非 Windows 平台：`launch_via_official_parent` 返回 `unknown` 错误、`try_run_helper` / `try_run_kill_helper` 返回 `None`、`kill_game_process` 返回 `Ok(false)`、`process_is_elevated` 恒为 `false`，模块仍可编译（CI 会构建 macOS/Linux）。
 
 ---
 
@@ -346,19 +354,23 @@
 ---
 
 ## `src-tauri/src/utils/process.rs`
-**职责**：进程探测辅助（约 135 行）。供 `launcher_check_game_running` 命令、驻守等待与游戏运行时长统计共用的「进程是否真的在运行」查询；会排除崩溃/挂起后残留的无窗口进程。
-**导出**：`is_process_running`；私有：`STARTUP_GRACE_SECONDS`、`list_process_ids`、`has_top_level_window`、`process_is_starting`。
-**主要依赖**：`tokio::process::Command`、`windows-sys`（`Win32_System_Threading`、`Win32_UI_WindowsAndMessaging`，仅 Windows）。
+**职责**：进程探测与结束辅助（约 220 行）。供 `launcher_check_game_running` / `launcher_kill_game` 命令、驻守等待与游戏运行时长统计共用：「进程是否真的在运行」查询（排除崩溃/挂起后残留的无窗口进程）与「结束同名进程」的执行原语。
+**导出**：`is_process_running`（async）、`list_process_ids`（sync）、`terminate_processes`（sync）、`has_processes`（sync）；私有：`STARTUP_GRACE_SECONDS`、`list_process_ids_async`、`parse_tasklist_pids`、`has_top_level_window`、`process_is_starting`。
+**主要依赖**：`tokio::process::Command`、`std::process::Command`、`windows-sys`（`Win32_System_Threading`、`Win32_UI_WindowsAndMessaging`，仅 Windows）。
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
-| `is_process_running(process_name) -> bool`（pub async） | :13 | Windows：`tasklist /FI "IMAGENAME eq <name>" /FO CSV /NH` 取得同名 PID；任一 PID 拥有顶层窗口，或进程创建时间在 `STARTUP_GRACE_SECONDS` 内，即视为运行中；无窗口的陈旧进程（如 Application Hang 后仍 `STILL_ACTIVE` 的残留）返回 false。命令失败记 debug 日志并返回 false；非 Windows 恒 false。调用方：commands/launcher.rs（`launcher_check_game_running`）、utils/game_playtime.rs（`poll_loop`）、lib.rs（`wait_for_game_session`） |
-| `STARTUP_GRACE_SECONDS` | :34 | 90 秒；新进程尚未创建窗口时仍视为「正在启动」 |
-| `list_process_ids`（私有 async） | :37 | 解析 tasklist CSV 行的第 2 列 PID，按镜像名忽略大小写匹配 |
-| `has_top_level_window`（私有） | :81 | `EnumWindows` + `GetWindowThreadProcessId` 判断 PID 是否拥有顶层窗口（跨完整性级别可见） |
-| `process_is_starting`（私有） | :110 | `OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION)` + `GetProcessTimes` 读取创建时间，与当前时间比较 |
+| `is_process_running(process_name) -> bool`（pub async） | :14 | Windows：`tasklist /FI "IMAGENAME eq <name>" /FO CSV /NH` 取得同名 PID；任一 PID 拥有顶层窗口，或进程创建时间在 `STARTUP_GRACE_SECONDS` 内，即视为运行中；无窗口的陈旧进程（如 Application Hang 后仍 `STILL_ACTIVE` 的残留）返回 false。命令失败记 debug 日志并返回 false；非 Windows 恒 false。调用方：commands/launcher.rs（`launcher_check_game_running`）、utils/game_playtime.rs（`poll_loop`）、lib.rs（`wait_for_game_session`） |
+| `STARTUP_GRACE_SECONDS` | :35 | 90 秒；新进程尚未创建窗口时仍视为「正在启动」 |
+| `list_process_ids_async`（私有 async） | :38 | 异步 `tasklist`，交给 `parse_tasklist_pids` 解析 |
+| `parse_tasklist_pids`（私有） | :66 | 解析 `tasklist /FO CSV /NH` 输出：只保留镜像名忽略大小写完全匹配的行，取第 2 列 PID（两种查询共用同一段解析） |
+| `list_process_ids`（pub sync） | :94 | 同步版本，供 `spawn_blocking` / helper 进程使用；**不做**窗口/启动宽限过滤（`taskkill` 要的是「还有哪些同名进程活着」，包括界面判定为未运行的残留）。非 Windows 返回空 |
+| `terminate_processes`（pub sync） | :133 | 隐藏窗口 `taskkill /T /F /IM <name>`，随后对 `list_process_ids` 的每个 PID 再补一次 `taskkill /F /PID`；返回按名命令是否成功（通常 `Access is denied` 表示需要提权）。非 Windows 恒 `false` |
+| `has_processes`（pub sync） | :164 | 轮询 `list_process_ids`，最多约 3 秒（6 次 × 500ms）等终止生效；仍有进程返回 `true` |
+| `has_top_level_window`（私有） | :177 | `EnumWindows` + `GetWindowThreadProcessId` 判断 PID 是否拥有顶层窗口（跨完整性级别可见） |
+| `process_is_starting`（私有） | :206 | `OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION)` + `GetProcessTimes` 读取创建时间，与当前时间比较 |
 
-**备注**：仅按镜像名判断会把杀不掉的无窗口挂起进程误报为「游戏中」；窗口/启动宽限判定修复了该误报。游戏正常运行时拥有主窗口，不受影响。
+**备注**：仅按镜像名判断会把杀不掉的无窗口挂起进程误报为「游戏中」；窗口/启动宽限判定修复了该误报。游戏正常运行时拥有主窗口，不受影响。`terminate_processes` / `has_processes` 被 `commands/launcher.rs`（`launcher_kill_game`）、`utils/official_launcher.rs`（`kill_game_process`、提权 kill helper 的 `run_kill_helper`）复用。
 
 ---
 
@@ -394,27 +406,28 @@
 ---
 
 ## `src-tauri/src/utils/api_health.rs`
-**职责**：API 连续失败熔断器（约 197 行）。记录森空岛接口连续失败次数、分类与服务器时间偏差；达到阈值后置位全局 `BLOCKED`，后续 `call_skland_api` 立即失败，避免前端无限等待，并通过 `app:api-health` 事件通知前端弹出提示。
-**导出**：`ApiFailureKind`、`ApiHealthSnapshot`、`CLOCK_SKEW_THRESHOLD_SECONDS`、`init`、`ensure_available`、`record_success`、`record_failure`、`reset`、`snapshot`、`classify_error`。私有：`BLOCK_THRESHOLD`、`SIGNATURE_BLOCK_THRESHOLD`、`APP_HANDLE`、`BLOCKED`、`STATE`、`state`。
+**职责**：API 连续失败熔断器（约 222 行）。记录森空岛接口连续失败次数、分类与服务器时间偏差；达到阈值后置位全局 `BLOCKED`，后续 `call_skland_api` 立即失败，避免前端无限等待，并通过 `app:api-health` 事件通知前端弹出提示。
+**导出**：`ApiFailureKind`、`ApiHealthSnapshot`、`CLOCK_SKEW_THRESHOLD_SECONDS`、`init`、`ensure_available`、`record_success`、`record_failure`、`reset`、`snapshot`、`classify_error`。私有：`BLOCK_THRESHOLD`、`SIGNATURE_BLOCK_THRESHOLD`、`DEVICE_FINGERPRINT_BLOCK_THRESHOLD`、`APP_HANDLE`、`BLOCKED`、`STATE`、`state`。
 **主要依赖**：`chrono`、`serde::Serialize`、`std::sync::{Mutex, OnceLock}`、`std::sync::atomic`、`tauri::{AppHandle, Emitter}`、`crate::utils::AppError`。
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
-| `BLOCK_THRESHOLD` / `SIGNATURE_BLOCK_THRESHOLD` | :10 / :12 | 普通错误连续 5 次、签名类错误连续 3 次触发熔断 |
-| `CLOCK_SKEW_THRESHOLD_SECONDS` | :14 | 服务器时间与本地时间偏差 ≥180 秒即判定为时钟异常，单次失败也直接熔断 |
-| `ApiFailureKind`（`Serialize`、`snake_case`） | :20-30 | `ClockSkew / Signature / Auth / Network / Server / Parse / Unknown`，作为事件与导出清单的枚举值 |
-| `ApiHealthSnapshot`（`Serialize`） | :32-40 | `blocked`、`consecutive_failures`、`kind`、`message`、`clock_skew_seconds`、`last_failure_at`；`Default` 为未熔断空状态 |
-| `init(app)` | :60 | 保存 `AppHandle` 供事件广播；状态惰性初始化 |
-| `ensure_available()` | :61 | 已熔断时返回 `AppError::AuthError`，消息包含失败次数与最后一次错误；`call_skland_api` 在每次请求前调用 |
-| `record_success()` | :82 | 未熔断时把计数/分类/偏差清零（任一成功请求即解除连续失败累计） |
-| `record_failure(kind, message, clock_skew_seconds)` | :91 | 累计失败；确认时钟偏差或达到阈值时置 `BLOCKED` 并 `emit("app:api-health", snapshot)`，否则只记 warn 日志 |
-| `reset()` | :153 | 用户修复问题后清空熔断与计数（命令 `reset_api_health`） |
-| `snapshot()` | :165 | 返回当前状态（命令 `get_api_health`、诊断 manifest） |
-| `classify_error(code, message, clock_skew_seconds)` | :172 | 按服务器时间偏差、sign/timestamp/签名/过期、cred/token/401/403、5xx 等关键字分类 |
+| `BLOCK_THRESHOLD` / `SIGNATURE_BLOCK_THRESHOLD` / `DEVICE_FINGERPRINT_BLOCK_THRESHOLD` | :10 / :12 / :15 | 普通错误连续 5 次、签名类 3 次、数美设备指纹 3 次触发熔断 |
+| `CLOCK_SKEW_THRESHOLD_SECONDS` | :17 | 服务器时间与本地时间偏差 ≥180 秒即判定为时钟异常，单次失败也直接熔断 |
+| `ApiFailureKind`（`Serialize`、`snake_case`） | :23-36 | `ClockSkew / Signature / Auth / Network / Server / Parse / DeviceFingerprint / Unknown`，作为事件与导出清单的枚举值；`DeviceFingerprint` 对应数美设备指纹接口失败（前端提示重启电脑并同步时区） |
+| `ApiHealthSnapshot`（`Serialize`） | :38-46 | `blocked`、`consecutive_failures`、`kind`、`message`、`clock_skew_seconds`、`last_failure_at`；`Default` 为未熔断空状态 |
+| `init(app)` | :66 | 保存 `AppHandle` 供事件广播；状态惰性初始化 |
+| `ensure_available()` | :72 | 已熔断时返回 `AppError::AuthError`，消息包含失败次数与最后一次错误；`call_skland_api` 在每次请求前调用 |
+| `record_success()` | :88 | 未熔断时把计数/分类/偏差清零（任一成功请求即解除连续失败累计） |
+| `record_failure(kind, message, clock_skew_seconds)` | :97 | 累计失败；确认时钟偏差或达到阈值时置 `BLOCKED` 并 `emit("app:api-health", snapshot)`，否则只记 warn 日志 |
+| `reset()` | :159 | 用户修复问题后清空熔断与计数（命令 `reset_api_health`） |
+| `snapshot()` | :171 | 返回当前状态（命令 `get_api_health`、诊断 manifest） |
+| `classify_error(code, message, clock_skew_seconds)` | :178 | 按服务器时间偏差、sign/timestamp/签名/过期、cred/token/401/403、5xx 等关键字分类；`数美`/`deviceprofile`/`device_id` 归类为 `DeviceFingerprint` |
 
 **备注**：
 - 由 `services/skland_service.rs` 的 `call_skland_api` 调用：请求前 `ensure_available`，成功置 `record_success`，HTTP/JSON/业务错误按类型 `record_failure`；并从响应头 `Date` 计算本地时钟偏差。
-- 事件名 `app:api-health`；payload 即 `ApiHealthSnapshot`。前端 `src/utils/crashReporting.ts` 监听后停止启动进度并弹出崩溃提示。
+- 数美设备指纹（dId 获取）失败的计数在 `SklandService::fetch_new_did` 内部完成（`DeviceFingerprint`，阈值 3），`call_skland_api` 中 dId 失败不再重复计 `Network`。
+- 事件名 `app:api-health`；payload 即 `ApiHealthSnapshot`。前端 `src/utils/crashReporting.ts` 监听后收起 Splash 并把账户标记为不可用（`src/utils/accountAvailability.ts`），弹窗为非致命，可关闭后继续使用应用。
 - 静默模式不初始化该服务（不建立 WebView，也无业务请求）。
 
 ---

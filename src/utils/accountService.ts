@@ -1,6 +1,12 @@
 import { invoke } from '@tauri-apps/api/core';
 import logger, {  logError } from "./logger";
 import { trackStartupTask } from "@/utils/startupProgress";
+import {
+  clearAccountUnavailable,
+  reasonFromApiKind,
+  setAccountUnavailable,
+} from "./accountAvailability";
+import type { ApiHealthSnapshot } from "./crashReporting";
 
 /**
  * 账户信息接口
@@ -26,6 +32,8 @@ export interface SklandAccount {
   nickname?: string;
   /** 已缓存的森空岛头像地址（未获取过时为空） */
   avatar?: string;
+  /** 首次登录时记录的手机号（用于重新登录自动填充） */
+  phone?: string;
 }
 
 /**
@@ -130,6 +138,8 @@ export interface RoleDisplayInfo {
 export interface LoginRequest {
   phone: string;
   password: string;
+  /** 重新登录时用于校验登录结果是否为目标森空岛账户 */
+  expectedUserId?: string;
 }
 
 /**
@@ -169,6 +179,8 @@ export interface SendCodeRequest {
 export interface CodeLoginRequest {
   phone: string;
   code: string;
+  /** 重新登录时用于校验登录结果是否为目标森空岛账户 */
+  expectedUserId?: string;
 }
 
 /**
@@ -190,6 +202,10 @@ export interface ScanStatus {
 
 /**
  * 获取所有账户
+ *
+ * 后端 `get_accounts` 内部会捕获 API 失败并返回告警账户，因此这里不在成功时清除
+ * 账户不可用状态（避免「熔断期间刷新一次就误判为已恢复」）；恢复由
+ * `applyApiHealthSnapshot`（后端熔断已解除）、重新登录成功或显式重试驱动。
  * @returns 账户列表
  */
 export async function getAccounts(): Promise<Account[]> {
@@ -197,6 +213,7 @@ export async function getAccounts(): Promise<Account[]> {
     return await trackStartupTask(invoke<Account[]>('get_accounts'));
   } catch (error) {
     logError('Failed to get accounts:', error);
+    setAccountUnavailable('unknown', String(error));
     return [];
   }
 }
@@ -261,7 +278,9 @@ export async function getSklandGames(
  */
 export async function addAccount(loginRequest: LoginRequest): Promise<LoginResult> {
   try {
-    return await invoke('add_account', { loginRequest });
+    const result = await invoke<LoginResult>('add_account', { loginRequest });
+    if (result.success) clearAccountUnavailable();
+    return result;
   } catch (error) {
     logError('Failed to add account:', error);
     return {
@@ -310,9 +329,10 @@ export async function batchLogout(accountIds: string[]): Promise<boolean> {
  */
 export async function refreshAccounts(): Promise<RefreshResult> {
   try {
-    return await invoke('refresh_accounts');
+    return await invoke<RefreshResult>('refresh_accounts');
   } catch (error) {
     logError('Failed to refresh accounts:', error);
+    setAccountUnavailable('unknown', String(error));
     return {
       success: false,
       errorMessage: String(error),
@@ -347,7 +367,9 @@ export async function sendVerificationCode(request: SendCodeRequest): Promise<bo
  */
 export async function addAccountByCode(loginRequest: CodeLoginRequest): Promise<LoginResult> {
   try {
-    return await invoke('add_account_by_code', { loginRequest });
+    const result = await invoke<LoginResult>('add_account_by_code', { loginRequest });
+    if (result.success) clearAccountUnavailable();
+    return result;
   } catch (error) {
     logger.error('Failed to add account by code: ' + error, "AccountService");
     return {
@@ -388,11 +410,20 @@ export async function scanStatus(scanId: string): Promise<ScanStatus | null> {
 /**
  * 通过扫码添加账户
  * @param scanCode 扫码登录成功后返回的扫描码
+ * @param expectedUserId 重新登录时要求登录到该森空岛账户，授权账号不一致时后端拦截
  * @returns 登录结果
  */
-export async function addAccountByScan(scanCode: string): Promise<LoginResult> {
+export async function addAccountByScan(
+  scanCode: string,
+  expectedUserId?: string,
+): Promise<LoginResult> {
   try {
-    return await invoke('add_account_by_scan', { scanCode });
+    const result = await invoke<LoginResult>('add_account_by_scan', {
+      scanCode,
+      expectedUserId: expectedUserId ?? null,
+    });
+    if (result.success) clearAccountUnavailable();
+    return result;
   } catch (error) {
     logger.error('Failed to add account by scan: ' + error, "AccountService");
     return {
@@ -400,6 +431,42 @@ export async function addAccountByScan(scanCode: string): Promise<LoginResult> {
       errorMessage: String(error),
       account: undefined,
     };
+  }
+}
+
+/**
+ * 校验并同步账户可用性快照（供前端调用 `get_api_health` 后使用）
+ *
+ * 账户数据获取频繁失败时，应用照常进入，但账户页会显示「账号不可用」，
+ * 并区分是登录凭证失效还是数美设备指纹异常（需要重启电脑并同步时区）。
+ * 后端熔断已解除（`blocked=false`）时清除不可用状态。
+ */
+export function applyApiHealthSnapshot(snapshot: ApiHealthSnapshot | null | undefined): void {
+  if (!snapshot) return;
+  if (!snapshot.blocked) {
+    clearAccountUnavailable();
+    return;
+  }
+  setAccountUnavailable(
+    reasonFromApiKind(snapshot.kind),
+    snapshot.message ?? "",
+  );
+}
+
+/**
+ * 用刚登录得到的 cred/token 读取森空岛用户资料（确认绑定页面展示头像/昵称）
+ * @param cred 刚登录得到的凭证
+ * @param token 刚登录得到的令牌
+ */
+export async function getSklandUserInfoByCred(
+  cred: string,
+  token: string,
+): Promise<SklandUserInfo | null> {
+  try {
+    return await invoke<SklandUserInfo>('get_skland_user_info_by_cred', { cred, token });
+  } catch (error) {
+    logError('Failed to get Skland user info by cred:', error);
+    return null;
   }
 }
 

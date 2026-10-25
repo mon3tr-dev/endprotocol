@@ -35,6 +35,11 @@ import {
   getSelectedAccount,
   type Account,
 } from "@/utils/accountService";
+import {
+  getAccountAvailability,
+  loadAccountAvailability,
+  subscribeAccountAvailability,
+} from "@/utils/accountAvailability";
 import { usePinImages } from "@/utils/imageCacheManager";
 import { getConfig, setConfig } from "@/utils/configService";
 import {
@@ -163,6 +168,7 @@ export const Sidebar = ({
   );
   const [isLoadingAccount, setIsLoadingAccount] = useState(true);
   const [isSwitchModalOpen, setIsSwitchModalOpen] = useState(false);
+  const [accountUnavailable, setAccountUnavailable] = useState<boolean>(false);
   const [isManualRefreshing, setIsManualRefreshing] = useState(false); // 手动刷新状态
   const [expectedAccountCount, setExpectedAccountCount] = useState<number>(3); // 预期的账户数量（保留以兼容 manualRefresh 事件）
   const [developerMode, setDeveloperMode] = useState(false);
@@ -342,6 +348,9 @@ export const Sidebar = ({
         logger.info("Selected account ID: " + selectedId, "Sidebar");
         logger.info("Loaded accounts: " + accounts.length, "Sidebar");
 
+        // 账户数据不可用时，侧边栏不再显示「未选择账户」，改为提示账号不可用
+        setAccountUnavailable(getAccountAvailability() !== null);
+
         if (selectedId && accounts.length > 0) {
           const account = accounts.find((acc) => acc.id === selectedId);
           logger.info("Found account: " + account?.nickname, "Sidebar");
@@ -352,12 +361,18 @@ export const Sidebar = ({
         }
       } catch (error) {
         logger.error("Failed to load selected account: " + error, "Sidebar");
+        setAccountUnavailable(true);
       } finally {
         setIsLoadingAccount(false);
       }
     };
 
     loadSelectedAccount();
+
+    const unsubscribeAvailability = subscribeAccountAvailability(() => {
+      setAccountUnavailable(getAccountAvailability() !== null);
+    });
+    void loadAccountAvailability();
 
     // 监听账户变化事件(从Account页面切换时触发)
     const handleAccountChange = async () => {
@@ -410,6 +425,7 @@ export const Sidebar = ({
     return () => {
       window.removeEventListener("accountChanged", handleAccountChange);
       window.removeEventListener("manualRefresh", handleManualRefresh);
+      unsubscribeAvailability();
     };
   }, []);
 
@@ -1076,6 +1092,48 @@ export const Sidebar = ({
                 </button>
               </div>
             </div>
+          ) : accountUnavailable ? (
+            <Link
+              to="/account"
+              title={
+                collapsed
+                  ? i18n.t("settings.account.account_unavailable_title")
+                  : undefined
+              }
+              className={clsx(
+                "glass-surface flex items-center rounded-xl border border-danger/40 transition-all duration-300 ease-out hover:border-danger/60",
+                collapsed ? "p-[5px]" : "gap-3 p-2.5",
+              )}
+            >
+              <div
+                className={clsx(
+                  "rounded-lg flex items-center justify-center transition-all duration-300 ease-in-out text-danger",
+                  collapsed ? "w-8 h-8" : "w-10 h-10",
+                )}
+              >
+                <AccountIcon
+                  className={clsx(
+                    "transition-all duration-300 ease-in-out",
+                    collapsed ? "w-4 h-4" : "w-5 h-5",
+                  )}
+                />
+              </div>
+              <div
+                className={clsx(
+                  "overflow-hidden transition-all duration-300 ease-out",
+                  collapsed
+                    ? "max-w-0 max-h-0 opacity-0"
+                    : "max-w-full max-h-12 flex-1 opacity-100",
+                )}
+              >
+                <p className="text-sm font-medium text-danger">
+                  {i18n.t("settings.account.account_unavailable_title")}
+                </p>
+                <p className="text-xs text-muted/60">
+                  {i18n.t("settings.account.relogin")}
+                </p>
+              </div>
+            </Link>
           ) : (
             <div
               title={

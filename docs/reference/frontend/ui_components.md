@@ -203,18 +203,18 @@
 **备注**：导出诊断日志与打开日志目录由 `CrashActionBar` 统一实现；该组件位于 `Provider` 的 ErrorBoundary 外层兜底中，因此不依赖 `GlobalAlertHost`。
 
 ## `src/components/crash-report-host.tsx`
-**职责**：全局崩溃/API 熔断提示宿主（约 320 行）。订阅 `crashReporting` 的当前报告，在应用内弹出阻塞/非阻塞 Modal，展示错误摘要、可能原因、建议、技术详情，并提供复制、导出诊断日志、打开日志目录、重试/重载/退出操作。
+**职责**：全局崩溃/API 熔断提示宿主（约 356 行）。订阅 `crashReporting` 的当前报告，在应用内弹出阻塞/非阻塞 Modal，展示错误摘要、可能原因、建议、技术详情，并提供复制、导出诊断日志、打开日志目录、重试/重载/退出操作。
 **导出**：`CrashDetails`、`CrashActionBar`、`CrashReportHost`。私有：`useCrashReportState`。
-**主要依赖**：`react`、`react-i18next`、`@tauri-apps/api/core`（`reset_api_health`/`app_quit`）、`morphicons/react` + `lucide` 图标、`@/components/ui/glass`（`GlassAlert`/`GlassButton`）、`@/components/ui/modal`（`GlassModalCompound`）、`@/utils/diagnostics`、`@/utils/crashReporting`
+**主要依赖**：`react`、`react-i18next`、`react-router-dom`（`useNavigate`）、`@tauri-apps/api/core`（`reset_api_health`/`app_quit`）、`morphicons/react` + `lucide` 图标（含 `UserRound`）、`@/components/ui/glass`（`GlassAlert`/`GlassButton`）、`@/components/ui/modal`（`GlassModalCompound`）、`@/utils/diagnostics`、`@/utils/crashReporting`
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
-| `useCrashReportState`（私有） | :24 | 订阅崩溃报告并在挂载时 `loadPendingCrashReports()` |
-| `CrashDetails` | :44 | 图标 + 摘要 + 时间 + 时钟偏差警示 + `diagnoseCrash` 的「可能原因/建议处理」+ 折叠技术详情（message/detail/stack/API health） |
+| `useCrashReportState`（私有） | :25 | 订阅崩溃报告并在挂载时 `loadPendingCrashReports()` |
+| `CrashDetails` | :45 | 图标 + 摘要 + 时间 + 时钟偏差警示 + 数美设备指纹警示（`api.kind === "device_fingerprint"` 时用 `crash.api_fingerprint_body`）+ `diagnoseCrash` 的「可能原因/建议处理」+ 折叠技术详情（message/detail/stack/API health） |
 | `CrashActionBar` | :129 | 复制报告、导出 zip 并 `revealItemInDir`、打开日志目录、可选关闭/退出、主操作按钮；底部内联状态文案 |
-| `CrashReportHost` | :243 | 读取当前报告并渲染 `GlassModal`（`z-[150]`）；`fatal` 报告禁止背景关闭/Escape；API 报告主按钮先 `reset_api_health` 再重载；关闭时确认崩溃报告路径 |
+| `CrashReportHost` | :253 | 读取当前报告并渲染 `GlassModal`（`z-[150]`）；`fatal` 报告禁止背景关闭/Escape；API 报告额外提供「前往账户页」按钮（`useNavigate` 跳 `/account`），主按钮先 `reset_api_health` 再重载；关闭时确认崩溃报告路径 |
 
-**备注**：挂载于 `src/provider.tsx` 的 `ErrorBoundary` 内。API 熔断报告（`source:"api"`）为 `fatal`：会调用 `startupProgress.abortStartup` 收起 Splash，并在修复后点「已修复，重试」清除后端 `BLOCKED` 状态并重载。i18n 键前缀 `crash.*`。
+**备注**：挂载于 `src/provider.tsx` 的 `ErrorBoundary` 内。API 熔断报告（`source:"api"`）现为**非致命**：先调用 `startupProgress.abortStartup` 收起 Splash 让用户可继续进入应用，账户由 `accountAvailability` 标记为不可用（账户页展示「账号不可用 / 重新登录」），弹窗可关闭；修复后点「已修复，重试」清除后端 `BLOCKED` 状态并重载。数美设备指纹失败时提示重启电脑并同步时区。i18n 键前缀 `crash.*`（新增 `api_fingerprint_body`、`cause_fingerprint`、`suggestion_fingerprint`、`action_go_account`）。
 
 ## `src/components/ui/input-otp.tsx`
 **职责**：OTP 验证码输入——隐藏真实 input 承担键盘与粘贴，可视格子从 Context 读取字符。

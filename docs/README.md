@@ -18,6 +18,8 @@
 | 需求 | 入口（源文件） | 详细参考 |
 | --- | --- | --- |
 | 账户登录（密码/验证码/扫码）、登出、刷新 | `src/pages/account.tsx`、`src/utils/accountService.ts` | [pages_account.md](reference/frontend/pages_account.md)、[utils_services_a.md](reference/frontend/utils_services_a.md)、[services_account.md](reference/backend/services_account.md) |
+| 账户不可用 / 重新登录（不强制输手机号、扫码校验账户身份） | `src/utils/accountAvailability.ts`、`src/pages/account.tsx`（`handleOpenRelogin` / `finishRelogin`）、后端 `AccountService::complete_login_from_token` 的 `expected_user_id` 校验 | [utils_services_b.md](reference/frontend/utils_services_b.md)、[pages_account.md](reference/frontend/pages_account.md)、[services_account.md](reference/backend/services_account.md) |
+| 数美设备指纹频繁失败（重启电脑 + 同步时区提示） | `src-tauri/src/services/skland_service.rs`（`fetch_new_did`）、`src-tauri/src/utils/api_health.rs`（`DeviceFingerprint`）、`src/utils/crashReporting.ts` | [services_skland.md](reference/backend/services_skland.md)、[utils.md](reference/backend/utils.md)、[utils_services_b.md](reference/frontend/utils_services_b.md) |
 | 森空岛用户资料（昵称/头像/游戏等级） | `src/utils/accountService.ts` → `get_skland_user_info` | [services_account.md](reference/backend/services_account.md)、[services_skland.md](reference/backend/services_skland.md) |
 | 角色（干员）数据查询与缓存 | `src/utils/roleDataService.ts`、`roleDetailService.ts` | [utils_services_a.md](reference/frontend/utils_services_a.md)、`query_role_data` 见 [commands.md](reference/backend/commands.md) |
 | 干员列表卡片 / 选择弹窗（实际生效实现） | `src/components/cards/character-list/char-select-modal.tsx` | [cards_character_list.md](reference/frontend/cards_character_list.md) |
@@ -48,7 +50,7 @@
 
 | 需求 | 位置 | 详细参考 |
 | --- | --- | --- |
-| **IPC 命令在哪定义 / 前端谁调用** | 生成的对照表 | [ipc_index.md](reference/ipc_index.md)（117 个命令全表） |
+| **IPC 命令在哪定义 / 前端谁调用** | 生成的对照表 | [ipc_index.md](reference/ipc_index.md)（118 个命令全表） |
 | 新增/修改一个 Tauri 命令 | `src-tauri/src/commands/`、`src-tauri/src/lib.rs` | [commands.md](reference/backend/commands.md)、[bootstrap.md](reference/backend/bootstrap.md)、[backend_development.md](backend_development.md) |
 | 错误类型与转换 | `src-tauri/src/utils/error.rs` | [utils.md](reference/backend/utils.md) |
 | 加密与签名（RSA/AES/DES/HMAC） | `src-tauri/src/utils/hg_crypto.rs`、`services/skland_service.rs` | [utils.md](reference/backend/utils.md)、[services_skland.md](reference/backend/services_skland.md) |
@@ -86,7 +88,7 @@
 | 文件 | 覆盖范围 |
 | --- | --- |
 | [reference/backend/bootstrap.md](reference/backend/bootstrap.md) | `main.rs`、`lib.rs`（含全部命令注册清单）、`tray.rs`、`build.rs`、`Cargo.toml`、`tauri.conf.json`、`capabilities/*`、`examples/sign_test.rs` |
-| [reference/backend/commands.md](reference/backend/commands.md) | `commands/` 全部 16 个文件、**116 处 `#[tauri::command]` 注解**：参数、返回值、内部调用链 |
+| [reference/backend/commands.md](reference/backend/commands.md) | `commands/` 全部 16 个文件、**118 处 `#[tauri::command]` 注解**：参数、返回值、内部调用链 |
 | [reference/backend/models.md](reference/backend/models.md) | `models/` 全部 7 个文件：79 个结构体/枚举的字段与 serde 映射 |
 | [reference/backend/services_account.md](reference/backend/services_account.md) | `services/account_service.rs`（约 3100 行）：登录、凭证刷新、角色数据、状态中枢 |
 | [reference/backend/services_skland.md](reference/backend/services_skland.md) | `services/skland_service.rs`：森空岛 API 端点总表、签名与加密流程 |

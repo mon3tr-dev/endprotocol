@@ -1,6 +1,6 @@
 # API 通信与数据流规范
 
-> 定位具体命令/实现请直接查：[ipc_index.md](reference/ipc_index.md)（113 个命令 ↔ 定义位置 ↔ 前端调用方）、
+> 定位具体命令/实现请直接查：[ipc_index.md](reference/ipc_index.md)（114 个命令 ↔ 定义位置 ↔ 前端调用方）、
 > [commands.md](reference/backend/commands.md)（每个命令的参数、返回值、内部调用链）。
 
 ## 1. 通信机制

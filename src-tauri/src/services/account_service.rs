@@ -648,6 +648,27 @@ impl AccountService {
         Ok(())
     }
 
+    /// 记录登录时使用的手机号（`account_token_{user_id}.phone`）
+    ///
+    /// 仅用于「账户不可用」后重新登录时给短信/密码方式自动填充，不参与任何鉴权。
+    pub async fn set_phone_for_user(&self, user_id: &str, phone: &str) -> Result<(), AppError> {
+        let mut config = self.config_service.lock().unwrap();
+        let token_key = format!("account_token_{}", user_id);
+
+        let mut token_data: serde_json::Value = config.get(&token_key).unwrap_or(json!({}));
+        if let Some(obj) = token_data.as_object_mut() {
+            obj.insert("phone".to_string(), json!(phone));
+        } else {
+            return Err(AppError::ConfigError {
+                message: "token_data is not a valid JSON object".to_string(),
+            });
+        }
+
+        config.set(token_key, token_data)?;
+        log_debug!("set_phone_for_user: phone saved for user_id={}", user_id);
+        Ok(())
+    }
+
     /// 为指定用户设置 u8 token（在登录成功后调用）
     pub async fn set_u8token_for_user(&self, user_id: &str, u8token: &str) -> Result<(), AppError> {
         log_debug!(
@@ -1447,6 +1468,8 @@ impl AccountService {
             hy_token,
             device_token,
             MissingDeviceTokenPolicy::RequireUserVerification,
+            login_request.expected_user_id,
+            Some(login_request.phone.clone()),
         )
         .await
     }
@@ -1988,6 +2011,8 @@ impl AccountService {
             hy_token,
             device_token,
             MissingDeviceTokenPolicy::ContinueWithoutDeviceToken,
+            login_request.expected_user_id,
+            Some(login_request.phone.clone()),
         )
         .await
     }
@@ -2205,6 +2230,7 @@ impl AccountService {
     pub async fn add_account_by_scan(
         &self,
         scan_code: String,
+        expected_user_id: Option<String>,
     ) -> Result<AccountLoginResult, AppError> {
         // Step 1: 用 scanCode 换取 Hypergryph Token (+ deviceToken + hgld)
         let (hy_token, device_token, _hgld) = match self.token_by_scan_code(&scan_code).await {
@@ -2237,20 +2263,30 @@ impl AccountService {
             Some(device_token)
         };
 
+        // 扫码没有手机号可记录；expected_user_id 用于重新登录时的账户身份校验
         self.complete_login_from_token(
             hy_token,
             device_token,
             MissingDeviceTokenPolicy::ContinueWithoutDeviceToken,
+            expected_user_id,
+            None,
         )
         .await
     }
 
     /// 登录获取 token 后的公共流程（获取 skland code/cred、保存 token、获取角色列表）
+    ///
+    /// `expected_user_id`/`phone` 仅用于「账户不可用后的重新登录」：扫码或验证码/
+    /// 密码登录都不再要求用户先输入手机号，授权成功后在这里校验登录结果是否就是
+    /// 目标森空岛账户，不是则整单拦截（不保存任何凭证）。校验通过时把手机号记到
+    /// `account_token_{user_id}.phone`，供下次短信/密码重登自动填充。
     async fn complete_login_from_token(
         &self,
         hy_token: String,
         device_token: Option<String>,
         missing_policy: MissingDeviceTokenPolicy,
+        expected_user_id: Option<String>,
+        phone: Option<String>,
     ) -> Result<AccountLoginResult, AppError> {
         // Step 2: 获取 Skland Code
         let sk_code = match self.get_skland_code(&hy_token).await {
@@ -2283,6 +2319,29 @@ impl AccountService {
                 });
             }
         };
+
+        // Step 3.1: 重新登录时校验账户身份（扫码/验证码都可能扫到别的账号）
+        if let Some(expected) = expected_user_id.as_deref() {
+            if !expected.is_empty() && expected != user_id {
+                log_warn!(
+                    "complete_login_from_token: account mismatch, expected user {} but logged in as {}; aborting without saving credentials",
+                    expected,
+                    user_id
+                );
+                return Ok(AccountLoginResult {
+                    success: false,
+                    error_message: Some(format!(
+                        "ACCOUNT_MISMATCH:{}",
+                        user_id
+                    )),
+                    account: None,
+                    available_roles: None,
+                    cred: None,
+                    token: None,
+                    user_id: None,
+                });
+            }
+        }
 
         // Step 3.5: 若服务器未返回 deviceToken（新设备），用 userId 在本地匹配已保存的 device token
         let mut device_token = device_token;
@@ -2332,6 +2391,13 @@ impl AccountService {
             log_error!("Failed to save hytoken: {}", e);
         } else {
             log_debug!("hytoken saved successfully");
+        }
+
+        // 记录登录手机号，供「重新登录」时短信/密码方式自动填充（扫码登录没有手机号）
+        if let Some(phone) = phone.as_deref().map(str::trim).filter(|p| !p.is_empty()) {
+            if let Err(e) = self.set_phone_for_user(&user_id, phone).await {
+                log_warn!("Failed to save phone for user {}: {}", user_id, e);
+            }
         }
 
         // 保存 device token（与 cred 同级存储，失败不阻断登录）
@@ -2500,6 +2566,18 @@ impl AccountService {
         Ok(info)
     }
 
+    /// 用刚登录得到的 cred/token 直接读取森空岛用户资料
+    ///
+    /// 用于「添加账户 → 确认绑定森空岛账户」页面展示头像/昵称：此时账户尚未保存，
+    /// 无法走 [`Self::get_skland_user_info`]（它按 userId 读取本地配置）。
+    pub async fn get_skland_user_info_by_cred(
+        &self,
+        cred: String,
+        token: String,
+    ) -> Result<SklandUserInfo, AppError> {
+        self.skland_service.get_user_info(&cred, &token).await
+    }
+
     /// 获取森空岛游戏列表（游戏图标等基础信息）
     ///
     /// `GET /web/v1/game` 与账户无关，因此统一缓存在配置项 `skland_games_cache` 中，
@@ -2608,6 +2686,12 @@ impl AccountService {
                 let user_info: Option<SklandUserInfo> = value
                     .get("user_info")
                     .and_then(|info| serde_json::from_value(info.clone()).ok());
+                // 首次登录时记录的手机号（供重新登录自动填充）
+                let phone = value
+                    .get("phone")
+                    .and_then(|phone| phone.as_str())
+                    .map(str::to_string)
+                    .filter(|phone| !phone.is_empty());
                 is_bound.then(|| SklandAccountInfo {
                     user_id: user_id.to_string(),
                     game_role_count: roles.map_or(0, Vec::len),
@@ -2619,6 +2703,7 @@ impl AccountService {
                         .as_ref()
                         .map(|info| info.avatar.clone())
                         .filter(|avatar| !avatar.is_empty()),
+                    phone,
                 })
             })
             .collect()

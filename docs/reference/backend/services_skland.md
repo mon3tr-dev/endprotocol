@@ -18,7 +18,8 @@
 | 24-25 | 常量 `ORG = "UWXspnCCJN4sfYlNfqps"`、`PUB_KEY_DER`（数美接口 RSA 公钥） |
 | 28-36 | `pub struct SklandService { config_service: Arc<Mutex<ConfigService>> }` 与 `new` |
 | 38-70 | dId 缓存读写：`get_or_refresh_did` |
-| 72-393 | `fetch_new_did`：1:1 复刻 Python 的数美设备指纹申请（RSA → DES 混淆 → gzip → AES-CBC → POST） |
+| 72-98 | `fetch_new_did`：熔断检查 + 数美失败按 `api_health::ApiFailureKind::DeviceFingerprint` 计数 |
+| 100-409 | `fetch_new_did_inner`：1:1 复刻 Python 的数美设备指纹申请（RSA → DES 混淆 → gzip → AES-CBC → POST） |
 | 396-424 | `calculate_sign`：森空岛签名算法 |
 | 426-477 | `build_skland_request`：统一请求头注入 |
 | 479-601 | `call_skland_api`：统一 API 调用入口（2 次重试 + code 校验） |
@@ -40,7 +41,8 @@
 | --- | --- | --- |
 | `new(config_service)` pub | 33-36 | 持有 `Arc<Mutex<ConfigService>>` → 无网络 → 构造自身 |
 | `get_or_refresh_did(&self)` 私有 async | 38-70 | 读配置键 `did_cache` → 命中直接返回；未命中 → `fetch_new_did` → 写回 `did_cache` → `Ok(String)` |
-| `fetch_new_did(&self)` 私有 async | 72-393 | 无入参 → `POST https://fp-it.portal101.cn/deviceprofile/v4`（payload 300-308）→ 构造指纹 JSON、DES 混淆、gzip、AES-128-CBC → 从 `detail/data/顶层` 的 `deviceId|device_id` 取值 → `Ok("B"+deviceId)` |
+| `fetch_new_did(&self)` 私有 async | 72-98 | 先 `api_health::ensure_available()`；调用 `fetch_new_did_inner`，失败时按 `ApiFailureKind::DeviceFingerprint` 记一次失败（阈值 3），达到后熔断并通知前端「重启电脑 + 同步时区」 |
+| `fetch_new_did_inner(&self)` 私有 async | 100-409 | 无入参 → `POST https://fp-it.portal101.cn/deviceprofile/v4`（payload 316-324）→ 构造指纹 JSON、DES 混淆、gzip、AES-128-CBC → 从 `detail/data/顶层` 的 `deviceId|device_id` 取值 → `Ok("B"+deviceId)` |
 | `calculate_sign(&self, path, body, ts, did, token)` 私有 | 396-424 | 5 个字符串 → 无网络 → header JSON + HMAC-SHA256 + MD5 → 32 位小写 hex |
 | `build_skland_request(&self, client, method, url, cred, did, sign, ts)` 私有 | 426-457 | GET/POST 分支（436-440）→ 注入 11 个请求头（442-456）→ `reqwest::RequestBuilder` |
 | `call_skland_api(&self, method, path, query, body, cred, token, extra_headers)` pub async | 493-651 | 通用入口；**先 `api_health::ensure_available()` 熔断检查**；最多 2 轮，第 1 轮用缓存 dId、第 2 轮清缓存重取 → `https://zonai.skland.com{path}[?query]` → 从响应头 `Date` 计算本地时钟偏差 → 签名/发包/解析，`code==0` 才返回并 `record_success`，否则分类 `record_failure` 后累计 `last_err` 返回 |
@@ -59,13 +61,13 @@
 | `extract_endfield_roles(bindings)` pub（无 `self`） | 1142-1164 | `&[GameBinding]` → 无网络 → 过滤 `app_code=="endfield"`，展平 `binding_list[].roles[]` → `Vec<(uid, server_id, role_id)>` |
 | `des_encrypt_3des(key, data)` 自由函数 | 1166-1189 | 8 字节 Zero Padding（1172-1175）→ 单 DES 加密每个 8 字节块（1178-1186）→ Base64 字符串 |
 
-合计：impl 内 19 个方法（pub 13）+ 1 个自由加密函数 = 20 个可调用项；另有 5 个测试函数（1195、1306、1336、1376、1393）与 2 个测试常量（1215、1342）。
+合计：impl 内 20 个方法（pub 13）+ 1 个自由加密函数 = 21 个可调用项；另有 5 个测试函数（1201、1312、1342、1382、1399）与 2 个测试常量（1221、1348）。
 
 ## API 端点总表（重点）
 
 | 方法/路径 | 用途 | 调用的方法 | 位置 |
 | --- | --- | --- | --- |
-| `POST https://fp-it.portal101.cn/deviceprofile/v4` | 数美设备指纹，换取 dId | `fetch_new_did` | 318（payload 300-308，日志 312） |
+| `POST https://fp-it.portal101.cn/deviceprofile/v4` | 数美设备指纹，换取 dId | `fetch_new_did_inner` | 332（payload 317-325，日志 328） |
 | `ANY https://zonai.skland.com{path}[?query]` | 所有签名业务 API 的统一出口 | `call_skland_api` | 525-529 |
 | `GET /web/v1/user` | 用户资料（昵称、头像、积分、挂件、背景、社区数据） | `get_user_info` | 606 |
 | `GET /web/v1/game` | 森空岛游戏列表（图标等） | `get_game_list` | 667 |

@@ -21,7 +21,7 @@
 - **1-48 行**：import 区（依赖清单见上）。全文件无任何 Tauri `invoke`/`listen`，后端交互全部经由 `accountService`/`configService`/`tabService` 封装。
 - **50-82 行**：类型与常量（`SearchResult`、`SidebarProps`、`NavKey`、`NAV_KEYS`）。
 - **84-121 行**：`GripHandle` 子组件。
-- **126-173 行**：状态/引用声明。搜索态 `searchQuery`/`showResults`/`selectedIndex`/`searchMenuPos` 与 refs（126-139）；账户态 `selectedAccount`/`isLoadingAccount`/`isSwitchModalOpen`/`isManualRefreshing`/`expectedAccountCount`（默认 3）（142-152）；`developerMode`（153）、`sidebarTabs`/`sidebarActiveTab`（154-155）、`isDashboardCollapsed`（156）、`contextMenu`（157-162）、`isTabEditorOpen`/`editingTabForSidebar`（163-166）；拖拽态 `navOrder`/`draggingNav`/`draggingTab` 及对应 ref（167-173）。
+- **126-173 行**：状态/引用声明。搜索态 `searchQuery`/`showResults`/`selectedIndex`/`searchMenuPos` 与 refs（126-139）；账户态 `selectedAccount`/`isLoadingAccount`/`isSwitchModalOpen`/`accountUnavailable`/`isManualRefreshing`/`expectedAccountCount`（默认 3）（142-153）；`developerMode`（153）、`sidebarTabs`/`sidebarActiveTab`（154-155）、`isDashboardCollapsed`（156）、`contextMenu`（157-162）、`isTabEditorOpen`/`editingTabForSidebar`（163-166）；拖拽态 `navOrder`/`draggingNav`/`draggingTab` 及对应 ref（167-173）。
 - **175-181 行**：把 `navOrder`、`sidebarTabs` 同步进 ref（供拖拽结束时读取最新值）。
 - **184-196 行**：读取配置 `sidebar_nav_order`，过滤非法键并补齐缺失键后写入 `navOrder`。
 - **198-232 行**：拖拽核心函数——`swapNav`（198，交换两个导航项）、`swapTab`（209，交换两个标签页）、`endNavDrag`（220，`setConfig("sidebar_nav_order", ...)` 持久化）、`endTabDrag`（227，`saveTabs(...)` 持久化）。
@@ -30,7 +30,7 @@
 - **277-286 行**：监听 `themeChange` → `themeChangeKey++`，用于 952 行强制重挂 `<aside>`。
 - **289-304 行**：读取配置 `developer_mode`、`sidebar_collapsed` 初始化状态。
 - **307-315 行**：监听 `developerModeChange`（CustomEvent，`detail.enabled`）。
-- **318-399 行**：选中账户加载与同步——`Promise.all([getSelectedAccount(), getAccounts()])`（323-326）并按 id 匹配；监听 `accountChanged`（348-371，重读配置 `refresh_on_account_switch`）、`manualRefresh`（374-393，`detail.count` 上限 5，置骨架屏 300ms 后复位）。
+- **338-423 行**：选中账户加载与同步——`Promise.all([getSelectedAccount(), getAccounts()])` 并按 id 匹配；订阅 `accountAvailability` 状态并在账户数据不可用时置 `accountUnavailable`（侧边栏显示「账号不可用 / 重新登录」并跳转 `/account`）；监听 `accountChanged`（重读配置 `refresh_on_account_switch`）、`manualRefresh`（`detail.count` 上限 5，置骨架屏 300ms 后复位）。
 - **402-715 行**：`getAllSearchableContent`（`useMemo`，依赖 `t`/`i18n.language`）——硬编码的可检索条目表：导航项 `nav-dashboard`(406)/`nav-settings`(423)/`nav-account`(439)、仪表板块 456-628（welcome、stats-revenue/users/sales、activity、projects、quick-actions、create/start/invite、analytics）、设置块 630-696（settings-title/general/language/theme）、`nav-developer`(697-712)，每条含中英双语 title/description/category 与可选 `elementId`。
 - **718-788 行**：`searchResults`（`useMemo`）——先按当前语言再按中/英备选语言匹配（725-742），再标注 `matchedLang` 与 `matchedText`（743-787）。
 - **791-801 行**：`Cmd/Ctrl+K` 聚焦搜索框。
@@ -52,7 +52,7 @@
 - **折叠（`collapsed`）**：`return` 前派生 `tabsHidden = isDashboardCollapsed || collapsed`。折叠时账户卡片收缩为居中的小头像：`AccountAvatar size` 由 `md`→`sm`，账户区外层横向内边距 `px-3`→`px-[7px]`、卡片内边距 `p-2`→`p-[5px]`，卡片始终 `w-full`（不切换 `justify-center`/`w-fit`），使头像位置随容器宽度与内边距的过渡连续移动而不跳变（折叠后卡片宽 50px = 头像 40px + 左右各 5px），文字/切换按钮以 `max-w-0 + opacity-0` 过渡隐藏；主导航与页脚项改为 `justify-center` 仅显示图标（标签同样 `max-w-0` 过渡隐藏、`title` 提供提示），`GripHandle` 与仪表板标签列表隐藏；页脚隐藏 GitHub/主题/语言按钮，仅保留折叠/展开按钮（`ChevronLeftIcon`/`ChevronRightIcon`，在 `onToggleCollapsed` 提供时渲染）。所有过渡统一 `duration-300 ease-out`。
 
 **备注**：
-- **invoke 命令**：本文件 0 个（无 `@tauri-apps/api/core` 引用）；后端能力经 `getAccounts`/`getSelectedAccount`/`getConfig`/`setConfig`/`getAllTabs`/`addTab`/`updateTab`/`removeTab`/`saveTabs`/`getActiveTabId`/`setActiveTabId` 间接调用。
+- **invoke 命令**：本文件 0 个（无 `@tauri-apps/api/core` 引用；账户可用性经 `@/utils/accountAvailability` 读取）；后端能力经 `getAccounts`/`getSelectedAccount`/`getConfig`/`setConfig`/`getAllTabs`/`addTab`/`updateTab`/`removeTab`/`saveTabs`/`getActiveTabId`/`setActiveTabId` 间接调用。
 - **listen/事件**（全部为 DOM 事件，非 Tauri `listen`）：
   - 监听：`window "tabsChanged"`(268)、`window "accountChanged"`(269, 371)、`window "themeChange"`(282)、`window "developerModeChange"`(312)、`window "manualRefresh"`(393)、`window "pointerup"`(243, 255)、`document "keydown"`(799, 844)、`document "mousedown"`(812)、`window "scroll"` capture(813)。
   - 派发：`window.dispatchEvent(accountChanged)`(1373-1375)、`window.dispatchEvent(tabsChanged)`(1632, 1657)。

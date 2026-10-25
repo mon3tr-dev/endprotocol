@@ -6,6 +6,9 @@ use serde::{Deserialize, Serialize};
 pub struct LoginRequest {
     pub phone: String,
     pub password: String,
+    /// 重新登录时用于校验登录结果是否为目标森空岛账户（不匹配则拦截，不落盘凭证）
+    #[serde(default)]
+    pub expected_user_id: Option<String>,
 }
 
 /// 发送验证码请求模型
@@ -23,6 +26,9 @@ pub struct SendCodeRequest {
 pub struct CodeLoginRequest {
     pub phone: String,
     pub code: String,
+    /// 重新登录时用于校验登录结果是否为目标森空岛账户
+    #[serde(default)]
+    pub expected_user_id: Option<String>,
 }
 
 /// 扫码登录信息模型

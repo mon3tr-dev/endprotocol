@@ -10,6 +10,9 @@ use crate::utils::AppError;
 const BLOCK_THRESHOLD: u32 = 5;
 /// 签名类错误更容易由本地时间偏差导致，阈值更低。
 const SIGNATURE_BLOCK_THRESHOLD: u32 = 3;
+/// 数美设备指纹接口连续失败阈值：达到后判定为设备指纹环境异常，
+/// 需要用户重启电脑并同步时区后重试。
+const DEVICE_FINGERPRINT_BLOCK_THRESHOLD: u32 = 3;
 /// 服务器时间与本地时间偏差超过该值时，直接判定为时钟异常。
 pub const CLOCK_SKEW_THRESHOLD_SECONDS: i64 = 180;
 
@@ -26,6 +29,9 @@ pub enum ApiFailureKind {
     Network,
     Server,
     Parse,
+    /// 数美设备指纹接口（fp-it.portal101.cn）连续失败：通常由本机时间/时区异常
+    /// 或设备指纹环境被拒绝导致，前端会提示重启电脑并同步时区。
+    DeviceFingerprint,
     Unknown,
 }
 
@@ -107,10 +113,10 @@ pub fn record_failure(kind: ApiFailureKind, message: &str, clock_skew_seconds: O
             && clock_skew_seconds
                 .map(|skew| skew.abs() >= CLOCK_SKEW_THRESHOLD_SECONDS)
                 .unwrap_or(false);
-        let threshold = if matches!(kind, ApiFailureKind::ClockSkew | ApiFailureKind::Signature) {
-            SIGNATURE_BLOCK_THRESHOLD
-        } else {
-            BLOCK_THRESHOLD
+        let threshold = match kind {
+            ApiFailureKind::ClockSkew | ApiFailureKind::Signature => SIGNATURE_BLOCK_THRESHOLD,
+            ApiFailureKind::DeviceFingerprint => DEVICE_FINGERPRINT_BLOCK_THRESHOLD,
+            _ => BLOCK_THRESHOLD,
         };
         let should_block = confirmed_clock_skew || state.consecutive_failures >= threshold;
         if should_block {
@@ -181,6 +187,9 @@ pub fn classify_error(
 
     if confirmed_clock_skew {
         return ApiFailureKind::ClockSkew;
+    }
+    if lower.contains("数美") || lower.contains("deviceprofile") || lower.contains("device_id") {
+        return ApiFailureKind::DeviceFingerprint;
     }
     if lower.contains("sign")
         || lower.contains("timestamp")

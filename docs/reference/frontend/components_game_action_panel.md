@@ -74,7 +74,7 @@
 | `handlePreloadCancel` | 1067–1075 | 取消预下载（点「预下载中/取消预下载」按钮触发）：按「取消下载行为」决定保留/删除分卷，不动主按钮状态 |
 | `handlePreloadClick` | 1077–1087 | 点「预下载」按钮：拉取 `getDiskSpace` 并打开预下载确认框 |
 | `updatePreloadFlyoutPos` | 1089–1101 | 依 `preloadBtnRef` 计算预下载进度浮层坐标（与主按钮同一套边界处理） |
-| `handleKill` | 1170–1174 | 调 `killGame` 杀掉游戏进程后 `checkRunning` + `refreshPlaytime` 刷新运行态与时长 |
+| `handleKill` | 1221–1236 | 调 `killGame` 杀掉游戏进程后 `checkRunning` + `refreshPlaytime` 刷新运行态与时长；**失败不再静默**：`killGame` reject 时按 `<token>: <detail>`（token 见 `KILL_TOKEN_KEYS`）弹 `launcher.stop_failed_title` 消息（tag `stop-error`），说明需要管理员授权（`cancelled`）或进程被反作弊保护（`kill_failed`） |
 | `getButtonLabel` | 1050–1075 | 依状态返回主按钮文案（hover 时切为取消类文案；预下载不参与） |
 | `getButtonIcon` | 1084–1254 | 依状态返回 SVG 图标（旋转/暂停/下载/刷新/播放） |
 | `handleButtonClick` | 1256–1299 | 主按钮统一分发：取消切换/停止/取消校验/取消下载/安装/更新/启动 |
@@ -147,7 +147,7 @@
    - `launcher_browse_folder`（427、470、613、2410）
    - `launcher_check_game_running`（272）
    - `launcher_get_game_playtime`（531）
-   - `launcher_kill_game`（782）
+   - `launcher_kill_game`（1222，经 `killGame`；失败时按 token 弹提示）
    - `launcher_detect_channel`（231、433、476、619）
    - `launcher_scan_install_dir`（532）
    - `launcher_get_disk_space`（533）

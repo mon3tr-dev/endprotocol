@@ -5,7 +5,7 @@
 ## `src/main.tsx`
 **职责**：主窗口（index.html）的唯一入口。在渲染前从配置服务读取语言与主题并应用（避免闪白/闪黑），随后挂载 React 应用，并在渲染后串行触发卡片注册、启动任务、更新检查、托盘数据拉取等副作用；原生 HTML Splash 覆盖 React 启动与首屏初始数据加载。
 **导出**：（无导出）
-**主要依赖**：`react` / `react-dom/client` / `react-router-dom`（BrowserRouter）、`./App.tsx`、`./provider.tsx`、`./i18n`、`@/styles/globals.css`、`@/utils/configService`、`@/cards/startup-service`、`@/components/cards/registry/loader`、`@/utils/overlayScrollbar`、`@/utils/updateService`、`@/utils/logger`、`@/utils/roleDataService`、`@/utils/accountService`、`@/utils/backgroundSettings`、`@/utils/launcherService`、`@/utils/startupProgress`、`@tauri-apps/api/core`（invoke）。
+**主要依赖**：`react` / `react-dom/client` / `react-router-dom`（BrowserRouter）、`./App.tsx`、`./provider.tsx`、`./i18n`、`@/styles/globals.css`、`@/utils/configService`、`@/cards/startup-service`、`@/components/cards/registry/loader`、`@/utils/overlayScrollbar`、`@/utils/updateService`、`@/utils/logger`、`@/utils/roleDataService`、`@/utils/accountService`、`@/utils/backgroundSettings`、`@/utils/launcherService`、`@/utils/startupProgress`、`@/utils/accountAvailability`（`loadAccountAvailability`）、`@tauri-apps/api/core`（invoke）。
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
@@ -23,7 +23,7 @@
 | 顶层 `Promise.all(...).then(...)` | main.tsx:148-230 | 渲染前初始化、React 挂载与启动副作用，见「备注」 |
 
 **备注**：
-- 初始化读取的配置键：`app.language`、`theme_mode`、`theme_color`、`theme_custom_colors`，并 `loadBackgroundSettings()`；语言未保存时按 `navigator.language` 以 `zh` 开头判定中/英（main.tsx:142-149）；主题色默认 `indigo`，主题模式默认 `system`（main.tsx:152-155）。
+- 初始化读取的配置键：`app.language`、`theme_mode`、`theme_color`、`theme_custom_colors`，并 `loadBackgroundSettings()` 与 `loadAccountAvailability()`（渲染前恢复上一轮的账户不可用状态，让首屏即显示正确状态）；语言未保存时按 `navigator.language` 以 `zh` 开头判定中/英（main.tsx:142-149）；主题色默认 `indigo`，主题模式默认 `system`（main.tsx:152-155）。
 - 前端启动时另外同步 localStorage 键 `launcher_install_path`、`launcher_channel` 至同名 app config 键，供之后的 `--silent --launch-game` 使用；同步失败经 logger 明确记录。
 - 渲染结构：`StrictMode > BrowserRouter > Provider > App`，挂载到 `#root`（main.tsx:161-169）。
 - 启动 Splash 在 `index.html` 中由静态 HTML/CSS 提前展示，使用 `/app-icon.png`；背景层复用 `loadBackgroundSettings()` 设置的用户背景图、透明度和模糊度，没有自定义背景时回退到主题渐变。配置读取完成后继续保持显示。`startupProgress.ts` 汇总启动任务、仪表板首载、角色数据 IPC 与公告/背景加载，在请求静稳 650ms 后将进度补满并淡出；初始化配置异常时保留 Splash 并显示错误文案与 `#startup-splash-error` 操作面板（导出诊断日志/打开日志目录/重新加载）；45 秒超时同样停止加载并展示未完成请求数。

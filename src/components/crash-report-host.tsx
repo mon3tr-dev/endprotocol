@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useNavigate } from "react-router-dom";
 import { invoke } from "@tauri-apps/api/core";
 import { MorphIcon } from "morphicons/react";
-import { AlertTriangle, Copy, Download, FolderOpen, RotateCcw, X } from "lucide";
+import { AlertTriangle, Copy, Download, FolderOpen, RotateCcw, UserRound, X } from "lucide";
 import { GlassAlert, GlassButton } from "@/components/ui/glass";
 import { GlassModalCompound as GlassModal } from "@/components/ui/modal";
 import {
@@ -83,6 +84,19 @@ export function CrashDetails({ report }: CrashDetailsProps) {
           <GlassAlert.Content>
             <GlassAlert.Description>
               {t("crash.api_clock_body", { minutes: clockSkewMinutes })}
+            </GlassAlert.Description>
+          </GlassAlert.Content>
+        </GlassAlert>
+      )}
+
+      {report.api?.kind === "device_fingerprint" && (
+        <GlassAlert status="warning">
+          <GlassAlert.Indicator />
+          <GlassAlert.Content>
+            <GlassAlert.Description>
+              {t("crash.api_fingerprint_body", {
+                count: report.api.consecutive_failures,
+              })}
             </GlassAlert.Description>
           </GlassAlert.Content>
         </GlassAlert>
@@ -182,8 +196,7 @@ export function CrashActionBar({
           {status}
         </p>
       )}
-      <div className="flex flex-wrap items-center justify-end gap-2">
-        <GlassButton
+      <div className="flex flex-wrap items-center justify-end gap-2">        <GlassButton
           variant="outline"
           size="sm"
           onPress={handleCopy}
@@ -246,6 +259,7 @@ export function CrashActionBar({
 /** 全局崩溃/API 熔断提示宿主，挂载在 Provider 内。 */
 export function CrashReportHost() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const report = useCrashReportState();
 
   const dismiss = useCallback(() => {
@@ -280,6 +294,11 @@ export function CrashReportHost() {
     window.location.reload();
   };
 
+  const handleGoToAccount = () => {
+    dismiss();
+    void navigate("/account");
+  };
+
   return (
     <GlassModal
       isOpen
@@ -297,23 +316,35 @@ export function CrashReportHost() {
               <CrashDetails report={report} />
             </GlassModal.Body>
             <GlassModal.Footer className="border-t border-separator px-6 py-4">
-              <CrashActionBar
-                report={report}
-                primaryLabel={
-                  report.source === "api"
-                    ? t("crash.action_retry")
-                    : t("crash.action_reload")
-                }
-                onPrimary={handlePrimary}
-                onClose={report.fatal ? undefined : dismiss}
-                onQuit={
-                  report.source === "backend-panic" && report.fatal
-                    ? () => {
-                        void invoke("app_quit");
-                      }
-                    : undefined
-                }
-              />
+              <div className="flex w-full flex-wrap items-center justify-end gap-2">
+                {report.source === "api" && (
+                  <GlassButton
+                    variant="outline"
+                    size="sm"
+                    onPress={handleGoToAccount}
+                    startContent={<MorphIcon icon={UserRound} size={14} />}
+                  >
+                    {t("crash.action_go_account")}
+                  </GlassButton>
+                )}
+                <CrashActionBar
+                  report={report}
+                  primaryLabel={
+                    report.source === "api"
+                      ? t("crash.action_retry")
+                      : t("crash.action_reload")
+                  }
+                  onPrimary={handlePrimary}
+                  onClose={report.fatal ? undefined : dismiss}
+                  onQuit={
+                    report.source === "backend-panic" && report.fatal
+                      ? () => {
+                          void invoke("app_quit");
+                        }
+                      : undefined
+                  }
+                />
+              </div>
             </GlassModal.Footer>
           </GlassModal.Dialog>
         </GlassModal.Container>

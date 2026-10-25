@@ -12,6 +12,30 @@ pub fn get_config(state: State<Arc<Mutex<ConfigService>>>, key: String) -> Optio
     service.get(&key)
 }
 
+/// 获取代理配置
+#[tauri::command]
+pub fn get_proxy_config(state: State<Arc<Mutex<ConfigService>>>) -> Option<Value> {
+    let service = state.lock().unwrap();
+    service.get_proxy_config()
+}
+
+/// 设置代理配置
+#[tauri::command]
+pub fn set_proxy_config(
+    state: State<Arc<Mutex<ConfigService>>>,
+    config: Value,
+) -> Result<(), String> {
+    let mut service = state.lock().map_err(|e| e.to_string())?;
+    service.set_proxy_config(config).map_err(|e| e.to_string())
+}
+
+/// 删除代理配置
+#[tauri::command]
+pub fn remove_proxy_config(state: State<Arc<Mutex<ConfigService>>>) -> Result<bool, String> {
+    let mut service = state.lock().map_err(|e| e.to_string())?;
+    Ok(service.remove_proxy_config())
+}
+
 /// 设置配置值
 #[tauri::command]
 pub fn set_config(

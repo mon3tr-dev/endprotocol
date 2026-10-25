@@ -276,23 +276,42 @@
 **备注**：启动进度由 `index.html` 提供纯静态 UI，因此 React 配置初始化之前也不会显示空白页；`showStartupFailure`（私有）把 `#startup-splash-error` 面板解除隐藏，按钮文案来自 `crash.*` i18n 键。超时/失败都不会一直卡住：超时面板可直接导出诊断日志或重新加载；API 熔断时由 `crashReporting` 调用 `abortStartup` 后弹出阻塞提示。
 
 ## `src/utils/crashReporting.ts`
-**职责**：前端崩溃处理中枢（约 365 行）。安装 `error` / `unhandledrejection` 全局监听，接收后端 `app:crash` 与 API 熔断 `app:api-health` 事件，维护当前崩溃报告与订阅者；同时提供错因启发式判断、报告文本格式化与上次运行崩溃报告载入。
+**职责**：前端崩溃处理中枢（约 374 行）。安装 `error` / `unhandledrejection` 全局监听，接收后端 `app:crash` 与 API 熔断 `app:api-health` 事件，维护当前崩溃报告与订阅者；同时提供错因启发式判断、报告文本格式化与上次运行崩溃报告载入。
 
 **导出**：类型 `CrashSource`、`ApiFailureKind`、`ApiHealthSnapshot`、`BackendCrashEvent`、`CrashReport`、`CrashDiagnosis`；函数 `subscribeCrashReports`、`getCurrentCrashReport`、`showCrashReport`、`dismissCrashReport`、`reportCrash`、`installCrashHandlers`、`loadPendingCrashReports`、`diagnoseCrash`、`formatCrashReport`。私有：`currentReport`、`reportCounter`、`listeners`、`lastSignature`、`handleApiBlocked`、`checkApiHealth`。
 
-**主要依赖**：`@tauri-apps/api/core`（`invoke`）、`@tauri-apps/api/event`（`listen`）、`@/i18n`、`./logger`、`./diagnostics`。
+**主要依赖**：`@tauri-apps/api/core`（`invoke`）、`@tauri-apps/api/event`（`listen`）、`@/i18n`、`./logger`、`./diagnostics`、`./accountAvailability`（动态导入）。
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
 | `CrashReport`（interface） | :42-54 | `id`、`title`、`message`、`detail?`、`stack?`、`source`、`timestamp`、`fatal`、`api?`、`crashPaths?` |
 | `reportCrash(input)` | :117 | 先 `logger.error("[Crash]...")`，相同来源+消息 2 秒内去重，然后写入当前报告并通知订阅者 |
 | `installCrashHandlers()` | :166 | 幂等安装 `window.error` / `unhandledrejection`；`listen("app:api-health")`、`listen("app:crash")`；启动后 1.5s/6s 轮询 `get_api_health` 兜底 |
-| `handleApiBlocked(snapshot)`（私有） | :135 | 动态调用 `startupProgress.abortStartup` 收起 Splash，并生成 `fatal` 的 API 熔断报告（含失败次数与时钟偏差） |
-| `loadPendingCrashReports()` | :225 | 启动时调用 `get_pending_crash_reports`，把最近一条报告包装成「上次运行异常退出」提示 |
-| `diagnoseCrash(report)` | :245 | 依据 `api.kind`、错误文本正则（sign/timestamp、网络、认证、权限、解析、5xx）返回 `causeKey` + `suggestionKeys`（i18n 键） |
-| `formatCrashReport(report)` | :351 | 拼接时间、来源、消息、详细栈、API 状态与崩溃文件路径，供复制/导出 context 使用 |
+| `handleApiBlocked(snapshot)`（私有） | :135 | 动态调用 `startupProgress.abortStartup` 收起 Splash（**允许不获取账户数据也进入应用**），把账户标记为不可用（`accountAvailability.setAccountUnavailable`，原因由 `reasonFromApiKind` 映射），并生成**非致命** API 熔断报告（可关闭）；`kind === "device_fingerprint"` 时使用 `crash.api_fingerprint_body`（重启电脑 + 同步时区） |
+| `loadPendingCrashReports()` | :230 | 启动时调用 `get_pending_crash_reports`，把最近一条报告包装成「上次运行异常退出」提示 |
+| `diagnoseCrash(report)` | :250 | 依据 `api.kind`（`device_fingerprint` → `crash.cause_fingerprint` / `crash.suggestion_fingerprint`）、错误文本正则（sign/timestamp、网络、认证、权限、解析、5xx）返回 `causeKey` + `suggestionKeys`（i18n 键） |
+| `formatCrashReport(report)` | :361 | 拼接时间、来源、消息、详细栈、API 状态与崩溃文件路径，供复制/导出 context 使用 |
 
-**备注**：`CrashSource` 为 `window / unhandled-rejection / react / api / backend-panic / startup`；`app:api-health` payload 与 `ApiHealthSnapshot` 对齐（后端 `snake_case`），`app:crash` payload 含 `report_path`。该模块本身不渲染 UI，由 `src/components/crash-report-host.tsx` 订阅展示。
+**备注**：`CrashSource` 为 `window / unhandled-rejection / react / api / backend-panic / startup`；`ApiFailureKind` 含 `device_fingerprint`（数美设备指纹接口连续失败），`app:api-health` payload 与 `ApiHealthSnapshot` 对齐（后端 `snake_case`），`app:crash` payload 含 `report_path`。该模块本身不渲染 UI，由 `src/components/crash-report-host.tsx` 订阅展示。
+
+## `src/utils/accountAvailability.ts`
+**职责**：账户数据不可用的全局状态（约 145 行）。账户数据获取频繁失败时，应用仍可正常进入，但账户页/侧边栏据此展示「账号不可用」与「重新登录」；状态通过 `sessionStorage`（键 `account_unavailable_state`）跨页面与刷新保留，并提供订阅机制通知 UI 更新。
+
+**导出**：类型 `AccountUnavailableReason`（`"auth" | "network" | "fingerprint" | "unknown"`）、`AccountAvailability`（`{ reason, message, since }`）；函数 `getAccountAvailability`、`loadAccountAvailability`、`setAccountUnavailable`、`clearAccountUnavailable`、`subscribeAccountAvailability`、`reasonFromApiKind`。
+
+**主要依赖**：`./logger`（`logDebug` / `logError`）、浏览器 `sessionStorage`。
+
+| 符号 | 位置 | 说明 |
+| --- | --- | --- |
+| `AccountUnavailableReason` / `AccountAvailability` | :11 / :13 | 原因字面量联合类型与状态结构（`message` 为最近一次失败详情，`since` 为首次标记时间） |
+| `getAccountAvailability()` | :83 | 同步读取当前状态；首次调用会从 `sessionStorage` 恢复并做字段归一（非法 `reason` 归为 `unknown`） |
+| `loadAccountAvailability()` | :89 | 确保已从 `sessionStorage` 恢复（返回 `Promise<void>`），供 `main.tsx` 在渲染前 `await` |
+| `setAccountUnavailable(reason, message?)` | :102 | 标记不可用并持久化；`reason`+`message` 未变化时不重复通知；保留原始 `since` |
+| `clearAccountUnavailable()` | :123 | 账户恢复可用（重新登录成功 / 刷新成功）时清空状态并持久化 |
+| `subscribeAccountAvailability(listener)` | :133 | 注册状态变化回调，返回取消订阅函数 |
+| `reasonFromApiKind(kind)` | :149 | 把后端 API 熔断 `kind` 映射为原因：`clock_skew`/`signature`/`device_fingerprint` → `fingerprint`（重启电脑+同步时区）、`auth` → `auth`、`network`/`server`/`parse` → `network`、其余 → `unknown` |
+
+**备注**：写入方为 `src/utils/accountService.ts`（请求失败 / 成功时）与 `src/utils/crashReporting.ts`（`app:api-health` 事件、启动轮询）；读取方为 `src/pages/account.tsx`、`src/components/dashboard-sidebar.tsx`；`src/main.tsx` 在渲染前调用 `loadAccountAvailability`。i18n 键前缀 `settings.account.account_unavailable_*`。无 IPC 调用。
 
 ## `src/utils/diagnostics.ts`
 **职责**：诊断导出与崩溃报告 IPC 封装（共 75 行）。收集内存与持久化日志（对 `data` 做循环引用/Error 安全序列化），调用 `export_diagnostics` 生成 zip，并提供文件定位、日志目录打开与崩溃报告确认。

@@ -52,6 +52,8 @@ import {
   scanStatus,
   saveSelectedRoles,
   setSelectedAccount as apiSetSelectedAccount,
+  getSklandUserInfoByCred,
+  applyApiHealthSnapshot,
   Account,
   LoginResult,
   RoleDisplayInfo,
@@ -59,6 +61,15 @@ import {
   SklandGameInfo,
   SklandUserInfo,
 } from "@/utils/accountService";
+import { invoke } from "@tauri-apps/api/core";
+import {
+  clearAccountUnavailable,
+  getAccountAvailability,
+  loadAccountAvailability,
+  subscribeAccountAvailability,
+  type AccountAvailability,
+} from "@/utils/accountAvailability";
+import type { ApiHealthSnapshot } from "@/utils/crashReporting";
 import { roleDetailService } from "@/utils/roleDetailService";
 import logger, { logDebug, logError } from "../utils/logger";
 import { getConfig } from "@/utils/configService";
@@ -540,6 +551,18 @@ export default function AccountPage() {
   // 新设备验证（密码登录触发验证码登录获取 device token）
   const [isNewDeviceVerify, setIsNewDeviceVerify] = useState(false);
 
+  // 账户数据不可用状态（凭证失效 / 数美设备指纹失败 / 网络持续失败）
+  const [accountAvailability, setAccountAvailabilityState] =
+    useState<AccountAvailability | null>(() => getAccountAvailability());
+  // 重新登录的目标森空岛账户（null 表示当前是「添加账户」流程）
+  const [reloginTarget, setReloginTarget] = useState<SklandAccount | null>(null);
+  // 扫码授权后账户不匹配时展示的实际账户 userId
+  const [reloginMismatchUserId, setReloginMismatchUserId] = useState<string>("");
+  // 森空岛账户确认页的头像/昵称（用登录得到的 cred/token 直接拉取）
+  const [reloginProfile, setReloginProfile] = useState<SklandUserInfo | null>(
+    null,
+  );
+
   // 登出确认（选择是否保留设备认证）
   const [logoutTarget, setLogoutTarget] = useState<Account | null>(null);
   const [keepDeviceAuth, setKeepDeviceAuth] = useState(true);
@@ -555,6 +578,33 @@ export default function AccountPage() {
         qrPollTimerRef.current = null;
       }
     };
+  }, []);
+
+  // 同步账户可用状态：全局状态存储 + 启动时兜底查询后端 API 熔断快照
+  useEffect(() => {
+    const unsubscribe = subscribeAccountAvailability(() => {
+      if (isMountedRef.current) {
+        setAccountAvailabilityState(getAccountAvailability());
+      }
+    });
+    void loadAccountAvailability().then(() => {
+      if (isMountedRef.current) {
+        setAccountAvailabilityState(getAccountAvailability());
+      }
+    });
+    void (async () => {
+      try {
+        // 用后端熔断快照校正状态（已解除时清除「账号不可用」）
+        const snapshot = await invoke<ApiHealthSnapshot>("get_api_health");
+        applyApiHealthSnapshot(snapshot);
+        if (isMountedRef.current) {
+          setAccountAvailabilityState(getAccountAvailability());
+        }
+      } catch (error) {
+        logDebug("[Account] Failed to query API health: " + error);
+      }
+    })();
+    return unsubscribe;
   }, []);
 
   // 进入扫码登录界面时自动生成二维码
@@ -826,6 +876,13 @@ export default function AccountPage() {
     );
 
     try {
+      // 用户主动重试：先解除后端 API 熔断守卫，否则刷新请求仍会被直接拒绝
+      try {
+        await invoke("reset_api_health");
+      } catch (error) {
+        logDebug("[Account] Failed to reset API health on manual refresh: " + error);
+      }
+
       const result = await refreshAccountData();
 
       if (result.success && result.accounts) {
@@ -834,6 +891,10 @@ export default function AccountPage() {
       }
       const parents = await getSklandAccounts();
       setSklandAccounts(parents);
+      // 手动刷新成功且确实拿到了账户数据：账户已恢复可用
+      if (result.success && result.accounts.length > 0) {
+        clearAccountUnavailable();
+      }
       // 手动刷新时同步更新森空岛用户资料（昵称/头像/游戏等级）
       for (const parent of parents) {
         void ensureSklandUserInfo(parent.userId, { force: true });
@@ -960,6 +1021,9 @@ export default function AccountPage() {
     setShowSklandConfirmation(false);
     setIsRoleSelectionOpen(false);
     setIsManagingSklandRoles(false);
+    setReloginTarget(null);
+    setReloginMismatchUserId("");
+    setReloginProfile(null);
     setIsAddModalOpen(true);
   };
 
@@ -983,6 +1047,9 @@ export default function AccountPage() {
     setShowSklandConfirmation(false);
     setIsRoleSelectionOpen(false);
     setIsManagingSklandRoles(false);
+    setReloginTarget(null);
+    setReloginMismatchUserId("");
+    setReloginProfile(null);
     // 清除角色选择状态 - 放弃这次登录
     setAvailableRoles([]);
     setSelectedRoles([]);
@@ -990,6 +1057,37 @@ export default function AccountPage() {
     setLoginToken("");
     setLoginUserId("");
     setIsAddModalOpen(false);
+  };
+
+  /**
+   * 打开「重新登录」流程：不要求输入手机号，只需选择登录方式。
+   *
+   * 短信/密码方式会带出首次登录时记录的手机号（后端 `account_token_{userId}.phone`），
+   * 扫码方式在授权成功后由后端校验是否为目标账户，不一致则整单拦截。
+   */
+  const handleOpenRelogin = (target: SklandAccount) => {
+    stopQrPolling();
+    setLoginMethod(null);
+    setPhone(target.phone ?? "");
+    setPassword("");
+    setVerificationCode("");
+    setLoginError("");
+    setCodeSentSuccess(false);
+    setCountdown(0);
+    setShowOtpInput(false);
+    setIsOtpInvalid(false);
+    setScanId("");
+    setScanUrl("");
+    setScanWaiting(true);
+    setQrGenFailed(false);
+    setIsNewDeviceVerify(false);
+    setShowSklandConfirmation(false);
+    setIsRoleSelectionOpen(false);
+    setIsManagingSklandRoles(false);
+    setReloginMismatchUserId("");
+    setReloginProfile(null);
+    setReloginTarget(target);
+    setIsAddModalOpen(true);
   };
 
   // 发送验证码并进入 OTP 输入页面
@@ -1144,16 +1242,28 @@ export default function AccountPage() {
     setPhoneError(""); // 清除错误
     setIsLoggingIn(true);
     setLoginError("");
+    setReloginMismatchUserId("");
 
     try {
       let result: LoginResult;
 
+      // 重新登录时把目标 userId 传给后端：登录到别的账户会被拦截
+      const expectedUserId = reloginTarget?.userId;
+
       if (loginMethod === "phone") {
         // 密码登录
-        result = await addAccount({ phone, password });
+        result = await addAccount({
+          phone,
+          password,
+          expectedUserId,
+        });
       } else {
         // 验证码登录
-        result = await addAccountByCode({ phone, code: verificationCode });
+        result = await addAccountByCode({
+          phone,
+          code: verificationCode,
+          expectedUserId,
+        });
       }
 
       // 调试：打印完整结果
@@ -1172,8 +1282,27 @@ export default function AccountPage() {
 
   // 处理登录结果（成功 / 选择角色 / 失败）
   const processLoginResult = async (result: LoginResult) => {
+    // 重新登录：拿到的是父级森空岛凭证（cred/token/userId），直接更新该账户凭证，
+    // 保留原有角色绑定，不需要重新走一遍「确认绑定 → 选择角色」。
+    if (
+      reloginTarget &&
+      result.success &&
+      result.cred &&
+      result.token &&
+      result.userId
+    ) {
+      await finishRelogin(result.cred, result.token, result.userId);
+      return;
+    }
+
     if (result.success && result.account) {
-      // 登录成功
+      // 登录成功：先解除后端 API 熔断守卫（否则随后的刷新仍会被拦截）
+      clearAccountUnavailable();
+      try {
+        await invoke("reset_api_health");
+      } catch (error) {
+        logDebug("[Account] Failed to reset API health: " + error);
+      }
 
       // 刷新账户列表
       const accounts = await getAccounts();
@@ -1223,6 +1352,8 @@ export default function AccountPage() {
       );
       setIsManagingSklandRoles(false);
       setShowSklandConfirmation(true);
+      // 确认页展示头像/昵称：用刚登录得到的 cred/token 拉一次森空岛用户资料
+      void loadReloginProfile(result.cred, result.token);
     } else if (
       result.success &&
       result.availableRoles &&
@@ -1245,6 +1376,36 @@ export default function AccountPage() {
       setLoginUserId(result.userId || "");
       setSelectedRoles([]); // 重置选择
     } else {
+      // 重新登录时授权到了别的森空岛账户：后端整单拦截，未保存任何凭证
+      const mismatchMatch = result.errorMessage?.match(
+        /^ACCOUNT_MISMATCH(?::(.*))?$/,
+      );
+      if (mismatchMatch) {
+        const actualUserId = mismatchMatch[1] || "";
+        setReloginMismatchUserId(actualUserId);
+        setLoginError(
+          t("settings.account.relogin_mismatch", {
+            actual: actualUserId || "unknown",
+          }),
+        );
+        // 清掉不可用的登录结果，避免继续用错误账户的授权信息
+        setLoginCred("");
+        setLoginToken("");
+        setLoginUserId("");
+        setAvailableRoles([]);
+        setSelectedRoles([]);
+        setScanId("");
+        setScanUrl("");
+        setScanWaiting(true);
+        setIsOtpInvalid(false);
+        setIsNewDeviceVerify(false);
+        setShowOtpInput(false);
+        setVerificationCode("");
+        // 回到「方式选择」，让用户直接换一种方式或换账号重试
+        setLoginMethod(null);
+        return;
+      }
+
       // 登录失败
       if (
         loginMethod === "phone" &&
@@ -1339,7 +1500,8 @@ export default function AccountPage() {
     setIsLoggingIn(true);
     setLoginError("");
     try {
-      const result = await addAccountByScan(scanCode);
+      // 重新登录时把目标 userId 传给后端：扫到别的账户会被拦截（不保存凭证）
+      const result = await addAccountByScan(scanCode, reloginTarget?.userId);
       logger.info("Scan login result: " + JSON.stringify(result), "Account");
       await processLoginResult(result);
     } catch (error) {
@@ -1375,6 +1537,60 @@ export default function AccountPage() {
     );
 
     await saveRoles(selectedRoleDetails, loginCred, loginToken, loginUserId);
+  };
+
+  /**
+   * 确认森空岛账户页面加载头像/昵称。
+   *
+   * 此时账户尚未保存，不能用 `get_skland_user_info`（按 userId 读本地配置），
+   * 因此用刚登录得到的 cred/token 直接请求；失败不影响确认流程。
+   */
+  const loadReloginProfile = async (cred?: string, token?: string) => {
+    const finalCred = cred || loginCred;
+    const finalToken = token || loginToken;
+    if (!finalCred || !finalToken) return;
+    setReloginProfile(null);
+    try {
+      const info = await getSklandUserInfoByCred(finalCred, finalToken);
+      if (isMountedRef.current && info) setReloginProfile(info);
+    } catch (error) {
+      logDebug("[Account] Failed to load Skland profile for confirmation: " + error);
+    }
+  };
+
+  /**
+   * 重新登录完成：写回该森空岛账户的凭证（保留已绑定的游戏角色）。
+   *
+   * `save_skland_account` 只更新 `cred`/`token`/`skland_account_bound`，
+   * 不会动 `roles`/`hytoken` 等已有字段，因此角色绑定不会丢失。
+   */
+  const finishRelogin = async (cred: string, token: string, userId: string) => {
+    setIsLoading(true);
+    try {
+      const saved = await saveSklandAccount(cred, token, userId);
+      if (!saved) throw new Error("Failed to save Skland account");
+      clearAccountUnavailable();
+      setReloginMismatchUserId("");
+      handleCloseAddModal();
+      // refreshData 内部会先 reset_api_health 解除熔断，再拉取账户数据
+      await refreshData();
+      setGlobalAlert({
+        type: "success",
+        message: t("settings.account.relogin_success"),
+      });
+      addMessage({
+        type: "info",
+        title: t("settings.account.relogin"),
+        body: t("settings.account.relogin_success"),
+        tag: "account",
+      });
+      setTimeout(() => setGlobalAlert(null), 5000);
+    } catch (error) {
+      logError("Failed to finish re-login:", error);
+      setLoginError(String(error));
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleConfirmSklandAccount = async () => {
@@ -1438,6 +1654,10 @@ export default function AccountPage() {
 
       // 关闭模态并清空表单
       handleCloseAddModal();
+
+      // 登录/绑定完成：清除账户不可用状态（refreshData 会同时解除后端 API 熔断守卫）
+      clearAccountUnavailable();
+      await refreshData();
 
       setGlobalAlert({
         type: "success",
@@ -1972,8 +2192,44 @@ export default function AccountPage() {
             </div>
           </GlassCard>
         ) : sklandAccounts.length === 0 ? (
-          <GlassCard className="account-glass-panel p-6 text-sm text-muted">
-            {t("settings.account.no_accounts")}
+          <GlassCard className="account-glass-panel p-6 space-y-3">
+            {accountAvailability ? (
+              <>
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1 space-y-1">
+                    <p className="text-sm font-semibold text-danger">
+                      {t("settings.account.account_unavailable_title")}
+                    </p>
+                    <p className="text-xs leading-relaxed text-foreground/75">
+                      {t(
+                        `settings.account.account_unavailable_${accountAvailability.reason}`,
+                      )}
+                    </p>
+                    {accountAvailability.message && (
+                      <p className="break-all text-[11px] text-muted">
+                        {t("settings.account.account_unavailable_detail")}:{" "}
+                        {accountAvailability.message}
+                      </p>
+                    )}
+                  </div>
+                  <GlassButton
+                    size="sm"
+                    variant="outline"
+                    onPress={refreshData}
+                    isDisabled={isRefreshing}
+                    className="shrink-0"
+                  >
+                    {isRefreshing
+                      ? t("settings.account.refreshing")
+                      : t("settings.account.retry_later")}
+                  </GlassButton>
+                </div>
+              </>
+            ) : (
+              <p className="text-sm text-muted">
+                {t("settings.account.no_accounts")}
+              </p>
+            )}
           </GlassCard>
         ) : (
           <div className="space-y-3">
@@ -1995,12 +2251,59 @@ export default function AccountPage() {
               const unboundRoleDetails = allRoles.filter(
                 (role) => !boundRoleIds.has(role.roleId),
               );
+              // 账户数据不可用：
+              // 1) 全局可用状态（凭证失效 / 数美指纹接口异常 / 网络故障）
+              // 2) 该账户下所有游戏角色都是 HYTOKEN_EXPIRED（凭证已失效，需要重新登录）
+              const hasExpiredRoles =
+                boundRoles.length > 0 &&
+                boundRoles.every((role) => role.syncStatus === "HYTOKEN_EXPIRED");
+              const unavailable: AccountAvailability | null = hasExpiredRoles
+                ? {
+                    reason: "auth",
+                    message: "",
+                    since: accountAvailability?.since ?? new Date().toISOString(),
+                  }
+                : accountAvailability;
 
               return (
                 <article
                   key={sklandAccount.userId}
-                  className="account-glass-panel overflow-hidden rounded-xl border border-separator/70 shadow-sm"
+                  className={`account-glass-panel overflow-hidden rounded-xl border shadow-sm ${
+                    unavailable
+                      ? "border-danger/40"
+                      : "border-separator/70"
+                  }`}
                 >
+                  {unavailable && (
+                    <div className="border-b border-danger/25 bg-danger/5 px-4 py-3">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div className="min-w-0 flex-1 space-y-1">
+                          <p className="text-sm font-semibold text-danger">
+                            {t("settings.account.account_unavailable_title")}
+                          </p>
+                          <p className="text-xs leading-relaxed text-foreground/75">
+                            {t(
+                              `settings.account.account_unavailable_${unavailable.reason}`,
+                            )}
+                          </p>
+                          {unavailable.message && (
+                            <p className="break-all text-[11px] text-muted">
+                              {t("settings.account.account_unavailable_detail")}:{" "}
+                              {unavailable.message}
+                            </p>
+                          )}
+                        </div>
+                        <GlassButton
+                          size="sm"
+                          variant="primary"
+                          onPress={() => handleOpenRelogin(sklandAccount)}
+                          className="shrink-0"
+                        >
+                          {t("settings.account.relogin")}
+                        </GlassButton>
+                      </div>
+                    </div>
+                  )}
                   <div className="flex w-full items-center gap-2 p-4 transition-colors hover:bg-white/10">
                     <button
                       type="button"
@@ -2794,7 +3097,13 @@ export default function AccountPage() {
             ? t("settings.account.confirm_skland_binding")
             : isManagingSklandRoles
               ? t("settings.account.manage_game_roles")
-              : t("settings.account.add_account")}
+              : reloginTarget
+                ? t("settings.account.relogin_title", {
+                    account:
+                      reloginTarget.nickname ||
+                      reloginTarget.userId,
+                  })
+                : t("settings.account.add_account")}
         </CustomModalHeader>
         <CustomModalBody
           className={
@@ -2807,12 +3116,38 @@ export default function AccountPage() {
                 {t("settings.account.confirm_skland_binding_desc")}
               </p>
               <div className="rounded-lg border border-separator p-4">
-                <p className="text-xs text-muted">
-                  {t("settings.account.skland_account")}
-                </p>
-                <p className="mt-1 text-sm font-medium text-foreground break-all">
-                  {loginUserId}
-                </p>
+                <div className="flex items-center gap-3">
+                  {/* 用刚拿到的 cred/token 拉取头像与昵称（后端未缓存该账户） */}
+                  <div className="h-14 w-14 shrink-0 overflow-hidden rounded-full border border-separator/60 bg-content2/30">
+                    {reloginProfile?.avatar ? (
+                      <Img
+                        src={reloginProfile.avatar}
+                        alt={
+                          reloginProfile.nickname ||
+                          loginUserId ||
+                          t("settings.account.skland_account")
+                        }
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center text-lg font-semibold text-muted">
+                        <GlassSpinner color="primary" size="sm" />
+                      </div>
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs text-muted">
+                      {t("settings.account.skland_account")}
+                    </p>
+                    <p className="mt-0.5 truncate text-sm font-medium text-foreground">
+                      {reloginProfile?.nickname ||
+                        t("settings.account.skland_account")}
+                    </p>
+                    <p className="mt-0.5 text-xs font-mono text-muted break-all">
+                      {loginUserId}
+                    </p>
+                  </div>
+                </div>
               </div>
               {loginError && (
                 <p className="text-sm text-danger" role="alert">
@@ -2829,19 +3164,35 @@ export default function AccountPage() {
                 })}
               </p>
 
-              <div className="space-y-3 max-h-[500px] overflow-y-auto pr-2">
+              {/*
+                滚动容器与卡片高亮：
+                - `px-2 py-2` 给卡片描边留出绘制空间（同时避免相邻卡片贴边）。
+                - `GlassCard` 自带 `overflow-hidden`，会裁掉画在元素外的 `ring`/`shadow`，
+                  因此选中态用 `border-success` + 内阴影描边实现，
+                  hover 也只改边框与背景色，不再缩放/放大阴影。
+              */}
+              <div className="max-h-[500px] space-y-3 overflow-y-auto px-2 py-2">
                 {availableRoles.map((role) => {
                   // 头像已经是 base64 格式，直接使用
                   const avatarSrc = role.avatarUrl;
+                  const isSelected = selectedRoles.includes(role.roleId);
 
                   return (
                     <GlassCard
                       key={role.roleId}
-                      className={`cursor-pointer transition-all duration-200 w-full ${
-                        selectedRoles.includes(role.roleId)
-                          ? "border-[3px] border-success bg-success/10 dark:bg-success/20 shadow-md"
-                          : "border-2 border-separator hover:border-success/50 hover:shadow-sm hover:bg-content2 dark:hover:bg-content2/50"
+                      className={`w-full cursor-pointer border-2 transition-colors duration-200 hover:translate-y-0 hover:scale-100 hover:shadow-none ${
+                        isSelected
+                          ? "border-success bg-success/10 dark:bg-success/20"
+                          : "border-separator hover:border-success/60 hover:bg-success/5"
                       }`}
+                      style={
+                        isSelected
+                          ? {
+                              boxShadow:
+                                "inset 0 0 0 2px color-mix(in oklab, var(--success) 55%, transparent)",
+                            }
+                          : undefined
+                      }
                       isPressable
                       onPress={() => handleRoleToggle(role.roleId)}
                     >
@@ -2904,8 +3255,40 @@ export default function AccountPage() {
               </p>
             </div>
           ) : !loginMethod ? (
-            // 登录方式选择
+            // 登录方式选择（重新登录时也走这里：只需选择方式，不必输入手机号）
             <div className="space-y-4">
+              {reloginMismatchUserId && (
+                <GlassAlert status="danger">
+                  <GlassAlert.Indicator />
+                  <GlassAlert.Content>
+                    <GlassAlert.Description>
+                      {t("settings.account.relogin_mismatch", {
+                        actual: reloginMismatchUserId,
+                      })}
+                    </GlassAlert.Description>
+                  </GlassAlert.Content>
+                </GlassAlert>
+              )}
+
+              {reloginTarget && (
+                <GlassAlert status="warning">
+                  <GlassAlert.Indicator />
+                  <GlassAlert.Content>
+                    <GlassAlert.Description>
+                      {t("settings.account.relogin_desc")}
+                    </GlassAlert.Description>
+                  </GlassAlert.Content>
+                </GlassAlert>
+              )}
+
+              {reloginTarget && (
+                <p className="text-xs text-muted">
+                  {reloginTarget.phone
+                    ? t("settings.account.relogin_fill_phone_hint")
+                    : t("settings.account.relogin_no_phone_hint")}
+                </p>
+              )}
+
               <p className="text-sm text-muted text-center mb-6">
                 {t("settings.account.select_login_method")}
               </p>
@@ -3079,6 +3462,13 @@ export default function AccountPage() {
                       {phoneError && (
                         <p className="text-xs text-danger">{phoneError}</p>
                       )}
+                      {reloginTarget?.phone && (
+                        <p className="text-xs text-muted">
+                          {t("settings.account.relogin_using_target_phone", {
+                            phone: reloginTarget.phone,
+                          })}
+                        </p>
+                      )}
                     </div>
                   </div>
                   <GlassButton
@@ -3132,6 +3522,13 @@ export default function AccountPage() {
                       />
                       {phoneError && (
                         <p className="text-xs text-danger">{phoneError}</p>
+                      )}
+                      {reloginTarget?.phone && (
+                        <p className="text-xs text-muted">
+                          {t("settings.account.relogin_using_target_phone", {
+                            phone: reloginTarget.phone,
+                          })}
+                        </p>
                       )}
                     </div>
 
@@ -3230,6 +3627,13 @@ export default function AccountPage() {
                       />
                       {phoneError && (
                         <p className="text-xs text-danger">{phoneError}</p>
+                      )}
+                      {reloginTarget?.phone && (
+                        <p className="text-xs text-muted">
+                          {t("settings.account.relogin_using_target_phone", {
+                            phone: reloginTarget.phone,
+                          })}
+                        </p>
                       )}
                     </div>
                   </div>
@@ -3384,6 +3788,17 @@ export default function AccountPage() {
           ) : (
             // 扫码登录界面
             <div className="space-y-4">
+              {reloginTarget && (
+                <GlassAlert status="warning">
+                  <GlassAlert.Indicator />
+                  <GlassAlert.Content>
+                    <GlassAlert.Description>
+                      {t("settings.account.relogin_desc")}
+                    </GlassAlert.Description>
+                  </GlassAlert.Content>
+                </GlassAlert>
+              )}
+
               {/* 错误提示 */}
               {loginError && (
                 <GlassAlert status="danger">

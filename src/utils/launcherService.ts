@@ -74,6 +74,16 @@ export const LAUNCH_WARNING_TITLE_KEYS: Record<string, string> = {
   overlay_unavailable: "launcher.launch_overlay_title",
 };
 
+/**
+ * 「停止游戏」失败的 `<token>: <detail>` 契约（`launcher_kill_game` 返回的 Err 串），
+ * 与启动结果同格式，便于复用 `splitLaunchToken`。
+ */
+export const KILL_TOKEN_KEYS: Record<string, string> = {
+  cancelled: "launcher.stop_err_cancelled",
+  kill_failed: "launcher.stop_err_kill_failed",
+  unknown: "launcher.stop_err_unknown",
+};
+
 export function splitLaunchToken(message: string): {
   token: string;
   detail: string;
@@ -436,9 +446,14 @@ export async function checkGameRunning(
   });
 }
 
-export async function killGame(
-  channel: GameChannel,
-): Promise<boolean> {
+/**
+ * 结束游戏进程（`launcher_kill_game`）。
+ *
+ * 返回 `true` = 进程已结束，`false` = 本来就没有同名进程。**失败会 reject**，错误串是同
+ * `<token>: <detail>` 契约（token 为 `cancelled` / `kill_failed` / `unknown`）——调用方据此
+ * 展示「需要管理员授权」之类的提示，而不是像以前那样静默忽略。
+ */
+export async function killGame(channel: GameChannel): Promise<boolean> {
   return invoke<boolean>("launcher_kill_game", {
     channel,
   });

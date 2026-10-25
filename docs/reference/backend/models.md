@@ -41,6 +41,7 @@
 | `game_role_count` | `usize` | — | 关联的游戏角色数量 |
 | `nickname` | `Option<String>` | `default` + `skip_serializing_if = "Option::is_none"` | 已缓存的森空岛昵称（来自 `GET /web/v1/user`，未获取过为 None） |
 | `avatar` | `Option<String>` | `default` + `skip_serializing_if = "Option::is_none"` | 已缓存的森空岛头像地址，同上 |
+| `phone` | `Option<String>` | `default` + `skip_serializing_if = "Option::is_none"` | 首次登录时记录的手机号（`account_token_{user_id}.phone`），供「重新登录」短信/密码方式自动填充；未记录为 None |
 
 ### `struct SklandUserInfo`
 - 位置：account.rs:33
@@ -1056,7 +1057,7 @@ derive 均为 `Serialize, Deserialize, Clone, Debug` + 容器 `rename_all = "cam
 ---
 
 ## `src-tauri/src/models/login.rs`
-**职责**：登录相关的请求/响应模型（密码登录、验证码、扫码登录）。文件共 44 行。
+**职责**：登录相关的请求/响应模型（密码登录、验证码、扫码登录）。文件共 52 行。
 **导出**：`LoginRequest`、`SendCodeRequest`、`CodeLoginRequest`、`ScanLoginInfo`、`ScanStatus`。
 
 ### `struct LoginRequest`
@@ -1069,6 +1070,7 @@ derive 均为 `Serialize, Deserialize, Clone, Debug` + 容器 `rename_all = "cam
 | --- | --- | --- | --- |
 | `phone` | `String` | — | 手机号 |
 | `password` | `String` | — | 密码 |
+| `expected_user_id` | `Option<String>` | `default` | 重新登录时的目标森空岛 userId；登录结果不一致时后端返回 `ACCOUNT_MISMATCH:<实际userId>` 且不保存凭证 |
 
 ### `struct SendCodeRequest`
 - 位置：login.rs:14
@@ -1091,6 +1093,7 @@ derive 均为 `Serialize, Deserialize, Clone, Debug` + 容器 `rename_all = "cam
 | --- | --- | --- | --- |
 | `phone` | `String` | — | 手机号 |
 | `code` | `String` | — | 短信验证码 |
+| `expected_user_id` | `Option<String>` | `default` | 重新登录时的目标森空岛 userId（校验同 `LoginRequest`） |
 
 ### `struct ScanLoginInfo`
 - 位置：login.rs:31

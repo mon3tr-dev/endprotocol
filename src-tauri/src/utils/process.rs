@@ -1,6 +1,7 @@
-//! 进程探测辅助。
+//! 进程探测与结束辅助。
 //!
-//! 供 `launcher_check_game_running` 命令、驻守等待与游戏运行时长统计共用。
+//! 供 `launcher_check_game_running` / `launcher_kill_game` 命令、驻守等待与游戏运行时长
+//! 统计共用。
 
 /// 查询指定进程名当前是否真的在运行。
 ///
@@ -13,7 +14,7 @@
 pub async fn is_process_running(process_name: &str) -> bool {
     #[cfg(target_os = "windows")]
     {
-        match list_process_ids(process_name).await {
+        match list_process_ids_async(process_name).await {
             Some(pids) if !pids.is_empty() => pids
                 .into_iter()
                 .any(|pid| has_top_level_window(pid) || process_is_starting(pid)),
@@ -34,7 +35,7 @@ pub async fn is_process_running(process_name: &str) -> bool {
 const STARTUP_GRACE_SECONDS: u64 = 90;
 
 #[cfg(target_os = "windows")]
-async fn list_process_ids(process_name: &str) -> Option<Vec<u32>> {
+async fn list_process_ids_async(process_name: &str) -> Option<Vec<u32>> {
     let mut command = tokio::process::Command::new("tasklist");
     command.creation_flags(windows_sys::Win32::System::Threading::CREATE_NO_WINDOW);
     let output = command
@@ -52,14 +53,23 @@ async fn list_process_ids(process_name: &str) -> Option<Vec<u32>> {
         })
         .ok()?;
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
+    Some(parse_tasklist_pids(
+        &String::from_utf8_lossy(&output.stdout),
+        process_name,
+    ))
+}
+
+/// 解析 `tasklist /FO CSV /NH` 的输出，只保留进程名与目标完全一致的行。
+///
+/// CSV 行形如 `"Endfield.exe","61552","Console","1","24 K"`。
+#[cfg(target_os = "windows")]
+fn parse_tasklist_pids(stdout: &str, process_name: &str) -> Vec<u32> {
     let mut pids = Vec::new();
     for line in stdout.lines() {
         let line = line.trim();
         if !line.starts_with('"') {
             continue;
         }
-        // CSV 行形如 `"Endfield.exe","61552","Console","1","24 K"`。
         let fields: Vec<&str> = line.split("\",\"").collect();
         if fields.len() < 2 {
             continue;
@@ -74,7 +84,93 @@ async fn list_process_ids(process_name: &str) -> Option<Vec<u32>> {
             pids.push(pid);
         }
     }
-    Some(pids)
+    pids
+}
+
+/// 同步查询同名进程的 PID（供 `spawn_blocking` / helper 进程内使用）。
+///
+/// 与 [`is_process_running`] 不同，这里**不做**窗口/启动宽限过滤：`taskkill` 需要的是
+/// 「还有哪些同名进程活着」，包括那些已经失去窗口、界面判定为「未运行」的残留。
+pub fn list_process_ids(process_name: &str) -> Vec<u32> {
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+
+        let mut command = std::process::Command::new("tasklist");
+        command.creation_flags(windows_sys::Win32::System::Threading::CREATE_NO_WINDOW);
+        match command
+            .args([
+                "/FI",
+                &format!("IMAGENAME eq {process_name}"),
+                "/FO",
+                "CSV",
+                "/NH",
+            ])
+            .output()
+        {
+            Ok(output) => {
+                parse_tasklist_pids(&String::from_utf8_lossy(&output.stdout), process_name)
+            }
+            Err(error) => {
+                tracing::debug!("[process] tasklist failed for {process_name}: {error}");
+                Vec::new()
+            }
+        }
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = process_name;
+        Vec::new()
+    }
+}
+
+/// 同步结束指定进程名（含子进程树）。
+///
+/// Windows 下隐藏窗口执行 `taskkill /T /F /IM`，再按 PID 逐个 `taskkill /F /PID` 兜底
+/// （进程按名匹配不到时仍可结束）。返回 `bool` = 结束时命令行是否成功；调用方再结合
+/// [`has_processes`] 判断是否真有残留（失败通常意味着需要管理员权限）。
+pub fn terminate_processes(process_name: &str) -> bool {
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+
+        let mut by_name = std::process::Command::new("taskkill");
+        by_name.creation_flags(windows_sys::Win32::System::Threading::CREATE_NO_WINDOW);
+        let succeeded = by_name
+            .args(["/T", "/F", "/IM", process_name])
+            .output()
+            .map(|output| output.status.success())
+            .unwrap_or(false);
+
+        for pid in list_process_ids(process_name) {
+            let mut by_pid = std::process::Command::new("taskkill");
+            by_pid.creation_flags(windows_sys::Win32::System::Threading::CREATE_NO_WINDOW);
+            let _ = by_pid.args(["/F", "/PID", &pid.to_string()]).output();
+            tracing::debug!("[process] taskkill /F /PID {pid} ({process_name})");
+        }
+
+        succeeded
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = process_name;
+        false
+    }
+}
+
+/// 是否仍有同名进程存活（同步，最多等待约 3 秒让刚发出的终止请求生效）。
+pub fn has_processes(process_name: &str) -> bool {
+    for attempt in 0..6 {
+        if list_process_ids(process_name).is_empty() {
+            return false;
+        }
+        if attempt < 5 {
+            std::thread::sleep(std::time::Duration::from_millis(500));
+        }
+    }
+    true
 }
 
 #[cfg(target_os = "windows")]

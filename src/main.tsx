@@ -26,6 +26,7 @@ import {
   trackStartupTask,
 } from "@/utils/startupProgress";
 import { installCrashHandlers } from "@/utils/crashReporting";
+import { loadAccountAvailability } from "@/utils/accountAvailability";
 
 type ThemeMode = "light" | "dark" | "system";
 
@@ -172,6 +173,7 @@ Promise.all([
   getConfig<string>("theme_color"),
   getConfig<ThemeColor[]>("theme_custom_colors"),
   loadBackgroundSettings(),
+  loadAccountAvailability(),
 ]).then(([savedLang, savedMode, savedColor, savedCustom]) => {
   const lng = savedLang || (navigator.language.startsWith("zh") ? "zh" : "en");
   setInitialLanguage(lng);

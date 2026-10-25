@@ -94,7 +94,7 @@
 
 **备注**：`lib.rs` 本身**没有任何 `emit`/`listen`**，也**没有全局应用菜单**；完整模式右键托盘仍打开原有托盘面板。
 
-### 命令总表（完整模式 `.invoke_handler` 注册 113 个命令；驻守模式不注册 IPC 命令）
+### 命令总表（完整模式 `.invoke_handler` 注册 114 个命令；驻守模式不注册 IPC 命令）
 
 完整命令清单与定义/调用关系见 [commands.md](commands.md) 和 [ipc_index.md](../ipc_index.md)；驻守分支为纯 `Builder::default().setup(...)`（lib.rs:59-75），不注册单实例插件，也无 `.invoke_handler`。
 
@@ -103,7 +103,7 @@
 | --- | --- | --- |
 | `tray-user-info-updated` | tray.rs:170（仅发给 tray-panel 窗口） | `TrayUserInfo` |
 | `launcher-progress` | commands/launcher.rs:74/117/168 | 启动器下载/校验进度 |
-| `accounts-refreshed` | services/account_service.rs:799 | 账户刷新结果 |
+| `accounts-refreshed` | services/account_service.rs:812 | 账户刷新结果 |
 | `download-progress` | commands/updater.rs:106 | 更新包下载进度 |
 | `gacha-sync-progress` | services/gacha_service.rs:746（常量 `GACHA_SYNC_PROGRESS_EVENT`，定义于 gacha_service.rs:22） | 抽卡同步进度 |
 | `launcher://switch-progress` | services/game_launcher_service.rs:2471 | 换渠道进度 |

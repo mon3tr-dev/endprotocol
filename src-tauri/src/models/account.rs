@@ -25,6 +25,9 @@ pub struct SklandAccountInfo {
     /// 已缓存的森空岛头像地址（来自 `GET /web/v1/user`，未获取过时为 None）
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub avatar: Option<String>,
+    /// 首次登录时记录的手机号（仅用于重新登录自动填充，未记录时为 None）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub phone: Option<String>,
 }
 
 /// 森空岛用户资料（`GET /web/v1/user` 响应中的 `data.user`）

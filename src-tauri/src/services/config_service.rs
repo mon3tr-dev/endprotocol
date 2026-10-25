@@ -81,6 +81,28 @@ impl ConfigService {
         cache.clone()
     }
 
+    /// 获取代理配置
+    pub fn get_proxy_config(&self) -> Option<Value> {
+        self.get("proxy_config")
+    }
+
+    /// 设置代理配置
+    pub fn set_proxy_config(&mut self, config: Value) -> Result<(), AppError> {
+        {
+            let mut cache = self.cache.lock().map_err(|e| AppError::ConfigError {
+                message: format!("Lock failed: {}", e),
+            })?;
+            cache.insert("proxy_config".to_string(), config);
+        }
+        self.save()?;
+        Ok(())
+    }
+
+    /// 删除代理配置
+    pub fn remove_proxy_config(&mut self) -> bool {
+        self.remove("proxy_config")
+    }
+
     /// 保存配置到文件
     fn save(&self) -> Result<(), AppError> {
         let cache = self.cache.lock().map_err(|e| AppError::ConfigError {

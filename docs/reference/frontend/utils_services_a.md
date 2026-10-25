@@ -4,45 +4,48 @@
 
 ## `src/utils/accountService.ts`
 **职责**：封装森空岛/游戏账户相关的全部 Tauri IPC 调用（登录、登出、刷新、扫码、验证码、选中账户、凭证刷新），并定义账户相关的 TS 类型。是前端访问账户后端的唯一入口层。
-**导出**：类型 `Account`、`SklandAccount`、`SklandGameScore`、`SklandPendant`、`SklandBackground`、`SklandUserStats`、`SklandGameInfo`、`SklandUserInfo`、`RoleDisplayInfo`、`LoginRequest`、`LoginResult`、`RefreshResult`、`SendCodeRequest`、`CodeLoginRequest`、`ScanLoginInfo`、`ScanStatus`；函数 `getAccounts`、`getSklandAccounts`、`saveSklandAccount`、`getSklandAccountRoles`、`getSklandUserInfo`、`getSklandGames`、`addAccount`、`logoutAccount`、`batchLogout`、`refreshAccounts`、`sendVerificationCode`、`addAccountByCode`、`genScanLogin`、`scanStatus`、`addAccountByScan`、`saveSelectedRoles`、`getSelectedAccount`、`setSelectedAccount`、`checkAndRefreshCred`；别名常量 `refreshAccountData`、`batchLogoutAccounts`。
-**主要依赖**：`@tauri-apps/api/core` 的 `invoke`、`./logger` 的 `logger` / `logError`、`./startupProgress` 的 `trackStartupTask`。
+**导出**：类型 `Account`、`SklandAccount`、`SklandGameScore`、`SklandPendant`、`SklandBackground`、`SklandUserStats`、`SklandGameInfo`、`SklandUserInfo`、`RoleDisplayInfo`、`LoginRequest`、`LoginResult`、`RefreshResult`、`SendCodeRequest`、`CodeLoginRequest`、`ScanLoginInfo`、`ScanStatus`；函数 `getAccounts`、`getSklandAccounts`、`saveSklandAccount`、`getSklandAccountRoles`、`getSklandUserInfo`、`getSklandUserInfoByCred`、`getSklandGames`、`addAccount`、`logoutAccount`、`batchLogout`、`refreshAccounts`、`sendVerificationCode`、`addAccountByCode`、`genScanLogin`、`scanStatus`、`addAccountByScan`、`saveSelectedRoles`、`getSelectedAccount`、`setSelectedAccount`、`checkAndRefreshCred`、`applyApiHealthSnapshot`；别名常量 `refreshAccountData`、`batchLogoutAccounts`。
+**主要依赖**：`@tauri-apps/api/core` 的 `invoke`、`./logger` 的 `logger` / `logError`、`./startupProgress` 的 `trackStartupTask`、`./accountAvailability`（`clearAccountUnavailable` / `setAccountUnavailable` / `reasonFromApiKind`）、`./crashReporting` 的类型 `ApiHealthSnapshot`。
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
-| `getAccounts` | accountService.ts:195 | invoke `get_accounts`，无参，返回 `Account[]`；启动 Splash 跟踪期间计入初始任务；失败 `logError` 后返回 `[]` |
-| `getSklandAccounts` | accountService.ts:203 | invoke `get_skland_accounts`，无参，返回 `SklandAccount[]`；失败返回 `[]` |
-| `saveSklandAccount` | accountService.ts:212 | invoke `save_skland_account`，参数 `{cred, token, userId}`，返回 `boolean`；失败返回 `false` |
-| `getSklandAccountRoles` | accountService.ts:225 | invoke `get_skland_account_roles`，参数 `{userId}`，返回 `LoginResult`；失败返回 `{success:false, errorMessage:String(error)}` |
-| `getSklandUserInfo` | accountService.ts:239 | invoke `get_skland_user_info`，参数 `{userId}`，返回 `SklandUserInfo`；**无 try/catch，错误向上抛** |
-| `getSklandGames` | accountService.ts:249 | invoke `get_skland_games`，参数 `{userId, force}`（`force` 默认 `false`，后端带缓存），返回 `SklandGameInfo[]`；**无 try/catch，错误向上抛** |
-| `addAccount` | accountService.ts:261 | invoke `add_account`，参数 `{loginRequest}`（手机号+密码），返回 `LoginResult`；失败返回 `{success:false, errorMessage, account:undefined}` |
-| `logoutAccount` | accountService.ts:280 | invoke `logout_account`，参数 `{accountId, keepDeviceToken}`（默认 `true`，保留设备认证跳过新设备验证），返回 `boolean`；失败返回 `false` |
-| `batchLogout` | accountService.ts:297 | invoke `batch_logout`，参数 `{accountIds}`，返回 `boolean`；失败返回 `false` |
-| `refreshAccounts` | accountService.ts:310 | invoke `refresh_accounts`，无参，返回 `RefreshResult`；失败返回 `{success:false, errorMessage, accounts:[], refreshTime:当前ISO时间}` |
-| `refreshAccountData` | accountService.ts:325 | `refreshAccounts` 的别名导出（旧命名兼容），非独立实现 |
-| `batchLogoutAccounts` | accountService.ts:326 | `batchLogout` 的别名导出（旧命名兼容），非独立实现 |
-| `sendVerificationCode` | accountService.ts:333 | invoke `send_verification_code`，参数 `{request}`（`SendCodeRequest`），返回 `boolean`；失败返回 `false` |
-| `addAccountByCode` | accountService.ts:347 | invoke `add_account_by_code`，参数 `{loginRequest}`（手机号+验证码），返回 `LoginResult`；失败用 `logger.error(..., "AccountService")` 记录并返回 `{success:false, errorMessage}` |
-| `genScanLogin` | accountService.ts:364 | invoke `gen_scan_login`，无参，返回 `ScanLoginInfo \| null`；失败返回 `null` |
-| `scanStatus` | accountService.ts:378 | invoke `scan_status`，参数 `{scanId}`，返回 `ScanStatus \| null`；失败返回 `null` |
-| `addAccountByScan` | accountService.ts:392 | invoke `add_account_by_scan`，参数 `{scanCode}`，返回 `LoginResult`；失败记录日志并返回 `{success:false, errorMessage}` |
-| `saveSelectedRoles` | accountService.ts:413 | invoke `save_selected_roles`，参数 `{cred, token, userId, selectedRoles}`，返回 `Account[]`（创建的账户列表）；失败记录日志后**重新 throw** |
-| `getSelectedAccount` | accountService.ts:432 | invoke `get_selected_account`，无参，返回 `string \| null`（当前选中账户 ID）；启动 Splash 跟踪期间计入初始任务；失败记录日志并返回 `null` |
-| `setSelectedAccount` | accountService.ts:445 | invoke `set_selected_account`，参数 `{accountId}`，返回 `boolean`；失败返回 `false` |
-| `checkAndRefreshCred` | accountService.ts:459 | invoke `check_and_refresh_cred`，参数 `{userId}`，返回 `[cred, token] \| null`（`null` 表示无需刷新）；失败记录日志后**重新 throw** |
+| `getAccounts` | accountService.ts:211 | invoke `get_accounts`，无参，返回 `Account[]`；启动 Splash 跟踪期间计入初始任务；成功且非空时 `clearAccountUnavailable()`，失败 `logError` + `setAccountUnavailable("unknown")` 后返回 `[]`（**不阻塞进入应用**） |
+| `getSklandAccounts` | accountService.ts:223 | invoke `get_skland_accounts`，无参，返回 `SklandAccount[]`；失败返回 `[]` |
+| `saveSklandAccount` | accountService.ts:232 | invoke `save_skland_account`，参数 `{cred, token, userId}`，返回 `boolean`；失败返回 `false` |
+| `getSklandAccountRoles` | accountService.ts:245 | invoke `get_skland_account_roles`，参数 `{userId}`，返回 `LoginResult`；失败返回 `{success:false, errorMessage:String(error)}` |
+| `getSklandUserInfo` | accountService.ts:259 | invoke `get_skland_user_info`，参数 `{userId}`，返回 `SklandUserInfo`；**无 try/catch，错误向上抛** |
+| `getSklandUserInfoByCred` | accountService.ts:460 | invoke `get_skland_user_info_by_cred`，参数 `{cred, token}`，返回 `SklandUserInfo \| null`（不读本地配置，用于「确认绑定森空岛账户」页展示头像/昵称）；失败 `logError` 后返回 `null` |
+| `getSklandGames` | accountService.ts:269 | invoke `get_skland_games`，参数 `{userId, force}`（`force` 默认 `false`，后端带缓存），返回 `SklandGameInfo[]`；**无 try/catch，错误向上抛** |
+| `addAccount` | accountService.ts:281 | invoke `add_account`，参数 `{loginRequest}`（手机号+密码+可选 `expectedUserId`），返回 `LoginResult`；成功时 `clearAccountUnavailable()`；失败返回 `{success:false, errorMessage, account:undefined}` |
+| `logoutAccount` | accountService.ts:302 | invoke `logout_account`，参数 `{accountId, keepDeviceToken}`（默认 `true`，保留设备认证跳过新设备验证），返回 `boolean`；失败返回 `false` |
+| `batchLogout` | accountService.ts:319 | invoke `batch_logout`，参数 `{accountIds}`，返回 `boolean`；失败返回 `false` |
+| `refreshAccounts` | accountService.ts:332 | invoke `refresh_accounts`，无参，返回 `RefreshResult`；成功且非空时 `clearAccountUnavailable()`，失败 `setAccountUnavailable("unknown")` 并返回 `{success:false, errorMessage, accounts:[], refreshTime:当前ISO时间}` |
+| `refreshAccountData` | accountService.ts:350 | `refreshAccounts` 的别名导出（旧命名兼容），非独立实现 |
+| `batchLogoutAccounts` | accountService.ts:351 | `batchLogout` 的别名导出（旧命名兼容），非独立实现 |
+| `sendVerificationCode` | accountService.ts:358 | invoke `send_verification_code`，参数 `{request}`（`SendCodeRequest`），返回 `boolean`；失败返回 `false` |
+| `addAccountByCode` | accountService.ts:372 | invoke `add_account_by_code`，参数 `{loginRequest}`（手机号+验证码+可选 `expectedUserId`），返回 `LoginResult`；成功时 `clearAccountUnavailable()`；失败用 `logger.error(..., "AccountService")` 记录并返回 `{success:false, errorMessage}` |
+| `genScanLogin` | accountService.ts:391 | invoke `gen_scan_login`，无参，返回 `ScanLoginInfo \| null`；失败返回 `null` |
+| `scanStatus` | accountService.ts:405 | invoke `scan_status`，参数 `{scanId}`，返回 `ScanStatus \| null`；失败返回 `null` |
+| `addAccountByScan` | accountService.ts:420 | invoke `add_account_by_scan`，参数 `{scanCode, expectedUserId}`（后者为 `null` 时不校验账户），返回 `LoginResult`；成功时 `clearAccountUnavailable()`；失败记录日志并返回 `{success:false, errorMessage}`。**重新登录时传目标 userId：后端校验登录账户是否一致，不一致返回 `ACCOUNT_MISMATCH:<实际userId>` 且不落盘凭证** |
+| `applyApiHealthSnapshot` | accountService.ts:447 | `applyApiHealthSnapshot(snapshot)`：`blocked` 时用 `reasonFromApiKind` 把熔断原因写入账户不可用状态（账户页启动时经 `invoke("get_api_health")` 兜底调用） |
+| `saveSelectedRoles` | accountService.ts:480 | invoke `save_selected_roles`，参数 `{cred, token, userId, selectedRoles}`，返回 `Account[]`（创建的账户列表）；失败记录日志后**重新 throw** |
+| `getSelectedAccount` | accountService.ts:498 | invoke `get_selected_account`，无参，返回 `string \| null`（当前选中账户 ID）；启动 Splash 跟踪期间计入初始任务；失败记录日志并返回 `null` |
+| `setSelectedAccount` | accountService.ts:512 | invoke `set_selected_account`，参数 `{accountId}`，返回 `boolean`；失败返回 `false` |
+| `checkAndRefreshCred` | accountService.ts:526 | invoke `check_and_refresh_cred`，参数 `{userId}`，返回 `[cred, token] \| null`（`null` 表示无需刷新）；失败记录日志后**重新 throw** |
 
 **内部结构**：
 
 | 区间 | 内容 |
 | --- | --- |
-| accountService.ts:7-188 | 全部接口/类型定义（账户、森空岛资料、登录/扫码/验证码请求与结果） |
-| accountService.ts:194-466 | 各 IPC 包装函数实现 |
+| accountService.ts:1-211 | 全部接口/类型定义（账户、森空岛资料、登录/扫码/验证码请求与结果；`SklandAccount.phone`、`LoginRequest.expectedUserId`、`CodeLoginRequest.expectedUserId`） |
+| accountService.ts:203-536 | 各 IPC 包装函数实现 |
 
 **备注**：
-- 封装的 invoke 命令：`get_accounts`、`get_skland_accounts`、`save_skland_account`、`get_skland_account_roles`、`get_skland_user_info`、`get_skland_games`、`add_account`、`logout_account`、`batch_logout`、`refresh_accounts`、`send_verification_code`、`add_account_by_code`、`gen_scan_login`、`scan_status`、`add_account_by_scan`、`save_selected_roles`、`get_selected_account`、`set_selected_account`、`check_and_refresh_cred`（共 19 个）。
+- 封装的 invoke 命令：`get_accounts`、`get_skland_accounts`、`save_skland_account`、`get_skland_account_roles`、`get_skland_user_info`、`get_skland_user_info_by_cred`、`get_skland_games`、`add_account`、`logout_account`、`batch_logout`、`refresh_accounts`、`send_verification_code`、`add_account_by_code`、`gen_scan_login`、`scan_status`、`add_account_by_scan`、`save_selected_roles`、`get_selected_account`、`set_selected_account`、`check_and_refresh_cred`（共 20 个）。
 - 配置键：本文件**不直接**读写任何配置键；选中账户由后端命令 `get_selected_account`/`set_selected_account` 管理（对应后端配置键在 Rust 侧，前端未出现字面量）。
 - 缓存策略：无前端缓存，每次调用直接 IPC；森空岛游戏列表的缓存由后端负责（`getSklandGames` 的 `force` 参数控制强制刷新）。
 - 错误处理不统一：`getSklandUserInfo`、`getSklandGames` 不捕获错误；`saveSelectedRoles`、`checkAndRefreshCred` 记录日志后 rethrow；其余函数均吞掉错误并返回空值/false。
+- 账户可用性：`getAccounts`/`refreshAccounts`/三个登录入口在成功时清除不可用状态，失败时标记（详见 `src/utils/accountAvailability.ts`）。
 
 ## `src/utils/configService.ts`
 **职责**：通用键值配置读写层，封装 Tauri `get_config`/`set_config`/`remove_config`/`get_all_configs`，并在 Tauri 调用失败时自动降级到浏览器 `localStorage`（开发环境兜底）。
@@ -295,7 +298,7 @@
 
 ## `src/utils/launcherService.ts`
 **职责**：游戏启动器（安装/更新/校验修复/预下载/渠道切换/启动/进程控制/公告背景资源）的全部 Tauri IPC 封装 + 三个进度事件监听 + 渠道/阶段标签与字节格式化工具。
-**导出**：类型 `GameChannel`、`GameStatus`、`ActiveOperation`、`RemotePackage`、`DownloadProgress`、`BackgroundMedia`、`LauncherResult`、`PayloadState`、`BannerItem`、`AnnouncementItem`、`LauncherNoticeContent`、`FileScanResult`、`DiskSpace`、`GamePlaytime`、`LaunchExportOptions`、`SteamShortcutOptions`、`SteamShortcutDefaults`、`AddSteamShortcutResult`；函数 `checkGameStatus`、`installOrUpdate`、`verifyAndRepair`、`getProcessReadBytes`、`getRemoteVersion`、`getPayloadState`、`cancelDownload`、`preloadDownload`、`installPreload`、`resetDownloadCancel`、`hasDownloadCache`、`getBanners`、`getAnnouncements`、`getNoticeContent`、`getBackgroundImage`、`startGame`、`syncSilentLaunchConfig`、`restoreLaunchConfig`、`getGameLaunchCommand`、`createGameShortcut`、`getSteamShortcutDefaults`、`pickSteamIcon`、`pickSteamIconSource`、`extractSteamIcon`、`addSteamShortcut`、`browseFolder`、`checkExecutable`、`checkGameRunning`、`killGame`、`getGamePlaytime`、`detectChannel`、`scanInstallDir`、`getDiskSpace`、`switchChannel`、`cancelSwitch`、`cancelAll`、`onLauncherProgress`、`onProgress`、`onSwitchProgress`、`formatBytes`；常量 `CHANNEL_LABELS`、`ALL_CHANNELS`、`STAGE_LABELS`、`LAUNCH_TOKEN_KEYS`、`LAUNCH_WARNING_TITLE_KEYS`；函数 `splitLaunchToken`（解析 `<token>: <detail>` 契约串）。
+**导出**：类型 `GameChannel`、`GameStatus`、`ActiveOperation`、`RemotePackage`、`DownloadProgress`、`BackgroundMedia`、`LauncherResult`、`PayloadState`、`BannerItem`、`AnnouncementItem`、`LauncherNoticeContent`、`FileScanResult`、`DiskSpace`、`GamePlaytime`、`LaunchExportOptions`、`SteamShortcutOptions`、`SteamShortcutDefaults`、`AddSteamShortcutResult`；函数 `checkGameStatus`、`installOrUpdate`、`verifyAndRepair`、`getProcessReadBytes`、`getRemoteVersion`、`getPayloadState`、`cancelDownload`、`preloadDownload`、`installPreload`、`resetDownloadCancel`、`hasDownloadCache`、`getBanners`、`getAnnouncements`、`getNoticeContent`、`getBackgroundImage`、`startGame`、`syncSilentLaunchConfig`、`restoreLaunchConfig`、`getGameLaunchCommand`、`createGameShortcut`、`getSteamShortcutDefaults`、`pickSteamIcon`、`pickSteamIconSource`、`extractSteamIcon`、`addSteamShortcut`、`browseFolder`、`checkExecutable`、`checkGameRunning`、`killGame`、`getGamePlaytime`、`detectChannel`、`scanInstallDir`、`getDiskSpace`、`switchChannel`、`cancelSwitch`、`cancelAll`、`onLauncherProgress`、`onProgress`、`onSwitchProgress`、`formatBytes`；常量 `CHANNEL_LABELS`、`ALL_CHANNELS`、`STAGE_LABELS`、`LAUNCH_TOKEN_KEYS`、`LAUNCH_WARNING_TITLE_KEYS`、`KILL_TOKEN_KEYS`；函数 `splitLaunchToken`（解析 `<token>: <detail>` 契约串）。
 **主要依赖**：`@tauri-apps/api/core` 的 `invoke`、`@tauri-apps/api/event` 的 `listen` / 类型 `UnlistenFn`。
 
 | 符号 | 位置 | 说明 |
@@ -328,7 +331,7 @@
 | `browseFolder` | launcherService.ts:363 | invoke `launcher_browse_folder`，无参，返回 `string \| null`（用户选择的目录） |
 | `checkExecutable` | launcherService.ts:226 | invoke `launcher_check_executable`，参数 `{installPath, channel}`，返回 `boolean` |
 | `checkGameRunning` | launcherService.ts:236 | invoke `launcher_check_game_running`，参数 `{channel}`，返回 `boolean` |
-| `killGame` | launcherService.ts:244 | invoke `launcher_kill_game`，参数 `{channel}`，返回 `boolean` |
+| `killGame` | launcherService.ts:456 | invoke `launcher_kill_game`，参数 `{channel}`，返回 `boolean`（`true` = 已结束，`false` = 本来就没有进程）。**失败时 reject**，错误串为 `<token>: <detail>`（token 为 `cancelled` / `kill_failed` / `unknown`，文案见 `KILL_TOKEN_KEYS`（:81））；后端在未提权时会经 UAC 以管理员权限执行 `taskkill`，因此这里可能弹出提权确认 |
 | `getGamePlaytime` | launcherService.ts:365 | invoke `launcher_get_game_playtime`，无参，返回 `GamePlaytime {total_seconds, session_seconds, running}`（累计总时长 + 当前会话 + 运行态） |
 | `detectChannel` | launcherService.ts:252 | invoke `launcher_detect_channel`，参数 `{installPath}`，返回 `GameChannel \| null` |
 | `scanInstallDir` | launcherService.ts:258 | invoke `launcher_scan_install_dir`，参数 `{channel, installPath}`，返回 `FileScanResult`（损坏/缺失文件清单与字节统计） |

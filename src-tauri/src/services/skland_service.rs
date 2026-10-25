@@ -80,7 +80,24 @@ impl SklandService {
     }
 
     /// 获取新的 dId - 1:1 复刻 Python 脚本
+    ///
+    /// 数美设备指纹接口（`fp-it.portal101.cn`）失败时会按
+    /// [`api_health::ApiFailureKind::DeviceFingerprint`] 计数：连续失败达到阈值后
+    /// 判定为设备指纹环境异常，前端据此提示用户重启电脑并同步时区。
     async fn fetch_new_did(&self) -> Result<String, AppError> {
+        api_health::ensure_available()?;
+        let result = self.fetch_new_did_inner().await;
+        if let Err(error) = &result {
+            api_health::record_failure(
+                api_health::ApiFailureKind::DeviceFingerprint,
+                &format!("数美设备指纹接口请求失败: {}", error),
+                None,
+            );
+        }
+        result
+    }
+
+    async fn fetch_new_did_inner(&self) -> Result<String, AppError> {
         // 生成 uid 和 pri_id
         let uid = Uuid::new_v4().to_string();
         let uid_bytes = uid.as_bytes();
@@ -509,11 +526,8 @@ impl SklandService {
                 match self.get_or_refresh_did().await {
                     Ok(d) => d,
                     Err(e) => {
-                        api_health::record_failure(
-                            api_health::ApiFailureKind::Network,
-                            &format!("Failed to obtain dId: {}", e),
-                            None,
-                        );
+                        // 数美设备指纹失败已在 fetch_new_did 内按 DeviceFingerprint 计数，
+                        // 这里不再重复计入 Network。
                         last_err = Some(e);
                         continue;
                     }
@@ -531,11 +545,6 @@ impl SklandService {
                 match self.fetch_new_did().await {
                     Ok(d) => d,
                     Err(e) => {
-                        api_health::record_failure(
-                            api_health::ApiFailureKind::Network,
-                            &format!("Failed to refresh dId: {}", e),
-                            None,
-                        );
                         last_err = Some(e);
                         continue;
                     }

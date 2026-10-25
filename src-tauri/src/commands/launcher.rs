@@ -770,52 +770,49 @@ pub fn launcher_get_game_playtime() -> GamePlaytime {
     crate::utils::game_playtime::snapshot()
 }
 
+/// 结束游戏进程。
+///
+/// 游戏由**提权** helper 创建（见 `utils/official_launcher.rs`），所以未提权的本进程执行
+/// `taskkill` / `TerminateProcess` 只会拿到 `Access is denied` —— 这正是「停止」点了没反应
+/// 的原因。这里先就地试一次（本进程已提权时不必弹 UAC），仍有残留则经 UAC 以管理员权限
+/// 重试同一个动作，并把最终存活状态回给界面。
+///
+/// 返回 `true` = 进程已结束；返回 `false` 且无错误 = 本来就没有同名进程。
 #[tauri::command]
 pub async fn launcher_kill_game(channel: String) -> Result<bool, String> {
     let ch = parse_channel(&channel)?;
     let process_name = ch.process_name();
-    let exe_name = ch.executable_name();
 
-    // 先用 taskkill /T /F /IM 杀进程树（非阻塞）
-    let mut command = tokio::process::Command::new("taskkill");
     #[cfg(target_os = "windows")]
-    command.creation_flags(windows_sys::Win32::System::Threading::CREATE_NO_WINDOW);
-    let output = command
-        .args(["/T", "/F", "/IM", &process_name])
-        .output()
+    {
+        let name = process_name.to_string();
+        // tasklist/taskkill 与 UAC 等待都是阻塞调用，不占用 tokio 工作线程。
+        let outcome = tokio::task::spawn_blocking(move || {
+            if !crate::utils::process::has_processes(&name) {
+                return Ok(false);
+            }
+            crate::utils::official_launcher::kill_game_process(&name)
+        })
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|error| format!("kill task failed: {error}"))?;
 
-    if !output.status.success() {
-        // 尝试用可执行文件名杀
-        let mut command = tokio::process::Command::new("taskkill");
-        #[cfg(target_os = "windows")]
-        command.creation_flags(windows_sys::Win32::System::Threading::CREATE_NO_WINDOW);
-        let output2 = command
-            .args(["/T", "/F", "/IM", &exe_name])
-            .output()
-            .await
-            .map_err(|e| e.to_string())?;
-
-        if !output2.status.success() {
-            // 最后尝试 wmic 按标题模糊杀
-            let mut command = tokio::process::Command::new("wmic");
-            #[cfg(target_os = "windows")]
-            command.creation_flags(windows_sys::Win32::System::Threading::CREATE_NO_WINDOW);
-            let _ = command
-                .args([
-                    "process",
-                    "where",
-                    &format!("name like '%Endfield%'"),
-                    "call",
-                    "terminate",
-                ])
-                .output()
-                .await;
-        }
+        return match outcome {
+            Ok(terminated) => {
+                tracing::info!("[launcher] {process_name} terminated={terminated}");
+                Ok(terminated)
+            }
+            Err(error) => {
+                tracing::error!("[launcher] {}", error.message());
+                Err(error.message())
+            }
+        };
     }
 
-    Ok(true)
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = process_name;
+        Ok(false)
+    }
 }
 
 /// 切换游戏渠道

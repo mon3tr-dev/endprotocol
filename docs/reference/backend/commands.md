@@ -1,35 +1,36 @@
 # Tauri 命令层（IPC 入口）— 文件功能参考
 
 > 逐文件精读源码生成。行号基于当前工作区版本，仅用于快速定位。
-> 覆盖范围：`src-tauri/src/commands/` 下 16 个文件，当前参考表收录 **113 个不同命令名**；源码含 116 处命令注解（其中有同名定义）。注册入口见 `src-tauri/src/lib.rs` 的 `generate_handler!`。
+> 覆盖范围：`src-tauri/src/commands/` 下 16 个文件，当前参考表收录 **114 个不同命令名**；源码含 118 处命令注解（其中有同名定义）。注册入口见 `src-tauri/src/lib.rs` 的 `generate_handler!`。
 
 ## 命令速查表
 
 | 命令名 | 定义位置 | 参数 | 返回 | 内部调用 |
 | --- | --- | --- | --- | --- |
 | `get_accounts` | commands/account.rs:16 | `state: State<Arc<Mutex<AccountService>>>` | `Result<Vec<AccountInfo>, String>` | `ConfigService::get_all`、`AccountService::get_cached_accounts` / `AccountService::get_accounts` |
-| `get_skland_accounts` | commands/account.rs:67 | `state: State<Arc<Mutex<AccountService>>>` | `Result<Vec<SklandAccountInfo>, String>` | `AccountService::get_skland_accounts` |
-| `save_skland_account` | commands/account.rs:76 | `state`、`cred: String`、`token: String`、`user_id: String` | `Result<bool, String>` | `AccountService::save_skland_account` |
-| `get_skland_account_roles` | commands/account.rs:91 | `state`、`user_id: String` | `Result<AccountLoginResult, String>` | `AccountService::get_skland_account_roles` |
-| `get_skland_user_info` | commands/account.rs:104 | `state`、`user_id: String` | `Result<SklandUserInfo, String>` | `AccountService::get_skland_user_info` |
-| `get_skland_games` | commands/account.rs:117 | `state`、`user_id: String`、`force: Option<bool>` | `Result<Vec<SklandGameInfo>, String>` | `AccountService::get_skland_games` |
-| `add_account` | commands/account.rs:131 | `state`、`login_request: LoginRequest` | `Result<AccountLoginResult, String>` | `AccountService::add_account` |
-| `logout_account` | commands/account.rs:144 | `state`、`account_id: String`、`keep_device_token: Option<bool>` | `Result<bool, String>` | `AccountService::logout_account` |
-| `batch_logout` | commands/account.rs:157 | `state`、`account_ids: Vec<String>` | `Result<bool, String>` | `AccountService::batch_logout` |
-| `refresh_accounts` | commands/account.rs:167 | `state` | `Result<AccountRefreshResult, String>` | `AccountService::refresh_accounts` |
-| `send_verification_code` | commands/account.rs:176 | `state`、`request: SendCodeRequest` | `Result<bool, String>` | `AccountService::send_verification_code` |
-| `add_account_by_code` | commands/account.rs:189 | `state`、`login_request: CodeLoginRequest` | `Result<AccountLoginResult, String>` | `AccountService::add_account_by_code` |
-| `gen_scan_login` | commands/account.rs:202 | `state` | `Result<ScanLoginInfo, String>` | `AccountService::gen_scan_login` |
-| `scan_status` | commands/account.rs:211 | `state`、`scan_id: String` | `Result<ScanStatus, String>` | `AccountService::scan_status` |
-| `add_account_by_scan` | commands/account.rs:224 | `state`、`scan_code: String` | `Result<AccountLoginResult, String>` | `AccountService::add_account_by_scan` |
-| `save_selected_roles` | commands/account.rs:237 | `state`、`cred`、`token`、`user_id`、`selected_roles: Vec<RoleDisplayInfo>` | `Result<Vec<AccountInfo>, String>` | `AccountService::save_selected_roles` |
-| `get_selected_account` | commands/account.rs:253 | `state` | `Result<Option<String>, String>` | `AccountService::get_config_service` → `ConfigService::get("selected_account_id")` |
-| `set_selected_account` | commands/account.rs:264 | `state`、`account_id: String` | `Result<bool, String>` | `ConfigService::set("selected_account_id", …)` |
-| `check_and_refresh_cred` | commands/account.rs:282 | `state`、`user_id: String` | `Result<Option<(String, String)>, String>` | `AccountService::check_and_refresh_user_cred` |
-| `set_lazy_load_enabled` | commands/account.rs:295 | `state`、`enabled: bool` | `Result<bool, String>` | `AccountService::set_lazy_load_enabled` |
-| `is_lazy_load_enabled` | commands/account.rs:309 | `state` | `Result<bool, String>` | `AccountService::is_lazy_load_enabled` |
-| `set_current_role_id` | commands/account.rs:318 | `state`、`role_id: Option<String>` | `Result<bool, String>` | `AccountService::set_current_role_id` |
-| `query_role_data` | commands/account.rs:340 | `state`、`role_id`、`api_name`、`paths: Vec<String>` | `Result<serde_json::Value, String>` | `AccountService::query_role_data` |
+| `get_skland_accounts` | commands/account.rs:65 | `state: State<Arc<Mutex<AccountService>>>` | `Result<Vec<SklandAccountInfo>, String>` | `AccountService::get_skland_accounts` |
+| `save_skland_account` | commands/account.rs:74 | `state`、`cred: String`、`token: String`、`user_id: String` | `Result<bool, String>` | `AccountService::save_skland_account` |
+| `get_skland_account_roles` | commands/account.rs:89 | `state`、`user_id: String` | `Result<AccountLoginResult, String>` | `AccountService::get_skland_account_roles` |
+| `get_skland_user_info` | commands/account.rs:102 | `state`、`user_id: String` | `Result<SklandUserInfo, String>` | `AccountService::get_skland_user_info` |
+| `get_skland_user_info_by_cred` | commands/account.rs:129 | `state`、`cred: String`、`token: String` | `Result<SklandUserInfo, String>` | `AccountService::get_skland_user_info_by_cred` |
+| `get_skland_games` | commands/account.rs:115 | `state`、`user_id: String`、`force: Option<bool>` | `Result<Vec<SklandGameInfo>, String>` | `AccountService::get_skland_games` |
+| `add_account` | commands/account.rs:143 | `state`、`login_request: LoginRequest` | `Result<AccountLoginResult, String>` | `AccountService::add_account` |
+| `logout_account` | commands/account.rs:156 | `state`、`account_id: String`、`keep_device_token: Option<bool>` | `Result<bool, String>` | `AccountService::logout_account` |
+| `batch_logout` | commands/account.rs:169 | `state`、`account_ids: Vec<String>` | `Result<bool, String>` | `AccountService::batch_logout` |
+| `refresh_accounts` | commands/account.rs:179 | `state` | `Result<AccountRefreshResult, String>` | `AccountService::refresh_accounts` |
+| `send_verification_code` | commands/account.rs:188 | `state`、`request: SendCodeRequest` | `Result<bool, String>` | `AccountService::send_verification_code` |
+| `add_account_by_code` | commands/account.rs:201 | `state`、`login_request: CodeLoginRequest` | `Result<AccountLoginResult, String>` | `AccountService::add_account_by_code` |
+| `gen_scan_login` | commands/account.rs:214 | `state` | `Result<ScanLoginInfo, String>` | `AccountService::gen_scan_login` |
+| `scan_status` | commands/account.rs:223 | `state`、`scan_id: String` | `Result<ScanStatus, String>` | `AccountService::scan_status` |
+| `add_account_by_scan` | commands/account.rs:236 | `state`、`scan_code: String`、`expected_user_id: Option<String>` | `Result<AccountLoginResult, String>` | `AccountService::add_account_by_scan` |
+| `save_selected_roles` | commands/account.rs:250 | `state`、`cred`、`token`、`user_id`、`selected_roles: Vec<RoleDisplayInfo>` | `Result<Vec<AccountInfo>, String>` | `AccountService::save_selected_roles` |
+| `get_selected_account` | commands/account.rs:266 | `state` | `Result<Option<String>, String>` | `AccountService::get_config_service` → `ConfigService::get("selected_account_id")` |
+| `set_selected_account` | commands/account.rs:277 | `state`、`account_id: String` | `Result<bool, String>` | `ConfigService::set("selected_account_id", …)` |
+| `check_and_refresh_cred` | commands/account.rs:295 | `state`、`user_id: String` | `Result<Option<(String, String)>, String>` | `AccountService::check_and_refresh_user_cred` |
+| `set_lazy_load_enabled` | commands/account.rs:308 | `state`、`enabled: bool` | `Result<bool, String>` | `AccountService::set_lazy_load_enabled` |
+| `is_lazy_load_enabled` | commands/account.rs:322 | `state` | `Result<bool, String>` | `AccountService::is_lazy_load_enabled` |
+| `set_current_role_id` | commands/account.rs:331 | `state`、`role_id: Option<String>` | `Result<bool, String>` | `AccountService::set_current_role_id` |
+| `query_role_data` | commands/account.rs:353 | `state`、`role_id`、`api_name`、`paths: Vec<String>` | `Result<serde_json::Value, String>` | `AccountService::query_role_data` |
 | `get_attendance` | commands/attendance.rs:59 | `state: State<Arc<Mutex<AccountService>>>`、`role_id: String` | `Result<serde_json::Value, String>` | 本地 `lookup_cred_token`、`AccountService::check_and_refresh_user_cred`、`SklandService::call_skland_api`(GET)、`AvatarCacheService::get_or_download_image` |
 | `do_attendance` | commands/attendance.rs:181 | `state`、`role_id: String` | `Result<serde_json::Value, String>` | 本地 `lookup_cred_token`、`AccountService::check_and_refresh_user_cred`、`SklandService::call_skland_api`(POST) |
 | `capture_start` | commands/capture.rs:3 | 无 | `Result<CaptureStatus, String>` | `utils::capture::start` |
@@ -49,6 +50,9 @@
 | `set_config` | commands/config.rs:16 | `state`、`key: String`、`value: Value` | `Result<(), String>` | `ConfigService::set` |
 | `remove_config` | commands/config.rs:27 | `state`、`key: String` | `bool` | `ConfigService::remove` |
 | `get_all_configs` | commands/config.rs:34 | `state` | `HashMap<String, Value>` | `ConfigService::get_all` |
+| `get_proxy_config` | commands/config.rs | `state` | `Option<Value>` | 获取代理配置 |
+| `set_proxy_config` | commands/config.rs | `state`、`config: Value` | `Result<(), String>` | 设置代理配置 |
+| `remove_proxy_config` | commands/config.rs | `state` | `Result<bool, String>` | 删除代理配置 |
 | `get_gacha_pool_meta` | commands/gacha.rs:84 | `account_state`、`gacha_state: State<Arc<GachaService>>`、`role_id: String` | `Result<serde_json::Value, String>` | 本地 `lookup_u8token`/`ensure_fresh_u8token`、`GachaService::get_pool_meta` |
 | `sync_gacha_records` | commands/gacha.rs:116 | `account_state`、`gacha_state`、`role_id: String` | `Result<serde_json::Value, String>` | `ensure_fresh_u8token`、`GachaService::sync_records` |
 | `get_saved_gacha_records` | commands/gacha.rs:148 | `account_state`、`gacha_state`、`role_id: String` | `Result<serde_json::Value, String>` | `GachaService::load_records_or_empty`（不联网） |
@@ -88,7 +92,7 @@
 | `launcher_check_executable` | commands/launcher.rs:662 | `install_path: String`、`channel: String` | `Result<bool, String>` | `parse_channel` + `GameChannel::executable_name` + `Path::exists` |
 | `launcher_check_game_running` | commands/launcher.rs:670 | `channel: String` | `Result<bool, String>` | `parse_channel` + `utils::process::is_process_running`（同名进程需有顶层窗口或在 90 秒启动宽限内，排除无窗口挂起残留）；游戏面板每 3 秒轮询 |
 | `launcher_get_game_playtime` | commands/launcher.rs:677 | 无 | `GamePlaytime`（同步返回） | `utils::game_playtime::snapshot`（累计总时长 + 实时会话 + 运行态） |
-| `launcher_kill_game` | commands/launcher.rs:682 | `channel: String` | `Result<bool, String>` | 隐藏控制台执行 `taskkill /T /F /IM`（两次）→ `wmic process … terminate` 兜底 |
+| `launcher_kill_game` | commands/launcher.rs:782 | `channel: String` | `Result<bool, String>`（失败为 `<token>: <detail>`） | `spawn_blocking` + `process::has_processes` → `official_launcher::kill_game_process`：就地 `taskkill /T /F /IM` + 按 PID 兜底，仍有残留则 runas 重启自身跑 `--endfield-kill-helper`（提权 `taskkill`） |
 | `launcher_switch_channel` | commands/launcher.rs:731 | `service`、`from_channel`、`to_channel`、`install_path`、`app: AppHandle` | `Result<String, String>` | `GameLauncherService::switch_channel` |
 | `get_backend_logs` | commands/logs.rs:4 | 无 | `Vec<LogEntry>` | `utils::logger::get_logger().get_recent_logs()` |
 | `get_log_dir` | commands/diagnostics.rs:7 | 无 | `Result<String, String>` | `utils::paths::log_dir()` |
@@ -172,135 +176,141 @@
 - 配置键：`account_token_*`
 
 ### `get_skland_accounts`
-- 位置：account.rs:67（async）
+- 位置：account.rs:65（async）
 - 参数：`state`
 - 返回：`Result<Vec<SklandAccountInfo>, String>`
 - 逻辑：直连 `AccountService::get_skland_accounts()`，同步返回已绑定的森空岛账号列表，不联网。
 
 ### `save_skland_account`
-- 位置：account.rs:76（async）
+- 位置：account.rs:74（async）
 - 参数：`state`、`cred: String`、`token: String`、`user_id: String`
 - 返回：`Result<bool, String>`（成功恒为 `true`）
 - 逻辑：用户确认绑定后调用 `AccountService::save_skland_account(cred, token, user_id)` 落盘，错误统一 `map_err(|e| e.to_string())`。
 
 ### `get_skland_account_roles`
-- 位置：account.rs:91（async）
+- 位置：account.rs:89（async）
 - 参数：`state`、`user_id: String`
 - 返回：`Result<AccountLoginResult, String>`
 - 逻辑：调用 `AccountService::get_skland_account_roles(user_id)`，拉取该森空岛账号下的游戏角色列表。
 
 ### `get_skland_user_info`
-- 位置：account.rs:104（async）
+- 位置：account.rs:102（async）
 - 参数：`state`、`user_id: String`
 - 返回：`Result<SklandUserInfo, String>`
 - 逻辑：调用 `AccountService::get_skland_user_info(user_id)`，返回昵称、头像、游戏等级/积分等资料。
 
+### `get_skland_user_info_by_cred`
+- 位置：account.rs:129（async）
+- 参数：`state`、`cred: String`、`token: String`
+- 返回：`Result<SklandUserInfo, String>`
+- 逻辑：调用 `AccountService::get_skland_user_info_by_cred(cred, token)`，用刚登录得到的凭证直接请求 `GET /web/v1/user`（不读本地配置），供「确认绑定森空岛账户」页展示头像/昵称（此时账户尚未保存）。前端封装：`accountService.getSklandUserInfoByCred`。
+
 ### `get_skland_games`
-- 位置：account.rs:117（async）
+- 位置：account.rs:115（async）
 - 参数：`state`、`user_id: String`、`force: Option<bool>`
 - 返回：`Result<Vec<SklandGameInfo>, String>`
 - 逻辑：以 `force.unwrap_or(false)` 调用 `AccountService::get_skland_games(user_id, force)`；默认读缓存的游戏列表（图标等），`force=true` 才重新请求。
 
 ### `add_account`
-- 位置：account.rs:131（async）
+- 位置：account.rs:143（async）
 - 参数：`state`、`login_request: LoginRequest`
 - 返回：`Result<AccountLoginResult, String>`
 - 逻辑：调用 `AccountService::add_account(login_request)` 完成密码/令牌登录并写入账号配置。
 
 ### `logout_account`
-- 位置：account.rs:144（async）
+- 位置：account.rs:156（async）
 - 参数：`state`、`account_id: String`、`keep_device_token: Option<bool>`
 - 返回：`Result<bool, String>`
 - 逻辑：以 `keep_device_token.unwrap_or(true)` 调用 `AccountService::logout_account`（默认保留设备令牌），返回是否成功。
 
 ### `batch_logout`
-- 位置：account.rs:157（async）
+- 位置：account.rs:169（async）
 - 参数：`state`、`account_ids: Vec<String>`
 - 返回：`Result<bool, String>`
 - 逻辑：调用 `AccountService::batch_logout(account_ids)` 批量登出。
 
 ### `refresh_accounts`
-- 位置：account.rs:167（async）
+- 位置：account.rs:179（async）
 - 参数：`state`
 - 返回：`Result<AccountRefreshResult, String>`
 - 逻辑：调用 `AccountService::refresh_accounts()`，强制刷新全部账号数据，返回成功/失败统计。
 
 ### `send_verification_code`
-- 位置：account.rs:176（async）
+- 位置：account.rs:188（async）
 - 参数：`state`、`request: SendCodeRequest`
 - 返回：`Result<bool, String>`
 - 逻辑：调用 `AccountService::send_verification_code(request)` 发送登录验证码。
 
 ### `add_account_by_code`
-- 位置：account.rs:189（async）
+- 位置：account.rs:201（async）
 - 参数：`state`、`login_request: CodeLoginRequest`
 - 返回：`Result<AccountLoginResult, String>`
 - 逻辑：调用 `AccountService::add_account_by_code(login_request)`，用验证码登录并保存账号。
 
 ### `gen_scan_login`
-- 位置：account.rs:202（async）
+- 位置：account.rs:214（async）
 - 参数：`state`
 - 返回：`Result<ScanLoginInfo, String>`
 - 逻辑：调用 `AccountService::gen_scan_login()`，生成扫码登录二维码信息。
 
 ### `scan_status`
-- 位置：account.rs:211（async）
+- 位置：account.rs:223（async）
 - 参数：`state`、`scan_id: String`
 - 返回：`Result<ScanStatus, String>`
 - 逻辑：调用 `AccountService::scan_status(&scan_id)` 轮询扫码结果。
 
 ### `add_account_by_scan`
-- 位置：account.rs:224（async）
-- 参数：`state`、`scan_code: String`
+- 位置：account.rs:236（async）
+- 参数：`state`、`scan_code: String`、`expected_user_id: Option<String>`
 - 返回：`Result<AccountLoginResult, String>`
-- 逻辑：调用 `AccountService::add_account_by_scan(scan_code)`，扫码确认后落账号。
+- 逻辑：调用 `AccountService::add_account_by_scan(scan_code, expected_user_id)`，扫码确认后落账号。`expected_user_id` 非空时（账户不可用后的重新登录）校验授权的森空岛账户是否一致，不一致返回 `errorMessage = "ACCOUNT_MISMATCH:<实际userId>"` 且不保存任何凭证。前端封装：`accountService.addAccountByScan(scanCode, expectedUserId?)`。
 
 ### `save_selected_roles`
-- 位置：account.rs:237（async）
+- 位置：account.rs:250（async）
 - 参数：`state`、`cred`、`token`、`user_id`（均 `String`）、`selected_roles: Vec<RoleDisplayInfo>`
 - 返回：`Result<Vec<AccountInfo>, String>`
 - 逻辑：调用 `AccountService::save_selected_roles(...)` 持久化用户勾选的角色，返回更新后的账号列表。
 
 ### `get_selected_account`
-- 位置：account.rs:253（async）
+- 位置：account.rs:266（async）
 - 参数：`state`
 - 返回：`Result<Option<String>, String>`
 - 逻辑：通过 `service.get_config_service()` 取 `ConfigService::get("selected_account_id")`，返回当前选中账号 ID（可能为 `None`）。
 - 配置键：`selected_account_id`
 
 ### `set_selected_account`
-- 位置：account.rs:264（async）
+- 位置：account.rs:277（async）
 - 参数：`state`、`account_id: String`
 - 返回：`Result<bool, String>`（成功恒 `true`）
 - 逻辑：`ConfigService::set("selected_account_id", json!(account_id))` 直接写配置。
 - 配置键：`selected_account_id`
 
 ### `check_and_refresh_cred`
-- 位置：account.rs:282（async）
+- 位置：account.rs:295（async）
 - 参数：`state`、`user_id: String`
 - 返回：`Result<Option<(String, String)>, String>`（新 `(cred, token)`）
 - 逻辑：调用 `AccountService::check_and_refresh_user_cred(&user_id)`，检查凭据有效性并在需要时刷新。
 
 ### `set_lazy_load_enabled`
-- 位置：account.rs:295（async）
+- 位置：account.rs:308（async）
 - 参数：`state`、`enabled: bool`
 - 返回：`Result<bool, String>`（成功恒 `true`）
 - 逻辑：调用 `AccountService::set_lazy_load_enabled(enabled).await` 切换账号懒加载开关。
 
 ### `is_lazy_load_enabled`
-- 位置：account.rs:309（async）
+- 位置：account.rs:322（async）
 - 参数：`state`
 - 返回：`Result<bool, String>`
 - 逻辑：调用 `AccountService::is_lazy_load_enabled()` 读取懒加载状态。
 
 ### `set_current_role_id`
-- 位置：account.rs:318（async）
+- 位置：account.rs:331（async）
 - 参数：`state`、`role_id: Option<String>`
 - 返回：`Result<bool, String>`（成功恒 `true`）
 - 逻辑：调用 `AccountService::set_current_role_id(role_id).await` 设置当前激活角色（可清空）。
 
 ### `query_role_data`
-- 位置：account.rs:340（async）
+- 位置：account.rs:353（async）
 - 参数：`state`、`role_id: String`、`api_name: String`、`paths: Vec<String>`
 - 返回：`Result<serde_json::Value, String>`
 - 逻辑：调用 `AccountService::query_role_data(&role_id, &api_name, &paths)` 取到 `HashMap<path, value>` 后用 `serde_json::to_value` 转成 JSON 对象（key 为请求路径，缺失路径为 null；空 `paths` 表示返回完整数据）。全过程写 `log_debug!/log_info!/log_error!`。
@@ -639,10 +649,10 @@
 - 位置：launcher.rs:677（同步）；参数：无；返回：`GamePlaytime`（`{ total_seconds, session_seconds, running }`）；逻辑：`utils::game_playtime::snapshot()`，返回累计总时长（不含当前会话）+ 当前会话时长 + 运行态。由后台探测任务 `utils::game_playtime` 维护，仅在 EndProtocol 运行期间统计。
 
 ### `launcher_kill_game`
-- 位置：launcher.rs:682（async）
+- 位置：launcher.rs:782（async）
 - 参数：`channel: String`
-- 返回：`Result<bool, String>`（恒 `Ok(true)`）
-- 逻辑：三级兜底杀进程：`taskkill /T /F /IM <process_name>` → 失败改用 `<exe_name>` → 仍失败用 `wmic process where name like '%Endfield%' call terminate`；**无论是否成功都返回 `true`**。
+- 返回：`Result<bool, String>`（`true` = 进程已结束；`false` = 本来就没有同名进程；失败时 `Err("<token>: <detail>")`，token 为 `cancelled` / `kill_failed` / `unknown`）
+- 逻辑：`parse_channel` → `spawn_blocking` 里先 `process::has_processes` 判断是否真有残留，再走 `official_launcher::kill_game_process`：① 就地 `process::terminate_processes`（隐藏窗口 `taskkill /T /F /IM` + 逐个 `taskkill /F /PID` 兜底，本进程已提权时到此为止，不弹 UAC）；② 仍有存活进程时用 `ShellExecuteExW("runas")` 以 `--endfield-kill-helper --name <Endfield.exe>` 重启自身（`crate::run` 在 logger/Tauri 初始化前由 `try_run_kill_helper` 截获），并阻塞等待 helper 退出码（上限 20 秒）。游戏由提权 helper 创建，未提权的 `taskkill` 只会拿到 `Access is denied`，这正是旧实现「点了停止没反应」的原因；旧实现的 `wmic` 兜底已移除（`wmic` 在新版 Windows 已弃用，且同样过不了权限边界）。
 
 ### `launcher_switch_channel`
 - 位置：launcher.rs:731（async）
