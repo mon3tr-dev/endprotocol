@@ -32,3 +32,5 @@ promotional-cover.html
 target/
 
 .VSCodeCounter/
+
+.pnpm-store

@@ -64,6 +64,7 @@ import {
   GAME_LAUNCH_SYNC_EVENT,
 } from "@/components/game-launch-settings";
 import { SettingsDivider } from "@/components/ui/settings-row";
+import { ElapsedTime } from "@/components/ui/elapsed-time";
 
 const STORAGE_KEY_INSTALL_PATH = "launcher_install_path";
 const STORAGE_KEY_CHANNEL = "launcher_channel";
@@ -85,15 +86,6 @@ function formatEta(seconds: number): string {
   return h > 0
     ? `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`
     : `${m}:${String(s).padStart(2, "0")}`;
-}
-
-/** 运行时长秒数 → `h:mm:ss`（小时不补零，语言无关） */
-function formatPlaytime(totalSeconds: number): string {
-  const seconds = Math.max(0, Math.floor(totalSeconds));
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  const s = seconds % 60;
-  return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
 /** 环绕按钮描边显示下载进度，从按钮正上方开始顺时针绘制 */
@@ -310,7 +302,6 @@ export function GameActionPanel() {
   const [gameRunning, setGameRunning] = useState(false);
   const [dx11, setDx11] = useState(readDx11());
   const [playtime, setPlaytime] = useState<GamePlaytime | null>(null);
-  const [playtimeTick, setPlaytimeTick] = useState(0);
   const [btnHovered, setBtnHovered] = useState(false);
   const [btnLabelKey, setBtnLabelKey] = useState(0);
   const prevBtnLabelRef = useRef<string>("");
@@ -408,11 +399,12 @@ export function GameActionPanel() {
   const switchTarget =
     (switchProgress?.to_channel as GameChannel | null) ?? null;
 
-  // 总时长 = 后端累计总数 + 实时会话（后端会话 + 本地每秒补间）
-  const playtimeSession = playtime
-    ? playtime.session_seconds + (playtime.running ? playtimeTick : 0)
+  // 总秒数 = 后端累计总数 + 当前会话已运行秒数（快照时刻的值）。
+  // 两次快照之间的平滑推进由 <ElapsedTime> 内部按真实经过时间补间完成，
+  // 这里只负责给出「快照时刻」的权威数值，避免每帧在面板顶层重渲染。
+  const playtimeTotal = playtime
+    ? playtime.total_seconds + playtime.session_seconds
     : 0;
-  const playtimeTotal = playtime ? playtime.total_seconds + playtimeSession : 0;
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY_CHANNEL, channel);
@@ -559,8 +551,6 @@ export function GameActionPanel() {
       setPlaytime(await getGamePlaytime());
     } catch {
       // 后端不可用时保留上一次快照
-    } finally {
-      setPlaytimeTick(0);
     }
   }, []);
 
@@ -569,13 +559,6 @@ export function GameActionPanel() {
     const timer = setInterval(refreshPlaytime, 5000);
     return () => clearInterval(timer);
   }, [refreshPlaytime]);
-
-  // While the game is running, tick the session timer locally between polls
-  useEffect(() => {
-    if (!playtime?.running) return;
-    const timer = setInterval(() => setPlaytimeTick((v) => v + 1), 1000);
-    return () => clearInterval(timer);
-  }, [playtime?.running]);
 
   // Listen for progress events — update localActiveOp for real-time UI + calculate speed
   useEffect(() => {
@@ -1684,7 +1667,11 @@ export function GameActionPanel() {
                 d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
               />
             </svg>
-            <span>{formatPlaytime(playtimeTotal)}</span>
+            <ElapsedTime
+              totalSeconds={playtimeTotal}
+              running={gameRunning}
+              className="min-w-[3.6em] justify-start"
+            />
           </div>
         )}
 
@@ -1879,7 +1866,7 @@ export function GameActionPanel() {
             <Checkbox
               checked={dx11}
               onCheckedChange={handleToggleDx11}
-              className="absolute left-[5px] top-full mt-1.5 whitespace-nowrap text-xs text-foreground/90 [&>span]:h-4 [&>span]:w-4 [&>span]:rounded-[4px]"
+              className="absolute left-[8px] top-full mt-1.5 whitespace-nowrap text-xs text-foreground/90 [&>span]:h-4 [&>span]:w-4 [&>span]:rounded-[4px]"
             >
               {t("settings.game_launch.dx11")}
             </Checkbox>

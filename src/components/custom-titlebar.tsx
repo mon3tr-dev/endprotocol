@@ -253,7 +253,11 @@ export const CustomTitlebar = () => {
             )}
 
           <div
-            className="flex items-center glass-surface border border-separator/60 rounded-xl overflow-hidden"
+            className={`flex items-center rounded-xl overflow-hidden ${
+              viewMode === "game"
+                ? "bg-black/40 backdrop-blur-md border border-white/10"
+                : "glass-surface border border-separator/60"
+            }`}
             style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
           >
             <button

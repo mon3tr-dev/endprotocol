@@ -154,6 +154,19 @@
 
 **备注**：必须在应用树中挂载一次 `ConfirmDialogHost`，否则 `confirmDialog()` 恒返回 `false`。
 
+## `src/components/ui/elapsed-time.tsx`
+**职责**：平滑递增的时长显示（`h:mm:ss`）。在后端快照（每 5 秒）之间按真实流逝时间推进，并按位播放滚动/淡入动画，避免数字整秒硬跳与快照回溯抖动。
+**导出**：`ElapsedTime`、`ElapsedTimeProps`
+**主要依赖**：`react`（`useEffect`/`useRef`/`useState`）、`@/lib/utils`（`cn`）；样式类 `.elapsed-digit` / `.elapsed-sep`（定义在 `src/styles/globals.css`）
+
+| 符号 | 位置 | 说明 |
+| --- | --- | --- |
+| `ElapsedTimeProps` | elapsed-time.tsx:6 | `totalSeconds`（权威总秒数：已累计 + 当前会话）、`running`（为 true 时按真实流逝时间平滑推进）、`className` |
+| `TimeParts` / `toParts` | elapsed-time.tsx:15 / :22 | 把整秒拆成 `hours`/`minutes`（两位）/`tens`/`ones` 四个字符串位 |
+| `ElapsedTime` | elapsed-time.tsx:48 | `rAF` 循环按 `Date.now()` 推算秒数，**仅在跨越整秒时**更新 state（避免每帧重渲染）；`totalSeconds`/`running` 变化时以已展示秒数为下限重新锚定，保证数字只前进不回退；`sr-only` 文本提供完整时可读值，视觉部分 `aria-hidden` |
+
+**备注**：`prefers-reduced-motion` 下无位动画，仅逐秒切换。被 `src/components/game-action-panel.tsx` 的累计游戏时长徽章使用。
+
 ## `src/components/ui/empty-state.tsx`
 **职责**：空状态占位（图标 + 标题 + 描述 + 操作按钮），内置不依赖外部库的用户图标 SVG。
 **导出**：`EmptyState`、`EmptyStateUserIcon`
