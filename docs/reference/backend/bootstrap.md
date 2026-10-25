@@ -114,7 +114,7 @@
 ---
 
 ## `src-tauri/src/tray.rs`
-**职责**：系统托盘图标与托盘悬浮面板（tray-panel 窗口）的创建、定位、显隐与 tooltip 更新（175 行）。仅在完整模式创建；`--silent --launch-game` 驻守实例不显示托盘。
+**职责**：系统托盘图标与托盘悬浮面板（tray-panel 窗口）的创建、定位、显隐与 tooltip 更新（196 行）。仅在完整模式创建；`--silent --launch-game` 驻守实例不显示托盘。
 **导出**：`TrayUserInfo`、`show_main_window_focus`、`setup_tray`、`update_tray_menu`、`show_tray_panel`、`hide_tray_panel`；私有 `show_panel_at_position`、`build_tray`。
 **主要依赖**：`tauri::tray::{TrayIconBuilder, TrayIconEvent, MouseButton}`、`tauri::{Emitter, Manager, Runtime}`、`windows-sys`（仅 Windows 分支）、`crate::services::config_service::ConfigService`。
 
@@ -124,17 +124,19 @@
 | --- | --- | --- |
 | `TRAY_ID` | tray.rs:9 | `"main-tray"`，托盘图标唯一 ID（`app.tray_by_id` 用） |
 | `TRAY_PANEL_LABEL` | tray.rs:10 | `"tray-panel"`，与动态创建的托盘面板窗口 label 对应 |
-| `PANEL_WIDTH` / `PANEL_HEIGHT` | tray.rs:12-13 | 260.0 × 340.0，与 tauri.conf.json tray-panel 窗口尺寸一致（硬编码重复，改配置需同步改这里） |
-| `struct TrayUserInfo` | tray.rs:18（derive :16-17） | 托盘展示的角色数据，serde `camelCase`，12 个 `Option` 字段：`role_id`、`nickname`、`avatar`、`cur_stamina`、`max_stamina`、`max_ts`、`daily_activation`、`max_daily_activation`、`weekly_score`、`weekly_total`、`bp_cur_level`、`bp_max_level`；配置键 `tray_user_info` |
-| `show_main_window_focus` | tray.rs:34 | 取或动态创建 `main` 窗口 → `unminimize()` + `show()`；Windows 分支额外 `ShowWindow(SW_SHOW)` + `SetForegroundWindow` |
-| `show_panel_at_position`（私有） | tray.rs:64 | 面板可见则隐藏；否则定位在托盘图标正上方并显示、聚焦 |
-| `setup_tray` | tray.rs:88 | 完整模式读配置 `tray_user_info`，创建唯一托盘图标；**左键双击**显示主窗并关面板，**右键抬起**弹出原有面板 |
-| `build_tray` | tray.rs:104 | 唯一图标构建逻辑；左键双击显示主窗并隐藏面板，右键抬起弹出面板 |
-| `update_tray_menu` | tray.rs:140 | 按 `TrayUserInfo.nickname` 更新 tooltip，并向 tray-panel 窗口发送 `tray-user-info-updated` |
-| `show_tray_panel` | tray.rs:157 | 命令入口的 toggle 显隐（可见→hide，否则 show+focus） |
-| `hide_tray_panel` | tray.rs:170 | 强制隐藏面板（无错误时返回 Ok） |
+| `PANEL_WIDTH` / `PANEL_HEIGHT` | tray.rs:14-15 | 288.0 × 376.0，**回退尺寸**：仅在 `outer_size()` 取不到真实窗口尺寸时用于定位；实际窗口尺寸由 `lib.rs::create_full_windows` 的 `inner_size(288.0, 376.0)` 决定，改一处需同步另一处 |
+| `struct TrayUserInfo` | tray.rs:20（derive :16-19） | 托盘展示的角色数据，serde `camelCase`，12 个 `Option` 字段：`role_id`、`nickname`、`avatar`、`cur_stamina`、`max_stamina`、`max_ts`、`daily_activation`、`max_daily_activation`、`weekly_score`、`weekly_total`、`bp_cur_level`、`bp_max_level`；配置键 `tray_user_info` |
+| `show_main_window_focus` | tray.rs:36 | 取或动态创建 `main` 窗口 → `unminimize()` + `show()`；Windows 分支额外 `ShowWindow(SW_SHOW)` + `SetForegroundWindow` |
+| `show_panel_at_position`（私有） | tray.rs:66 | 面板可见则隐藏；否则按**真实窗口物理尺寸**（`panel.outer_size()`）居中定位于托盘图标上方 8px，并用 `app.monitor_from_point` 取所在显示器工作区做 clamp，防止面板越出屏幕；随后 show + focus |
+| `setup_tray` | tray.rs:109 | 完整模式读配置 `tray_user_info`，创建唯一托盘图标；**左键双击**显示主窗并关面板，**右键抬起**弹出原有面板 |
+| `build_tray` | tray.rs:125 | 唯一图标构建逻辑；左键双击显示主窗并隐藏面板，右键抬起弹出面板 |
+| `update_tray_menu` | tray.rs:161 | 按 `TrayUserInfo.nickname` 更新 tooltip，并向 tray-panel 窗口发送 `tray-user-info-updated` |
+| `show_tray_panel` | tray.rs:178 | 命令入口的 toggle 显隐（可见→hide，否则 show+focus） |
+| `hide_tray_panel` | tray.rs:191 | 强制隐藏面板（无错误时返回 Ok） |
 
 **备注**：托盘只在完整模式创建；`--silent` 实例不显示托盘、不进入托盘交接流程。`update_tray_menu`、`show_tray_panel`、`hide_tray_panel` 被 `commands/tray.rs` 调用。
+
+定位不再直接用 `PANEL_WIDTH`/`PANEL_HEIGHT` 与物理坐标相减：`inner_size` 是**逻辑**尺寸，在 125%/150% 缩放下按常量硬算会明显偏移，故改为读取窗口真实的物理 `outer_size()`。
 
 ---
 
@@ -300,7 +302,8 @@
 2. **Cargo.toml:63-65 `[profile.dev]` 被忽略** — 仓库根 `Cargo.toml` 是 virtual workspace（仅 `members = ["src-tauri"]`），`cargo` 警告 `profiles for the non root package will be ignored`，`debug = "line-tables-only"` / `incremental = true` 未应用。
 3. **workspace 缺 `resolver = "2"`** — `cargo` 警告 virtual workspace 默认 resolver 1，与 edition 2021 成员不匹配。
 4. **`tauri_plugin_fs` 已注册（lib.rs:33）但无 `fs:*` 权限** — default.json/desktop.json 均未授予任何 fs 权限，且前端未引用 `@tauri-apps/plugin-fs`，该插件目前对 webview 不可用（Rust 侧直接用 std::fs 不受影响）。
-5. **`process:allow-exit` 未授予** — tray-panel.tsx:127 的回退分支 `getCurrentWindow().app.exit(0)` 本身也非合法 API（`Window` 类型无 `app` 属性，tsc 报 TS2339），运行时必然抛错，仅被 try/catch 吞掉。
+5. ~~**`process:allow-exit` 未授予** — tray-panel.tsx 的回退分支 `getCurrentWindow().app.exit(0)` 非法~~ **已修复**：该回退分支已移除（`handleQuit` 失败只记日志），不再依赖不存在的 `Window.app` API。
 6. **能力文件缺 schema** — `capabilities/desktop.json` 无 `$schema` 字段（`default.json` 有）。
 7. **`cargo check` 通过但有 46 个 warning** — 大量未使用导入/死代码（如 `commands/tray.rs:2` 的 `Emitter`、`Manager`），另有 `error finalizing incremental compilation session directory ... (os error 5)` 的 target 目录权限问题（仅影响增量编译缓存，不阻断编译）。
-8. **托盘面板尺寸/label 双重定义** — `tray.rs:10,12-13` 与 `tauri.conf.json:28,31-32` 各写一份，需人工保持一致。
+8. **托盘面板尺寸双重定义（已收敛为回退值）** — 窗口尺寸唯一来源是 `lib.rs::create_full_windows` 的 `inner_size(288.0, 376.0)`；`tray.rs` 的 `PANEL_WIDTH`/`PANEL_HEIGHT` 只在 `outer_size()` 取不到真实尺寸时作为定位回退，不再是「必须与窗口尺寸逐值一致」的硬性重复。`tauri.conf.json` 的 `app.windows` 为空数组，面板窗口并不在那里定义（此前文档所述 `tauri.conf.json:28,31-32` 已过时）。
+9. **托盘面板窗口不设 `shadow`** — 窗口是 `transparent(true)` + 系统 Acrylic，开启窗口阴影会在透明边缘补一块灰色底板，破坏「真透明」观感；立体层次改由前端 `.glass-native` 的圆角与色调层提供。

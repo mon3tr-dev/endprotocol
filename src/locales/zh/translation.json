@@ -657,6 +657,21 @@
     "preparing": "准备中...",
     "downloading": "下载中..."
   },
+  "tray": {
+    "title": "ENDPROTOCOL",
+    "stamina": "理智",
+    "daily_activity": "每日活跃",
+    "weekly": "每周事务",
+    "battle_pass": "通行证",
+    "level": "等级",
+    "full": "已满",
+    "recover_in": "回满",
+    "next_refill": "下次回复",
+    "no_user": "未选择用户",
+    "no_user_hint": "请在设置中选择要显示的角色",
+    "show_window": "显示主窗口",
+    "quit": "退出 EndProtocol"
+  },
   "launcher": {
     "install_path": "安装路径",
     "installed": "已安装",

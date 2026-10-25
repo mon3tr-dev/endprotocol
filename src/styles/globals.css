@@ -1,4 +1,4 @@
-﻿@import "tailwindcss";
+@import "tailwindcss";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -362,6 +362,63 @@ body::before {
   background: rgba(0, 0, 0, 0.5);
   backdrop-filter: blur(4px);
 }
+/* ------------------------------------------------------------------
+ * 原生磨砂窗口（tray-panel 使用 Tauri Acrylic 的窗口）
+ *
+ * 这类窗口的系统级 Acrylic 已提供真实的桌面模糊。若再叠加一层
+ * `backdrop-filter: blur()`，就是“模糊的模糊”，文字会糊到看不清。
+ * 所以这里**不做任何模糊**，只压一层低不透明度的深色 + 主色渐变：
+ *   - 背景保持真透明，桌面透过系统磨砂隐约可见；
+ *   - 渐变越靠底部越实，保证操作区文字始终清晰可读。
+ * 不透明度由设置页的「毛玻璃清晰度」（配置键 glass_clarity）驱动：
+ * `applyGlassClarity()` 把它换算成 --glass-native-opacity（38%–92%）与 --glass-native-base（12%–38%）.
+ * 清晰度调高 → 面板更实；调低 → 更透。
+ * 渐变层与底层底色都乘同一个变量，两档差距才看得出来；
+ * 下面的默认值只是未应用主题时的回退值。
+ * ------------------------------------------------------------------ */
+.glass-native {
+  background:
+    linear-gradient(
+      to bottom,
+      color-mix(
+        in oklch,
+        var(--surface) calc(var(--glass-native-opacity, 71%) - 18%),
+        transparent
+      ),
+      color-mix(
+        in oklch,
+        var(--surface) var(--glass-native-opacity, 71%),
+        transparent
+      )
+    ),
+    color-mix(in oklch, var(--background) var(--glass-native-base, 28%), transparent);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  box-shadow: none;
+}
+.dark .glass-native {
+  background:
+    linear-gradient(
+      to bottom,
+      color-mix(
+        in oklch,
+        var(--surface) calc(var(--glass-native-opacity, 71%) - 14%),
+        transparent
+      ),
+      color-mix(
+        in oklch,
+        var(--surface) var(--glass-native-opacity, 71%),
+        transparent
+      )
+    ),
+    color-mix(in oklch, #05070c var(--glass-native-base, 32%), transparent);
+}
+/* 原生磨砂窗口：body 不再铺底色，让系统 Acrylic 透出来 */
+html[data-window="tray-panel"],
+html[data-window="tray-panel"] body {
+  background: transparent;
+}
+
 .avatar-feather {
   mask-image: radial-gradient(ellipse 90% 90% at center, black 60%, transparent 100%);
   -webkit-mask-image: radial-gradient(ellipse 90% 90% at center, black 60%, transparent 100%);

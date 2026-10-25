@@ -3,26 +3,15 @@ import { MorphIcon } from "morphicons/react";
 import { Sun, Moon } from "lucide";
 import { getConfig, setConfig } from "@/utils/configService";
 import { emit } from "@tauri-apps/api/event";
-
-type ThemeMode = "light" | "dark" | "system";
+import { applyThemeMode, isSystemDark, type ThemeMode } from "@/utils/theme";
 
 export interface ThemeSwitchProps {
   className?: string;
 }
 
-function getSystemDark() {
-  return window.matchMedia("(prefers-color-scheme: dark)").matches;
-}
-
-function applyThemeMode(mode: ThemeMode) {
-  const root = document.documentElement;
-  const isDark = mode === "dark" || (mode === "system" && getSystemDark());
-  root.classList.toggle("dark", isDark);
-}
-
 // 有效模式：跟随系统时解析为当前实际生效的浅色/深色
 function resolveEffective(mode: ThemeMode): "light" | "dark" {
-  if (mode === "system") return getSystemDark() ? "dark" : "light";
+  if (mode === "system") return isSystemDark() ? "dark" : "light";
   return mode;
 }
 

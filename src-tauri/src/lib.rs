@@ -520,7 +520,7 @@ fn create_full_windows<R: Runtime>(app: &tauri::AppHandle<R>) -> Result<(), Stri
     if app.get_webview_window("tray-panel").is_none() {
         WebviewWindowBuilder::new(app, "tray-panel", app_webview_url(app, "tray-panel.html")?)
             .title("tray-panel")
-            .inner_size(260.0, 340.0)
+            .inner_size(288.0, 376.0)
             .resizable(false)
             .decorations(false)
             .transparent(true)

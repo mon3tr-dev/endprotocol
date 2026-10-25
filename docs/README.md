@@ -39,7 +39,7 @@
 | 应用自更新 | `src/utils/updateService.ts`、`commands/updater.rs` | [utils_services_b.md](reference/frontend/utils_services_b.md)、[commands.md](reference/backend/commands.md) |
 | 外观设置（主题/背景/取色） | `src/components/appearance-settings.tsx` | [components_settings_panels.md](reference/frontend/components_settings_panels.md) |
 | 设置页 / 开发者页 | `src/pages/settings.tsx`、`src/pages/developer.tsx` | [pages_settings_developer.md](reference/frontend/pages_settings_developer.md) |
-| 托盘与托盘面板 | `src-tauri/src/tray.rs`、`src/components/tray-panel.tsx` | [bootstrap.md](reference/backend/bootstrap.md)、[components_settings_panels.md](reference/frontend/components_settings_panels.md) |
+| 托盘与托盘面板 | `src-tauri/src/tray.rs`、`src/components/tray-panel.tsx`、`src/tray-panel.tsx` | [bootstrap.md](reference/backend/bootstrap.md)、[components_settings_panels.md](reference/frontend/components_settings_panels.md)、[entry_and_app.md](reference/frontend/entry_and_app.md) |
 | 窗口控制（最小化/最大化/关闭/托盘化） | `src/components/custom-titlebar.tsx`、`commands/window.rs` | [components_dialogs.md](reference/frontend/components_dialogs.md)、[commands.md](reference/backend/commands.md) |
 | 屏幕取色器 | `src/components/screen-color-picker.tsx`、`commands/color_picker.rs` | [components_dialogs.md](reference/frontend/components_dialogs.md) |
 | 图片缓存与背景图管理 | `src/utils/imageCacheManager.ts`、`commands/image.rs`、`services/avatar_cache_service.rs` | [utils_services_b.md](reference/frontend/utils_services_b.md)、[services_others.md](reference/backend/services_others.md) |
@@ -61,7 +61,7 @@
 | 数据模型（结构体定义） | `src-tauri/src/models/` | [models.md](reference/backend/models.md) |
 | TypeScript 类型 | `src/types/` | [types_locales_styles.md](reference/frontend/types_locales_styles.md) |
 | 国际化文案 | `src/locales/{zh,en}/translation.json`、`src/i18n.ts` | [types_locales_styles.md](reference/frontend/types_locales_styles.md) |
-| 全局样式 / 主题变量 / 玻璃拟态 | `src/styles/globals.css` | [types_locales_styles.md](reference/frontend/types_locales_styles.md) |
+| 全局样式 / 主题变量 / 玻璃拟态 | `src/styles/globals.css`、`src/utils/theme.ts` | [types_locales_styles.md](reference/frontend/types_locales_styles.md)、[utils_services_a.md](reference/frontend/utils_services_a.md) |
 | 通用 UI 组件（按钮/弹窗/选择器…） | `src/components/ui/` | [ui_components.md](reference/frontend/ui_components.md) |
 | 路由与应用入口 | `src/main.tsx`、`src/App.tsx` | [entry_and_app.md](reference/frontend/entry_and_app.md) |
 | 卡片间事件联动 | `window` CustomEvent `"cardAction"` | [cards_core.md](reference/frontend/cards_core.md) |

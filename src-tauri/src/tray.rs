@@ -9,8 +9,10 @@ use crate::services::config_service::ConfigService;
 const TRAY_ID: &str = "main-tray";
 const TRAY_PANEL_LABEL: &str = "tray-panel";
 
-const PANEL_WIDTH: f64 = 260.0;
-const PANEL_HEIGHT: f64 = 340.0;
+/// 托盘面板回退尺寸（逻辑像素，仅用于取不到真实窗口尺寸时定位）；
+/// 实际窗口尺寸以 `lib.rs::create_full_windows` 为准。
+const PANEL_WIDTH: f64 = 288.0;
+const PANEL_HEIGHT: f64 = 376.0;
 
 /// Tray user info stored in config
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default)]
@@ -71,9 +73,28 @@ fn show_panel_at_position<R: Runtime>(
             return;
         }
 
-        // Position above the tray icon
-        let x = tray_pos.x - PANEL_WIDTH / 2.0;
-        let y = tray_pos.y - PANEL_HEIGHT - 8.0;
+        // 用窗口真实的物理尺寸定位：inner_size 是逻辑单位，在 125%/150% 缩放下
+        // 若按 PANEL_WIDTH/PANEL_HEIGHT 计算会明显偏移。
+        let (panel_w, panel_h) = panel
+            .outer_size()
+            .map(|size| (size.width as f64, size.height as f64))
+            .unwrap_or((PANEL_WIDTH, PANEL_HEIGHT));
+
+        let gap = 8.0;
+        let mut x = tray_pos.x - panel_w / 2.0;
+        let mut y = tray_pos.y - panel_h - gap;
+
+        // 夹紧到托盘图标所在显示器的工作区，避免面板跑出屏幕边缘。
+        if let Ok(Some(monitor)) = app.monitor_from_point(tray_pos.x, tray_pos.y) {
+            let area = monitor.work_area();
+            let left = area.position.x as f64;
+            let top = area.position.y as f64;
+            let right = left + area.size.width as f64;
+            let bottom = top + area.size.height as f64;
+
+            x = x.clamp(left, (right - panel_w).max(left));
+            y = y.clamp(top, (bottom - panel_h).max(top));
+        }
 
         let _ = panel.set_position(tauri::Position::Physical(tauri::PhysicalPosition {
             x: x as i32,

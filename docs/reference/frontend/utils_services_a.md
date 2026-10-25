@@ -154,6 +154,32 @@
 - 配置键：`dashboard_tabs`（间接读写）。文件中**不存在** `dashboard_config_*` 形式的键。
 - 缓存策略：无缓存，每次操作都全量读标签数组再整体写回（整对象覆盖式保存）。
 
+## `src/utils/theme.ts`
+**职责**：主题系统的单一数据源——预设色板、浅/深色模式、主题色（含用户自定义色）与玻璃清晰度的应用函数。主窗口 `main.tsx`、设置页 `appearance-settings.tsx`、侧栏 `theme-switch.tsx` 与托盘面板入口 `tray-panel.tsx` 共用本模块，避免各入口重复实现（此前托盘窗口因此拿不到自定义主题色）。
+**导出**：常量 `DEFAULT_THEME_COLOR`、`DEFAULT_GLASS_CLARITY`、`PRESET_COLORS`；类型 `ThemeMode`、`ThemeColor`、`AppliedTheme`；函数 `isSystemDark`、`getAllColors`、`findColorByName`、`resolveThemeColor`、`applyThemeColor`、`applyThemeMode`、`applyGlassClarity`、`loadTheme`。
+**主要依赖**：`@/utils/configService` 的 `getConfig`。
+
+| 符号 | 位置 | 说明 |
+| --- | --- | --- |
+| `ThemeMode`（type） | theme.ts:11 | `"light" \| "dark" \| "system"` |
+| `ThemeColor`（interface） | theme.ts:13 | `name`、`label` 与 `colors`（`50`–`900` + `foreground`），供预设与自定义色共用 |
+| `DEFAULT_THEME_COLOR` | theme.ts:32 | `"indigo"`，预设首项 |
+| `DEFAULT_GLASS_CLARITY` | theme.ts:35 | `55`（约 28px 模糊），与设置页滑块默认值一致 |
+| `PRESET_COLORS` | theme.ts:37 | 6 套预设色板：indigo / blue / emerald / rose / amber / slate |
+| `isSystemDark()` | theme.ts:143 | `prefers-color-scheme: dark` |
+| `getAllColors(customColors?)` | theme.ts:148 | 预设 + 自定义色板 |
+| `findColorByName(name, customColors?)` | theme.ts:153 | 按名称查找，未命中返回 `undefined` |
+| `resolveThemeColor(name, customColors?)` | theme.ts:164 | 自定义 → 预设 → 首项的兜底链，保证永远有可用色板（自定义色被删除后配置可能残留旧名称） |
+| `applyThemeColor(colors)` | theme.ts:172 | 把 `--primary-50`…`--primary-900`、`--primary`、`--primary-foreground` 写入 `<html>` 内联样式 |
+| `applyThemeMode(mode)` | theme.ts:189 | 给 `<html>` 切换 `dark` 类（`globals.css` 的 `@custom-variant dark` 依赖它） |
+| `applyGlassClarity(clarity)` | theme.ts:195 | 0–100 清晰度 → `--glass-blur`、`--glass-surface-opacity`、`--glass-strong-opacity`、`--glass-field-opacity`；并额外算出托盘浮层用的 `--glass-native-opacity`（38%–92%）与 `--glass-native-base`（12%–38%），使托盘透明度随设置联动 |
+| `loadTheme()` | theme.ts:218 | 并行读 `theme_mode`/`theme_color`/`theme_custom_colors`/`glass_clarity`，依次应用三者并返回 `{ mode, colorName }`；托盘面板入口靠它一次到位 |
+
+**备注**：
+- 封装的 invoke 命令：**本文件不直接 invoke**；配置读取经 `configService.getConfig` → `get_config`。**本文件只读不写**，写入仍由 `appearance-settings.tsx` / `theme-switch.tsx` 调 `setConfig` 完成。
+- 配置键（只读）：`theme_mode`、`theme_color`、`theme_custom_colors`、`glass_clarity`。
+- 与 `appearance-settings.tsx` 的关系：该文件的 `PRESET_COLORS`、`applyThemeColor`、`applyGlassClarity`、`DEFAULT_GLASS_CLARITY`、`DEFAULT_THEME_COLOR`、`getAllColors`、`findColorByName` 均已改为从本模块导入（并保留同名 re-export 兼容旧引用）；只有取色器专用的 `hexToHsl`/`hslToHex`/`hexToRgb`/`rgbToHex`/`hexToHsv`/`hsvToHex`/`generateColorScale` 仍留在设置页。
+
 ## `src/utils/backgroundSettings.ts`
 **职责**：读取全局背景图设置（路径、透明度、模糊度），把背景图片字节读成 Blob URL 并同步写入 CSS 变量 `--bg-image` / `--bg-image-opacity` / `--bg-blur`。
 **导出**：常量 `DEFAULT_BG_IMAGE_OPACITY`、`DEFAULT_BG_BLUR`；接口 `BackgroundSettings`；函数 `loadBackgroundSettings`。

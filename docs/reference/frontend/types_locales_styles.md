@@ -122,7 +122,7 @@
 | `resolveServerLabel()` (function) | index.ts:43 | 按 lang（zh 之外一律 en）解析服务器标签，未知值回退为原始 server 字符串 |
 
 ## `src/locales/zh/translation.json`
-**职责**：中文 i18n 资源，共 665 行、599 个叶子 key、15 个顶层命名空间。
+**职责**：中文 i18n 资源，共 830 行、760 个叶子 key、17 个顶层命名空间。
 **顶层命名空间清单**（这是重点，要完整列出）：
 
 | 命名空间/key 前缀 | 用途 | 大致行号 |
@@ -153,19 +153,20 @@
 | `tab.*` | 标签页 CRUD、搜索、删除确认 | :388 |
 | `character_detail.*` | 角色详情页 Tab（skills/talents/info）与空态文案 | :413 |
 | `messages.*` | 消息中心：相对时间（分钟/小时/天前）、展开收起、下载状态 | :427 |
+| `tray.*` | 托盘悬浮面板：品牌标题、理智/每日活跃/每周事务/通行证标签、等级、已满/回满/下次回复、未选用户提示、显示主窗口/退出（13 个 key） | :660 |
 | `launcher.*` | 启动器：安装/更新/校验修复/渠道切换/预下载/预下载中/预下载确认/启动设置/磁盘与文件扫描等完整流程（本文件最大分组，128 个 key） | :512 |
 | `todo_page.*` | To-Do 页面：标题/描述、导入导出、新建/搜索列表、分组、空态等 | :644 |
 
-- **与 en/translation.json 的 key 差异**：无。经脚本对比，zh 与 en 叶子 key 均为 599 个，键集合完全一致（既无 zh 缺键也无 en 缺键），且两文件结构逐行对齐（行号一一对应）。
+- **与 en/translation.json 的 key 差异**：无。经脚本对比，zh 与 en 叶子 key 均为 760 个，键集合完全一致（既无 zh 缺键也无 en 缺键），且两文件结构逐行对齐（行号一一对应）。
 - **异常（两边共有）**：`settings.update` 内存在重复键 —— `latest_version` 同时出现于 :177 与 :187、`release_date` 同时出现于 :179 与 :188。JSON 解析时后者覆盖前者（zh 实际生效值为 :187 的“远端最新版本”、:188 的“发布日期”；en 同理）。建议后续合并为 `latest_version_remote` 之类的独立键。
 
 ## `src/locales/en/translation.json`
-**职责**：英文 i18n 资源，与 zh 文件同为 665 行、599 个叶子 key、15 个顶层命名空间，行号与 zh 完全对应（见上表）。
+**职责**：英文 i18n 资源，与 zh 文件同为 830 行、760 个叶子 key、17 个顶层命名空间，行号与 zh 完全对应（见上表）。
 - 主要差异仅在文案语言，个别本地化选择值得注意：`settings.characters.cultivation_talents` zh 为“基建技能”而 en 为 “O.M.V. Dijiang Skills”（帝江号相关译名）；`settings.logs.level_*` en 使用大写日志级别（DEBUG/INFO/WARN/ERROR），`source_frontend/source_backend` 缩写为 FE/BE。
 - 同样存在 `settings.update` 的 `latest_version` / `release_date` 重复键（:177/:187、:179/:188），与 zh 完全一致。
 
 ## `src/styles/globals.css`
-**职责**：全局样式与设计令牌（Tailwind CSS v4 + CSS 变量体系）。定义浅/深色主题变量、`@theme` 映射、玻璃拟态（glassmorphism）工具类、交互动效与游戏内技能文本标记样式。共 463 行。
+**职责**：全局样式与设计令牌（Tailwind CSS v4 + CSS 变量体系）。定义浅/深色主题变量、`@theme` 映射、玻璃拟态（glassmorphism）工具类、交互动效与游戏内技能文本标记样式。共 519 行。
 
 **内部结构**：
 
@@ -187,7 +188,7 @@
 | 267-283 行 | 页面转场（`.page-transition-enter/slide-up/scale-in`）与列表项级联动画 `.animate-list-item`（8 档 40ms 阶梯延迟） |
 | 285-287 行 | 减少动态效果偏好下关闭系统资源指标切换动画 |
 | 289-292 行 | 滚动条：全局隐藏（width:0），`[data-ovs]:hover` 时才显示悬浮 thumb |
-| 294-375 行 | **玻璃拟态工具类**（详见下表） |
+| 约 700-762 行 | **玻璃拟态工具类**（详见下表） |
 | 377-422 行 | 交互动效工具类：`.interactive-hover`、`.card-hover`、`.button-hover`、`.icon-hover`、`.nav-hover`、`.list-item-hover`、`.input-hover`、`.chip-hover`、`.switch-hover`、`.checkbox-hover`、`.modal-hover`、`.tooltip-hover`、`.dropdown-item-hover`、`.table-row-hover`、`.link-hover` |
 | 424-430 行 | 状态发光阴影：`.shadow-glow-success/danger/warning`（深色模式加强） |
 | 432-463 行 | 技能描述富文本标记：`.ba-tag`、`.ba-at-*` / `.ba-hash-*` / `.ba-tips-*` 系列属性关键字配色（cryst/key/vup/poise/speedup/slow/spellburst 等） |
@@ -204,21 +205,23 @@
 2. `:root` 与 `.dark` 的变量经 `@theme inline`（98-151 行）映射为 Tailwind 的 `bg-background`、`text-foreground`、`bg-surface`、`border-border`、`text-primary` 等工具类，实现全站一键换肤。
 3. 主题色（accent）改写 `--primary*` / `--accent` 变量即可全局生效；多处用 `color-mix(in oklab/oklch, var(--primary) …)` 派生 hover/发光色，因此换色自动跟随。
 
-**玻璃拟态工具类（279-367 行）**：
+**玻璃拟态工具类（约 700-762 行）**：
 
 | 类 | 行号 | 用途 |
 | --- | --- | --- |
-| `.glass-window` | 280 | 透明窗口底层 |
-| `.glass-surface` | 283 | 标准玻璃面板（`--glass-surface-opacity` + blur），深色阴影覆盖于 :289 |
-| `.glass-surface-strong` | 292 | 高不透明玻璃（`--glass-strong-opacity`），深色覆盖于 :349 |
-| `.glass-control-surface` | 298 | 控件区玻璃（不透明度再减 25%） |
-| `.glass-field` | 154 | 表单控件玻璃（`--glass-field-opacity`，blur × 0.43） |
-| `.account-glass-panel` / `-inner` / `-row` | 308 / 314 / 319 | 账户页三层玻璃（48%/30%/22% 不透明度），深色覆盖于 :324-333 |
-| `.dashboard-card-shell` | 334 | 仪表盘卡片外壳（透明 + 圆角 10px，抑制内部 ::before 装饰） |
-| `.glass-backdrop` | 352 | 模态遮罩（黑 50% + blur 4px） |
-| `.avatar-feather` | 357 | 头像径向羽化 mask |
-| `.context-item-normal` | 361 | 右键菜单项 hover 染色 |
-| `.glass` / `.glass-strong` | 364 / 366 | 兼容占位类（均置为 transparent，深浅色相同） |
+| `.glass-window` | 610 | 透明窗口底层 |
+| `.glass-surface` | 613 | 标准玻璃面板（`--glass-surface-opacity` + blur），深色阴影覆盖于 :303 |
+| `.glass-surface-strong` | 631 | 高不透明玻璃（`--glass-strong-opacity`），深色覆盖于 :358 |
+| `.glass-control-surface` | 643 | 控件区玻璃（不透明度再减 25%） |
+| `.glass-field` | 470 | 表单控件玻璃（`--glass-field-opacity`，blur × 0.43） |
+| `.account-glass-panel` / `-inner` / `-row` | 654 / 659 / 663 | 账户页三层玻璃（48%/30%/22% 不透明度），深色覆盖于 :333-342 |
+| `.dashboard-card-shell` | 681 | 仪表盘卡片外壳（透明 + 圆角 10px，抑制内部 ::before 装饰） |
+| `.glass-backdrop` | 702 | 模态遮罩（黑 50% + blur 4px） |
+| `.glass-native` | 721 | **原生磨砂窗口层**（托盘面板）：`backdrop-filter: none`，只用低不透明度 `--surface` 渐变 + 底色压住背景，避免"模糊的模糊"；深色覆盖于 :741。不透明度由设置页「毛玻璃清晰度」（`glass_clarity`）驱动：`applyGlassClarity()` 换算为 `--glass-native-opacity`（38%–92%）与 `--glass-native-base`（12%–38%） |
+| `html[data-window="tray-panel"]` / 其 `body` | 759-762 | 托盘页去掉 body 底色（默认 `rgba(255,255,255,.33)`），让系统 Acrylic 透出 |
+| `.avatar-feather` | 764 | 头像径向羽化 mask |
+| `.context-item-normal` | 771 | 右键菜单项 hover 染色 |
+| `.glass` / `.glass-strong` | 787 / 793 | 兼容占位类（均置为 transparent，深浅色相同） |
 
 **其他说明**：`--bg-image` 变量在 `.dashboard-background`（177 行）作为第一层背景图使用，配合 `--bg-image-opacity` 与 `--bg-blur` 实现设置页“背景图片/透明度/磨砂”三项配置；全局 `[class*="text-"]` text-shadow（204 行）用于在浅色背景图上保证文字可读。
 

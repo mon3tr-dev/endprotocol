@@ -657,6 +657,21 @@
     "preparing": "Preparing...",
     "downloading": "Downloading..."
   },
+  "tray": {
+    "title": "ENDPROTOCOL",
+    "stamina": "Sanity",
+    "daily_activity": "Daily Activity",
+    "weekly": "Weekly Missions",
+    "battle_pass": "Battle Pass",
+    "level": "Level",
+    "full": "Full",
+    "recover_in": "Full in",
+    "next_refill": "Next refill",
+    "no_user": "No user selected",
+    "no_user_hint": "Choose a character in Settings to show here",
+    "show_window": "Open Main Window",
+    "quit": "Quit EndProtocol"
+  },
   "launcher": {
     "install_path": "Install Path",
     "installed": "Installed",

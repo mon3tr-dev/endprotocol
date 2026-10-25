@@ -1,8 +1,22 @@
-import { useState, useEffect, useCallback } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { listen } from "@tauri-apps/api/event";
 import { Img } from "@/utils/imageLoader";
+import logger from "@/utils/logger";
+import { loadTheme } from "@/utils/theme";
+import { MorphIcon } from "morphicons/react";
+import type { IconInput } from "morphicons";
+import {
+  ArrowUpRight,
+  CalendarDays,
+  CircleUserRound,
+  Power,
+  Ticket,
+  Trophy,
+  Zap,
+} from "lucide";
 
 interface TrayUserInfo {
   roleId?: string;
@@ -19,213 +33,364 @@ interface TrayUserInfo {
   bpMaxLevel?: number;
 }
 
-function formatRecoveryTime(maxTs: number): string {
-  const now = Math.floor(Date.now() / 1000);
-  const diff = maxTs - now;
-  if (diff <= 0) return "已满";
-  const h = Math.floor(diff / 3600);
-  const m = Math.floor((diff % 3600) / 60);
-  const s = diff % 60;
-  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+/** 理智自然回复间隔（秒）：每 6 分钟 1 点，与 account-progress 卡片保持一致 */
+const STAMINA_REFILL_SECONDS = 432;
+
+function pad2(value: number): string {
+  return String(value).padStart(2, "0");
 }
 
-function StatItem({
-  icon,
+/** 秒数 → HH:MM:SS 倒计时 */
+function formatCountdown(totalSeconds: number): string {
+  const sec = Math.max(0, Math.floor(totalSeconds));
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = sec % 60;
+  return `${pad2(h)}:${pad2(m)}:${pad2(s)}`;
+}
+
+function clampPercent(value: number, max: number): number {
+  if (max <= 0) return 0;
+  return Math.min(100, Math.max(0, (value / max) * 100));
+}
+
+/**
+ * 托盘面板中的一行进度指标：图标 + 标签 + 数值 + 细进度条。
+ * 排版语言与主界面的 account-progress 卡片保持一致。
+ */
+function MetricRow({
+  icon: Icon,
   label,
-  cur,
+  current,
   max,
-  recovery,
+  hint,
+  valueText,
 }: {
-  icon: React.ReactNode;
+  icon: IconInput;
   label: string;
-  cur: number;
+  current: number;
   max: number;
-  recovery?: string;
+  hint?: string;
+  valueText?: string;
 }) {
-  const pct = max > 0 ? Math.min((cur / max) * 100, 100) : 0;
+  const percent = clampPercent(current, max);
+  const filled = percent >= 100;
+
   return (
-    <div className="flex items-center gap-2 px-3 py-1.5">
-      <span className="w-4 h-4 shrink-0 flex items-center justify-center text-primary/80">{icon}</span>
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center justify-between mb-0.5">
-          <span className="text-[11px] font-medium text-foreground/80">{label}</span>
-          <span className="text-[11px] font-semibold text-foreground">
-            {cur}/{max}
-            {recovery && recovery !== "已满" && (
-              <span className="text-muted ml-1 text-[9px] font-normal">
-                ({recovery})
-              </span>
-            )}
-          </span>
-        </div>
-        <div className="h-1 rounded-full bg-white/10 overflow-hidden">
+    <div className="rounded-xl px-2.5 py-1.5 transition-colors duration-200 hover:bg-default-100/60">
+      <div className="flex items-center gap-2">
+        <span
+          className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-lg transition-colors duration-200 ${
+            filled ? "bg-success/15 text-success" : "bg-primary/15 text-primary"
+          }`}
+        >
+          <MorphIcon icon={Icon} size={13} />
+        </span>
+
+        <span className="min-w-0 flex-1 truncate text-[11px] font-medium text-foreground">
+          {label}
+        </span>
+
+        <span className="shrink-0 text-[11px] font-semibold tabular-nums text-foreground">
+          {valueText ?? `${current}/${max}`}
+        </span>
+      </div>
+
+      <div className="mt-1 flex items-center gap-2 pl-8">
+        <div className="h-1 flex-1 overflow-hidden rounded-full bg-default-200/70">
           <div
-            className="h-full rounded-full bg-gradient-to-r from-primary/80 to-primary transition-all duration-500"
-            style={{ width: `${pct}%` }}
+            className={`h-full rounded-full transition-all duration-500 ease-out ${
+              filled ? "bg-success" : "bg-gradient-to-r from-primary/70 to-primary"
+            }`}
+            style={{ width: `${percent}%` }}
           />
         </div>
+        {hint && (
+          <span className="shrink-0 text-[9px] tabular-nums text-muted">
+            {hint}
+          </span>
+        )}
       </div>
     </div>
   );
 }
 
+/** 头像：圆角 + 首字母回退，图片加载失败时降级而不留空洞 */
+function Avatar({
+  src,
+  alt,
+  className,
+}: {
+  src: string;
+  alt: string;
+  className?: string;
+}) {
+  const [failed, setFailed] = useState(false);
+  const letter = (alt.charAt(0) || "?").toUpperCase();
+  const showImage = Boolean(src) && !failed;
+
+  return (
+    <div
+      className={`relative flex items-center justify-center overflow-hidden rounded-lg bg-primary/15 text-xs font-bold text-primary ${className ?? ""}`}
+    >
+      {showImage ? (
+        <Img
+          src={src}
+          alt={alt}
+          className="h-full w-full object-cover avatar-feather"
+          onError={() => setFailed(true)}
+        />
+      ) : (
+        letter
+      )}
+    </div>
+  );
+}
+
 export function TrayPanel() {
+  const { t } = useTranslation();
   const [userInfo, setUserInfo] = useState<TrayUserInfo>({});
   const [now, setNow] = useState(() => Date.now());
 
   const loadUserInfo = useCallback(async () => {
     try {
       const info = await invoke<TrayUserInfo>("get_tray_user_info");
-      setUserInfo(info);
-    } catch {
-      // ignore
+      setUserInfo(info ?? {});
+    } catch (error) {
+      logger.warn("Failed to load tray user info: " + error, null, "TrayPanel");
     }
   }, []);
 
   useEffect(() => {
-    loadUserInfo();
+    void loadUserInfo();
 
-    const unlisten = listen<TrayUserInfo>("tray-user-info-updated", (event) => {
-      setUserInfo(event.payload);
-    });
+    const unlistenUpdate = listen<TrayUserInfo>(
+      "tray-user-info-updated",
+      (event) => {
+        setUserInfo(event.payload ?? {});
+      },
+    );
 
     const win = getCurrentWindow();
-    const unlistenBlur = win.onFocusChanged(({ payload: focused }) => {
-      if (!focused) {
-        win.hide();
+    // 面板每次被弹出时刷新时间基准、重新拉取数据并重读主题
+    //（设置页拖动「毛玻璃清晰度」只写配置、不发事件，聚焦时重读才能跟上）
+    const unlistenFocus = win.onFocusChanged(({ payload: focused }) => {
+      if (focused) {
+        setNow(Date.now());
+        void loadUserInfo();
+        void loadTheme().catch(() => {
+          // 主题重读失败时保持现有观感，不影响数据展示
+        });
+      } else {
+        void win.hide();
       }
     });
 
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
 
     return () => {
-      unlisten.then((fn) => fn());
-      unlistenBlur.then((fn) => fn());
+      void unlistenUpdate.then((fn) => fn());
+      void unlistenFocus.then((fn) => fn());
       window.clearInterval(timer);
     };
   }, [loadUserInfo]);
 
-  const hasUser = !!userInfo.roleId;
-  const curStamina = userInfo.curStamina ?? 0;
+  const hasUser = Boolean(userInfo.roleId);
+  const nickname = userInfo.nickname ?? "";
   const maxStamina = userInfo.maxStamina ?? 0;
   const maxTs = userInfo.maxTs ?? 0;
-  const recovery = maxTs > 0 ? formatRecoveryTime(maxTs) : null;
+
+  /**
+   * 按 maxTs 与自然回复速率推算当前理智，使面板与主界面显示一致，
+   * 而不是停留在上次同步时的静态值。
+   */
+  const stamina = useMemo(() => {
+    const stored = userInfo.curStamina ?? 0;
+    if (maxStamina <= 0 || maxTs <= 0) {
+      return {
+        current: stored,
+        fullInSeconds: 0,
+        nextRefillSeconds: 0,
+        isFull: maxStamina > 0 && stored >= maxStamina,
+        hasTimer: false,
+      };
+    }
+
+    const nowSec = now / 1000;
+    const unitsBelowMax = (maxTs - nowSec) / STAMINA_REFILL_SECONDS;
+    const live = Math.min(
+      Math.max(Math.floor(maxStamina - unitsBelowMax), 0),
+      maxStamina,
+    );
+
+    if (live >= maxStamina) {
+      return {
+        current: maxStamina,
+        fullInSeconds: 0,
+        nextRefillSeconds: 0,
+        isFull: true,
+        hasTimer: true,
+      };
+    }
+
+    const nextRefillTs =
+      maxTs - (maxStamina - live - 1) * STAMINA_REFILL_SECONDS;
+
+    return {
+      current: live,
+      fullInSeconds: Math.max(0, maxTs - nowSec),
+      nextRefillSeconds: Math.max(0, nextRefillTs - nowSec),
+      isFull: false,
+      hasTimer: true,
+    };
+  }, [userInfo.curStamina, maxStamina, maxTs, now]);
+
+  const dailyCurrent = userInfo.dailyActivation ?? 0;
+  const dailyMax = userInfo.maxDailyActivation ?? 0;
+  const weeklyCurrent = userInfo.weeklyScore ?? 0;
+  const weeklyMax = userInfo.weeklyTotal ?? 0;
+  const bpCurrent = userInfo.bpCurLevel ?? 0;
+  const bpMax = userInfo.bpMaxLevel ?? 0;
 
   const handleShowMain = async () => {
     try {
       await invoke("show_main_window");
-    } catch {
-      const win = getCurrentWindow();
-      await win.hide();
+    } catch (error) {
+      logger.error("Failed to show main window: " + error, null, "TrayPanel");
+      try {
+        await getCurrentWindow().hide();
+      } catch {
+        // 面板窗口已不可用，忽略
+      }
     }
   };
 
   const handleQuit = async () => {
     try {
       await invoke("app_quit");
-    } catch {
-      getCurrentWindow().app.exit(0);
+    } catch (error) {
+      logger.error("Failed to quit application: " + error, null, "TrayPanel");
     }
   };
 
   return (
-    <div className="h-full w-full flex flex-col">
-      {/* Header */}
-      <div className="px-3 pt-3 pb-1.5">
-        <div className="flex items-center gap-2">
-          <div className="w-1.5 h-1.5 rounded-full bg-primary/60 shrink-0" />
-          <h1 className="text-xs font-bold text-foreground tracking-widest">ENDPROTOCOL</h1>
+    <div className="flex h-full w-full select-none flex-col overflow-hidden rounded-[10px] glass-native text-foreground animate-scale-in">
+      {/* 顶部品牌区 — 与标题栏一致：主题色圆点 + 全大写字距标题 */}
+      <header className="flex shrink-0 items-center justify-between gap-2 px-3 pb-2 pt-2.5">
+        <div className="flex min-w-0 items-center gap-1.5">
+          <span
+            className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary/60"
+            aria-hidden="true"
+          />
+          <span className="truncate text-[10px] font-bold tracking-widest">
+            {t("tray.title")}
+          </span>
         </div>
-      </div>
+        {hasUser && (
+          <span className="shrink-0 rounded-full bg-default-100/80 px-1.5 py-0.5 text-[9px] font-medium text-muted">
+            {t("tray.level")} {bpCurrent}
+          </span>
+        )}
+      </header>
 
-      {/* User Info */}
+      {/* 用户概览 */}
       {hasUser ? (
-        <div className="px-1.5 pb-1 flex-1">
-          <div className="flex items-center gap-2 px-3 py-1.5">
-            {userInfo.avatar ? (
-              <Img
-                src={userInfo.avatar}
-                alt={userInfo.nickname ?? ""}
-                className="w-7 h-7 rounded-full object-cover shrink-0"
-                onError={(e) => {
-                  (e.target as HTMLImageElement).style.display = "none";
-                }}
+        <>
+          <div className="shrink-0 px-3 pb-2">
+            <div className="flex items-center gap-2.5 rounded-xl bg-default-100/50 p-2">
+              <Avatar
+                src={userInfo.avatar ?? ""}
+                alt={nickname}
+                className="h-9 w-9 shrink-0"
               />
-            ) : (
-              <div className="w-7 h-7 rounded-full bg-primary/20 flex items-center justify-center text-xs font-bold text-primary shrink-0">
-                {(userInfo.nickname ?? "?")[0]}
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-[11px] font-semibold text-foreground">
+                  {nickname || t("tray.no_user")}
+                </p>
+                <p className="truncate text-[9px] text-muted">
+                  {stamina.hasTimer && !stamina.isFull
+                    ? `${t("tray.next_refill")} ${formatCountdown(stamina.nextRefillSeconds)}`
+                    : `${t("tray.stamina")} · ${t("tray.full")}`}
+                </p>
               </div>
-            )}
-            <div className="min-w-0">
-              <p className="text-xs font-semibold text-foreground truncate">
-                {userInfo.nickname}
-              </p>
-              <p className="text-[9px] text-muted">Lv.{userInfo.bpCurLevel ?? 0}</p>
+              <div className="shrink-0 text-right">
+                <span className="font-mono text-base font-bold leading-none tabular-nums text-foreground">
+                  {stamina.current}
+                </span>
+                <span className="text-[9px] font-normal text-muted">
+                  /{maxStamina}
+                </span>
+              </div>
             </div>
           </div>
 
-          <div className="h-px bg-separator/40 mx-3 my-0.5" />
-
-          <StatItem
-            icon={<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="1.5"><path strokeLinecap="round" strokeLinejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" /></svg>}
-            label="理智"
-            cur={curStamina}
-            max={maxStamina}
-            recovery={recovery ?? undefined}
-          />
-          <StatItem
-            icon={<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="1.5"><path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" /></svg>}
-            label="每日活跃"
-            cur={userInfo.dailyActivation ?? 0}
-            max={userInfo.maxDailyActivation ?? 0}
-          />
-          <StatItem
-            icon={<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="1.5"><path strokeLinecap="round" strokeLinejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z" /></svg>}
-            label="每周事务"
-            cur={userInfo.weeklyScore ?? 0}
-            max={userInfo.weeklyTotal ?? 0}
-          />
-          <StatItem
-            icon={<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="1.5"><path strokeLinecap="round" strokeLinejoin="round" d="M16.5 18.75h-9m9 0a3 3 0 013 3h-15a3 3 0 013-3m9 0v-3.375c0-.621-.503-1.125-1.125-1.125h-.871M7.5 18.75v-3.375c0-.621.504-1.125 1.125-1.125h.872m5.007 0H9.497m5.007 0a7.454 7.454 0 01-.982-3.172M9.497 14.25a7.454 7.454 0 00.981-3.172M5.25 4.236c-.996.29-1.75.836-1.75 1.608v12.072c0 .503.23.962.622 1.288m11.132-6.386c.996.29 1.75.836 1.75 1.608v12.072c0 .503-.23.962-.622 1.288M13.5 4.236c-.996.29-1.75.836-1.75 1.608v12.072c0 .503.23.962.622 1.288m0 0h3.75" /></svg>}
-            label="通行证"
-            cur={userInfo.bpCurLevel ?? 0}
-            max={userInfo.bpMaxLevel ?? 0}
-          />
-        </div>
+          <div className="min-h-0 flex-1 space-y-0.5 overflow-y-auto px-1.5">
+            <MetricRow
+              icon={Zap}
+              label={t("tray.stamina")}
+              current={stamina.current}
+              max={maxStamina}
+              hint={
+                stamina.isFull
+                  ? t("tray.full")
+                  : stamina.hasTimer
+                    ? `${t("tray.recover_in")} ${formatCountdown(stamina.fullInSeconds)}`
+                    : undefined
+              }
+            />
+            <MetricRow
+              icon={CalendarDays}
+              label={t("tray.daily_activity")}
+              current={dailyCurrent}
+              max={dailyMax}
+            />
+            <MetricRow
+              icon={Trophy}
+              label={t("tray.weekly")}
+              current={weeklyCurrent}
+              max={weeklyMax}
+            />
+            <MetricRow
+              icon={Ticket}
+              label={t("tray.battle_pass")}
+              current={bpCurrent}
+              max={bpMax}
+            />
+          </div>
+        </>
       ) : (
-        <div className="flex-1 flex items-center justify-center px-3 py-4">
-          <p className="text-xs text-muted text-center">
-            未选择用户
-            <br />
-            <span className="text-[10px] opacity-70">请在设置中选择</span>
+        <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 px-6 text-center">
+          <span className="flex h-10 w-10 items-center justify-center rounded-full bg-default-100/70 text-muted">
+            <MorphIcon icon={CircleUserRound} size={20} />
+          </span>
+          <p className="text-[11px] font-medium text-foreground">
+            {t("tray.no_user")}
+          </p>
+          <p className="text-[9px] leading-relaxed text-muted">
+            {t("tray.no_user_hint")}
           </p>
         </div>
       )}
 
-      {/* Divider */}
-      <div className="h-px bg-separator/40 mx-3" />
-
-      {/* Menu */}
-      <div className="px-1.5 py-1.5 space-y-0.5">
+      {/* 操作区 */}
+      <footer className="shrink-0 space-y-0.5 border-t border-separator/60 p-1.5">
         <button
+          type="button"
           onClick={handleShowMain}
-          className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-foreground/80 hover:bg-white/10 hover:text-foreground transition-all duration-200 cursor-pointer"
+          className="flex w-full cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1.5 text-[11px] font-medium text-foreground/85 transition-all duration-200 hover:bg-primary/10 hover:text-primary active:scale-[0.98]"
         >
-          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="1.5">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15" />
-          </svg>
-          显示窗口
+          <MorphIcon icon={ArrowUpRight} size={13} />
+          <span className="flex-1 text-left">{t("tray.show_window")}</span>
         </button>
         <button
+          type="button"
           onClick={handleQuit}
-          className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-danger/80 hover:bg-danger/10 hover:text-danger transition-all duration-200 cursor-pointer"
+          className="flex w-full cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1.5 text-[11px] font-medium text-danger/80 transition-all duration-200 hover:bg-danger/10 hover:text-danger active:scale-[0.98]"
         >
-          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="1.5">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15m3 0l3-3m0 0l-3-3m3 3H9" />
-          </svg>
-          退出
+          <MorphIcon icon={Power} size={13} />
+          <span className="flex-1 text-left">{t("tray.quit")}</span>
         </button>
-      </div>
+      </footer>
     </div>
   );
 }
