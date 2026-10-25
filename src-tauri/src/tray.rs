@@ -21,6 +21,8 @@ pub struct TrayUserInfo {
     pub role_id: Option<String>,
     pub nickname: Option<String>,
     pub avatar: Option<String>,
+    /// 游戏账号等级（char_detail 的 base.level），与主界面各处的 `Lv.xx` 同源
+    pub account_level: Option<i32>,
     pub cur_stamina: Option<i64>,
     pub max_stamina: Option<i64>,
     pub max_ts: Option<i64>,

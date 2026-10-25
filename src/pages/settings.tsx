@@ -14,7 +14,6 @@ import { SystemResourceSettings } from "@/components/system-resource-settings";
 import { TodoSettings } from "@/components/todo-settings";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
-import { invoke } from "@tauri-apps/api/core";
 import {
   getVersion,
   getTauriVersion,
@@ -22,8 +21,7 @@ import {
 } from "@tauri-apps/api/app";
 import { getConfig, setConfig } from "@/utils/configService";
 import { roleDetailService } from "@/utils/roleDetailService";
-import { roleDataService } from "@/utils/roleDataService";
-import { getAccounts } from "@/utils/accountService";
+import { setTrayUser } from "@/utils/trayService";
 import { SettingsDivider } from "@/components/ui/settings-row";
 import {
   fetchRemoteVersion,
@@ -205,43 +203,7 @@ export default function SettingsPage() {
   const handleTrayUserChange = async (value: string) => {
     setTrayUserRoleId(value);
     await setConfig("tray_user_role_id", value);
-    try {
-      await invoke("set_tray_user", { roleId: value });
-    } catch {
-      // ignore
-    }
-    // Fetch role data and update tray
-    if (value) {
-      try {
-        const result = await roleDataService.queryData(value, "char_detail", [
-          "dungeon",
-          "bpSystem",
-          "dailyMission",
-          "weeklyMission",
-        ]);
-        const accs = await getAccounts();
-        const account = accs.find((a) => a.id === value);
-        await invoke("update_tray_user_data", {
-          userInfo: {
-            roleId: value,
-            nickname: account?.nickname ?? null,
-            avatar: account?.avatar ?? null,
-            curStamina: Number(result?.dungeon?.curStamina) || 0,
-            maxStamina: Number(result?.dungeon?.maxStamina) || 0,
-            maxTs: Number(result?.dungeon?.maxTs) || 0,
-            dailyActivation: Number(result?.dailyMission?.dailyActivation) || 0,
-            maxDailyActivation:
-              Number(result?.dailyMission?.maxDailyActivation) || 0,
-            weeklyScore: Number(result?.weeklyMission?.score) || 0,
-            weeklyTotal: Number(result?.weeklyMission?.total) || 0,
-            bpCurLevel: Number(result?.bpSystem?.curLevel) || 0,
-            bpMaxLevel: Number(result?.bpSystem?.maxLevel) || 0,
-          },
-        });
-      } catch (err) {
-        console.error("Failed to update tray user data:", err);
-      }
-    }
+    await setTrayUser(value);
   };
 
   const handleDevModeToggle = (value: boolean) => {

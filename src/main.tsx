@@ -13,9 +13,7 @@ import { loadAllCards } from "@/components/cards/registry/loader";
 import { initOverlayScrollbar } from "@/utils/overlayScrollbar";
 import { checkAndNotify } from "@/utils/updateService";
 import logger from "@/utils/logger";
-import { roleDataService } from "@/utils/roleDataService";
-import { getAccounts } from "@/utils/accountService";
-import { invoke } from "@tauri-apps/api/core";
+import { refreshTrayUserData } from "@/utils/trayService";
 import { loadBackgroundSettings } from "@/utils/backgroundSettings";
 import { syncSilentLaunchConfig } from "@/utils/launcherService";
 import {
@@ -109,30 +107,7 @@ Promise.all([
     try {
       const trayRoleId = await getConfig<string>("tray_user_role_id");
       if (trayRoleId) {
-        const result = await roleDataService.queryData(
-          trayRoleId,
-          "char_detail",
-          ["dungeon", "bpSystem", "dailyMission", "weeklyMission"],
-        );
-        const accs = await getAccounts();
-        const account = accs.find((a) => a.id === trayRoleId);
-        await invoke("update_tray_user_data", {
-          userInfo: {
-            roleId: trayRoleId,
-            nickname: account?.nickname ?? null,
-            avatar: account?.avatar ?? null,
-            curStamina: Number(result?.dungeon?.curStamina) || 0,
-            maxStamina: Number(result?.dungeon?.maxStamina) || 0,
-            maxTs: Number(result?.dungeon?.maxTs) || 0,
-            dailyActivation: Number(result?.dailyMission?.dailyActivation) || 0,
-            maxDailyActivation:
-              Number(result?.dailyMission?.maxDailyActivation) || 0,
-            weeklyScore: Number(result?.weeklyMission?.score) || 0,
-            weeklyTotal: Number(result?.weeklyMission?.total) || 0,
-            bpCurLevel: Number(result?.bpSystem?.curLevel) || 0,
-            bpMaxLevel: Number(result?.bpSystem?.maxLevel) || 0,
-          },
-        });
+        await refreshTrayUserData(trayRoleId);
       }
     } catch (err) {
       logger.error("Failed to fetch tray user data on startup: " + err);

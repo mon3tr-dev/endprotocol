@@ -230,34 +230,35 @@
 **备注**：无 `invoke`、无 `listen`、无 `emit`、无配置键；开合状态完全来自 `@/stores/inAppBrowser` 的订阅。注意：前进/后退依赖同源，跨域时静默失败；地址栏导航不改写浏览器 history（仅 store + iframe）。
 
 ## `src/components/tray-panel.tsx`
-**职责**：系统托盘悬浮面板——展示当前用户的头像/昵称/等级、理智（含自然回复倒计时）、每日活跃、每周事务、通行证五项数据，并提供「显示窗口」「退出」两个操作。视觉与主界面统一：`glass-native` 原生磨砂层（背景真透明、不再叠 CSS blur）、主题色圆点 + 全大写字距品牌标题、`glass` 风格的细进度条、`MorphIcon` 图标、全量 i18n 文案。
+**职责**：系统托盘悬浮面板——头部右上角展示**游戏账号等级**徽标，下方是当前用户的头像/昵称/理智（含自然回复倒计时）、每日活跃、每周事务、通行证五项数据，并提供「显示窗口」「退出」两个操作。视觉与主界面统一：`glass-native` 原生磨砂层（背景真透明、不再叠 CSS blur）、主题色圆点 + 全大写字距品牌标题、`glass` 风格的细进度条、`MorphIcon` 图标、全量 i18n 文案。
 **导出**：`TrayPanel` 。（内部组件 `MetricRow`、`Avatar` 不导出）
-**主要依赖**：`react`（`useCallback`/`useEffect`/`useMemo`/`useState`）、`react-i18next`、`@tauri-apps/api/core`（`invoke`）、`@tauri-apps/api/window`（`getCurrentWindow`）、`@tauri-apps/api/event`（`listen`）、`@/utils/imageLoader`（`Img`）、`@/utils/logger`、`morphicons/react`（`MorphIcon`）、`morphicons`（`IconInput` 类型）、`lucide`（`ArrowUpRight`、`CalendarDays`、`CircleUserRound`、`Power`、`Ticket`、`Trophy`、`Zap`）。
+**主要依赖**：`react`（`useCallback`/`useEffect`/`useMemo`/`useState`）、`react-i18next`、`@tauri-apps/api/core`（`invoke`）、`@tauri-apps/api/window`（`getCurrentWindow`）、`@tauri-apps/api/event`（`listen`）、`@/utils/imageLoader`（`Img`）、`@/utils/logger`、`@/utils/theme`（`loadTheme`）、`@/utils/trayService`（`TrayUserInfo` 类型）、`morphicons/react`（`MorphIcon`）、`morphicons`（`IconInput` 类型）、`lucide`（`ArrowUpRight`、`CalendarDays`、`CircleUserRound`、`Power`、`Ticket`、`Trophy`、`Zap`）。
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
-| `TrayUserInfo`（interface） | 20-33 | `roleId`、`nickname`、`avatar`、`curStamina`/`maxStamina`/`maxTs`、`dailyActivation`/`maxDailyActivation`、`weeklyScore`/`weeklyTotal`、`bpCurLevel`/`bpMaxLevel`（与后端 `tray.rs` 的 `TrayUserInfo` camelCase 一一对应） |
-| `STAMINA_REFILL_SECONDS` | 36 | 432（6 分钟/点），与 `cards/account-progress` 的 `REFILL_INTERVAL` 一致 |
-| `pad2` / `formatCountdown` | 38 / 43 | 秒数 → `HH:MM:SS`；`formatCountdown` 取代了旧的 `formatRecoveryTime`（旧实现返回 `"已满"` 中文字面量） |
-| `clampPercent(value, max)` | 51 | 进度百分比，`max<=0` 时返回 0 |
-| `MetricRow`（内部组件） | 60-116 | props：`icon: IconInput`、`label`、`current`、`max`、`hint?`、`valueText?`；图标胶囊 + 标签 + 数值 + 细进度条（满值时转 success 色） |
-| `Avatar`（内部组件） | 118-147 | props：`src`、`alt`、`className`；图片失败时回退为首字母，不留空洞 |
-| `TrayPanel`（export） | 149-389 | 面板主体，无 props |
-| 理智推算 `stamina`（`useMemo`） | 244-277 | 用 `maxTs` + 432s 速率实时回算当前理智与「回满 / 下次回复」倒计时，而非停留在上次同步的静态值 |
+| `TrayUserInfo`（type import） | 9 | 不再在本文件声明，直接从 `@/utils/trayService` 复用，与后端 `tray.rs` 的 `TrayUserInfo` 保持单一来源 |
+| `STAMINA_REFILL_SECONDS` | 23 | 432（6 分钟/点），与 `cards/account-progress` 的 `REFILL_INTERVAL` 一致 |
+| `pad2` / `formatCountdown` | 25 / 30 | 秒数 → `HH:MM:SS`；`formatCountdown` 取代了旧的 `formatRecoveryTime`（旧实现返回 `"已满"` 中文字面量） |
+| `clampPercent(value, max)` | 38 | 进度百分比，`max<=0` 时返回 0 |
+| `MetricRow`（内部组件） | 47-102 | props：`icon: IconInput`、`label`、`current`、`max`、`hint?`、`valueText?`；图标胶囊 + 标签 + 数值 + 细进度条（满值时转 success 色） |
+| `Avatar`（内部组件） | 105-134 | props：`src`、`alt`、`className`；图片失败时回退为首字母，不留空洞 |
+| `TrayPanel`（export） | 136-384 | 面板主体，无 props |
+| 理智推算 `stamina`（`useMemo`） | 195-234 | 用 `maxTs` + 432s 速率实时回算当前理智与「回满 / 下次回复」倒计时，而非停留在上次同步的静态值 |
 
 **内部结构**：
-- 150-153 行：`userInfo`、每秒 tick 的 `now`。
-- 155-163 行：`loadUserInfo`——`invoke("get_tray_user_info")`，失败走 `logger.warn`。
-- 165-206 行：mount effect——初始加载、`listen("tray-user-info-updated")` 更新数据、`getCurrentWindow().onFocusChanged`（获得焦点时刷新时间基准并重拉数据，失焦即 `win.hide()`）、1 秒定时器；清理时依次解绑。
-- 208-235 行：派生值（`hasUser`、`maxStamina`/`maxTs`、每日/每周/通行证当前与上限）。
-- 237-252 行：`handleShowMain`——`invoke("show_main_window")`，失败记日志并隐藏自身窗口。
-- 254-260 行：`handleQuit`——`invoke("app_quit")`，失败记日志（旧实现回退调用不存在的 `getCurrentWindow().app.exit(0)`，已移除）。
-- 262-388 行：渲染——品牌头部（主题色圆点 + `tray.title` + 等级徽标）、用户概览（头像/昵称/理智倒计时/大号理智数字）、四个 `MetricRow`（理智 291-307、每日活跃 308-313、每周事务 314-319、通行证 320-325）、未选用户空状态（328-343）、底部操作区（显示窗口 348-357、退出 358-367）。
+- 137-139 行：`userInfo`、每秒 tick 的 `now`。
+- 141-148 行：`loadUserInfo`——`invoke<TrayUserInfo | null>("get_tray_user_info")`，失败走 `logger.warn`。
+- 150-182 行：mount effect——初始加载、`listen("tray-user-info-updated")` 更新数据、`getCurrentWindow().onFocusChanged`（获得焦点时刷新时间基准并重拉数据 + `loadTheme()`，失焦即 `win.hide()`）、1 秒定时器；清理时依次解绑。
+- 184-189 行：派生值（`hasUser`、`accountLevel`（右上角徽标）、`maxStamina`/`maxTs`）；236-241 行：每日/每周/通行证当前与上限。
+- 243-254 行：`handleShowMain`——`invoke("show_main_window")`，失败记日志并隐藏自身窗口。
+- 256-262 行：`handleQuit`——`invoke("app_quit")`，失败记日志（旧实现回退调用不存在的 `getCurrentWindow().app.exit(0)`，已移除）。
+- 264-383 行：渲染——品牌头部（主题色圆点 + `tray.title` + **账号等级徽标** 277-281）、用户概览（头像/昵称/理智倒计时/大号理智数字 285-313）、四个 `MetricRow`（理智 316-328、每日活跃 329-334、每周事务 335-340、通行证 341-346）、未选用户空状态（350-362）、底部操作区（显示窗口 367-373、退出 374-380）。
 
 **备注**：
 - `invoke` 命令：`get_tray_user_info`、`show_main_window`、`app_quit`。
 - `listen` 事件：`tray-user-info-updated`（payload 为 `TrayUserInfo`）。
 - 窗口事件：`getCurrentWindow().onFocusChanged`（获得焦点刷新、失焦隐藏）。
+- **右上角徽标显示 `accountLevel`（游戏账号等级，来自 `char_detail` 的 `base.level`），不是通行证等级**；通行证等级只在下方 `tray.battle_pass` 那一行 `MetricRow` 里以 `bpCurLevel/bpMaxLevel` 呈现。徽标条件是 `hasUser && accountLevel > 0`，取不到等级时不显示，避免误呈现「等级 0」。数据由 `src/utils/trayService.ts` 组装。
 - 无 `emit`、无配置键；文案全部走 i18n 命名空间 `tray.*`（`tray.title`/`stamina`/`daily_activity`/`weekly`/`battle_pass`/`level`/`full`/`recover_in`/`next_refill`/`no_user`/`no_user_hint`/`show_window`/`quit`），已不再硬编码中文。
 - 主题色 / 玻璃清晰度由入口 `src/tray-panel.tsx` 统一注入（见 [entry_and_app.md](entry_and_app.md)），组件内只用语义化 token（`bg-primary`、`bg-default-100` 等），因此会跟随用户的自定义主题色。
 - **透明策略**：窗口本身启用系统级 Acrylic（`lib.rs::create_full_windows` 的 `.effect(Effect::Acrylic)`），桌面磨砂由系统负责；面板根节点用 `.glass-native`（`backdrop-filter: none`），只压一层 `--surface` 渐变做可读性补偿，避免「模糊的模糊」把文字糊掉。窗口不设 `.shadow(true)`，否则透明边缘会出现灰色底板；托盘页 `html[data-window="tray-panel"]` 同时去掉 `body` 默认的 `rgba(255,255,255,.33)` 底色。

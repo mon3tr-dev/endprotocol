@@ -101,7 +101,7 @@
 ### 后端 emit 事件（全局，非 lib.rs 内发起）
 | 事件名 | 发出位置 | 载荷 |
 | --- | --- | --- |
-| `tray-user-info-updated` | tray.rs:170（仅发给 tray-panel 窗口） | `TrayUserInfo` |
+| `tray-user-info-updated` | tray.rs:173（仅发给 tray-panel 窗口） | `TrayUserInfo` |
 | `launcher-progress` | commands/launcher.rs:74/117/168 | 启动器下载/校验进度 |
 | `accounts-refreshed` | services/account_service.rs:812 | 账户刷新结果 |
 | `download-progress` | commands/updater.rs:106 | 更新包下载进度 |
@@ -114,7 +114,7 @@
 ---
 
 ## `src-tauri/src/tray.rs`
-**职责**：系统托盘图标与托盘悬浮面板（tray-panel 窗口）的创建、定位、显隐与 tooltip 更新（196 行）。仅在完整模式创建；`--silent --launch-game` 驻守实例不显示托盘。
+**职责**：系统托盘图标与托盘悬浮面板（tray-panel 窗口）的创建、定位、显隐与 tooltip 更新（198 行）。仅在完整模式创建；`--silent --launch-game` 驻守实例不显示托盘。
 **导出**：`TrayUserInfo`、`show_main_window_focus`、`setup_tray`、`update_tray_menu`、`show_tray_panel`、`hide_tray_panel`；私有 `show_panel_at_position`、`build_tray`。
 **主要依赖**：`tauri::tray::{TrayIconBuilder, TrayIconEvent, MouseButton}`、`tauri::{Emitter, Manager, Runtime}`、`windows-sys`（仅 Windows 分支）、`crate::services::config_service::ConfigService`。
 
@@ -125,16 +125,16 @@
 | `TRAY_ID` | tray.rs:9 | `"main-tray"`，托盘图标唯一 ID（`app.tray_by_id` 用） |
 | `TRAY_PANEL_LABEL` | tray.rs:10 | `"tray-panel"`，与动态创建的托盘面板窗口 label 对应 |
 | `PANEL_WIDTH` / `PANEL_HEIGHT` | tray.rs:14-15 | 288.0 × 376.0，**回退尺寸**：仅在 `outer_size()` 取不到真实窗口尺寸时用于定位；实际窗口尺寸由 `lib.rs::create_full_windows` 的 `inner_size(288.0, 376.0)` 决定，改一处需同步另一处 |
-| `struct TrayUserInfo` | tray.rs:20（derive :16-19） | 托盘展示的角色数据，serde `camelCase`，12 个 `Option` 字段：`role_id`、`nickname`、`avatar`、`cur_stamina`、`max_stamina`、`max_ts`、`daily_activation`、`max_daily_activation`、`weekly_score`、`weekly_total`、`bp_cur_level`、`bp_max_level`；配置键 `tray_user_info` |
-| `show_main_window_focus` | tray.rs:36 | 取或动态创建 `main` 窗口 → `unminimize()` + `show()`；Windows 分支额外 `ShowWindow(SW_SHOW)` + `SetForegroundWindow` |
-| `show_panel_at_position`（私有） | tray.rs:66 | 面板可见则隐藏；否则按**真实窗口物理尺寸**（`panel.outer_size()`）居中定位于托盘图标上方 8px，并用 `app.monitor_from_point` 取所在显示器工作区做 clamp，防止面板越出屏幕；随后 show + focus |
-| `setup_tray` | tray.rs:109 | 完整模式读配置 `tray_user_info`，创建唯一托盘图标；**左键双击**显示主窗并关面板，**右键抬起**弹出原有面板 |
-| `build_tray` | tray.rs:125 | 唯一图标构建逻辑；左键双击显示主窗并隐藏面板，右键抬起弹出面板 |
-| `update_tray_menu` | tray.rs:161 | 按 `TrayUserInfo.nickname` 更新 tooltip，并向 tray-panel 窗口发送 `tray-user-info-updated` |
-| `show_tray_panel` | tray.rs:178 | 命令入口的 toggle 显隐（可见→hide，否则 show+focus） |
-| `hide_tray_panel` | tray.rs:191 | 强制隐藏面板（无错误时返回 Ok） |
+| `struct TrayUserInfo` | tray.rs:20（derive :16-19） | 托盘展示的角色数据，serde `camelCase`，13 个 `Option` 字段：`role_id`、`nickname`、`avatar`、`account_level`、`cur_stamina`、`max_stamina`、`max_ts`、`daily_activation`、`max_daily_activation`、`weekly_score`、`weekly_total`、`bp_cur_level`、`bp_max_level`；配置键 `tray_user_info`。`account_level`（:25）是**游戏账号等级**（`char_detail` 的 `base.level`），供面板右上角徽标显示；`bp_cur_level`/`bp_max_level` 是通行证等级，二者不可混用 |
+| `show_main_window_focus` | tray.rs:38 | 取或动态创建 `main` 窗口 → `unminimize()` + `show()`；Windows 分支额外 `ShowWindow(SW_SHOW)` + `SetForegroundWindow` |
+| `show_panel_at_position`（私有） | tray.rs:68 | 面板可见则隐藏；否则按**真实窗口物理尺寸**（`panel.outer_size()`）居中定位于托盘图标上方 8px，并用 `app.monitor_from_point` 取所在显示器工作区做 clamp，防止面板越出屏幕；随后 show + focus |
+| `setup_tray` | tray.rs:111 | 完整模式读配置 `tray_user_info`，创建唯一托盘图标；**左键双击**显示主窗并关面板，**右键抬起**弹出原有面板 |
+| `build_tray` | tray.rs:127 | 唯一图标构建逻辑；左键双击显示主窗并隐藏面板，右键抬起弹出面板 |
+| `update_tray_menu` | tray.rs:163 | 按 `TrayUserInfo.nickname` 更新 tooltip，并向 tray-panel 窗口发送 `tray-user-info-updated` |
+| `show_tray_panel` | tray.rs:180 | 命令入口的 toggle 显隐（可见→hide，否则 show+focus） |
+| `hide_tray_panel` | tray.rs:193 | 强制隐藏面板（无错误时返回 Ok） |
 
-**备注**：托盘只在完整模式创建；`--silent` 实例不显示托盘、不进入托盘交接流程。`update_tray_menu`、`show_tray_panel`、`hide_tray_panel` 被 `commands/tray.rs` 调用。
+**备注**：托盘只在完整模式创建；`--silent` 实例不显示托盘、不进入托盘交接流程。`update_tray_menu`、`show_tray_panel`、`hide_tray_panel` 被 `commands/tray.rs` 调用。`TrayUserInfo` 由前端 `src/utils/trayService.ts` 组装后写入，新增字段需同时改该服务与 `src/components/tray-panel.tsx` 复用的同名类型。
 
 定位不再直接用 `PANEL_WIDTH`/`PANEL_HEIGHT` 与物理坐标相减：`inner_size` 是**逻辑**尺寸，在 125%/150% 缩放下按常量硬算会明显偏移，故改为读取窗口真实的物理 `outer_size()`。
 

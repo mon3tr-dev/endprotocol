@@ -5,29 +5,29 @@
 ## `src/main.tsx`
 **职责**：主窗口（index.html）的唯一入口。在渲染前从配置服务读取语言与主题并应用（避免闪白/闪黑），随后挂载 React 应用，并在渲染后串行触发卡片注册、启动任务、更新检查、托盘数据拉取等副作用；原生 HTML Splash 覆盖 React 启动与首屏初始数据加载。
 **导出**：（无导出）
-**主要依赖**：`react` / `react-dom/client` / `react-router-dom`（BrowserRouter）、`./App.tsx`、`./provider.tsx`、`./i18n`、`@/styles/globals.css`、`@/utils/configService`、`@/cards/startup-service`、`@/components/cards/registry/loader`、`@/utils/overlayScrollbar`、`@/utils/updateService`、`@/utils/logger`、`@/utils/roleDataService`、`@/utils/accountService`、`@/utils/backgroundSettings`、`@/utils/launcherService`、`@/utils/startupProgress`、`@/utils/accountAvailability`（`loadAccountAvailability`）、`@tauri-apps/api/core`（invoke）。
-**主要依赖**：`react` / `react-dom/client` / `react-router-dom`（BrowserRouter）、`./App.tsx`、`./provider.tsx`、`./i18n`、`@/styles/globals.css`、`@/utils/configService`、`@/utils/theme`（`DEFAULT_GLASS_CLARITY`、`applyGlassClarity`、`applyThemeColor`、`applyThemeMode`、`resolveThemeColor` 及类型 `ThemeColor`/`ThemeMode`）、`@/cards/startup-service`、`@/components/cards/registry/loader`、`@/utils/overlayScrollbar`、`@/utils/updateService`、`@/utils/logger`、`@/utils/roleDataService`、`@/utils/accountService`、`@/utils/backgroundSettings`、`@/utils/launcherService`、`@/utils/startupProgress`、`@/utils/accountAvailability`（`loadAccountAvailability`）、`@tauri-apps/api/core`（invoke）。
+**主要依赖**：`react` / `react-dom/client` / `react-router-dom`（BrowserRouter）、`./App.tsx`、`./provider.tsx`、`./i18n`、`@/styles/globals.css`、`@/utils/configService`、`@/utils/theme`（`DEFAULT_GLASS_CLARITY`、`applyGlassClarity`、`applyThemeColor`、`applyThemeMode`、`resolveThemeColor` 及类型 `ThemeColor`/`ThemeMode`）、`@/cards/startup-service`、`@/components/cards/registry/loader`、`@/utils/overlayScrollbar`、`@/utils/updateService`、`@/utils/logger`、`@/utils/trayService`（`refreshTrayUserData`）、`@/utils/backgroundSettings`、`@/utils/launcherService`、`@/utils/startupProgress`、`@/utils/accountAvailability`（`loadAccountAvailability`）。
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
-| `installCrashHandlers()` | main.tsx:41 | 在最前面安装全局 `error` / `unhandledrejection` / 后端崩溃 / API 熔断监听（`@/utils/crashReporting`） |
-| `clearTimeout(window.__endprotocolBootTimer)` | main.tsx:44 | 取消 `index.html` 中「前端脚本未启动」的静态兜底计时器，并隐藏静态错误面板 |
-| `setStartupPhase(12, …)` / `setStartupPhase(30, …)` | main.tsx:53 / 70 | 更新静态 Splash 的初始化阶段文案 |
-| `armStartupTimeout()` | main.tsx:55 | 配置初始化前启动 45 秒启动看门狗，覆盖 IPC/配置读取永久挂起、React 未挂载的卡死场景 |
-| `syncSilentLaunchConfig` | main.tsx:56 | 完整前端启动时将既有 localStorage 的游戏目录/渠道迁移到 `ConfigService` |
-| 配置读取 + 主题应用 | main.tsx:59-76 | 并行读 `app.language`/`theme_mode`/`theme_color`/`theme_custom_colors`/`glass_clarity` 与 `loadBackgroundSettings()`/`loadAccountAvailability()`；`resolveThemeColor` 解析色板后依次 `applyThemeColor`、`applyThemeMode`、`applyGlassClarity`（渲染前应用，避免闪白） |
-| `ReactDOM.createRoot(...).render(...)` | main.tsx:82-90 | `StrictMode > BrowserRouter > Provider > App`，挂载到 `#root` |
-| `beginStartupTracking(...)` | main.tsx:91-94 | React 挂载后开始跟踪首屏请求 |
-| `failStartup(...)` 调用 | main.tsx:143 | 初始化配置失败时显示错误详情（第二个参数为 `String(error)`），Splash 错误面板可导出诊断日志/打开日志目录/重载 |
+| `installCrashHandlers()` | main.tsx:39 | 在最前面安装全局 `error` / `unhandledrejection` / 后端崩溃 / API 熔断监听（`@/utils/crashReporting`） |
+| `clearTimeout(window.__endprotocolBootTimer)` | main.tsx:42 | 取消 `index.html` 中「前端脚本未启动」的静态兜底计时器，并隐藏静态错误面板 |
+| `setStartupPhase(12, …)` / `setStartupPhase(30, …)` | main.tsx:51 / 68 | 更新静态 Splash 的初始化阶段文案 |
+| `armStartupTimeout()` | main.tsx:53 | 配置初始化前启动 45 秒启动看门狗，覆盖 IPC/配置读取永久挂起、React 未挂载的卡死场景 |
+| `syncSilentLaunchConfig` | main.tsx:54 | 完整前端启动时将既有 localStorage 的游戏目录/渠道迁移到 `ConfigService` |
+| 配置读取 + 主题应用 | main.tsx:57-75 | 并行读 `app.language`/`theme_mode`/`theme_color`/`theme_custom_colors`/`glass_clarity` 与 `loadBackgroundSettings()`/`loadAccountAvailability()`；`resolveThemeColor` 解析色板后依次 `applyThemeColor`、`applyThemeMode`、`applyGlassClarity`（渲染前应用，避免闪白） |
+| `ReactDOM.createRoot(...).render(...)` | main.tsx:80-88 | `StrictMode > BrowserRouter > Provider > App`，挂载到 `#root` |
+| `beginStartupTracking(...)` | main.tsx:89-92 | React 挂载后开始跟踪首屏请求 |
+| 托盘数据刷新 | main.tsx:106-115 | 读 `tray_user_role_id` → `refreshTrayUserData(roleId)`（`@/utils/trayService`），本文件不再直接 `invoke` |
+| `failStartup(...)` 调用 | main.tsx:118 | 初始化配置失败时显示错误详情（第二个参数为 `String(error)`），Splash 错误面板可导出诊断日志/打开日志目录/重载 |
 
 **备注**：
 - 主题逻辑已迁移：本文件原先自定义的 `ThemeMode`/`ThemeColor`/`PRESET_COLORS`/`findColors`/`applyThemeColor`/`applyThemeMode` 全部移到 `@/utils/theme`（见 [utils_services_a.md](utils_services_a.md)），`main.tsx` 只负责读配置并调用这些函数。
-- 初始化读取的配置键：`app.language`、`theme_mode`、`theme_color`、`theme_custom_colors`、`glass_clarity`，并 `loadBackgroundSettings()` 与 `loadAccountAvailability()`（渲染前恢复上一轮的账户不可用状态，让首屏即显示正确状态）；语言未保存时按 `navigator.language` 以 `zh` 开头判定中/英（main.tsx:68-69）；主题色默认 indigo、主题模式默认 `system`、玻璃清晰度默认 55（均由 `@/utils/theme` 的默认常量兜底）。
+- 初始化读取的配置键：`app.language`、`theme_mode`、`theme_color`、`theme_custom_colors`、`glass_clarity`，并 `loadBackgroundSettings()` 与 `loadAccountAvailability()`（渲染前恢复上一轮的账户不可用状态，让首屏即显示正确状态）；语言未保存时按 `navigator.language` 以 `zh` 开头判定中/英（main.tsx:66）；主题色默认 indigo、主题模式默认 `system`、玻璃清晰度默认 55（均由 `@/utils/theme` 的默认常量兜底）。
 - 前端启动时另外同步 localStorage 键 `launcher_install_path`、`launcher_channel` 至同名 app config 键，供之后的 `--silent --launch-game` 使用；同步失败经 logger 明确记录。
-- 渲染结构：`StrictMode > BrowserRouter > Provider > App`，挂载到 `#root`（main.tsx:82-90）。
+- 渲染结构：`StrictMode > BrowserRouter > Provider > App`，挂载到 `#root`（main.tsx:80-88）。
 - 启动 Splash 在 `index.html` 中由静态 HTML/CSS 提前展示，使用 `/app-icon.png`；背景层复用 `loadBackgroundSettings()` 设置的用户背景图、透明度和模糊度，没有自定义背景时回退到主题渐变。配置读取完成后继续保持显示。`startupProgress.ts` 汇总启动任务、仪表板首载、角色数据 IPC 与公告/背景加载，在请求静稳 650ms 后将进度补满并淡出；初始化配置异常时保留 Splash 并显示错误文案与 `#startup-splash-error` 操作面板（导出诊断日志/打开日志目录/重新加载）；45 秒超时同样停止加载并展示未完成请求数。
-- 渲染后的四个延时副作用：`loadAllCards()` 立即执行注册启动处理器，随后 `setTimeout 0` 调用 `CardStartupService.runAll()`（main.tsx:97-100）；`setTimeout 3000` 调用 `checkAndNotify()` 自动检查更新（main.tsx:102-105）；`setTimeout 5000` 读取 `tray_user_role_id`，查 `char_detail`（字段 `dungeon`/`bpSystem`/`dailyMission`/`weeklyMission`）并汇总账号昵称/头像后推送托盘数据（main.tsx:107-139）。
-- `invoke("update_tray_user_data", ...)`（main.tsx:118）：本文件唯一的 Tauri 命令，payload 为 `userInfo`（roleId、nickname、avatar、体力 curStamina/maxStamina/maxTs、每日活跃 dailyActivation/maxDailyActivation、周分 weeklyScore/weeklyTotal、BP 等级 bpCurLevel/bpMaxLevel），数值均做 `Number(...) || 0` 兜底。
+- 渲染后的四个延时副作用：`loadAllCards()` 立即执行注册启动处理器（main.tsx:95），随后 `setTimeout 0` 调用 `CardStartupService.runAll()`（main.tsx:96-98）；`setTimeout 3000` 调用 `checkAndNotify()` 自动检查更新（main.tsx:101-104）；`setTimeout 5000` 读取 `tray_user_role_id`，命中时调用 `refreshTrayUserData(trayRoleId)`（main.tsx:106-115）推送托盘数据。
+- 托盘数据不再在本文件组装：字段映射（含 `accountLevel` 游戏账号等级）全部下沉到 `@/utils/trayService`（main.tsx:16），本文件只在启动后触发一次刷新，因此 `invoke`/`roleDataService`/`getAccounts` 已不再直接出现在此。
 - 魔数：3000（更新检查延迟 ms）、5000（托盘数据拉取延迟 ms）、0（启动任务延迟 ms）；进度/主题色阶键名 50–900 为 Tailwind 风格约定。
 - `index.html` 的启动动画遵循 `prefers-reduced-motion`，静态启动文案先按浏览器语言显示，配置读取后切换为应用保存语言。另有 30 秒静态兜底计时器 `window.__endprotocolBootTimer`：若前端模块脚本未执行（加载/语法错误），静态展示「启动超时」与重新加载按钮；`main.tsx` 一旦执行即清除该计时器，改由 `armStartupTimeout` 的 45 秒看门狗接管。
 

@@ -4,91 +4,93 @@
 
 ## `src/pages/settings.tsx`
 **文件职责**：应用「设置」路由页（`/settings`）的全部 UI 与状态管理。呈现通用偏好、外观、开发者模式开关、更新与关于信息，并负责把偏好写入配置服务（`configService`）或后端状态，附带三个确认对话框与更新对话框；Windows 额外显示游戏启动设置卡，macOS/Linux 隐藏该卡。
-**导出**：`export default function SettingsPage()`（settings.tsx:41），仅此一个导出。
-**主要依赖**：`react-i18next`（`useTranslation`）、`@/components/ui/glass`（GlassAlertDialog/GlassButton/GlassCard/GlassSelect/GlassSkeleton/GlassSwitch）、`@/components/game-launch-settings`（`GameLaunchSettings`）、`@/components/appearance-settings`（`AppearanceSettings`）、`react`（useState/useEffect/useRef/useCallback）、`react-dom`（`createPortal`）、`@tauri-apps/api/core`（`invoke`）、`@tauri-apps/api/app`（`getVersion`/`getTauriVersion`/`getIdentifier`）、`@/utils/configService`（`getConfig`/`setConfig`）、`@/utils/roleDetailService`、`@/utils/roleDataService`、`@/utils/accountService`（`getAccounts`）、`@/components/ui/settings-row`（`SettingsDivider`）、`@/utils/updateService`（`fetchRemoteVersion`/`getRemoteVersion`/`subscribeRemoteVersion`/`getChannel`/`setChannel`/`getSource`/`setSource`/`initializeChannel`）、`@/components/ui/global-alert`（`pushGlobalAlert`）、`@/components/update-dialog`（`UpdateDialog`）、`@/utils/platform`（`isWindowsPlatform`）。
+**导出**：`export default function SettingsPage()`（settings.tsx:43），仅此一个导出。
+**主要依赖**：`react-i18next`（`useTranslation`）、`@/components/ui/glass`（GlassAlertDialog/GlassButton/GlassCard/GlassSelect/GlassSkeleton/GlassSwitch）、`@/components/game-launch-settings`（`GameLaunchSettings`）、`@/components/appearance-settings`（`AppearanceSettings`）、`react`（useState/useEffect/useRef/useCallback）、`react-dom`（`createPortal`）、`@tauri-apps/api/app`（`getVersion`/`getTauriVersion`/`getIdentifier`）、`@/utils/configService`（`getConfig`/`setConfig`）、`@/utils/roleDetailService`、`@/utils/trayService`（`setTrayUser`）、`@/components/ui/settings-row`（`SettingsDivider`）、`@/utils/updateService`（`fetchRemoteVersion`/`getRemoteVersion`/`subscribeRemoteVersion`/`getChannel`/`setChannel`/`getSource`/`setSource`/`initializeChannel`）、`@/components/ui/global-alert`（`pushGlobalAlert`）、`@/components/update-dialog`（`UpdateDialog`）、`@/utils/platform`（`isWindowsPlatform`）。
+
+> 托盘相关的 `invoke`（`set_tray_user`/`update_tray_user_data`）与 `roleDataService.queryData` 组装已迁到 `@/utils/trayService`（见 [utils_services_a.md](utils_services_a.md)），本文件因此不再直接依赖 `@tauri-apps/api/core` 与 `@/utils/roleDataService`；账号列表只在 `loadConfig` 里动态 `import("@/utils/accountService")`。
 
 ### 内部结构总览
 | 区间 | 内容 |
 | --- | --- |
-| settings.tsx:1-39 | import 区（UI 组件、子设置组件、Tauri API、配置/更新服务、对话框） |
-| settings.tsx:41-78 | `SettingsPage` 组件开头：`t`/`i18n` 解构与全部 `useState`（语言下拉、6 个偏好、版本/更新状态、对话框可见性） |
-| settings.tsx:80-83 | `languages` 常量（`en` / `zh` 两个选项） |
-| settings.tsx:85-153 | 挂载 effect：`loadConfig()` 并行读取 9 项配置与应用版本信息 → 动态 import 载入账号列表 → `initializeChannel()` 后 `fetchRemoteVersion()`；并 `subscribeRemoteVersion` 订阅更新状态 |
-| settings.tsx:155-169 | 语言下拉的外点/滚动关闭 effect（`mousedown` + 捕获阶段 `scroll`） |
-| settings.tsx:171-198 | 5 个轻量 handler：语言切换、刷新开关、懒加载、Wiki 预加载、关闭行为 |
-| settings.tsx:200-240 | `handleTrayUserChange`：写配置 → `set_tray_user` → 查 `char_detail` 汇总体力/活跃/周分/BP → `update_tray_user_data` |
-| settings.tsx:242-261 | 开发者模式：`handleDevModeToggle`（开启先弹警告）与 `confirmDevMode`，均派发 `developerModeChange` 自定义事件 |
-| settings.tsx:263-295 | `handleCheckUpdate`：拉取远端版本并用 `pushGlobalAlert` 反馈三种结果 |
-| settings.tsx:297-359 | 更新通道/更新源切换与二次确认：`handleChannelChange`、`handleSourceChange`、`confirmPreviewChannel`、`confirmGithubSource`（stable→preview、mirror→github 各需确认） |
-| settings.tsx:361-366 | effect：监听全局 `openUpdateDialog` 事件以打开更新对话框 |
-| settings.tsx:368-374 | `platformInfo` IIFE：按 UA 推断 Windows x64 / macOS / Linux |
-| settings.tsx:376-385 | 页头（`settings.title` + `common.managePreferences`） |
-| settings.tsx:387-714 | 通用设置卡 `#settings-general`：加载骨架屏 408-449；语言下拉 452-554（按钮 + portal 菜单）；切换刷新 558-582；懒加载 586-608；Wiki 预加载 612-636；关闭行为 641-680；托盘用户 685-705。**代理设置已迁出**至独立「网络」卡 |
-| settings.tsx:716-742 | 网络设置卡 `#settings-network`（标题「网络」+ 副标题 `settings.network.desc`，整卡委托给 `NetworkSettings`，settings.tsx:741） |
-| settings.tsx:746-775 | Windows 上显示游戏启动设置卡 `#settings-game-launch`（整卡委托给 `GameLaunchSettings`，settings.tsx:774） |
-| settings.tsx:780-799 | 外观设置卡 `#settings-appearance`（整卡委托给 `AppearanceSettings`，settings.tsx:798） |
-| settings.tsx:802-822 | 系统资源默认值卡 `#settings-system-resource`（委托 `SystemResourceSettings`，settings.tsx:821） |
-| settings.tsx:825-845 | To-Do 默认值卡 `#settings-todo`（委托 `TodoSettings`，settings.tsx:844） |
-| settings.tsx:848-901 | 开发者模式卡 `#settings-developer`：骨架屏 852 起，开关 888-897 |
-| settings.tsx:905-1463 | 更新与关于卡 `#settings-about`：应用头像/更新状态徽标；更新通道；更新源；版本四宫格；发布日期；「更新到 vX」；「检查更新」；identifier；License；开源致谢列表（20 项）；特别鸣谢列表（2 项：Xel-Launcher / Better-Endfield）；GitHub/License 链接 |
-| settings.tsx:1467-1498 | 开发者模式警告对话框（`GlassAlertDialog`） |
-| settings.tsx:1501-1566 | 测试版通道警告对话框（内容为内联中英双语） |
-| settings.tsx:1569-1639 | GitHub 源警告对话框（内容为内联中英双语） |
-| settings.tsx:1642-1647 | `<UpdateDialog>` 更新安装对话框 |
+| settings.tsx:1-41 | import 区（UI 组件、子设置组件、Tauri API、配置/更新/托盘服务、对话框） |
+| settings.tsx:43-81 | `SettingsPage` 组件开头：`t`/`i18n` 解构、`supportsLauncher` 与全部 `useState`（语言下拉、6 个偏好、版本/更新状态、对话框可见性） |
+| settings.tsx:83-86 | `languages` 常量（`en` / `zh` 两个选项） |
+| settings.tsx:88-156 | 挂载 effect：`loadConfig()`（89-142）并行读取 9 项配置与应用版本信息 → 动态 import 载入账号列表 → `initializeChannel()` 后 `fetchRemoteVersion()`；并 `subscribeRemoteVersion` 订阅更新状态 |
+| settings.tsx:158-172 | 语言下拉的外点/滚动关闭 effect（`mousedown` + 捕获阶段 `scroll`） |
+| settings.tsx:174-201 | 5 个轻量 handler：语言切换、刷新开关、懒加载、Wiki 预加载、关闭行为 |
+| settings.tsx:203-207 | `handleTrayUserChange`：写 state + `setConfig("tray_user_role_id")` → `setTrayUser(value)`（`@/utils/trayService`，内部完成 `set_tray_user` + 查 `char_detail` 汇总等级/体力/活跃/周分/BP + `update_tray_user_data`） |
+| settings.tsx:209-228 | 开发者模式：`handleDevModeToggle`（开启先弹警告）与 `confirmDevMode`，均派发 `developerModeChange` 自定义事件 |
+| settings.tsx:230-262 | `handleCheckUpdate`：拉取远端版本并用 `pushGlobalAlert` 反馈三种结果 |
+| settings.tsx:264-326 | 更新通道/更新源切换与二次确认：`handleChannelChange`、`handleSourceChange`、`confirmPreviewChannel`、`confirmGithubSource`（stable→preview、mirror→github 各需确认） |
+| settings.tsx:328-333 | effect：监听全局 `openUpdateDialog` 事件以打开更新对话框 |
+| settings.tsx:335-341 | `platformInfo` IIFE：按 UA 推断 Windows x64 / macOS / Linux |
+| settings.tsx:343-352 | 页头（`settings.title` + `common.managePreferences`） |
+| settings.tsx:355-675 | 通用设置卡 `#settings-general`：加载骨架屏 375-416；语言下拉 420-521（按钮 + portal 菜单）；切换刷新 525-549；懒加载 553-575；Wiki 预加载 579-603；关闭行为 608-647；托盘用户 652-672。**代理设置已迁出**至独立「网络」卡 |
+| settings.tsx:677-704 | 网络设置卡 `#settings-network`（标题「网络」+ 副标题 `settings.network.desc`，整卡委托给 `NetworkSettings`，settings.tsx:703） |
+| settings.tsx:706-738 | Windows 上显示游戏启动设置卡 `#settings-game-launch`（整卡委托给 `GameLaunchSettings`，settings.tsx:736） |
+| settings.tsx:741-761 | 外观设置卡 `#settings-appearance`（整卡委托给 `AppearanceSettings`，settings.tsx:760） |
+| settings.tsx:763-784 | 系统资源默认值卡 `#settings-system-resource`（委托 `SystemResourceSettings`，settings.tsx:783） |
+| settings.tsx:786-807 | To-Do 默认值卡 `#settings-todo`（委托 `TodoSettings`，settings.tsx:806） |
+| settings.tsx:809-863 | 开发者模式卡 `#settings-developer`：骨架屏 814 起，开关 851-858 |
+| settings.tsx:865-1425 | 更新与关于卡 `#settings-about`：应用头像/更新状态徽标；更新通道；更新源；版本四宫格；发布日期；「更新到 vX」；「检查更新」；identifier；License；开源致谢列表（20 项）；特别鸣谢列表（2 项：Xel-Launcher / Better-Endfield）；GitHub/License 链接 |
+| settings.tsx:1428-1460 | 开发者模式警告对话框（`GlassAlertDialog`） |
+| settings.tsx:1462-1528 | 测试版通道警告对话框（内容为内联中英双语） |
+| settings.tsx:1530-1601 | GitHub 源警告对话框（内容为内联中英双语） |
+| settings.tsx:1603-1607 | `<UpdateDialog>` 更新安装对话框 |
 
 ### 组件与函数清单
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
-| `SettingsPage`（default） | settings.tsx:41 | 页面根组件，返回 7 张卡片 + 3 个警告对话框 + `UpdateDialog` |
-| `languages` | settings.tsx:85-88 | 语言选项常量：`{key:"en",label:"English"}`、`{key:"zh",label:"简体中文"}` |
-| `refreshOnSwitch` 等偏好 state | settings.tsx:56-60 | `refreshOnSwitch`、`lazyLoadEnabled`、`wikiDetailPreload`、`closeAction`、`trayUserRoleId`（代理配置已不在本文件，见 `NetworkSettings`） |
-| `accounts` | settings.tsx:61-63 | 托盘角色下拉用的账号列表（id/nickname/avatar） |
-| `developerMode` / `showDevWarning` | settings.tsx:65-66 | 开发者模式开关与警告弹窗可见性 |
-| `isConfigLoading` / `appVersion` / `tauriVersion` / `appId` | settings.tsx:67-70 | 加载态与 `@tauri-apps/api/app` 三元信息 |
-| `isCheckingUpdate` / `remoteVersion` / `updateChannel` / `updateSource` | settings.tsx:71-75 | 更新检查状态、远端版本状态、通道与来源 |
-| `showUpdateDialog` / `showPreviewWarning` / `showGithubWarning` / `pendingChannel` / `pendingSource` | settings.tsx:76-82 | 对话框可见性与待确认的通道/来源 |
-| `isLangDropdownOpen` / `langDropdownPos` + 三个 ref | settings.tsx:43-55 | 语言下拉的开关、portal 定位与 DOM 引用 |
-| `loadConfig`（effect 内部 async） | settings.tsx:91-142 | `Promise.all` 读 9 项；随后动态 import 账号、初始化更新通道/来源 |
-| 初始化 effect | settings.tsx:90-157 | 调 `loadConfig`，完成后 `fetchRemoteVersion()`；订阅远端版本并清理 |
-| 下拉关闭 effect | settings.tsx:155-169 | 菜单/按钮外点击或任意滚动（捕获）时关闭语言下拉 |
-| `handleLanguageChange` | settings.tsx:176-179 | `i18n.changeLanguage(langKey)` 并关闭下拉 |
-| `handleRefreshOnSwitchChange` | settings.tsx:181-184 | state + `setConfig("refresh_on_account_switch")` |
-| `handleLazyLoadChange` | settings.tsx:186-193 | 调 `roleDetailService.setLazyLoadEnabled`，失败回滚 state |
-| `handleWikiDetailPreloadChange` | settings.tsx:195-198 | state + `setConfig("wiki_detail_preload")` |
-| `handleCloseActionChange` | settings.tsx:200-203 | state + `setConfig("close_action")` |
-| `handleTrayUserChange` | settings.tsx:205-245 | 写 `tray_user_role_id` → `set_tray_user` → `roleDataService.queryData(roleId,"char_detail",["dungeon","bpSystem","dailyMission","weeklyMission"])` → 拼 `userInfo` 调 `update_tray_user_data` |
-| `handleDevModeToggle` | settings.tsx:247-257 | 开启弹警告；关闭直接写 `developer_mode=false` 并派发 `developerModeChange` 事件 |
-| `confirmDevMode` | settings.tsx:259-266 | 写 `developer_mode=true`、关警告、派发 `developerModeChange` |
-| `handleCheckUpdate` | settings.tsx:268-300 | `fetchRemoteVersion()` 后按 `hasUpdate`/`error`/正常三路 `pushGlobalAlert` |
-| `handleChannelChange` | settings.tsx:302-318 | stable→preview 先挂起 `pendingChannel` 并弹警告，否则直接 `setChannel` |
-| `handleSourceChange` | settings.tsx:320-336 | mirror→github 先挂起 `pendingSource` 并弹警告，否则直接 `setSource` |
-| `confirmPreviewChannel` | settings.tsx:338-350 | 确认后执行 `setChannel(pendingChannel)` 并清空挂起值 |
-| `confirmGithubSource` | settings.tsx:352-364 | 确认后执行 `setSource(pendingSource)` 并清空挂起值 |
-| `openUpdateDialog` effect | settings.tsx:367-371 | 监听全局 `openUpdateDialog` 事件打开更新对话框 |
-| `platformInfo` | settings.tsx:373-379 | UA 推断平台字符串（Windows x64 / macOS / Linux / `navigator.platform`） |
+| `SettingsPage`（default） | settings.tsx:43 | 页面根组件，返回 7 张卡片 + 3 个警告对话框 + `UpdateDialog` |
+| `languages` | settings.tsx:83-86 | 语言选项常量：`{key:"en",label:"English"}`、`{key:"zh",label:"简体中文"}` |
+| `refreshOnSwitch` 等偏好 state | settings.tsx:55-59 | `refreshOnSwitch`、`lazyLoadEnabled`、`wikiDetailPreload`、`closeAction`、`trayUserRoleId`（代理配置已不在本文件，见 `NetworkSettings`） |
+| `accounts` | settings.tsx:60-62 | 托盘角色下拉用的账号列表（id/nickname/avatar） |
+| `developerMode` / `showDevWarning` | settings.tsx:64-65 | 开发者模式开关与警告弹窗可见性 |
+| `isConfigLoading` / `appVersion` / `tauriVersion` / `appId` | settings.tsx:66-69 | 加载态与 `@tauri-apps/api/app` 三元信息 |
+| `isCheckingUpdate` / `remoteVersion` / `updateChannel` / `updateSource` | settings.tsx:70-74 | 更新检查状态、远端版本状态、通道与来源 |
+| `showUpdateDialog` / `showPreviewWarning` / `showGithubWarning` / `pendingChannel` / `pendingSource` | settings.tsx:75-81 | 对话框可见性与待确认的通道/来源 |
+| `isLangDropdownOpen` / `langDropdownPos` + 三个 ref | settings.tsx:46-54 | 语言下拉的开关、portal 定位与 DOM 引用 |
+| `loadConfig`（effect 内部 async） | settings.tsx:89-142 | `Promise.all` 读 9 项；随后动态 import 账号、初始化更新通道/来源 |
+| 初始化 effect | settings.tsx:88-156 | 调 `loadConfig`，完成后 `fetchRemoteVersion()`；订阅远端版本并清理 |
+| 下拉关闭 effect | settings.tsx:158-172 | 菜单/按钮外点击或任意滚动（捕获）时关闭语言下拉 |
+| `handleLanguageChange` | settings.tsx:174-177 | `i18n.changeLanguage(langKey)` 并关闭下拉 |
+| `handleRefreshOnSwitchChange` | settings.tsx:179-182 | state + `setConfig("refresh_on_account_switch")` |
+| `handleLazyLoadChange` | settings.tsx:184-191 | 调 `roleDetailService.setLazyLoadEnabled`，失败回滚 state |
+| `handleWikiDetailPreloadChange` | settings.tsx:193-196 | state + `setConfig("wiki_detail_preload")` |
+| `handleCloseActionChange` | settings.tsx:198-201 | state + `setConfig("close_action")` |
+| `handleTrayUserChange` | settings.tsx:203-207 | 写 state + `setConfig("tray_user_role_id")` → `setTrayUser(value)`（`@/utils/trayService`：`invoke("set_tray_user")` + `refreshTrayUserData()`，本文件不再直接查 `char_detail` 或拼 `userInfo`） |
+| `handleDevModeToggle` | settings.tsx:209-219 | 开启弹警告；关闭直接写 `developer_mode=false` 并派发 `developerModeChange` 事件 |
+| `confirmDevMode` | settings.tsx:221-228 | 写 `developer_mode=true`、关警告、派发 `developerModeChange` |
+| `handleCheckUpdate` | settings.tsx:230-262 | `fetchRemoteVersion()` 后按 `hasUpdate`/`error`/正常三路 `pushGlobalAlert` |
+| `handleChannelChange` | settings.tsx:264-280 | stable→preview 先挂起 `pendingChannel` 并弹警告，否则直接 `setChannel` |
+| `handleSourceChange` | settings.tsx:282-298 | mirror→github 先挂起 `pendingSource` 并弹警告，否则直接 `setSource` |
+| `confirmPreviewChannel` | settings.tsx:300-312 | 确认后执行 `setChannel(pendingChannel)` 并清空挂起值 |
+| `confirmGithubSource` | settings.tsx:314-326 | 确认后执行 `setSource(pendingSource)` 并清空挂起值 |
+| `openUpdateDialog` effect | settings.tsx:328-333 | 监听全局 `openUpdateDialog` 事件打开更新对话框 |
+| `platformInfo` | settings.tsx:335-341 | UA 推断平台字符串（Windows x64 / macOS / Linux / `navigator.platform`） |
 
 ### 设置项清单（对 settings.tsx 必填）
 | 设置项 | 存储位置（配置键/state） | 控件 | 默认值 | 行号 |
 | --- | --- | --- | --- | --- |
-| 界面语言 | i18next 运行时 `i18n.language`（本文件**未**写入配置；`app.language` 由 `src/main.tsx:142` 读取、`src/components/language-switch.tsx:78` 写入） | 自定义下拉：`GlassButton` + `createPortal` 浮层菜单 | `en`（`i18n.ts:19` 初始值） | state 43-55；选项 85-88；handler 176-179；UI 458-577 |
-| 切换账户时刷新数据 | 配置键 `refresh_on_account_switch`（state `refreshOnSwitch`） | `GlassSwitch` | `false` | state 56；读 96/104；写 183；UI 562-586 |
-| 懒加载模式 | 后端持久状态，经 `roleDetailService`：invoke `is_lazy_load_enabled` / `set_lazy_load_enabled`（不走 `configService`） | `GlassSwitch` | `true`（读取失败时后端兜底 true，roleDetailService.ts:49） | state 57；读 97/105；写 193；UI 590-612 |
-| 启动时预加载 Wiki 详情 | 配置键 `wiki_detail_preload`（state `wikiDetailPreload`） | `GlassSwitch` | `false` | state 58；读 98/106；写 198；UI 616-640 |
-| 关闭窗口行为 | 配置键 `close_action`（state `closeAction`，取值 `close`/`minimize_to_tray`/`ask`） | 三段式文字按钮组 | `ask` | state 59；读 101/111；写 203；UI 644-684 |
-| 托盘显示角色 | 配置键 `tray_user_role_id` + invoke `set_tray_user`、`update_tray_user_data`（state `trayUserRoleId`） | `GlassSelect`（选项来自 `getAccounts()` 账号昵称） | 空串（未选择） | state 60；读 102/112；写 205-245；UI 689-711 |
-| 开发者模式 | 配置键 `developer_mode` + 窗口事件 `developerModeChange`（state `developerMode`） | `GlassSwitch` + `GlassAlertDialog` 二次确认 | `false` | state 65-66；读 99/109；写 252/261；UI 888-897；对话框 1467-1498 |
-| 更新通道 | 配置键 `update_channel`（由 `updateService.getChannel/setChannel` 读写；state `updateChannel`） | 双卡片单选按钮（stable / preview） | `stable` | state 74；读 143；写 302-318、338-350；UI 976-1050；警告框 1501-1566 |
-| 更新源 | 配置键 `update_source`（由 `updateService.getSource/setSource` 读写；state `updateSource`） | 双卡片单选按钮（github / mirror） | `github` | state 75；读 144；写 320-336、352-364；UI 1054-1127；警告框 1569-1639 |
-| 代理设置（整卡委托） | 子组件 `NetworkSettings`：配置键 `proxy_config`（经 `proxyService` 的 `get_proxy_settings` / `save_proxy_settings` / `clear_proxy_settings` 读写），本文件不读写 | 子组件 `NetworkSettings`（开关 + 协议单选组 + 字段表单 + 系统代理读取 + 连通性测试） | `{enabled:false,type:"http",host:"",port:8080}` | 716-742（渲染 741） |
-| 游戏启动设置（整卡委托） | 子组件内：`@/stores/launcherMode`（zustand）与 `localStorage` 键（如 `CANCEL_BEHAVIOR_KEY`、`VERIFY_THREADS_KEY`），本文件不读写 | 子组件 `GameLaunchSettings` | 见子组件 | 746-775（渲染 774） |
-| 外观设置（整卡委托） | 子组件内配置键：`theme_mode`、`theme_color`、`theme_custom_colors`、`bg_image_path`、`bg_image_opacity`、`bg_blur`、`glass_clarity` | 子组件 `AppearanceSettings` | 见子组件 | 780-799（渲染 798） |
+| 界面语言 | i18next 运行时 `i18n.language`（本文件**未**写入配置；`app.language` 由 `src/main.tsx` 读取、`src/components/language-switch.tsx` 写入） | 自定义下拉：`GlassButton` + `createPortal` 浮层菜单 | `en`（`i18n.ts` 初始值） | state 46-54；选项 83-86；handler 174-177；UI 420-521 |
+| 切换账户时刷新数据 | 配置键 `refresh_on_account_switch`（state `refreshOnSwitch`） | `GlassSwitch` | `false` | state 55；读 102/112；写 181；UI 525-549 |
+| 懒加载模式 | 后端持久状态，经 `roleDetailService`：invoke `is_lazy_load_enabled` / `set_lazy_load_enabled`（不走 `configService`） | `GlassSwitch` | `true`（读取失败时后端兜底 true） | state 56；读 103/113；写 187；UI 553-575 |
+| 启动时预加载 Wiki 详情 | 配置键 `wiki_detail_preload`（state `wikiDetailPreload`） | `GlassSwitch` | `false` | state 57；读 105/114；写 195；UI 579-603 |
+| 关闭窗口行为 | 配置键 `close_action`（state `closeAction`，取值 `close`/`minimize_to_tray`/`ask`） | 三段式文字按钮组 | `ask` | state 58；读 109/119；写 200；UI 608-647 |
+| 托盘显示角色 | 配置键 `tray_user_role_id`；invoke `set_tray_user`、`update_tray_user_data` 经 `@/utils/trayService` 的 `setTrayUser` 触发（state `trayUserRoleId`） | `GlassSelect`（选项来自动态 import 的 `getAccounts()` 账号昵称） | 空串（未选择） | state 59；读 110/120；写 203-207；UI 652-672 |
+| 开发者模式 | 配置键 `developer_mode` + 窗口事件 `developerModeChange`（state `developerMode`） | `GlassSwitch` + `GlassAlertDialog` 二次确认 | `false` | state 64-65；读 104/115；写 214/223；UI 851-858；对话框 1428-1460 |
+| 更新通道 | 配置键 `update_channel`（由 `updateService.getChannel/setChannel` 读写；state `updateChannel`） | 双卡片单选按钮（stable / preview） | `stable` | state 73；读 140；写 264-280、300-312；UI 922-992；警告框 1462-1528 |
+| 更新源 | 配置键 `update_source`（由 `updateService.getSource/setSource` 读写；state `updateSource`） | 双卡片单选按钮（github / mirror） | `github` | state 74；读 141；写 282-298、314-326；UI 996-1066；警告框 1530-1601 |
+| 代理设置（整卡委托） | 子组件 `NetworkSettings`：配置键 `proxy_config`（经 `proxyService` 的 `get_proxy_settings` / `save_proxy_settings` / `clear_proxy_settings` 读写），本文件不读写 | 子组件 `NetworkSettings`（开关 + 协议单选组 + 字段表单 + 系统代理读取 + 连通性测试） | `{enabled:false,type:"http",host:"",port:8080}` | 677-704（渲染 703） |
+| 游戏启动设置（整卡委托） | 子组件内：`@/stores/launcherMode`（zustand）与 `localStorage` 键（如 `CANCEL_BEHAVIOR_KEY`、`VERIFY_THREADS_KEY`），本文件不读写 | 子组件 `GameLaunchSettings` | 见子组件 | 706-738（渲染 736） |
+| 外观设置（整卡委托） | 子组件内配置键：`theme_mode`、`theme_color`、`theme_custom_colors`、`bg_image_path`、`bg_image_opacity`、`bg_blur`、`glass_clarity` | 子组件 `AppearanceSettings` | 见子组件 | 741-761（渲染 760） |
 
 **备注**：
-- **invoke 命令名（本文件直接调用）**：`set_tray_user`（settings.tsx:209）、`update_tray_user_data`（settings.tsx:224，payload 为 `userInfo`：roleId/nickname/avatar/curStamina/maxStamina/maxTs/dailyActivation/maxDailyActivation/weeklyScore/weeklyTotal/bpCurLevel/bpMaxLevel，数值均 `Number(...) || 0` 兜底）。
-- **invoke 命令名（经服务间接触发）**：`query_role_data`（`roleDataService.queryData`，roleDataService.ts:83）、`is_lazy_load_enabled` / `set_lazy_load_enabled`（roleDetailService.ts:45 / :33）、`fetch_url`（updateService 内部拉取更新元数据，updateService.ts:255、:323）；代理相关命令全部由 `NetworkSettings` 经 `proxyService` 触发（见 `components_settings_panels.md`）。
+- **invoke 命令名（本文件直接调用）**：无。托盘相关的 `set_tray_user` / `update_tray_user_data` 已随数据组装逻辑迁到 `@/utils/trayService`（见 [utils_services_a.md](utils_services_a.md) 的 `trayService` 一节）。
+- **invoke 命令名（经服务间接触发）**：`set_tray_user`、`update_tray_user_data`、`query_role_data`（`setTrayUser`→`refreshTrayUserData`→`roleDataService.queryData`）、`is_lazy_load_enabled` / `set_lazy_load_enabled`（roleDetailService）、`fetch_url`（updateService 内部拉取更新元数据）；代理相关命令全部由 `NetworkSettings` 经 `proxyService` 触发（见 `components_settings_panels.md`）。
 - **配置键**：`refresh_on_account_switch`、`wiki_detail_preload`、`close_action`、`tray_user_role_id`、`developer_mode`（本文件直接读写）；`update_channel`、`update_source`（经 updateService 间接读写）；委托组件另用 `proxy_config`、`app.language`、`theme_mode`、`theme_color`、`theme_custom_colors`、`bg_image_path`、`bg_image_opacity`、`bg_blur`、`glass_clarity`。
 - **i18n key 前缀**：`settings.title`、`common.managePreferences`、`settings.general.*`（含 `language`、`close_action*`、`tray_user*`、`title`）、`settings.network.*`（`title`/`desc`，网络卡标题）、`settings.game_launch.title`、`settings.appearance.title`、`settings.system_resource.title`、`settings.todo.title`、`settings.developer.*`（`title`/`enable`/`enable_desc`/`warning_*`）、`settings.update_channel.*`、`settings.update_source.*`、`settings.update.*`（`app_version`/`tauri_version`/`platform`/`latest_version`/`release_date`/`license*`/`open_source_credits`/`special_thanks`/`xel_launcher_desc`/`better_endfield_desc`）。
-- **窗口事件**：`openUpdateDialog`（监听，settings.tsx:369）、`developerModeChange`（派发两次，settings.tsx:253、:263，detail 为 `{enabled:boolean}`）。
+- **窗口事件**：`openUpdateDialog`（监听，settings.tsx:331）、`developerModeChange`（派发两次，settings.tsx:216、:226，detail 为 `{enabled:boolean}`）。
 - **DOM 锚点 id**：`settings-general`、`settings-language`、`settings-refresh-on-switch`、`settings-lazy-load`、`settings-wiki-detail-preload`、`settings-close-action`、`settings-tray-user`、`settings-network`、`settings-game-launch`、`settings-appearance`、`settings-system-resource`、`settings-todo`、`settings-developer`、`settings-about`。
 - 非持久化展示项：远端版本徽标、版本四宫格、发布日期、identifier、License、20 条开源致谢（内联数组）、2 条特别鸣谢（Xel-Launcher / Better-Endfield，内联数组，说明文案走 i18n）、GitHub/License 外链、「检查更新」与「更新到 vX」按钮。
 

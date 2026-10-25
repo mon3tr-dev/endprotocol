@@ -1,7 +1,7 @@
 # 前端服务与工具（A 组：账户/配置/角色/启动器）— 文件功能参考
 
 > 逐文件精读源码生成。行号基于当前工作区版本，仅用于快速定位。
-> 本文件覆盖 12 个服务封装：account / config / proxy / cardConfig / dashboardConfig / backgroundSettings / roleData / roleDetail / tab / tabIcons / messageStore / launcher / systemResource。
+> 本文件覆盖 15 个服务封装：account / config / proxy / cardConfig / dashboardConfig / theme / backgroundSettings / roleData / roleDetail / tab / tabIcons / messageStore / launcher / systemResource / tray。
 
 ## `src/utils/accountService.ts`
 **职责**：封装森空岛/游戏账户相关的全部 Tauri IPC 调用（登录、登出、刷新、扫码、验证码、选中账户、凭证刷新），并定义账户相关的 TS 类型。是前端访问账户后端的唯一入口层。
@@ -431,6 +431,22 @@
 | `setSystemResourceDefaults(patch)` | 读-改-写合并保存 |
 
 **备注**：封装的 invoke 命令：`get_system_snapshot`；配置键：`system_resource_defaults`、`system_resource_defaults_version`（另经 `configService` 间接使用 `get_config`/`set_config`）。
+
+## `src/utils/trayService.ts`
+**职责**：托盘悬浮面板数据的唯一组装点——拉 `char_detail` + 账号列表 → 拼 `TrayUserInfo` → `update_tray_user_data` 写入配置键 `tray_user_info` 并触发 `tray-user-info-updated` 广播。抽出来是为了让 `main.tsx`（启动 5 秒后刷新）与 `pages/settings.tsx`（切换托盘显示角色）共用同一份字段映射，避免两处各写一遍漏字段。
+**导出**：`TrayUserInfo`（interface）、`refreshTrayUserData(roleId)`、`setTrayUser(roleId)`。
+**主要依赖**：`@tauri-apps/api/core` 的 `invoke`、`@/utils/logger`、`@/utils/roleDataService`、`@/utils/accountService`（`getAccounts`）。
+
+| 符号 | 位置 | 说明 |
+| --- | --- | --- |
+| `TrayUserInfo`（interface） | :18 | 与后端 `crate::tray::TrayUserInfo`（camelCase，字段均 `Option`）一一对应；`nickname`/`avatar` 允许 `null`；`accountLevel`（:23）= 游戏账号等级，`bpCurLevel`/`bpMaxLevel` = 通行证等级。`components/tray-panel.tsx` 复用该类型，不再各自声明 |
+| `TrayQueryResult`（私有 interface） | :39 | `query_role_data` 返回的是**「路径字符串 → 值」的扁平映射**，所以叶子路径写作 `"base.level"` 键（`result["base.level"]`），不是嵌套对象；`dungeon` 的数值是字符串，统一 `Number(...) \|\| 0` 兜底 |
+| `refreshTrayUserData(roleId)` | :53 | 查询 `char_detail` 的 `base.level`/`dungeon`/`bpSystem`/`dailyMission`/`weeklyMission` → `getAccounts()` 取昵称头像 → `invoke("update_tray_user_data")`。`accountLevel` 优先取 `base.level`，取不到回退账号列表缓存的 `level`。空 `roleId` 直接返回 `false`；异常仅 `logger.error` 后返回 `false`，不上抛 |
+| `setTrayUser(roleId)` | :108 | `invoke("set_tray_user")`（失败忽略）+ `refreshTrayUserData(roleId)`；设置页切换托盘账号用 |
+
+**备注**：
+- 封装的 invoke 命令：`update_tray_user_data`、`set_tray_user`；配置键：`tray_user_info`（写入侧），`tray_user_role_id`（由调用方读取后传入）。
+- **右上角「等级」徽标显示 `accountLevel`（游戏账号等级），不是 `bpCurLevel`**；通行证等级只在面板的「通行证」`MetricRow` 里显示。改字段时三处需同步：本文件、`crate::tray::TrayUserInfo`、面板组件。
 
 
 

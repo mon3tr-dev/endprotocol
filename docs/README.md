@@ -39,7 +39,7 @@
 | 应用自更新 | `src/utils/updateService.ts`、`commands/updater.rs` | [utils_services_b.md](reference/frontend/utils_services_b.md)、[commands.md](reference/backend/commands.md) |
 | 外观设置（主题/背景/取色） | `src/components/appearance-settings.tsx` | [components_settings_panels.md](reference/frontend/components_settings_panels.md) |
 | 设置页 / 开发者页 | `src/pages/settings.tsx`、`src/pages/developer.tsx` | [pages_settings_developer.md](reference/frontend/pages_settings_developer.md) |
-| 托盘与托盘面板 | `src-tauri/src/tray.rs`、`src/components/tray-panel.tsx`、`src/tray-panel.tsx` | [bootstrap.md](reference/backend/bootstrap.md)、[components_settings_panels.md](reference/frontend/components_settings_panels.md)、[entry_and_app.md](reference/frontend/entry_and_app.md) |
+| 托盘与托盘面板 | `src-tauri/src/tray.rs`、`src/utils/trayService.ts`（数据组装）、`src/components/tray-panel.tsx`、`src/tray-panel.tsx` | [bootstrap.md](reference/backend/bootstrap.md)、[components_settings_panels.md](reference/frontend/components_settings_panels.md)、[entry_and_app.md](reference/frontend/entry_and_app.md)、[utils_services_a.md](reference/frontend/utils_services_a.md) |
 | 窗口控制（最小化/最大化/关闭/托盘化） | `src/components/custom-titlebar.tsx`、`commands/window.rs` | [components_dialogs.md](reference/frontend/components_dialogs.md)、[commands.md](reference/backend/commands.md) |
 | 屏幕取色器 | `src/components/screen-color-picker.tsx`、`commands/color_picker.rs` | [components_dialogs.md](reference/frontend/components_dialogs.md) |
 | 图片缓存与背景图管理 | `src/utils/imageCacheManager.ts`、`commands/image.rs`、`services/avatar_cache_service.rs` | [utils_services_b.md](reference/frontend/utils_services_b.md)、[services_others.md](reference/backend/services_others.md) |
@@ -117,7 +117,7 @@
 | [reference/frontend/cards_account_achievement.md](reference/frontend/cards_account_achievement.md) | `account-info/`、`account-progress/`、`achievement/` |
 | [reference/frontend/cards_attendance_domain_spaceship.md](reference/frontend/cards_attendance_domain_spaceship.md) | `attendance/`、`domain-info/`、`spaceship/` |
 | [reference/frontend/cards_system_todo.md](reference/frontend/cards_system_todo.md) | `system-resource/`、`todo/` 两类新卡片（含 `todoStore`、相关 types/utils/设置分区/`pages/todo.tsx`） |
-| [reference/frontend/utils_services_a.md](reference/frontend/utils_services_a.md) | 账户/配置/**代理**/卡片配置/仪表板/角色/标签页/启动器等 12 个服务封装（含每个函数对应的命令名） |
+| [reference/frontend/utils_services_a.md](reference/frontend/utils_services_a.md) | 账户/配置/**代理**/卡片配置/仪表板/角色/标签页/启动器/**托盘**等 14 个服务封装（含每个函数对应的命令名） |
 | [reference/frontend/utils_services_b.md](reference/frontend/utils_services_b.md) | 更新、Wiki 解析、图片缓存、技能描述解析、日志、崩溃上报、诊断导出、滚动条、启动进度 |
 | [reference/frontend/ui_components.md](reference/frontend/ui_components.md) | `src/components/ui/` 全部 37 个通用组件（含 `radio-group.tsx`）+ `primitives`/`icons`/`morph-icon`（含每个组件的 props） |
 | [reference/frontend/types_locales_styles.md](reference/frontend/types_locales_styles.md) | `src/types/*`、`locales/*`（命名空间清单）、`globals.css`（主题变量体系） |

@@ -6,6 +6,7 @@ import { listen } from "@tauri-apps/api/event";
 import { Img } from "@/utils/imageLoader";
 import logger from "@/utils/logger";
 import { loadTheme } from "@/utils/theme";
+import type { TrayUserInfo } from "@/utils/trayService";
 import { MorphIcon } from "morphicons/react";
 import type { IconInput } from "morphicons";
 import {
@@ -17,21 +18,6 @@ import {
   Trophy,
   Zap,
 } from "lucide";
-
-interface TrayUserInfo {
-  roleId?: string;
-  nickname?: string;
-  avatar?: string;
-  curStamina?: number;
-  maxStamina?: number;
-  maxTs?: number;
-  dailyActivation?: number;
-  maxDailyActivation?: number;
-  weeklyScore?: number;
-  weeklyTotal?: number;
-  bpCurLevel?: number;
-  bpMaxLevel?: number;
-}
 
 /** 理智自然回复间隔（秒）：每 6 分钟 1 点，与 account-progress 卡片保持一致 */
 const STAMINA_REFILL_SECONDS = 432;
@@ -154,7 +140,7 @@ export function TrayPanel() {
 
   const loadUserInfo = useCallback(async () => {
     try {
-      const info = await invoke<TrayUserInfo>("get_tray_user_info");
+      const info = await invoke<TrayUserInfo | null>("get_tray_user_info");
       setUserInfo(info ?? {});
     } catch (error) {
       logger.warn("Failed to load tray user info: " + error, null, "TrayPanel");
@@ -197,6 +183,8 @@ export function TrayPanel() {
 
   const hasUser = Boolean(userInfo.roleId);
   const nickname = userInfo.nickname ?? "";
+  /** 右上角徽标：游戏账号等级（不是通行证等级，通行证见下方 MetricRow） */
+  const accountLevel = userInfo.accountLevel ?? 0;
   const maxStamina = userInfo.maxStamina ?? 0;
   const maxTs = userInfo.maxTs ?? 0;
 
@@ -286,9 +274,9 @@ export function TrayPanel() {
             {t("tray.title")}
           </span>
         </div>
-        {hasUser && (
+        {hasUser && accountLevel > 0 && (
           <span className="shrink-0 rounded-full bg-default-100/80 px-1.5 py-0.5 text-[9px] font-medium text-muted">
-            {t("tray.level")} {bpCurrent}
+            {t("tray.level")} {accountLevel}
           </span>
         )}
       </header>

@@ -123,7 +123,7 @@
 | `set_lazy_load_enabled` | [src-tauri/src/commands/account.rs:308](backend/commands.md) | [src/utils/roleDetailService.ts](../../src/utils/roleDetailService.ts) |
 | `set_proxy_config` | [src-tauri/src/commands/config.rs:23](backend/commands.md) | —（前端未调用） |
 | `set_selected_account` | [src-tauri/src/commands/account.rs:277](backend/commands.md) | [src/utils/accountService.ts](../../src/utils/accountService.ts) |
-| `set_tray_user` | [src-tauri/src/commands/tray.rs:19](backend/commands.md) | [src/pages/settings.tsx](../../src/pages/settings.tsx) |
+| `set_tray_user` | [src-tauri/src/commands/tray.rs:19](backend/commands.md) | [src/utils/trayService.ts](../../src/utils/trayService.ts) |
 | `show_main_window` | [src-tauri/src/commands/tray.rs:78](backend/commands.md) | [src/components/tray-panel.tsx](../../src/components/tray-panel.tsx) |
 | `show_tray_panel` | [src-tauri/src/commands/tray.rs:66](backend/commands.md) | —（前端未调用） |
 | `steam_shortcut_defaults` | [src-tauri/src/commands/startup.rs:194](backend/commands.md) | [src/utils/launcherService.ts](../../src/utils/launcherService.ts) |
@@ -131,5 +131,5 @@
 | `sync_weapon_gacha_records` | [src-tauri/src/commands/gacha.rs:179](backend/commands.md) | [src/pages/gacha-records.tsx](../../src/pages/gacha-records.tsx) |
 | `test_proxy_connection` | [src-tauri/src/commands/proxy.rs:29](backend/commands.md) | [src/utils/proxyService.ts](../../src/utils/proxyService.ts) |
 | `toggle_maximize_window` | [src-tauri/src/commands/window.rs:10](backend/commands.md) | [src/components/custom-titlebar.tsx](../../src/components/custom-titlebar.tsx) |
-| `update_tray_user_data` | [src-tauri/src/commands/tray.rs:45](backend/commands.md) | [src/main.tsx](../../src/main.tsx)<br>[src/pages/settings.tsx](../../src/pages/settings.tsx) |
+| `update_tray_user_data` | [src-tauri/src/commands/tray.rs:45](backend/commands.md) | [src/utils/trayService.ts](../../src/utils/trayService.ts) |
 | `write_file` | [src-tauri/src/commands/updater.rs:104](backend/commands.md) | —（前端未调用） |

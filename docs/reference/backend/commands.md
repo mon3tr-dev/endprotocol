@@ -113,12 +113,12 @@
 | `extract_steam_icon` | commands/startup.rs:265 | `exe_path: String` | `Result<String, String>` | `utils::game_icon::extract_icon` 重新组装 `RT_GROUP_ICON` 为 `.ico`，写出到应用数据目录并返回路径 |
 | `create_game_shortcut` | commands/startup.rs:272 | `config_service: State<Arc<Mutex<ConfigService>>>`、`dx11: Option<bool>`（缺省读配置 `launcher_dx11`） | `Result<Option<String>, String>` | 用户通过 `rfd` 选择 `.lnk` 路径；PowerShell COM 创建快捷方式，启动参数按开关包含 `--dx11`，返回路径；取消选择返回 `None` |
 | `add_steam_shortcut` | commands/startup.rs:345 | `config_service: State<Arc<Mutex<ConfigService>>>`、`options: SteamShortcutOptions`（`name`、`icon_path`、`dx11`、`create_admin_shortcut`、`elevate_start_menu`） | `Result<AddSteamShortcutResult, String>` | 允许 Steam 运行中写入：`utils::steam::add_shortcut` 按名字 upsert 当前账户 `userdata/<id>/config/shortcuts.vdf`；按勾选创建管理员 Steam 快捷方式（用户选路径）并提升开始菜单 Steam 快捷方式；返回 vdf 路径与新建/提升结果；非 Windows 返回 `Err` |
-| `set_tray_user` | commands/tray.rs:17 | `app: AppHandle`、`config_service`、`role_id: String` | `Result<(), String>` | `ConfigService::set("tray_user_info", …)`、`tray::update_tray_menu` |
-| `update_tray_user_data` | commands/tray.rs:38 | `app`、`config_service`、`user_info: TrayUserInfo` | `Result<(), String>` | `ConfigService::set("tray_user_info", …)`、`tray::update_tray_menu` |
-| `show_tray_panel` | commands/tray.rs:56 | `app: AppHandle` | `Result<(), String>` | `tray::show_tray_panel` |
-| `hide_tray_panel` | commands/tray.rs:62 | `app: AppHandle` | `Result<(), String>` | `tray::hide_tray_panel` |
-| `show_main_window` | commands/tray.rs:68 | `app: AppHandle` | `Result<(), String>` | `tray::show_main_window_focus` + `tray::hide_tray_panel` |
-| `app_quit` | commands/tray.rs:77 | `app: AppHandle` | `()`（无返回） | `app.exit(0)` |
+| `set_tray_user` | commands/tray.rs:19 | `app: AppHandle`、`config_service`、`role_id: String` | `Result<(), String>` | `ConfigService::set("tray_user_info", …)`、`tray::update_tray_menu` |
+| `update_tray_user_data` | commands/tray.rs:45 | `app`、`config_service`、`user_info: TrayUserInfo`（前端由 `src/utils/trayService.ts` 组装，含 `accountLevel`） | `Result<(), String>` | `ConfigService::set("tray_user_info", …)`、`tray::update_tray_menu` |
+| `show_tray_panel` | commands/tray.rs:66 | `app: AppHandle` | `Result<(), String>` | `tray::show_tray_panel` |
+| `hide_tray_panel` | commands/tray.rs:72 | `app: AppHandle` | `Result<(), String>` | `tray::hide_tray_panel` |
+| `show_main_window` | commands/tray.rs:78 | `app: AppHandle` | `Result<(), String>` | `tray::show_main_window_focus` + `tray::hide_tray_panel` |
+| `app_quit` | commands/tray.rs:87 | `app: AppHandle` | `()`（无返回） | `app.exit(0)` |
 | `write_file` | commands/updater.rs:105 | `path: String`、`data: Vec<u8>` | `Result<(), String>` | `fs::create_dir_all(parent)` + `fs::write` |
 | `get_temp_dir` | commands/updater.rs:117 | 无 | `Result<String, String>` | `std::env::temp_dir` |
 | `fetch_url` | commands/updater.rs:125 | `url: String` | `Result<String, String>` | `capture::send`（reqwest GET）→ `resp.text()` |
@@ -720,7 +720,7 @@
 ---
 
 ## `src-tauri/src/commands/tray.rs`
-**职责**：托盘菜单/托盘面板的 IPC（80 行 / 7 个命令）。配置键固定为 `tray_user_info`（类型 `TrayUserInfo`），菜单刷新调用 `crate::tray` 模块的函数。
+**职责**：托盘菜单/托盘面板的 IPC（90 行 / 7 个命令）。配置键固定为 `tray_user_info`（类型 `TrayUserInfo`），菜单刷新调用 `crate::tray` 模块的函数。
 
 ### `get_tray_user_info`
 - 位置：tray.rs:8（同步）
@@ -729,29 +729,29 @@
 - 逻辑：`ConfigService::get::<TrayUserInfo>("tray_user_info")`，缺失时返回 `TrayUserInfo::default()`。
 
 ### `set_tray_user`
-- 位置：tray.rs:17（同步）
+- 位置：tray.rs:19（同步）
 - 参数：`app: AppHandle<R>`、`config_service`、`role_id: String`
 - 返回：`Result<(), String>`
 - 逻辑：读出已有 `tray_user_info`（或默认），只改 `role_id` 字段 → `ConfigService::set("tray_user_info", …)` 持久化 → `crate::tray::update_tray_menu(&app, &user_info)` 刷新托盘菜单。
 - 配置键：`tray_user_info`
 
 ### `update_tray_user_data`
-- 位置：tray.rs:38（同步）
+- 位置：tray.rs:45（同步）
 - 参数：`app`、`config_service`、`user_info: TrayUserInfo`
 - 返回：`Result<(), String>`
-- 逻辑：前端拉到最新数据后整体覆盖写 `tray_user_info`，再 `update_tray_menu` 刷新菜单。
+- 逻辑：前端拉到最新数据后整体覆盖写 `tray_user_info`，再 `update_tray_menu` 刷新菜单。`user_info` 由 `src/utils/trayService.ts` 的 `refreshTrayUserData()` 组装（含 `accountLevel` 游戏账号等级与 `bpCurLevel`/`bpMaxLevel` 通行证等级）。
 
 ### `show_tray_panel`
-- 位置：tray.rs:56（同步）；参数：`app: AppHandle<R>`；返回：`Result<(), String>`；逻辑：`crate::tray::show_tray_panel(&app)` 显示托盘浮层窗口。
+- 位置：tray.rs:66（同步）；参数：`app: AppHandle<R>`；返回：`Result<(), String>`；逻辑：`crate::tray::show_tray_panel(&app)` 显示托盘浮层窗口。
 
 ### `hide_tray_panel`
-- 位置：tray.rs:62（同步）；参数：`app`；返回：`Result<(), String>`；逻辑：`crate::tray::hide_tray_panel(&app)`。
+- 位置：tray.rs:72（同步）；参数：`app`；返回：`Result<(), String>`；逻辑：`crate::tray::hide_tray_panel(&app)`。
 
 ### `show_main_window`
-- 位置：tray.rs:68（同步）；参数：`app`；返回：`Result<(), String>`；逻辑：`crate::tray::show_main_window_focus(&app)` 显示并聚焦主窗口，随后 `hide_tray_panel(&app)` 收起浮层。
+- 位置：tray.rs:78（同步）；参数：`app`；返回：`Result<(), String>`；逻辑：`crate::tray::show_main_window_focus(&app)` 显示并聚焦主窗口，随后 `hide_tray_panel(&app)` 收起浮层。
 
 ### `app_quit`
-- 位置：tray.rs:77（同步）；参数：`app`；返回：`()`；逻辑：`app.exit(0)` 直接退出进程。
+- 位置：tray.rs:87（同步）；参数：`app`；返回：`()`；逻辑：`app.exit(0)` 直接退出进程。
 
 ---
 
