@@ -166,7 +166,7 @@ impl ImageCacheService {
         }
 
         // 下载图片
-        let client = reqwest::Client::new();
+        let client = crate::utils::http_client::create_client();
 
         let start_time = std::time::Instant::now();
         log_info!("=== HTTP REQUEST: 下载图片 ({:?}) ===", image_type);

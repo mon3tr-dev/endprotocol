@@ -1,24 +1,24 @@
 # 后端工具层 — 文件功能参考
 
 > 逐文件精读源码生成。行号基于当前工作区版本，仅用于快速定位。
-> 本文件覆盖：`src-tauri/src/utils/` 下全部 14 个文件（mod / api_health / error / crash / diagnostics / game_icon / game_playtime / hg_crypto / http_client / logger / official_launcher / paths / capture / process / steam）。
+> 本文件覆盖：`src-tauri/src/utils/` 下全部 15 个文件（mod / api_health / error / crash / diagnostics / game_icon / game_playtime / hg_crypto / http_client / logger / official_launcher / paths / proxy / capture / process / steam）。
 
 ## `src-tauri/src/utils/mod.rs`
-**职责**：工具层模块清单（16 行）。声明 13 个子模块并统一再导出统一错误类型。
-**导出**：`pub mod api_health`、`pub mod capture`、`pub mod crash`、`pub mod diagnostics`、`pub mod error`、`pub mod game_icon`、`pub mod game_playtime`、`pub mod hg_crypto`、`pub mod http_client`、`pub mod logger`、`pub mod official_launcher`、`pub mod paths`、`pub mod process`、`pub mod steam`；`pub use error::AppError`。
+**职责**：工具层模块清单。声明 14 个子模块并统一再导出统一错误类型。
+**导出**：`pub mod api_health`、`pub mod capture`、`pub mod crash`、`pub mod diagnostics`、`pub mod error`、`pub mod game_icon`、`pub mod game_playtime`、`pub mod hg_crypto`、`pub mod http_client`、`pub mod logger`、`pub mod official_launcher`、`pub mod paths`、`pub mod process`、`pub mod proxy`、`pub mod steam`；`pub use error::AppError`。
 **主要依赖**：`crate::utils::error`。
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
-| `pub mod api_health/capture/crash/diagnostics/error/game_icon/game_playtime/hg_crypto/http_client/logger/official_launcher/paths/process/steam` | mod.rs:1-13 | 13 个子模块声明，全部 `pub` |
-| `pub use error::AppError` | mod.rs:15 | 别名导出，使调用方写作 `crate::utils::AppError` |
+| `pub mod api_health/capture/crash/diagnostics/error/game_icon/game_playtime/hg_crypto/http_client/logger/official_launcher/paths/process/proxy/steam` | mod.rs:1-14 | 14 个子模块声明，全部 `pub` |
+| `pub use error::AppError` | mod.rs:16 | 别名导出，使调用方写作 `crate::utils::AppError` |
 
 **备注**：全 crate 通过 `crate::utils::{capture, paths, http_client, AppError}` 这类分组导入使用（如 services/account_service.rs:20、services/avatar_cache_service.rs:6、services/config_service.rs:8）。
 
 ---
 
 ## `src-tauri/src/utils/error.rs`
-**职责**：定义全后端统一错误枚举 `AppError`（23 行），用 `thiserror` 派生 `Display` 与三个自动 `From` 转换，供 service/command 层的 `Result<T, AppError>` 使用。
+**职责**：定义全后端统一错误枚举 `AppError`（27 行），用 `thiserror` 派生 `Display` 与三个自动 `From` 转换，供 service/command 层的 `Result<T, AppError>` 使用。
 **导出**：`pub enum AppError`（error.rs:5）。
 **主要依赖**：`thiserror`、`reqwest`、`serde_json`、`std::io`。
 
@@ -30,11 +30,13 @@
 | `AppError::IoError(std::io::Error)` | error.rs:12-13 | Display：`IO error: {0}`；`#[from] std::io::Error` ⇒ `From<std::io::Error>` |
 | `AppError::AuthError { message: String }` | error.rs:15-16 | Display：`Authentication failed: {message}`；无 `From`，手动构造，是登录/签名校验/数美接口失败的主力变体（services/account_service.rs:167、233、1893；services/skland_service.rs:109、393） |
 | `AppError::ConfigError { message: String }` | error.rs:18-19 | Display：`Configuration error: {message}`；无 `From`，多用于 Mutex 中毒、路径获取失败包装（services/config_service.rs:19、57、86；services/avatar_cache_service.rs:87） |
-| `AppError::ApiError { code: i32, message: String }` | error.rs:21-22 | Display：`API error (code={code}): {message}`；无 `From`，用于远端业务错误码 |
+| `AppError::NetworkError { message: String }` | error.rs:21-22 | Display：`Network error: {message}`；无 `From`，用于代理连通性测试等网络类失败（`utils/proxy.rs`） |
+| `AppError::ValidationError { message: String }` | error.rs:24-25 | Display：`Invalid input: {message}`；无 `From`，入参校验失败（如代理未启用/主机为空） |
+| `AppError::ApiError { code: i32, message: String }` | error.rs:27-28 | Display：`API error (code={code}): {message}`；无 `From`，用于远端业务错误码 |
 
 **备注**：
-- 三个 `#[from]` 是 `thiserror` 生成的 `From` 实现的全部来源；其余三个变体只能显式构造。
-- 调用面覆盖 account / avatar_cache / char_detail / char_wiki_detail / config / attendance 等 service 与 command；`AppError` 不实现 `serde::Serialize`，因此 `#[tauri::command]` 层通常把它转成 `String` 再返回。
+- 三个 `#[from]` 是 `thiserror` 生成的 `From` 实现的全部来源；其余变体只能显式构造。
+- 调用面覆盖 account / avatar_cache / char_detail / char_wiki_detail / config / attendance / proxy 等 service 与 command；`AppError` 不实现 `serde::Serialize`，因此 `#[tauri::command]` 层通常把它转成 `String` 再返回。
 - 存在对 `AppError` 的模式匹配工具函数，如 `account_service::is_new_device_verification_error(&AppError)`（services/account_service.rs:2929）。
 
 ---
@@ -62,15 +64,55 @@
 ---
 
 ## `src-tauri/src/utils/http_client.rs`
-**职责**：创建统一配置的 `reqwest::Client`（10 行），全局 30 秒超时。
-**导出**：`pub fn create_client`。
-**主要依赖**：`reqwest`、`std::time::Duration`。
+**职责**：创建统一配置的 `reqwest::Client`（全局 30 秒超时），并维护一个全局代理配置缓存，使设置页保存的 `proxy_config` 对所有 HTTP 请求即时生效。
+**导出**：`pub fn create_client`、`pub fn create_proxied_client`、`pub fn set_global_proxy_config`、`pub fn global_proxy_config`。
+**主要依赖**：`reqwest`、`serde_json::Value`、`std::sync::RwLock`、`std::time::Duration`、`crate::utils::proxy`。
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
-| `create_client() -> Client` | http_client.rs:5 | `Client::builder().timeout(Duration::from_secs(30)).build()`；构建失败直接 `expect("Failed to create HTTP client")` panic（http_client.rs:9）。返回值为按值 `Client`（reqwest 内部引用计数，调用方自行 clone） |
+| `static PROXY_CONFIG: RwLock<Option<Value>>` | http_client.rs:9 | 全局代理配置缓存（进程级）；`None` 表示直连 |
+| `set_global_proxy_config(config)` | http_client.rs:12 | 写入缓存；由 `set_config("proxy_config")`、`set_proxy_config`、`remove_proxy_config`、`save_proxy_settings`、`clear_proxy_settings` 以及启动时的 `create_config_service()` 调用 |
+| `global_proxy_config()` | http_client.rs:19 | 读取缓存快照（`None` 表示未启用代理） |
+| `create_client() -> Client` | http_client.rs:24 | 等价于 `create_proxied_client(global_proxy_config().as_ref())`，即**默认跟随全局代理设置**，30 秒超时 |
+| `create_proxied_client(proxy_config) -> Client` | http_client.rs:29 | 按传入代理配置构建 client（`proxy::from_config` 生成 `reqwest::Proxy`）；构建失败时 `log_warn!` 并回退 `Client::new()`，不再 panic |
 
-**备注**：调用方共 15 处——services/skland_service.rs:515、772、857、941、1047、1109；services/account_service.rs:1851、1905、2005、2072、2132、2861、2940、2997；services/gacha_service.rs:778。**未覆盖**的请求方使用裸 `reqwest::Client::new()`（commands/image.rs:104、commands/updater.rs:34/69、services/avatar_cache_service.rs:169、services/char_detail_service.rs:630、services/skland_service.rs:104）或自建带自定义配置的 client（services/game_launcher_service.rs:121、127、2793），即超时策略并未全站统一（异常项）。
+**备注**：调用方约 15 处（services/skland_service.rs、services/account_service.rs、services/gacha_service.rs），自本版本起自动继承全局代理；`commands/image.rs` 与 `services/avatar_cache_service.rs` 的图片下载也已从裸 `reqwest::Client::new()` 改为 `create_client()`，因此同样走代理。**仍未走代理**的请求方：`commands/updater.rs`（自建 client）、`services/char_detail_service.rs`、`services/skland_service.rs` 的数美指纹请求、`services/game_launcher_service.rs`（自建带自定义配置的 client）——如需覆盖，改为 `http_client::create_client()` 即可。
+
+---
+
+## `src-tauri/src/utils/proxy.rs`
+**职责**：代理配置的解析与生效层：把 `proxy_config` JSON 收敛为 `reqwest::Proxy`、创建带代理的 client、解析系统代理（Windows 注册表 / 环境变量）、通过代理做连通性探测、自动嗅探本地常用代理端口。
+**导出**：`from_config`、`test_connection`、`read_system_proxy`、`auto_detect_proxy`、`struct TestConnectionResult`、`struct SystemProxyInfo`、`struct ProxyConfigValue`。
+**主要依赖**：`reqwest`（需启用 `socks` feature）、`serde`/`serde_json`、`windows-sys`（仅 Windows，注册表 API）、`crate::utils::AppError`、`log_debug!` / `log_warn!`。
+
+| 符号 | 位置 | 说明 |
+| --- | --- | --- |
+| `is_enabled(config)`（私有） | proxy.rs:13-25 | 宽松判定：`enabled == true` 且 `host` 非空 |
+| `exclude_list(config)`（私有） | proxy.rs:27-35 | 解析 `exclude` 逗号分隔的主机名列表，返回小写字符串向量 |
+| `proxy_server(config)`（私有） | proxy.rs:43-71 | 规范成 `scheme://host:port`：scheme 由 `scheme_for` 决定，端口非法时回退 `8080`，`host` 中的 `scheme://` 前缀与尾部 `/` 会被剥掉 |
+| `scheme_for(config)`（私有） | proxy.rs:77-95 | 非 SOCKS5 一律 `http`；SOCKS5 且 `remoteDns=true` → `socks5h`（域名交由代理解析），否则 `socks5` |
+| `credentials(config)`（私有） | proxy.rs:98-115 | 用户名非空才返回认证对（密码缺省补空串），否则 `(None, None)` |
+| `from_config(config) -> Option<Proxy>` | proxy.rs:122-154 | `Proxy::all(server)`；有用户名时 `basic_auth`。记录排除列表（`no_proxy` 由 `http_client::set_global_proxy_config` 写入环境变量）。URL 非法时 `log_warn!` 并返回 `None`（请求降级为直连而不是报错） |
+| `test_connection(config, url, timeout_secs)` | proxy.rs:155-182 | 异步探测：用代理建 client → GET `url` → 返回 `TestConnectionResult`；未启用/主机为空 → `AppError::ValidationError`，请求失败 → `AppError::NetworkError`；超时夹取 1-60 秒 |
+| `auto_detect_proxy()` | proxy.rs:189-274 | 异步嗅探：按顺序探测本地常用代理端口（HTTP 8080/7890/1080，SOCKS5 1080/1081），每个端口用 3 秒超时发起连通性测试，首个成功的即返回 `ProxyConfigValue`；全部失败则返回错误 |
+| `struct ProxyConfigValue` | proxy.rs:270-282 | `enabled`/`proxy_type`/`host`/`port`/`username`/`password`/`remote_dns`/`exclude`；`Serialize` 供前端 |
+| `struct TestConnectionResult` | proxy.rs:283-289 | `status: u16`、`duration_ms: u64`；`Serialize` 供前端 |
+| `struct SystemProxyInfo` | proxy.rs:292-305 | `enabled`/`proxy_type`/`host`/`port`/`username`/`password`/`pac_url`/`from_env`；`Serialize + Deserialize` |
+| `read_system_proxy()` | proxy.rs:323-333 | Windows 先读注册表，取不到再读环境变量，最后返回全空的 `none()` |
+| `env_proxy()`（私有） | proxy.rs:336-354 | 依次尝试 `HTTPS_PROXY`/`https_proxy`/`HTTP_PROXY`/`http_proxy`/`ALL_PROXY`/`all_proxy`，命中后 `from_env=true` |
+| `parse_proxy_url(raw)`（私有） | proxy.rs:357-400 | 解析 `scheme://[user:pass@]host[:port]`；`socks*` scheme → `proxy_type="socks5"`；缺省端口 http 8080 / socks5 1080 |
+| `split_host_port(authority)`（私有） | proxy.rs:403-426 | 拆分 host 与可选端口，支持 IPv6 字面量 `[::1]:1080`；非数字后缀整体视作 host |
+| `windows_registry_proxy()`（私有，`cfg(windows)`） | proxy.rs:431-467 | 读 `HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings`：`ProxyEnable`(DWORD)、`ProxyServer`、`AutoConfigURL`、`ProxyOverride`；未启用或无 `ProxyServer` 时返回 `enabled:false` 并带上 `pac_url` |
+| `pick_proxy_entry(server)`（私有，`cfg(windows)`） | proxy.rs:470-494 | 处理 `http=host:port;https=host:port` 与单一 `host:port` 两种写法，优先 `https` 条目 |
+| `wide` / `read_raw_value` / `read_dword` / `read_string`（私有，`cfg(windows)`） | proxy.rs:497-575 | 注册表读取工具（UTF-16 路径、64KB 上限、`REG_SZ`/`REG_EXPAND_SZ`/`REG_DWORD`） |
+| `mod tests` | proxy.rs:577-633 | 4 个单测：HTTP 配置、SOCKS5+认证、禁用/空主机、系统代理 URL 解析 |
+
+**备注**：
+- **reqwest 需要 `socks` feature 才能构造 `socks5://` / `socks5h://` 代理**——`Cargo.toml` 中的 `reqwest` 依赖已加上 `"socks"`。
+- 代理 URI 一律经 `Proxy::all`（HTTP 与 HTTPS 流量都走代理）；SOCKS5 默认本地解析 DNS，打开 `remoteDns` 后改用 `socks5h://` 由代理解析域名（可绕过本地 DNS 污染）。
+- 排除列表（`exclude` 字段）：前端以逗号分隔的主机名填写，保存后写入 `no_proxy` 环境变量，reqwest 对这些主机直连不走代理。
+- `AppError` 新增两个变体以承载这里的错误：`NetworkError { message }`、`ValidationError { message }`（见 `utils/error.rs`）。
+- 注册表 `ProxyOverride`（“不使用代理”列表）当前读出来但未参与解析——reqwest 不支持 per-host bypass 列表；PAC 脚本同理，只回传 `pac_url` 供 UI 提示。
 
 ---
 

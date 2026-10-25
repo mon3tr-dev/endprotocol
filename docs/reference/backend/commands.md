@@ -1,7 +1,7 @@
 # Tauri 命令层（IPC 入口）— 文件功能参考
 
 > 逐文件精读源码生成。行号基于当前工作区版本，仅用于快速定位。
-> 覆盖范围：`src-tauri/src/commands/` 下 16 个文件，当前参考表收录 **114 个不同命令名**；源码含 118 处命令注解（其中有同名定义）。注册入口见 `src-tauri/src/lib.rs` 的 `generate_handler!`。
+> 覆盖范围：`src-tauri/src/commands/` 下 17 个文件，当前参考表收录 **127 个不同命令名**；源码含 127 处命令注解。注册入口见 `src-tauri/src/lib.rs` 的 `generate_handler!`。
 
 ## 命令速查表
 
@@ -47,12 +47,17 @@
 | `finish_screen_pick` | commands/color_picker.rs:56 | `window: WebviewWindow` | `()`（无返回） | Windows：退出全屏并聚焦；非 Windows：空实现 |
 | `get_config` | commands/config.rs:9 | `state: State<Arc<Mutex<ConfigService>>>`、`key: String` | `Option<Value>` | `ConfigService::get` |
 | `get_game_launch_command` | commands/startup.rs:185 | `config_service: State<Arc<Mutex<ConfigService>>>` | `Result<String, String>` | 校验/更新 `main_exe_path` 并返回含 `--silent --launch-game` 的带引号命令 |
-| `set_config` | commands/config.rs:16 | `state`、`key: String`、`value: Value` | `Result<(), String>` | `ConfigService::set` |
-| `remove_config` | commands/config.rs:27 | `state`、`key: String` | `bool` | `ConfigService::remove` |
-| `get_all_configs` | commands/config.rs:34 | `state` | `HashMap<String, Value>` | `ConfigService::get_all` |
-| `get_proxy_config` | commands/config.rs | `state` | `Option<Value>` | 获取代理配置 |
-| `set_proxy_config` | commands/config.rs | `state`、`config: Value` | `Result<(), String>` | 设置代理配置 |
-| `remove_proxy_config` | commands/config.rs | `state` | `Result<bool, String>` | 删除代理配置 |
+| `set_config` | commands/config.rs:47 | `state`、`key: String`、`value: Value` | `Result<(), String>` | `ConfigService::set`；当 `key == "proxy_config"` 时额外 `utils::http_client::set_global_proxy_config(Some(value))`（后续 HTTP 请求即时生效） |
+| `remove_config` | commands/config.rs:64 | `state`、`key: String` | `bool` | `ConfigService::remove` |
+| `get_all_configs` | commands/config.rs:71 | `state` | `HashMap<String, Value>` | `ConfigService::get_all` |
+| `get_proxy_config` | commands/config.rs:17 | `state` | `Option<Value>` | `ConfigService::get_proxy_config`；前端未直接调用（改用 `get_proxy_settings`） |
+| `set_proxy_config` | commands/config.rs:24 | `state`、`config: Value` | `Result<(), String>` | `ConfigService::set_proxy_config` + 刷新全局代理缓存；前端未直接调用（改用 `save_proxy_settings`） |
+| `remove_proxy_config` | commands/config.rs:38 | `state` | `Result<bool, String>` | `ConfigService::remove_proxy_config` 并把全局代理缓存置空；前端未直接调用（改用 `clear_proxy_settings`） |
+| `get_proxy_settings` | commands/proxy.rs:56 | `state: State<Arc<Mutex<ConfigService>>>` | `Value` | `ConfigService::get_proxy_config`，缺省返回空配置 `{enabled:false,type:"http",host:"",port:8080,username:"",password:""}` |
+| `save_proxy_settings` | commands/proxy.rs:66 | `state`、`config: Value` | `Result<Value, String>` | `ConfigService::set_proxy_config` + `utils::http_client::set_global_proxy_config(Some(config))`，返回保存后的配置 |
+| `clear_proxy_settings` | commands/proxy.rs:80 | `state` | `bool` | `ConfigService::remove_proxy_config` + 全局代理缓存置空 |
+| `read_system_proxy` | commands/proxy.rs:14 | 无 | `SystemProxyInfo` | `utils::proxy::read_system_proxy`：Windows 读 `HKCU\...\Internet Settings`（`ProxyEnable`/`ProxyServer`/`AutoConfigURL`），失败回退 `HTTP(S)_PROXY`/`ALL_PROXY` 环境变量 |
+| `test_proxy_connection` | commands/proxy.rs:30 | `state`、`config: Option<Value>`、`url: Option<String>` | `Result<TestConnectionResult, String>` | 取传入配置，缺省回退已保存的 `proxy_config`；`utils::proxy::test_connection`（15s 超时，默认探测 `https://www.gstatic.com/generate_204`，返回 `{status, duration_ms}`） |
 | `get_gacha_pool_meta` | commands/gacha.rs:84 | `account_state`、`gacha_state: State<Arc<GachaService>>`、`role_id: String` | `Result<serde_json::Value, String>` | 本地 `lookup_u8token`/`ensure_fresh_u8token`、`GachaService::get_pool_meta` |
 | `sync_gacha_records` | commands/gacha.rs:116 | `account_state`、`gacha_state`、`role_id: String` | `Result<serde_json::Value, String>` | `ensure_fresh_u8token`、`GachaService::sync_records` |
 | `get_saved_gacha_records` | commands/gacha.rs:148 | `account_state`、`gacha_state`、`role_id: String` | `Result<serde_json::Value, String>` | `GachaService::load_records_or_empty`（不联网） |
@@ -822,10 +827,39 @@
 
 ---
 
+## `src-tauri/src/commands/proxy.rs`
+**职责**：设置页「网络」分区的代理专用命令（6 个：4 同步 + 2 async），负责代理配置的读写与生效、系统代理读取、连通性测试、自动嗅探常用代理端口。真正的配置解析与代理构造在 `utils/proxy.rs`。
+
+### `get_proxy_settings`
+- 位置：proxy.rs:56（同步）；参数：`state: State<Arc<Mutex<ConfigService>>>`；返回：`Value`。
+- 逻辑：`ConfigService::get_proxy_config()`，为 `None` 时返回空配置对象（`empty_proxy_config()`，`enabled:false, type:"http", host:"", port:8080`）。
+
+### `save_proxy_settings`
+- 位置：proxy.rs:66（同步）；参数：`state`、`config: Value`；返回：`Result<Value, String>`。
+- 逻辑：`ConfigService::set_proxy_config(config.clone())` → `utils::http_client::set_global_proxy_config(Some(config.clone()))` → 回传配置。写盘与全局缓存同时更新，因此**保存后无需重启即可对所有已配置代理的 HTTP 请求生效**。
+
+### `clear_proxy_settings`
+- 位置：proxy.rs:80（同步）；参数：`state`；返回：`bool`。
+- 逻辑：`ConfigService::remove_proxy_config()` + 全局代理缓存置 `None`；锁失败时返回 `false` 但缓存依旧清空。
+
+### `read_system_proxy`
+- 位置：proxy.rs:14（同步）；参数：无；返回：`SystemProxyInfo`（`enabled`/`proxy_type`/`host`/`port`/`username`/`password`/`pac_url`/`from_env`）。
+- 逻辑：`utils::proxy::read_system_proxy()`：Windows 优先读注册表 `HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings` 的 `ProxyEnable`/`ProxyServer`/`AutoConfigURL`；未启用或无 `ProxyServer` 时回退环境变量 `HTTPS_PROXY`/`HTTP_PROXY`/`ALL_PROXY`（大小写都认，`from_env=true`）。PAC 脚本无法解析，只通过 `pac_url` 回传供界面提示。
+
+### `test_proxy_connection`
+- 位置：proxy.rs:30（async）；参数：`state`、`config: Option<Value>`、`url: Option<String>`；返回：`Result<TestConnectionResult, String>`（`{status, duration_ms}`）。
+- 逻辑：`config` 为空时回退已保存的 `proxy_config`；`utils::proxy::test_connection(&config, &url, 15)`，默认探测 `https://www.gstatic.com/generate_204`，能收到任何 HTTP 响应即视为代理可用。
+
+### `auto_detect_proxy`
+- 位置：proxy.rs:57（async）；参数：无；返回：`Result<ProxyConfigValue, String>`（`{enabled, proxy_type, host, port, username, password, remote_dns, exclude}`）。
+- 逻辑：`utils::proxy::auto_detect_proxy()`：按顺序探测本地常用代理端口（HTTP 8080/7890/1080，SOCKS5 1080/1081），每个端口用 3 秒超时发起连通性测试，首个成功的即返回配置；全部失败则返回错误。
+
+---
+
 ## 汇总
 
-- 命令总数：**102**（account 23、launcher 26、capture 7、gacha 7、tray 7、updater 9、image 6、config 4、window 4、card_config 3、attendance 2、color_picker 2、logs 1、system_resource 1；`mod.rs` 0）。
+- 命令总数：**127**（account 23、launcher 26、capture 7、gacha 7、tray 7、updater 9、image 6、config 7、proxy 6、window 4、card_config 3、attendance 2、color_picker 2、logs 1、system_resource 1；`mod.rs` 0）。
 - 事件 emit：`launcher-progress`（launcher.rs）、`download-progress`（updater.rs）。
-- 关键配置键：`account_token_*`（含 `cred`/`token`/`u8token`/`roles[]`）、`selected_account_id`、`card_settings.{card_id}`、`tray_user_info`，以及前端侧的 `system_resource_defaults` / `todo_lists` / `todo_defaults`（经 config 命令读写）；相关本地文件：`gacha_avatar_map.json`、`total.json`、`backgrounds/bg.webp`。
-- 主要状态（managed state）：`Arc<std::sync::Mutex<ConfigService>>`（config/tray 直接用）、`Arc<tokio::sync::Mutex<AccountService>>`（account/attendance/card_config/gacha）、`Arc<GachaService>`、`Arc<Mutex<GameLauncherService>>`、`Arc<std::sync::Mutex<SystemResourceService>>`（见 `lib.rs` 的 `setup`）。
+- 关键配置键：`account_token_*`（含 `cred`/`token`/`u8token`/`roles[]`）、`selected_account_id`、`card_settings.{card_id}`、`tray_user_info`、`proxy_config`（代理设置，写入后同步刷新全局代理缓存），以及前端侧的 `system_resource_defaults` / `todo_lists` / `todo_defaults`（经 config 命令读写）；相关本地文件：`gacha_avatar_map.json`、`total.json`、`backgrounds/bg.webp`。
+- 主要状态（managed state）：`Arc<std::sync::Mutex<ConfigService>>`（config/tray/proxy 直接用）、`Arc<tokio::sync::Mutex<AccountService>>`（account/attendance/card_config/gacha）、`Arc<GachaService>`、`Arc<Mutex<GameLauncherService>>`、`Arc<std::sync::Mutex<SystemResourceService>>`（见 `lib.rs` 的 `setup`）。
 

@@ -122,6 +122,13 @@ pub fn run() {
             commands::config::set_config,
             commands::config::remove_config,
             commands::config::get_all_configs,
+            // Proxy commands
+            commands::proxy::get_proxy_settings,
+            commands::proxy::save_proxy_settings,
+            commands::proxy::clear_proxy_settings,
+            commands::proxy::read_system_proxy,
+            commands::proxy::test_proxy_connection,
+            commands::proxy::auto_detect_proxy,
             // Attendance commands
             commands::attendance::get_attendance,
             commands::attendance::do_attendance,
@@ -349,6 +356,13 @@ fn create_config_service() -> Result<Arc<StdMutex<ConfigService>>, String> {
         ConfigService::new().map_err(|error| error.to_string())?,
     ));
     commands::startup::refresh_main_exe_path(&config_service)?;
+    // 代理配置缓存在全局 RwLock 中，所有 HTTP 客户端创建时都会读取。
+    utils::http_client::set_global_proxy_config(
+        config_service
+            .lock()
+            .map_err(|error| error.to_string())?
+            .get_proxy_config(),
+    );
     Ok(config_service)
 }
 

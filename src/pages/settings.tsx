@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/glass";
 import { GameLaunchSettings } from "@/components/game-launch-settings";
 import { AppearanceSettings } from "@/components/appearance-settings";
+import { NetworkSettings } from "@/components/network-settings";
 import { SystemResourceSettings } from "@/components/system-resource-settings";
 import { TodoSettings } from "@/components/todo-settings";
 import { useState, useEffect, useRef, useCallback } from "react";
@@ -57,14 +58,6 @@ export default function SettingsPage() {
   const [lazyLoadEnabled, setLazyLoadEnabled] = useState(true);
   const [wikiDetailPreload, setWikiDetailPreload] = useState(false);
   const [closeAction, setCloseAction] = useState<string>("ask");
-  const [proxyConfig, setProxyConfig] = useState<{
-    enabled: boolean;
-    type: "http" | "socks5";
-    host: string;
-    port: number;
-    username?: string;
-    password?: string;
-  }>({ enabled: false, type: "http", host: "", port: 8080 });
   const [trayUserRoleId, setTrayUserRoleId] = useState<string>("");
   const [accounts, setAccounts] = useState<
     Array<{ id: string; nickname: string; avatar: string }>
@@ -107,7 +100,6 @@ export default function SettingsPage() {
         identifier,
         closeAct,
         trayUser,
-        proxyConfig,
       ] = await Promise.all([
         getConfig<boolean>("refresh_on_account_switch"),
         roleDetailService.isLazyLoadEnabled(),
@@ -118,14 +110,6 @@ export default function SettingsPage() {
         getIdentifier(),
         getConfig<string>("close_action"),
         getConfig<string>("tray_user_role_id"),
-        getConfig<{
-          enabled: boolean;
-          type: "http" | "socks5";
-          host: string;
-          port: number;
-          username?: string;
-          password?: string;
-        }>("proxy_config"),
       ]);
       setRefreshOnSwitch(value ?? false);
       setLazyLoadEnabled(lazyLoadValue);
@@ -136,7 +120,6 @@ export default function SettingsPage() {
       setAppId(identifier);
       setCloseAction(closeAct ?? "ask");
       setTrayUserRoleId(trayUser ?? "");
-      setProxyConfig(proxyConfig ?? { enabled: false, type: "http", host: "", port: 8080 });
       setIsConfigLoading(false);
 
       // Load accounts for tray user selection
@@ -703,174 +686,6 @@ export default function SettingsPage() {
 
               <SettingsDivider />
 
-              {/* Network Proxy */}
-              <div id="settings-network-proxy">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                  <div className="min-w-0">
-                    <p className="font-medium text-foreground">
-                      {t("settings.general.network_proxy")}
-                    </p>
-                    <p className="text-sm text-muted mt-0.5">
-                      {t("settings.general.network_proxy_desc")}
-                    </p>
-                  </div>
-                  <div className="flex gap-2">
-                    <GlassSwitch
-                      isSelected={proxyConfig.enabled}
-                      onValueChange={async (value: boolean) => {
-                        setProxyConfig((prev) => ({ ...prev, enabled: value }));
-                        if (value) {
-                          await setConfig("proxy_config", proxyConfig);
-                        }
-                      }}
-                    >
-                      <GlassSwitch.Control>
-                        <GlassSwitch.Thumb />
-                      </GlassSwitch.Control>
-                    </GlassSwitch>
-                  </div>
-                </div>
-
-                {proxyConfig.enabled && (
-                  <div className="mt-4 space-y-4">
-                    <div className="flex flex-col sm:flex-row gap-2">
-                      <div className="min-w-0">
-                        <p className="font-medium text-foreground">
-                          {t("settings.general.proxy_type")}
-                        </p>
-                        <p className="text-sm text-muted mt-0.5">
-                          {t("settings.general.proxy_type_desc")}
-                        </p>
-                      </div>
-                      <GlassSelect
-                        value={proxyConfig.type}
-                        onChange={(value: string) =>
-                          setProxyConfig((prev) => ({ ...prev, type: value as "http" | "socks5" }))
-                        }
-                        options={[
-                          { value: "http", label: t("settings.general.proxy_type_http") },
-                          { value: "socks5", label: t("settings.general.proxy_type_socks5") },
-                        ]}
-                      />
-                    </div>
-
-                    <div>
-                      <p className="font-medium text-foreground">
-                        {t("settings.general.proxy_host")}
-                      </p>
-                      <input
-                        type="text"
-                        value={proxyConfig.host}
-                        onChange={(e) =>
-                          setProxyConfig((prev) => ({ ...prev, host: e.target.value } as any))
-                        }
-                        placeholder={t("settings.general.proxy_host_placeholder")}
-                        className="w-full p-2 border border-separator/60 rounded-lg bg-background/50 text-foreground"
-                      />
-                    </div>
-
-                    <div className="flex flex-col sm:flex-row gap-2">
-                      <div className="min-w-0">
-                        <p className="font-medium text-foreground">
-                          {t("settings.general.proxy_port")}
-                        </p>
-                        <p className="text-sm text-muted mt-0.5">
-                          {t("settings.general.proxy_port_desc")}
-                        </p>
-                      </div>
-                      <input
-                        type="number"
-                        value={proxyConfig.port.toString()}
-                        onChange={(e) =>
-                          setProxyConfig((prev) => ({ ...prev, port: parseInt(e.target.value) || 8080 } as any))
-                        }
-                        min="1"
-                        max="65535"
-                        className="w-full p-2 border border-separator/60 rounded-lg bg-background/50 text-foreground"
-                      />
-                    </div>
-
-                    {proxyConfig.type !== "socks5" && (
-                      <div>
-                        <p className="font-medium text-foreground">
-                          {t("settings.general.proxy_username")}
-                        </p>
-                        <input
-                          type="text"
-                          value={proxyConfig.username ?? ""}
-                          onChange={(e) =>
-                            setProxyConfig(
-                              (prev) =>
-                                ({ ...prev, username: e.target.value } as any)
-                            )
-                          }
-                          placeholder={t("settings.general.proxy_username_placeholder")}
-                          className="w-full p-2 border border-separator/60 rounded-lg bg-background/50 text-foreground"
-                        />
-                      </div>
-                    )}
-
-                    {proxyConfig.type === "socks5" && (
-                      <div>
-                        <p className="font-medium text-foreground">
-                          {t("settings.general.proxy_username")}
-                        </p>
-                        <input
-                          type="text"
-                          value={proxyConfig.username ?? ""}
-                          onChange={(e) =>
-                            setProxyConfig(
-                              (prev) => ({ ...prev, username: e.target.value } as any)
-                            )
-                          }
-                          placeholder={t("settings.general.proxy_username_placeholder")}
-                          className="w-full p-2 border border-separator/60 rounded-lg bg-background/50 text-foreground"
-                        />
-                        <p className="text-sm text-muted mt-2">
-                          {t("settings.general.proxy_password_desc")}
-                        </p>
-                        <input
-                          type="password"
-                          value={proxyConfig.password ?? ""}
-                          onChange={(e) =>
-                            setProxyConfig(
-                              (prev) => ({ ...prev, password: e.target.value } as any)
-                            )
-                          }
-                          placeholder={t("settings.general.proxy_password_placeholder")}
-                          className="w-full p-2 border border-separator/60 rounded-lg bg-background/50 text-foreground"
-                        />
-                      </div>
-                    )}
-
-                    <GlassButton
-                      variant="destructive"
-                      onClick={() => {
-                        setProxyConfig({
-                          enabled: false,
-                          type: "http",
-                          host: "",
-                          port: 8080,
-                          username: "",
-                          password: "",
-                        });
-                        setConfig("proxy_config", {
-                          enabled: false,
-                          type: "http",
-                          host: "",
-                          port: 8080,
-                          username: "",
-                          password: "",
-                        });
-                      }}
-                      className="mt-2"
-                    >
-                      {t("settings.general.proxy_reset")}
-                    </GlassButton>
-                  </div>
-                )}
-              </div>
-
               {/* Tray User */}
               <div id="settings-tray-user">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -895,6 +710,35 @@ export default function SettingsPage() {
               </div>
             </div>
           )}
+        </GlassCard>
+
+        {/* Network Settings */}
+        <GlassCard
+          id="settings-network"
+          className="p-6 glass-surface border border-separator/90"
+        >
+          <h2 className="text-lg font-semibold mb-6 flex items-center gap-3">
+            <div className="w-8 h-8 rounded-xl bg-primary/10 flex items-center justify-center ring-1 ring-primary/20">
+              <svg
+                className="w-4 h-4 text-primary"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                strokeWidth="1.5"
+              >
+                <circle cx="12" cy="12" r="9" />
+                <path d="M3 12h18" />
+                <path d="M12 3a15 15 0 014 9 15 15 0 01-4 9 15 15 0 01-4-9 15 15 0 014-9z" />
+              </svg>
+            </div>
+            <div className="min-w-0">
+              <p className="font-semibold">{t("settings.network.title")}</p>
+              <p className="text-sm font-normal text-muted mt-0.5">
+                {t("settings.network.desc")}
+              </p>
+            </div>
+          </h2>
+          <NetworkSettings />
         </GlassCard>
 
         {/* Game Launch Settings */}

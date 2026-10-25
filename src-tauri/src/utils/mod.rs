@@ -11,6 +11,7 @@ pub mod logger;
 pub mod official_launcher;
 pub mod paths;
 pub mod process;
+pub mod proxy;
 pub mod steam;
 
 pub use error::AppError;

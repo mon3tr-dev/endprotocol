@@ -2,6 +2,50 @@
 
 > 逐文件精读源码生成。行号基于当前工作区版本，仅用于快速定位。
 
+## `src/components/network-settings.tsx`
+**职责**：设置页「网络」分区的完整表单——自定义代理的启用开关、HTTP/SOCKS5 协议单选、主机/端口、排除主机、可选认证（用户名+密码）、SOCKS5 专属的远程 DNS 解析开关、从系统代理一键读取、自动嗅探本地代理、连通性测试与重置。**代理关闭时所有子选项与操作按钮都不显示**；字段变更后 **自动保存**（500ms 防抖），无需手动点「保存」；**开启代理时弹出警告对话框**（说明可能影响 API 可用性，可勾选「不再提示」）。
+**导出**：`NetworkSettings`（其余 `Field`、`isValidPort`、`Notice`、`AUTOSAVE_DEBOUNCE_MS` 为模块内私有）。
+**主要依赖**：`react`、`react-i18next`、`@tauri-apps/api/core`（`isTauri`）、`@/components/ui/glass`（`GlassAlertDialogCompound as GlassAlertDialog`/`GlassButton`/`GlassChip`/`GlassInput`/`GlassRadioGroup`/`GlassSkeleton`/`GlassSwitch`）、`@/components/ui/app-icon`（`CheckIcon`/`CloseIcon`/`GlobeIcon`/`LoadingIcon`）、`@/components/ui/settings-row`（`SettingsDivider`）、`@/utils/proxyService`、`@/utils/logger`（`logError`）。
+
+| 符号 | 位置 | 说明 |
+| --- | --- | --- |
+| `Notice`（type） | 32 | `{ tone: "success" \| "danger" \| "info"; text: string }`，操作后的行内反馈 |
+| `isValidPort(port)` | 36-38 | 端口合法性：整数且 1-65535 |
+| `AUTOSAVE_DEBOUNCE_MS` | 41 | `500`，自动保存防抖间隔（毫秒） |
+| `NetworkSettings`（export） | 49-658 | 主组件，无 props |
+| `Field`（私有） | 661-685 | 字段外壳：标题 + 必填/可选徽标 + 控件 |
+
+**内部结构**：
+- 1-31 行：导入区（含 `GlassAlertDialogCompound` 别名导入）。
+- 32-41 行：`Notice` 类型、`isValidPort`、`AUTOSAVE_DEBOUNCE_MS`。
+- 50-62 行：状态（`config`/`loading`/`saving`/`testing`/`importing`/`autoDetecting`/`notice`/`pacUrl`/`showEnableWarning`/`dontShowEnableWarning`）与 `noticeTimer`/`autosaveTimer` 两个 ref。
+- 64-73 行：`showNotice`（4s 自动消失）。
+- 75-79 行：挂载清理（同时清理 notice 与 autosave 定时器）。
+- 81-96 行：挂载 effect——`getProxySettings()` 读取配置并 `normalizeProxyConfig` 收敛。
+- 93-109 行：`persist`——`saveProxySettings()`，失败时行内提示 + `logError`（`silent` 为真时不弹成功提示）。
+- 111-121 行：`patch`——更新 state 并**启动 500ms 防抖自动保存**（合并 `normalizeProxyConfig` 后 `persist(..., {silent:true})`）。
+- 123-131 行：`handleTypeChange`（协议切换时若端口仍是旧协议默认值则同步为新协议默认端口）。
+- 133-143 行：`handleToggle`——**开启时若未勾选「不再提示」则弹警告并暂停落盘**；关闭时直接静默落盘。
+- 145-149 行：`confirmEnable`——勾选「不再提示」、关闭警告、正式落盘 `enabled: true`。
+- 151-192 行：`handleImportSystem`——`readSystemProxy()`；禁用/空主机时提示「未找到代理」，PAC 脚本时把 `pac_url` 展示给用户；成功则填入表单并落盘。
+- 194-216 行：`handleAutoDetect`——`autoDetectProxy()` 嗅探本地常用端口，成功填充协议/主机/端口并落盘。
+- 218-245 行：`handleTest`——先校验主机/端口，再 `testProxyConnection(config)`，成功提示状态码与耗时。
+- 247-253 行：`handleReset`——回到默认值（保留当前协议与其默认端口）并落盘。
+- 255-267 行：`handleSave`——启用状态下校验主机/端口后 `normalizeProxyConfig` 落盘。
+- 269-275 行：`protocolOptions`（HTTP / SOCKS5，文案复用 `settings.general.proxy_type_*`）。
+- 277-298 行：`loading` 时的骨架屏。
+- 300-598 行：渲染——总开关（始终显示）+ **可展开区域**（容器始终挂载，用 `grid-template-rows` 在 `0fr` 与 `1fr` 之间做 300ms 高度过渡 + `opacity` 淡入淡出 + 内层 `overflow-hidden` 裁切；上间距也用 `paddingTop: enabled ? 24 : 0` 同步过渡，收起时不残留空白与分隔线）包裹的全部子项：协议 `GlassRadioGroup`、主机+端口两列、**排除主机**输入、认证区、SOCKS5 专属「远程 DNS 解析」开关（**本身也是 `0fr ↔ 1fr` 展开动画，仅在 SOCKS5 时展开**）、系统代理读取 + 自动嗅探两个按钮、PAC 提示（`0fr ↔ 1fr` 淡入）；操作区（保存/测试/重置 + notice）位于同一展开区域内。
+- 599-655 行：**开启代理警告对话框**（`GlassAlertDialog`，结构为 `Backdrop` → `Container` → `Dialog` 嵌套）——标题 `proxy_enable_warning_title`、正文 `proxy_enable_warning_body`（可能影响 API 可用性）、「不再提示」复选框（`dontShowEnableWarning`）、取消（`cancelEnable` → 保持关闭并静默落盘）与确认（`confirmEnable` → 置 `enabled: true` 并落盘）按钮。
+
+**备注**：
+- **invoke 命令名**：`get_proxy_settings`、`save_proxy_settings`（参数 `{ config }`，返回保存后的配置）、`read_system_proxy`、`test_proxy_connection`（参数 `{ config, url }`）、`auto_detect_proxy`（无参，返回嗅探到的配置）——均经 `@/utils/proxyService` 封装；`clear_proxy_settings` 由服务提供但本组件未使用（重置即写入默认配置）。
+- **配置键**：`proxy_config`（结构 `{enabled, type, host, port, username, password, remoteDns, exclude}`，由后端 `ConfigService` 持久化；保存后同步刷新后端全局代理缓存并把 `exclude` 写入 `no_proxy`，后续所有 HTTP 请求即时生效）。
+- **自动保存**：主机/端口/协议/排除主机/认证/远程 DNS 的每次变更都会在 500ms 后静默落盘；「保存」按钮保留给需要显式确认的场景。
+- **i18n key 前缀**：`settings.network.title/desc`（卡标题，在 settings.tsx）与 `settings.network.proxy_*`（`saved`/`save_failed`/`import_*`/`invalid_*`/`test_*`/`auto_detect*`/`enable_warning_title`/`enable_warning_body`/`enable_dont_show`）；控件文案在 `settings.general.proxy_*`（`proxy_enable*`/`proxy_protocol*`/`proxy_type_*`/`proxy_host*`/`proxy_port*`/`proxy_exclude*`/`proxy_auth*`/`proxy_username*`/`proxy_password*`/`proxy_remote_dns*`/`proxy_socks5_only`/`proxy_import_system*`/`proxy_import_action`/`proxy_auto_detect`/`proxy_pac_notice`/`proxy_test*`）、`common.save`/`common.reset`/`common.cancel`/`common.confirm`。
+- **无 window 事件、无 emit/listen**；反馈只走组件内 `notice`。
+- **必填/可选标注**：协议、主机、端口标注「必选/必填」；排除主机、用户名、密码标注「可选」；远程 DNS 带「仅 SOCKS5」徽标且选中 SOCKS5 时才出现。
+- **「不再提示」的作用域**：当前为组件内状态，页面刷新后重置（如需永久记忆应改为写入配置键）。
+
 ## `src/components/appearance-settings.tsx`
 **职责**：外观设置面板，集中管理主题模式（浅色/深色/跟随系统）、主题色（预设 + 自定义色阶）、窗口背景图（选择/删除/透明度/模糊）与毛玻璃清晰度，并实时写入 CSS 变量与持久化配置。
 **导出**：`getAllColors`、`findColorByName`、`AppearanceSettings`（另有未导出的 `ThemeMode`、`ThemeColor`、`PRESET_COLORS`、多个颜色转换函数、`useDragArea`、`generateColorScale`、`applyThemeColor`、`applyGlassClarity`、`applyThemeModeLocal`、`dispatchThemeChange`）。

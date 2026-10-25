@@ -1,6 +1,7 @@
 # 前端服务与工具（A 组：账户/配置/角色/启动器）— 文件功能参考
 
 > 逐文件精读源码生成。行号基于当前工作区版本，仅用于快速定位。
+> 本文件覆盖 12 个服务封装：account / config / proxy / cardConfig / dashboardConfig / backgroundSettings / roleData / roleDetail / tab / tabIcons / messageStore / launcher / systemResource。
 
 ## `src/utils/accountService.ts`
 **职责**：封装森空岛/游戏账户相关的全部 Tauri IPC 调用（登录、登出、刷新、扫码、验证码、选中账户、凭证刷新），并定义账户相关的 TS 类型。是前端访问账户后端的唯一入口层。
@@ -71,6 +72,35 @@
 - 封装的 invoke 命令：`get_config`、`set_config`、`remove_config`、`get_all_configs`（共 4 个）。
 - 配置键：键名由调用方传入，本文件不硬编码业务键；localStorage 命名空间为 `config_${key}`，`getAllConfigs` 通过 `key.startsWith('config_')` + `substring(7)` 还原。
 - 缓存策略：**无缓存**，每次调用都走 IPC；降级路径与主路径可能不一致（Tauri 失败时读 localStorage，而成功写入只进 Tauri）。
+
+## `src/utils/proxyService.ts`
+**职责**：网络代理配置的前端封装层——读写 `proxy_config`、从系统读取代理、测试代理连通性、自动嗅探本地代理端口，并把后端返回的裸 JSON 收敛成带类型的 `ProxyConfig`。所有函数都返回显式的 `ProxyResult<T>`（`{ok:true,value}` / `{ok:false,error}`），不抛异常。
+**导出**：类型 `ProxyType`、`ProxyConfig`、`SystemProxyInfo`、`ProxyTestResult`、`ProxyResult<T>`；常量 `DEFAULT_PROXY_CONFIG`、`DEFAULT_PROXY_PORT`；函数 `normalizeProxyConfig`、`getProxySettings`、`saveProxySettings`、`clearProxySettings`、`readSystemProxy`、`testProxyConnection`、`autoDetectProxy`。
+**主要依赖**：`@tauri-apps/api/core` 的 `invoke`、`@/utils/logger`（`logger.warn`）。
+
+| 符号 | 位置 | 说明 |
+| --- | --- | --- |
+| `ProxyType`（type） | proxyService.ts:4 | `"http" \| "socks5"` |
+| `ProxyConfig`（interface） | proxyService.ts:7-21 | `enabled`/`type`/`host`/`port`/`username?`/`password?`/`remoteDns?`/`exclude?`；`enabled=false` 时其余字段仅作草稿保留 |
+| `SystemProxyInfo`（interface） | proxyService.ts:24-35 | `enabled`/`proxy_type`/`host`/`port`/`username`/`password`/`pac_url`/`from_env` |
+| `ProxyTestResult`（interface） | proxyService.ts:38-41 | `status`（HTTP 状态码）、`duration_ms` |
+| `DEFAULT_PROXY_CONFIG` | proxyService.ts:43-48 | `{enabled:false, type:"http", host:"", port:8080}` |
+| `DEFAULT_PROXY_PORT` | proxyService.ts:50-53 | `{http: 8080, socks5: 1080}`，切换协议时用作默认端口 |
+| `ProxyResult<T>`（type） | proxyService.ts:56-58 | 显式成功/失败联合类型 |
+| `fail<T>(error)`（私有） | proxyService.ts:60-65 | 统一转 `{ok:false,error}` 并 `logger.warn` |
+| `normalizeProxyConfig(input)` | proxyService.ts:68-85 | 任意输入 → 合法 `ProxyConfig`：`type` 非法回落 `http`、`host` 去空格、端口夹取 1-65535（非法时按协议默认端口）、`remoteDns` 仅 SOCKS5 生效、`exclude` 去空格 |
+| `getProxySettings()` | proxyService.ts:88-95 | invoke `get_proxy_settings` → `normalizeProxyConfig` |
+| `saveProxySettings(config)` | proxyService.ts:98-109 | invoke `save_proxy_settings`（参数 `{ config }`），返回保存后的配置（已归一） |
+| `clearProxySettings()` | proxyService.ts:112-119 | invoke `clear_proxy_settings`，返回是否确实删除了配置（当前 UI 未使用，重置走保存默认值） |
+| `readSystemProxy()` | proxyService.ts:122-140 | invoke `read_system_proxy`，并补齐 `proxy_type`/`username`/`password`/`pac_url` 的缺省值 |
+| `testProxyConnection(config?, url?)` | proxyService.ts:143-156 | invoke `test_proxy_connection`（参数 `{config: config ?? null, url: url ?? null}`）；不传 `config` 时后端用已保存配置 |
+| `autoDetectProxy()` | proxyService.ts:159-167 | invoke `auto_detect_proxy`（无参），返回嗅探到的可用配置（协议/主机/端口已填好） |
+
+**备注**：
+- 封装的 invoke 命令：`get_proxy_settings`、`save_proxy_settings`、`clear_proxy_settings`、`read_system_proxy`、`test_proxy_connection`、`auto_detect_proxy`（共 6 个，全部为代理专用命令）。
+- 配置键：`proxy_config`（由后端 `ConfigService` 持久化；保存后后端会同步刷新全局代理缓存并把 `exclude` 写入 `no_proxy`，所有 HTTP 请求即时生效）。
+- `exclude` 字段为逗号分隔的主机名列表，经后端写入 `no_proxy` 环境变量后生效（reqwest 读取该变量）。
+- 本文件**不**使用 `configService`——代理配置有自己的专用命令，避免和通用键值路径混用。
 
 ## `src/utils/cardConfigService.ts`
 **职责**：仪表盘卡片实例配置的统一读写服务（静态类），配置最终落在后端 `app_config.json` 的 `card_settings` 对象下，按 `cardId` 隔离。

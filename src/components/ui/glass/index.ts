@@ -16,6 +16,11 @@ export { GlassProgressCircle, GlassMeter } from "../progress";
 export { GlassTable } from "../table";
 export { GlassNumberField, type GlassNumberFieldProps } from "../number-field";
 export { GlassSelect, type GlassSelectProps, type GlassSelectOption } from "../select";
+export {
+  GlassRadioGroup,
+  type GlassRadioGroupProps,
+  type GlassRadioGroupItemProps,
+} from "../radio-group";
 export { GlassInputOTP, type GlassInputOTPProps } from "../input-otp";
 export {
   GlassModal,

@@ -1,7 +1,7 @@
 # 通用 UI 组件库 — 文件功能参考
 
 > 逐文件精读源码生成。行号基于当前工作区版本，仅用于快速定位。
-> 覆盖 `src/components/ui/` 全部 36 个文件 + `src/components/` 下 3 个基础文件（共 39 个），以及 `src/components/crash-report-host.tsx` 崩溃提示宿主。
+> 覆盖 `src/components/ui/` 全部 37 个文件（新增 `radio-group.tsx`） + `src/components/` 下 3 个基础文件（共 40 个），以及 `src/components/crash-report-host.tsx` 崩溃提示宿主。
 
 ## `src/components/ui/account-avatar.tsx`
 **职责**：账户头像组件，图片加载失败时回退为首字母占位符，可选显示激活状态圆点。
@@ -59,7 +59,9 @@
 | `LinkIcon` | app-icon.tsx:37 | 链接（Link2） |
 | `UnlinkIcon` | app-icon.tsx:38 | 断开链接 |
 | `InfoIcon` | app-icon.tsx:39 | 信息 |
-| `StatusDot` | app-icon.tsx:41 | 状态圆点。props：`tone`（`success/warning/danger/default`）、`pulse`（默认 `false`，`animate-ping` 光晕）、`size`（`sm 8px / md 12px / lg 16px`，默认 `md`）、`className` |
+| `GlobeIcon` | app-icon.tsx:40 | 地球（网络/从系统读取代理） |
+| `LoadingIcon` | app-icon.tsx:41 | 加载圆环（`LoaderCircle`，配 `animate-spin` 使用） |
+| `StatusDot` | app-icon.tsx:43 | 状态圆点。props：`tone`（`success/warning/danger/default`）、`pulse`（默认 `false`，`animate-ping` 光晕）、`size`（`sm 8px / md 12px / lg 16px`，默认 `md`）、`className` |
 
 **备注**：与 `status-dot.tsx` 的 `StatusDot` 同名但 API 不同（此处支持 `size` 用 `pulse`，彼处固定 12px 用 `ping`），import 时注意路径。
 
@@ -534,10 +536,26 @@
 
 **备注**：提示内容必须作为触发元素的兄弟节点（依赖 group/peer 选择器）；`delay` prop 无效（无延迟实现）。
 
+## `src/components/ui/radio-group.tsx`
+**职责**：原生单选组（radio group），不依赖 Radix ToggleGroup。用于「N 选一」且需要明确必选语义的场景（如设置页的网络代理协议 HTTP / SOCKS5）。
+**导出**：`GlassRadioGroup`（`Object.assign` 复合组件，挂在 `GlassRadioGroup.Item` 上）、类型 `GlassRadioGroupProps`、`GlassRadioGroupItemProps`
+**主要依赖**：`react`（Context/useRef/useMemo）、`@/lib/utils`（`cn`）。**不依赖** `@radix-ui/react-toggle-group`——Radix 的 `type` 只接受 `single`/`multiple` 与旧实现冲突。
+
+| 符号 | 位置 | 说明 |
+| --- | --- | --- |
+| `GlassRadioGroupProps` | radio-group.tsx:4-19 | `value`（必填当前值）、`onValueChange?`、`children?`、`className?`、`isDisabled?`、`aria-label?`、`orientation?`（`horizontal`(默认)/`vertical`，仅影响方向键） |
+| `GlassRadioGroupItemProps` | radio-group.tsx:21-26 | `value`（必填）、`children?`、`className?`、`isDisabled?` |
+| `RadioGroupContext` | radio-group.tsx:28-38 | 内部 Context：`value`/`onValueChange`/`isDisabled`/`orientation`/`register`/`order` |
+| `GlassRadioGroupRoot`（私有） | radio-group.tsx:47-147 | 根容器：`role="radiogroup"` + `aria-orientation`；←/→（纵向为 ↑/↓）轮转并聚焦下一项；注册表用 `Map` 保存各 item 的 DOM 节点 |
+| `GlassRadioGroupItem`（私有） | radio-group.tsx:149-197 | 每项为原生 `<button role="radio" aria-checked>`，选中项 `tabIndex=0`、其余 `-1`（roving tabindex），重复点击不重复触发 `onValueChange`；左侧小圆点表达选中态 |
+| `GlassRadioGroup`（export） | radio-group.tsx:199-201 | `Object.assign(GlassRadioGroupRoot, { Item: GlassRadioGroupItem })` |
+
+**备注**：`GlassRadioGroup.Item` 必须在 `GlassRadioGroup` 内部使用（否则抛错「必须放在 GlassRadioGroup 内部」）；默认横向、整组宽度 `w-fit`，容器胶囊边框与 `ToggleGroup` 保持一致但内边距/字号更大（`h-8`、`text-sm`）以便承载协议名。
+
 ## `src/components/ui/glass/index.ts`
 **职责**：玻璃拟态风格统一出口（barrel）：把各基础文件里的 `Glass*` 组件与类型再导出，供 `@/components/ui/glass` 一键引入。
-**导出**：见下表（27 行导出语句）
-**主要依赖**：同目录上级各模块（`../button`、`../modal` 等 19 个来源文件）
+**导出**：见下表（32 行导出语句）
+**主要依赖**：同目录上级各模块（`../button`、`../radio-group`、`../modal` 等 20 个来源文件）
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
@@ -559,8 +577,9 @@
 | `GlassTable` | glass/index.ts:16 | 来自 `../table` |
 | `GlassNumberField` + 类型 | glass/index.ts:17 | 来自 `../number-field` |
 | `GlassSelect` + `GlassSelectProps`、`GlassSelectOption` | glass/index.ts:18 | 来自 `../select` |
-| `GlassInputOTP` + 类型 | glass/index.ts:19 | 来自 `../input-otp` |
-| `GlassModal`、`GlassModalCompound`、`GlassAlertDialog`、`GlassAlertDialogCompound` + 2 类型 | glass/index.ts:20-27 | 来自 `../modal` |
+| `GlassRadioGroup` + `GlassRadioGroupProps`、`GlassRadioGroupItemProps` | glass/index.ts:19-23 | 来自 `../radio-group`（单选组，`GlassRadioGroup.Item` 复合用法） |
+| `GlassInputOTP` + 类型 | glass/index.ts:24 | 来自 `../input-otp` |
+| `GlassModal`、`GlassModalCompound`、`GlassAlertDialog`、`GlassAlertDialogCompound` + 2 类型 | glass/index.ts:25-32 | 来自 `../modal` |
 
 **备注**：此桶**不含**无 Glass 前缀的组件（`Button`、`Input`、`Checkbox`、`Select`、`Table`、`Kbd` 等），也不含 `EmptyState`、`StatusBadge`、`LoadingBlock`、`ConfirmDialogHost` 等业务化组件——这些需直接从各自文件引入。
 

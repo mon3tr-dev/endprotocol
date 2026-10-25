@@ -26,14 +26,20 @@ pub fn set_proxy_config(
     config: Value,
 ) -> Result<(), String> {
     let mut service = state.lock().map_err(|e| e.to_string())?;
-    service.set_proxy_config(config).map_err(|e| e.to_string())
+    service
+        .set_proxy_config(config.clone())
+        .map_err(|e| e.to_string())?;
+    crate::utils::http_client::set_global_proxy_config(Some(config));
+    Ok(())
 }
 
 /// 删除代理配置
 #[tauri::command]
 pub fn remove_proxy_config(state: State<Arc<Mutex<ConfigService>>>) -> Result<bool, String> {
     let mut service = state.lock().map_err(|e| e.to_string())?;
-    Ok(service.remove_proxy_config())
+    let removed = service.remove_proxy_config();
+    crate::utils::http_client::set_global_proxy_config(None);
+    Ok(removed)
 }
 
 /// 设置配置值
@@ -44,7 +50,13 @@ pub fn set_config(
     value: Value,
 ) -> Result<(), String> {
     let mut service = state.lock().map_err(|e| e.to_string())?;
-    service.set(key, value).map_err(|e| e.to_string())
+    let is_proxy = key == "proxy_config";
+    let proxy_value = value.clone();
+    service.set(key, value).map_err(|e| e.to_string())?;
+    if is_proxy {
+        crate::utils::http_client::set_global_proxy_config(Some(proxy_value));
+    }
+    Ok(())
 }
 
 /// 删除配置项

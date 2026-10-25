@@ -9,6 +9,7 @@ pub mod gacha;
 pub mod image;
 pub mod launcher;
 pub mod logs;
+pub mod proxy;
 pub mod startup;
 pub mod system_resource;
 pub mod tray;

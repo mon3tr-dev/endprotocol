@@ -31,8 +31,8 @@
 - **289-304 行**：读取配置 `developer_mode`、`sidebar_collapsed` 初始化状态。
 - **307-315 行**：监听 `developerModeChange`（CustomEvent，`detail.enabled`）。
 - **338-423 行**：选中账户加载与同步——`Promise.all([getSelectedAccount(), getAccounts()])` 并按 id 匹配；订阅 `accountAvailability` 状态并在账户数据不可用时置 `accountUnavailable`（侧边栏显示「账号不可用 / 重新登录」并跳转 `/account`）；监听 `accountChanged`（重读配置 `refresh_on_account_switch`）、`manualRefresh`（`detail.count` 上限 5，置骨架屏 300ms 后复位）。
-- **402-715 行**：`getAllSearchableContent`（`useMemo`，依赖 `t`/`i18n.language`）——硬编码的可检索条目表：导航项 `nav-dashboard`(406)/`nav-settings`(423)/`nav-account`(439)、仪表板块 456-628（welcome、stats-revenue/users/sales、activity、projects、quick-actions、create/start/invite、analytics）、设置块 630-696（settings-title/general/language/theme）、`nav-developer`(697-712)，每条含中英双语 title/description/category 与可选 `elementId`。
-- **718-788 行**：`searchResults`（`useMemo`）——先按当前语言再按中/英备选语言匹配（725-742），再标注 `matchedLang` 与 `matchedText`（743-787）。
+- **432-780 行**：`getAllSearchableContent`（`useMemo`，依赖 `t`/`i18n.language`）——硬编码的可检索条目表：导航项 `nav-dashboard`(438)/`nav-settings`(455)/`nav-account`(471)、仪表板块 488-660（welcome、stats-revenue/users/sales、activity、projects、quick-actions、create/start/invite、analytics）、设置块 662-777（settings-title 662-695 / general 696-712 / **network 713-730（`elementId: "settings-network"`）** / language 731-747 / theme 748-762）、`nav-developer`(763-777)，每条含中英双语 title/description/category 与可选 `elementId`。
+- **782-853 行**：`searchResults`（`useMemo`）——先按当前语言再按中/英备选语言匹配（786-800 附近），再标注 `matchedLang` 与 `matchedText`。
 - **791-801 行**：`Cmd/Ctrl+K` 聚焦搜索框。
 - **804-818 行**：点击外部/滚动时关闭搜索结果。
 - **821-847 行**：搜索结果键盘导航（↑↓/Enter/Escape）。

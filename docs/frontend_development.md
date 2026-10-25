@@ -8,10 +8,10 @@
 | --- | --- | --- |
 | `src/pages/` | 10 个页面（dashboard、account、char-select、characters、gacha-records、attendance、medals、todo、settings、developer） | [pages_*.md](reference/frontend/pages_core.md) |
 | `src/layouts/` | dashboard / default 布局 | [pages_core.md](reference/frontend/pages_core.md) |
-| `src/components/` | 弹窗、面板、侧栏、图表等大组件（约 28 个 tsx） | [components_dialogs.md](reference/frontend/components_dialogs.md)、[components_settings_panels.md](reference/frontend/components_settings_panels.md)、[components_sidebar_charts.md](reference/frontend/components_sidebar_charts.md)、[components_game_action_panel.md](reference/frontend/components_game_action_panel.md) |
-| `src/components/ui/` | 36 个通用 UI 组件 + `glass/` | [ui_components.md](reference/frontend/ui_components.md) |
+| `src/components/` | 弹窗、面板、侧栏、图表等大组件（约 29 个 tsx，含 `network-settings.tsx`） | [components_dialogs.md](reference/frontend/components_dialogs.md)、[components_settings_panels.md](reference/frontend/components_settings_panels.md)、[components_sidebar_charts.md](reference/frontend/components_sidebar_charts.md)、[components_game_action_panel.md](reference/frontend/components_game_action_panel.md) |
+| `src/components/ui/` | 37 个通用 UI 组件 + `glass/` | [ui_components.md](reference/frontend/ui_components.md) |
 | `src/components/cards/` | 卡片系统：`registry/`、`base/`、`card-container.tsx`、`_template/` 与 11 张卡片（含 system-resource、todo） | [cards_core.md](reference/frontend/cards_core.md) 及各 `cards_*.md` |
-| `src/utils/` | 18 个 IPC 封装与工具（account/config/cardConfig/dashboard/role/launcher/update/image/logger…） | [utils_services_a.md](reference/frontend/utils_services_a.md)、[utils_services_b.md](reference/frontend/utils_services_b.md) |
+| `src/utils/` | 19 个 IPC 封装与工具（account/config/**proxy**/cardConfig/dashboard/role/launcher/update/image/logger…） | [utils_services_a.md](reference/frontend/utils_services_a.md)、[utils_services_b.md](reference/frontend/utils_services_b.md) |
 | `src/types/` | TypeScript 类型 | [types_locales_styles.md](reference/frontend/types_locales_styles.md) |
 | `src/locales/{zh,en}/` | 国际化资源 | 同上 |
 | `src/styles/globals.css` | 全局样式、主题变量、玻璃拟态类 | 同上 |
@@ -60,9 +60,11 @@
 
 ### 3.4 新增通用 UI 组件
 
-- 放 `src/components/ui/`，遵循现有组件的 props 风格（受控 `isOpen`/`onOpenChange`、`className` 合并用 `cn`）
+- 放 `src/components/ui/`（**不要**放 `ui/glass/`，该目录只放 barrel `index.ts`），遵循现有组件的 props 风格（受控 `isOpen`/`onOpenChange`、`className` 合并用 `cn`）
+- 如需从 `@/components/ui/glass` 统一引入，在 `ui/glass/index.ts` 里追加一行再导出
 - 复用 `glass/` 的视觉变量，支持深色模式
 - 组件清单与 props 见 [ui_components.md](reference/frontend/ui_components.md)
+- 单选/分段语义优先用 `GlassRadioGroup`（`<GlassRadioGroup value=… onValueChange=…>` + `<GlassRadioGroup.Item value=…>`，见 `ui/radio-group.tsx`），不要用 Radix ToggleGroup 冒充单选组（其 `type` 只接受 `single`/`multiple`，传 `horizontal`/`vertical` 会踩类型陷阱）
 
 ## 4. 拓展流程示例：添加一个新的数据展示卡片
 

@@ -16,6 +16,9 @@ import {
   Link2,
   Unlink,
   Info,
+  AlertTriangle,
+  Globe,
+  LoaderCircle,
 } from "lucide";
 import { createMorphIcon } from "@/components/morph-icon";
 import clsx from "clsx";
@@ -37,6 +40,9 @@ export const BellIcon = createMorphIcon(Bell);
 export const LinkIcon = createMorphIcon(Link2);
 export const UnlinkIcon = createMorphIcon(Unlink);
 export const InfoIcon = createMorphIcon(Info);
+export const GlobeIcon = createMorphIcon(Globe);
+export const LoadingIcon = createMorphIcon(LoaderCircle);
+export const AlertTriangleIcon = createMorphIcon(AlertTriangle);
 
 export function StatusDot({
   tone = "default",

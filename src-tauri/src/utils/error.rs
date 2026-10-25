@@ -18,6 +18,12 @@ pub enum AppError {
     #[error("Configuration error: {message}")]
     ConfigError { message: String },
 
+    #[error("Network error: {message}")]
+    NetworkError { message: String },
+
+    #[error("Invalid input: {message}")]
+    ValidationError { message: String },
+
     #[error("API error (code={code}): {message}")]
     ApiError { code: i32, message: String },
 }

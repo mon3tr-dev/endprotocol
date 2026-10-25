@@ -101,7 +101,7 @@ pub async fn download_image(
 
     // 下载图片
     log_info!("[download_image] Downloading from: {}", url);
-    let client = reqwest::Client::new();
+    let client = crate::utils::http_client::create_client();
     let response = capture::send(
         &client,
         client

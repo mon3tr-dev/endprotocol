@@ -711,6 +711,23 @@ export const Sidebar = ({
           categoryZh: "设置",
         },
         {
+          id: "settings-network",
+          title: t("settings.network.title"),
+          titleEn: "Network",
+          titleZh: "网络",
+          description:
+            i18n.language === "zh"
+              ? "配置网络代理与连接方式"
+              : "Configure proxy and connection settings",
+          descriptionEn: "Configure proxy and connection settings",
+          descriptionZh: "配置网络代理与连接方式",
+          path: "/settings",
+          elementId: "settings-network",
+          category: i18n.language === "zh" ? "设置" : "Settings",
+          categoryEn: "Settings",
+          categoryZh: "设置",
+        },
+        {
           id: "settings-language",
           title: t("settings.general.language"),
           titleEn: "Language",
