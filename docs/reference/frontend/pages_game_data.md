@@ -135,7 +135,7 @@
 | ├ 账号切换 effect | L150–L154 | `window` `accountChanged` → `initRole()` |
 | ├ 角色菜单关闭 effect | L157–L166 | 点击 `roleMenuRef` 外部关闭 |
 | ├ 进度监听 effect | L169–L181 | `listen("gacha-sync-progress")`，payload 为 `GachaSyncProgress`，`done` 时 `setSyncing(false)` |
-| ├ `handleSync` | L183 | 同步入口：L186–L189 同步中再点仅重开进度窗；L196–L199 按分类选择 `sync_weapon_gacha_records` / `sync_gacha_records`；L201–L213 成功 `addMessage`（tag `"gacha"`）；L214–L221 失败 toast + 重开窗口；L222–L225 `finally` 重新 `loadSaved`/`loadWeaponSaved` |
+| ├ `handleSync` | L183 | 同步入口：L186–L194 同步中再点仅重开进度窗；并发调用 `sync_gacha_records`（全部角色寻访：限定/联合/常驻）与 `sync_weapon_gacha_records`（武器寻访），通过 `syncRequestRef` 序列号丢弃过期请求的结果；L202–L227 合并两个命令的 `newRecords/totalRecords/perTabNew` 并统一 `addMessage`（tag `"gacha"`）；失败 toast + 重开窗口；`finally` 在请求仍为最新时重新 `loadSaved`/`loadWeaponSaved` |
 | ├ `handleSelectRole` | L228 | 本地切换角色（仅本页生效），重载两类记录 |
 | ├ `selectedAccount` | L235 | `accounts` 中匹配 `roleId` 的项 |
 | ├ `isWeapon` / `active` | L241 / L242 | 分类为 weapon 时取 `weaponSaved`，否则 `saved` |
@@ -163,8 +163,9 @@
 - **invoke 命令（全部 4 个，均在本文件）**：
   - `get_saved_gacha_records`（L100，参数 `{ roleId }`）——读本地角色寻访记录
   - `get_saved_weapon_gacha_records`（L111，参数 `{ roleId }`）——读本地武器寻访记录
-  - `sync_gacha_records`（L199，参数 `{ roleId }`）——联网同步角色寻访
-  - `sync_weapon_gacha_records`（L198，参数 `{ roleId }`）——联网同步武器寻访
+  - `sync_gacha_records`（参数 `{ roleId }`）——联网同步全部角色寻访（限定/联合/常驻）
+  - `sync_weapon_gacha_records`（参数 `{ roleId }`）——联网同步武器寻访
+  - 两个命令由 `handleSync` 并发调用，结果合并后统一提示
   - 间接调用：`getSelectedAccount()` → `invoke('get_selected_account')`、`getAccounts()` → `invoke('get_accounts')`（accountService.ts L433/L196）；`Img` → imageCacheManager（`get_image_cache_dir` / `read_image_file`）；子组件 `GachaPityChart` 内部另有 `invoke("resolve_gacha_avatar_map", { roleId })`（gacha-pity-chart.tsx L258）。
 - **配置键**：无（未使用 `configService` / `localStorage` / `sessionStorage`）。
 - **i18n key 前缀**：仅 `sidebar.gacha`（L417）。其余全部文案为 `isZh ? 中文 : 英文` 手写分支（含分类标签 L34–L39、按钮、表头、进度文案等），不走 `t()`。

@@ -91,6 +91,7 @@ export default function GachaRecordsPage() {
 
   // 同步状态（modal 关闭后后台继续，直到后端写盘完成）
   const [syncing, setSyncing] = useState(false);
+  const syncRequestRef = useRef(0); // 当前同步请求序列号，用于丢弃过期请求的结果
   const [progress, setProgress] = useState<GachaSyncProgress | null>(null);
   const [progressModalOpen, setProgressModalOpen] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
@@ -194,25 +195,46 @@ export default function GachaRecordsPage() {
     setProgress(null);
     setProgressModalOpen(true);
 
-    const isWeapon = category === "weapon";
-    const promise = isWeapon
-      ? invoke<GachaSyncResult>("sync_weapon_gacha_records", { roleId })
-      : invoke<GachaSyncResult>("sync_gacha_records", { roleId });
+    // 右上角同步按钮同步全部数据：全部角色寻访（限定/联合/常驻）+ 武器寻访，
+    // 并发调用两个命令，合并结果后统一提示。
+    const requestSeq = ++syncRequestRef.current;
+    const charPromise = invoke<GachaSyncResult>("sync_gacha_records", { roleId });
+    const weaponPromise = invoke<GachaSyncResult>("sync_weapon_gacha_records", {
+      roleId,
+    });
 
-    promise
-      .then((res) => {
-        setSyncResult(res);
+    Promise.all([charPromise, weaponPromise])
+      .then(([charRes, weaponRes]) => {
+        // 丢弃过期请求（期间已切换角色/再次点击）
+        if (requestSeq !== syncRequestRef.current) return;
+        const newRecords = charRes.newRecords + weaponRes.newRecords;
+        const totalRecords = charRes.totalRecords + weaponRes.totalRecords;
+        const perTabNew: Record<string, number> = {
+          ...charRes.perTabNew,
+          ...weaponRes.perTabNew,
+        };
+        setSyncResult({
+          ...charRes,
+          userId: charRes.userId,
+          serverId: charRes.serverId,
+          syncedAt: Math.max(charRes.syncedAt, weaponRes.syncedAt),
+          newRecords,
+          totalRecords,
+          perTabNew,
+        });
         setSyncing(false);
         addMessage({
           type: "info",
           title: i18n.language === "zh" ? "抽卡记录同步完成" : "Gacha Sync Complete",
           body: i18n.language === "zh"
-            ? `新增 ${res.newRecords} 条，共 ${res.totalRecords} 条`
-            : `+${res.newRecords} new, ${res.totalRecords} total`,
+            ? `新增 ${newRecords} 条，共 ${totalRecords} 条（角色 ${charRes.newRecords} 条 / 武器 ${weaponRes.newRecords} 条）`
+            : `+${newRecords} new, ${totalRecords} total (char ${charRes.newRecords} / weapon ${weaponRes.newRecords})`,
           tag: "gacha",
         });
       })
       .catch((e) => {
+        // 丢弃过期请求的错误
+        if (requestSeq !== syncRequestRef.current) return;
         logError("[Gacha] Sync failed:", e);
         addMessage({ type: "urgent", title: i18n.language === "zh" ? "抽卡记录同步失败" : "Gacha Sync Failed", body: String(e), tag: "gacha" });
         setSyncError(String(e));
@@ -221,8 +243,11 @@ export default function GachaRecordsPage() {
         setProgressModalOpen(true);
       })
       .finally(() => {
-        loadSaved(roleId);
-        loadWeaponSaved(roleId);
+        // 只在本请求仍为最新时刷新本地数据
+        if (requestSeq === syncRequestRef.current) {
+          loadSaved(roleId);
+          loadWeaponSaved(roleId);
+        }
       });
   };
 
@@ -503,7 +528,7 @@ export default function GachaRecordsPage() {
               <RefreshIcon size={16} className={clsx(syncing && "animate-spin")} />
             }
           >
-            {syncing ? (isZh ? "正在同步" : "Syncing...") : isZh ? "同步记录" : "Sync"}
+            {syncing ? (isZh ? "正在同步" : "Syncing...") : isZh ? "同步全部记录" : "Sync All"}
           </GlassButton>
         </div>
       </header>
@@ -513,8 +538,9 @@ export default function GachaRecordsPage() {
           <div className="text-center space-y-3">
             <RefreshIcon size={40} className="mx-auto text-muted" />
             <p className="text-muted">
-              {isZh ? "还没有同步过抽卡记录，点击右上角" : "No gacha records yet, click"} "同步记录"{" "}
-              {isZh ? "开始同步" : "to start syncing"}
+              {isZh ? "还没有同步过抽卡记录，点击右上角" : "No gacha records yet, click"}{" "}
+              {isZh ? "同步全部记录" : "Sync All"}{" "}
+              {isZh ? "开始同步" : "to start syncing all records"}
             </p>
           </div>
         </GlassCard>
