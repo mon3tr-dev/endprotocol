@@ -74,7 +74,7 @@
 | `set_global_proxy_config(config)` | http_client.rs:12 | 写入缓存；由 `set_config("proxy_config")`、`set_proxy_config`、`remove_proxy_config`、`save_proxy_settings`、`clear_proxy_settings` 以及启动时的 `create_config_service()` 调用 |
 | `global_proxy_config()` | http_client.rs:19 | 读取缓存快照（`None` 表示未启用代理） |
 | `create_client() -> Client` | http_client.rs:24 | 等价于 `create_proxied_client(global_proxy_config().as_ref())`，即**默认跟随全局代理设置**，30 秒超时 |
-| `create_proxied_client(proxy_config) -> Client` | http_client.rs:29 | 按传入代理配置构建 client（`proxy::from_config` 生成 `reqwest::Proxy`）；构建失败时 `log_warn!` 并回退 `Client::new()`，不再 panic |
+| `create_proxied_client(proxy_config) -> Client` | http_client.rs:29 | 按传入代理配置构建 client（`proxy::from_config` 生成 `reqwest::Proxy`）；**未启用时显式调用 `ClientBuilder::no_proxy()`**，禁止 reqwest 回退到读取 `HTTP_PROXY`/`HTTPS_PROXY`/`ALL_PROXY` 等环境变量（否则后台运行的 v2ray 等第三方代理仍会被使用，即使 EndProtocol 内部代理开关已关闭）；构建失败时 `log_warn!` 并回退 `Client::new()`，不再 panic |
 
 **备注**：调用方约 15 处（services/skland_service.rs、services/account_service.rs、services/gacha_service.rs），自本版本起自动继承全局代理；`commands/image.rs` 与 `services/avatar_cache_service.rs` 的图片下载也已从裸 `reqwest::Client::new()` 改为 `create_client()`，因此同样走代理。**仍未走代理**的请求方：`commands/updater.rs`（自建 client）、`services/char_detail_service.rs`、`services/skland_service.rs` 的数美指纹请求、`services/game_launcher_service.rs`（自建带自定义配置的 client）——如需覆盖，改为 `http_client::create_client()` 即可。
 

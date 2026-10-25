@@ -39,12 +39,18 @@ pub fn create_client() -> Client {
     create_proxied_client(global_proxy_config().as_ref())
 }
 
-/// 创建带指定代理配置的 HTTP 客户端；`proxy_config` 为 `None` 时不走代理。
+/// 创建带指定代理配置的 HTTP 客户端。
+///
+/// `proxy_config` 为 `None` 或未启用时，**显式禁用代理**（`ClientBuilder::no_proxy()`），
+/// 而不是不传任何代理。否则 reqwest 会回退到读取 `HTTP_PROXY` /
+/// `HTTPS_PROXY` / `ALL_PROXY` 等环境变量，导致后台运行的 v2ray 等第三方代理
+/// 仍然会被使用，即使 EndProtocol 内部代理开关已关闭。
 pub fn create_proxied_client(proxy_config: Option<&Value>) -> Client {
     let mut builder = Client::builder().timeout(Duration::from_secs(30));
 
-    if let Some(proxy) = proxy_config.and_then(proxy::from_config) {
-        builder = builder.proxy(proxy);
+    match proxy_config.and_then(proxy::from_config) {
+        Some(proxy) => builder = builder.proxy(proxy),
+        None => builder = builder.no_proxy(),
     }
 
     builder.build().unwrap_or_else(|error| {
