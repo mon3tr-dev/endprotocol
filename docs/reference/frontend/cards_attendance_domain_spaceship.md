@@ -8,7 +8,7 @@
 | --- | --- | --- | --- | --- |
 | `attendance` | `src/components/cards/attendance/` | `index.tsx` 默认导出 `AttendanceCard` | `attendance-settings-modal.tsx`、`attendance-rewards-modal.tsx`、`attendance-rewards.tsx`、`attendance.meta.json`、`locales/{zh,en}.json` | Tauri `invoke("get_attendance"/"do_attendance")`；`CardConfigService`（`get_card_settings`/`save_card_settings`）；`CardStartupService`（配置键 `card_auto_sign_users`/`card_user_mapping`，底层 `get_config`/`set_config`）；`getAccounts()`（`invoke("get_accounts")`） |
 | `domain_info` | `src/components/cards/domain-info/` | `index.tsx` 默认导出 `DomainInfoCard` | 无独立子组件文件；文件内含 3 个内嵌 `CustomModal`；`domain-info.meta.json`、`locales/{zh,en}.json` | `roleDataService.queryData(roleId,"char_detail",["domain"])` → `invoke("query_role_data")`；`CardConfigService`；`getAccounts()` |
-| `spaceship` | `src/components/cards/spaceship/` | `index.tsx` 默认导出 `SpaceshipCard` | 无独立子组件文件；文件内含 2 个内嵌 `CustomModal`；`spaceship.meta.json`、`locales/{zh,en}.json` | `roleDataService.queryData(roleId,"char_detail",["spaceShip"])` 与 `roleDataService.getFullCharDetail()` → `invoke("query_role_data")`；`CardConfigService`；`getAccounts()`；头像预取 `useImageRequest` → `invoke("get_image_cache_dir"/"download_image"/"read_image_file")` |
+| `spaceship` | `src/components/cards/spaceship/` | `index.tsx` 默认导出 `SpaceshipCard` | `spaceship-shared.ts`（与 `/spaceship` 页面共用的类型/工具）、文件内含 2 个内嵌 `CustomModal`；`spaceship.meta.json`、`locales/{zh,en}.json` | `roleDataService.queryData(roleId,"char_detail",["spaceShip"])` 与 `roleDataService.getFullCharDetail()` → `invoke("query_role_data")`；`CardConfigService`；`getAccounts()`；头像预取 `useImageRequest` → `invoke("get_image_cache_dir"/"download_image"/"read_image_file")` |
 
 三张卡片均**不使用** Tauri `listen()`，跨组件通信一律通过 `window` 上的 `CustomEvent("cardAction")`（由 `card-container.tsx` 右键菜单派发）。
 
@@ -215,21 +215,16 @@
 
 ## `src/components/cards/domain-info/index.tsx`
 
-**职责**：大世界区域（domain）信息卡片。展示当前区域名称/等级、区域货币（谷地/武陵调度卷）余额进度、基建建设点列表；支持切换账号、切换区域、查看建设点详情列表三个弹窗。
+**职责**：大世界区域（domain）信息卡片。展示当前区域名称/等级、区域货币（谷地/武陵调度卷）余额进度、基建建设点列表；支持切换账号、切换区域、查看建设点详情列表三个弹窗。数据类型与格式化工具抽取到 `domain-shared.ts`，与独立页面 `src/pages/domain.tsx` 共用。
 
-**导出**：`DomainSettlement`（22）、`DomainData`（36）、`DomainInfoCard`（默认导出，76）。
-**主要依赖**：`GlassButton/GlassCard/GlassProgressCircle`、`useCardData`、`roleDataService`、`CardConfigService`、`getAccounts`、`AccountAvatar`、`Img`、`logError`、`resolveServerLabel`、`CustomModal*`、类型 `Account`/`DomainInfoCardSettings`（1-20）。
+**导出**：`DomainInfoCard`（默认导出）；`DomainData`/`DomainSettlement` 从 `./domain-shared` 再导出（向后兼容）。
+**主要依赖**：`GlassButton/GlassCard/GlassProgressCircle`、`useCardData`、`roleDataService`、`CardConfigService`、`getAccounts`、`AccountAvatar`、`Img`、`logError`、`resolveServerLabel`、`CustomModal*`、类型 `Account`/`DomainInfoCardSettings`、`./domain-shared`（`DomainData`/`DomainSettlement`/`formatMoney`/`formatDateTime`/`getMoneyName`）。
 
 ### 符号清单
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
-| `DomainSettlement` | 22-34 | 建设点字段：`id/level/exp/expToLevelUp/remainMoney/moneyMax/officerCharIds/officerCharAvatar/name/lastTickTime/isFinalMaxLevel` |
-| `DomainData` | 36-43 | `{ domainId, name, level, settlements[], moneyMgr:{total,count}, factory }` |
-| `formatMoney(v)` | 45-50 | `≥10000` 转 `x.xw`，否则原样；`undefined` → `--` |
-| `formatDateTime(ts)` | 52-62 | 秒级时间戳 → `MM-DD HH:mm` |
-| `DOMAIN_MONEY_NAMES` | 64-67 | `domain_1` 谷地调度卷 / `domain_2` 武陵调度卷（中英） |
-| `getMoneyName(domainId, lang)` | 69-74 | 按 `domainId` 取货币名，`lang` 以 `zh` 开头用中文 |
+| `domain-shared.ts` | 独立文件 | `DomainSettlement`/`DomainData` 接口、`formatMoney`（`≥10000` 转 `x.xw`）、`formatDateTime`（秒级时间戳 → `MM-DD HH:mm`）、`DOMAIN_MONEY_NAMES`（`domain_1` 谷地调度卷 / `domain_2` 武陵调度卷）、`getMoneyName(domainId, lang)`——卡片与 `/domain` 页面共用 |
 | state | 82-91 | `customRoleId`（初值 `settings.roleId`）、`domainId`（初值 `settings.domainId`）、`isRoleSelectOpen`、`isDomainSelectOpen`、`isListOpen`、`accounts` |
 | `effectiveRoleId` | 93 | `customRoleId ?? defaultRoleId` |
 | `useCardData<DomainData[]>` | 95-103 | `roleDataService.queryData(effectiveRoleId, "char_detail", ["domain"])`，取 `result["domain"]`；`reloadKey = effectiveRoleId` |
@@ -308,29 +303,16 @@
 
 ## `src/components/cards/spaceship/index.tsx`
 
-**职责**：帝江号（spaceship）卡片。展示各舱室等级与派驻干员头像（心情色环），点开舱室弹窗查看每位干员的心情/信赖进度条；支持切换账号弹窗。总控中枢置顶，未识别舱室类型不展示。
+**职责**：帝江号（spaceship）卡片。展示各舱室等级与派驻干员头像（心情色环），点开舱室弹窗查看每位干员的心情/信赖进度条；支持切换账号弹窗。总控中枢置顶，未识别舱室类型不展示。数据类型与心情/信赖计算工具抽取到 `spaceship-shared.ts`，与独立页面 `src/pages/spaceship.tsx` 共用。
 
-**导出**：`SpaceShipRoomChar`（25）、`SpaceShipRoom`（32）、`SpaceshipCard`（默认导出，129）。
-**主要依赖**：`Glass*` 组件、`useCardData`、`roleDataService`、`CardConfigService`、`getAccounts`、`AccountAvatar`、`Img`、`logError`、`resolveServerLabel`、`useImageRequest`、`CustomModal*`、`CardIcon`、类型 `Account`/`CharDetailData`/`CharacterItem`/`SpaceshipCardSettings`（1-23）。
+**导出**：`SpaceshipCard`（默认导出）；`SpaceShipRoomChar`/`SpaceShipRoom` 从 `./spaceship-shared` 再导出（向后兼容）。
+**主要依赖**：`Glass*` 组件、`useCardData`、`roleDataService`、`CardConfigService`、`getAccounts`、`AccountAvatar`、`Img`、`logError`、`resolveServerLabel`、`useImageRequest`、`CustomModal*`、`CardIcon`、类型 `Account`/`CharDetailData`/`CharacterItem`/`SpaceshipCardSettings`、`./spaceship-shared`（`SpaceShipRoom`/`SpaceShipRoomChar`/`StationedCharView`/`TRUST_TEXT_CLASS`/`getMoodPercent`/`getTrustPercent`/`getTrustLevel`/`getMoodRingClass`/`getMoodTextClass`/`getRoomMeta`/`collectSpaceshipIds`/`sortSpaceshipRooms`）。
 
 ### 符号清单
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
-| `SpaceShipRoomChar` | 25-30 | `{ charId, physicalStrength(心情), favorability(信赖), avatarUrl }` |
-| `SpaceShipRoom` | 32-38 | `{ id, type, level, chars[], reports }` |
-| `TrustLevelKey` | 40 | `"friendly" \| "close" \| "trust"` |
-| `MOOD_MAX` / `TRUST_CLOSE_THRESHOLD` / `TRUST_MAX_THRESHOLD` | 42-44 | 10000 / 300 / 1500 |
-| `ROOM_META` | 46-51 | `0→control(satellite)`、`1→manufacturing(factory)`、`2→growth(sprout)`、`5→reception(bell)` |
-| `TRUST_TEXT_CLASS` | 53-57 | friendly→muted、close→primary、trust→warning |
-| `clamp` | 59-61 | 数值夹取 |
-| `getMoodPercent` | 63-65 | `physicalStrength/10000` 取百分比 |
-| `getTrustPercent` | 67-84 | 分段：`≥1500`→200；`≥300`→100~199（线性取整）；否则 0~99 |
-| `getTrustLevel` | 86-91 | 依阈值返回三档 |
-| `getMoodRingClass` / `getMoodTextClass` | 93-97 / 99-103 | ≥50 绿、≥25 黄、否则红 |
-| `getRoomMeta` | 105-107 | 查 `ROOM_META`，未知返回 `null` |
-| `StationedCharView` | 109-116 | 视图模型：`charId/name/avatar/moodPct/trustPct/trustLevel` |
-| `collectSpaceshipIds(char)` | 118-127 | 汇总培养/战斗/能力天赋 id + `latestSpaceshipSkillNodes` + `latestFactorySkillNodes` |
+| `spaceship-shared.ts` | 独立文件 | `SpaceShipRoomChar`（`charId/physicalStrength(心情)/favorability(信赖)/avatarUrl`）、`SpaceShipRoom`（`id/type/level/chars[]/reports`）、`TrustLevelKey`、常量 `MOOD_MAX=10000`/`TRUST_CLOSE_THRESHOLD=300`/`TRUST_MAX_THRESHOLD=1500`、`ROOM_META`（`0→control(satellite)`、`1→manufacturing(factory)`、`2→growth(sprout)`、`5→reception(bell)`）、`TRUST_TEXT_CLASS`、`clamp`、`getMoodPercent`、`getTrustPercent`（分段取整）、`getTrustLevel`、`getMoodRingClass`/`getMoodTextClass`/`getMoodBarClass`、`getRoomMeta`、`StationedCharView`、`collectSpaceshipIds`、`sortSpaceshipRooms`——卡片与 `/spaceship` 页面共用 |
 | state | 136-141 | `customRoleId`（初值 `settings.roleId`）、`isRoleSelectOpen`、`detailRoomIndex`、`accounts` |
 | `effectiveRoleId` | 143 | `customRoleId ?? defaultRoleId` |
 | `useCardData<SpaceShipRoom[]>` | 145-152 | `queryData(effectiveRoleId, "char_detail", ["spaceShip"])` → `result?.spaceShip?.rooms` |

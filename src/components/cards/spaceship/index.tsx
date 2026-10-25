@@ -21,110 +21,22 @@ import { CardIcon } from "@/components/icons";
 import type { Account } from "@/utils/accountService";
 import type { CharDetailData, CharacterItem } from "@/types/charDetail";
 import type { SpaceshipCardSettings } from "@/types/card-settings";
+import {
+  type SpaceShipRoom,
+  type SpaceShipRoomChar,
+  type StationedCharView,
+  TRUST_TEXT_CLASS,
+  getMoodPercent,
+  getTrustPercent,
+  getTrustLevel,
+  getMoodRingClass,
+  getMoodTextClass,
+  getRoomMeta,
+  collectSpaceshipIds,
+  sortSpaceshipRooms,
+} from "./spaceship-shared";
 
-export interface SpaceShipRoomChar {
-  charId?: string;
-  physicalStrength?: number;
-  favorability?: number;
-  avatarUrl?: string;
-}
-
-export interface SpaceShipRoom {
-  id?: string;
-  type?: number;
-  level?: number;
-  chars?: SpaceShipRoomChar[];
-  reports?: Record<string, unknown>;
-}
-
-type TrustLevelKey = "friendly" | "close" | "trust";
-
-const MOOD_MAX = 10000;
-const TRUST_CLOSE_THRESHOLD = 300;
-const TRUST_MAX_THRESHOLD = 1500;
-
-const ROOM_META: Record<number, { key: string; icon: string }> = {
-  0: { key: "control", icon: "satellite" },
-  1: { key: "manufacturing", icon: "factory" },
-  2: { key: "growth", icon: "sprout" },
-  5: { key: "reception", icon: "bell" },
-};
-
-const TRUST_TEXT_CLASS: Record<TrustLevelKey, string> = {
-  friendly: "text-muted",
-  close: "text-primary",
-  trust: "text-warning",
-};
-
-function clamp(v: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, v));
-}
-
-function getMoodPercent(physicalStrength: number | undefined): number {
-  return clamp(Math.round(((physicalStrength ?? 0) / MOOD_MAX) * 100), 0, 100);
-}
-
-function getTrustPercent(favorability: number | undefined): number {
-  const fav = favorability ?? 0;
-  if (fav >= TRUST_MAX_THRESHOLD) return 200;
-  if (fav >= TRUST_CLOSE_THRESHOLD) {
-    // 亲近段：(fav - 300) / 1200 * 100，向下取整
-    return clamp(
-      100 +
-        Math.floor(
-          ((fav - TRUST_CLOSE_THRESHOLD) /
-            (TRUST_MAX_THRESHOLD - TRUST_CLOSE_THRESHOLD)) *
-            100,
-        ),
-      100,
-      199,
-    );
-  }
-  return clamp(Math.floor((fav / TRUST_CLOSE_THRESHOLD) * 100), 0, 99);
-}
-
-function getTrustLevel(favorability: number | undefined): TrustLevelKey {
-  const fav = favorability ?? 0;
-  if (fav >= TRUST_MAX_THRESHOLD) return "trust";
-  if (fav >= TRUST_CLOSE_THRESHOLD) return "close";
-  return "friendly";
-}
-
-function getMoodRingClass(pct: number): string {
-  if (pct >= 50) return "border-success/70";
-  if (pct >= 25) return "border-warning/70";
-  return "border-danger/70";
-}
-
-function getMoodTextClass(pct: number): string {
-  if (pct >= 50) return "text-success";
-  if (pct >= 25) return "text-warning";
-  return "text-danger";
-}
-
-function getRoomMeta(type: number | undefined) {
-  return ROOM_META[type ?? -1] ?? null;
-}
-
-interface StationedCharView {
-  charId: string;
-  name: string;
-  avatar: string;
-  moodPct: number;
-  trustPct: number;
-  trustLevel: TrustLevelKey;
-}
-
-function collectSpaceshipIds(char: CharacterItem): string[] {
-  const d = char.charData;
-  return [
-    ...(d.cultivationTalents || []).map((t) => t.id),
-    ...(d.combatTalents || []).map((t) => t.id),
-    ...(d.abilityTalents || []).map((t) => t.id),
-    ...(char.talent?.latestSpaceshipSkillNodes || []),
-    ...(char.talent?.latestFactorySkillNodes || []),
-  ];
-}
+export type { SpaceShipRoom, SpaceShipRoomChar };
 
 export default function SpaceshipCard({
   roleId: defaultRoleId,
@@ -157,14 +69,7 @@ export default function SpaceshipCard({
   });
 
   // 总控中枢置顶，其余保持接口顺序；未识别类型的舱室不展示
-  const sortedRooms = useMemo(() => {
-    const list = (rooms ?? []).filter((r) => getRoomMeta(r.type));
-    return list.sort((a, b) => {
-      const aCtrl = a.type === 0 ? 0 : 1;
-      const bCtrl = b.type === 0 ? 0 : 1;
-      return aCtrl - bCtrl;
-    });
-  }, [rooms]);
+  const sortedRooms = useMemo(() => sortSpaceshipRooms(rooms ?? []), [rooms]);
 
   const resolveStationedChar = useCallback(
     (shipCharId: string | undefined, roomChar: SpaceShipRoomChar): StationedCharView => {

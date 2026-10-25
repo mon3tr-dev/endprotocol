@@ -31,6 +31,8 @@
 | 卡片全局默认值（系统资源 / To-Do） | `src/components/system-resource-settings.tsx`、`src/components/todo-settings.tsx` | [cards_system_todo.md](reference/frontend/cards_system_todo.md) |
 | 仪表板布局 / 标签页（多 Tab） | `src/pages/dashboard.tsx`、`src/utils/dashboardConfig.ts` | [pages_core.md](reference/frontend/pages_core.md)、[utils_services_a.md](reference/frontend/utils_services_a.md) |
 | 每日签到 | `src/components/cards/attendance/index.tsx`、`pages/attendance.tsx`、`commands/attendance.rs` | [cards_attendance_domain_spaceship.md](reference/frontend/cards_attendance_domain_spaceship.md)、[commands.md](reference/backend/commands.md) |
+| 区域信息卡片 / 独立页面（`/domain`） | `src/components/cards/domain-info/`（含 `domain-shared.ts`）、`src/pages/domain.tsx` | [cards_attendance_domain_spaceship.md](reference/frontend/cards_attendance_domain_spaceship.md)、[pages_core.md](reference/frontend/pages_core.md) |
+| 帝江号卡片 / 独立页面（`/spaceship`） | `src/components/cards/spaceship/`（含 `spaceship-shared.ts`）、`src/pages/spaceship.tsx` | [cards_attendance_domain_spaceship.md](reference/frontend/cards_attendance_domain_spaceship.md)、[pages_core.md](reference/frontend/pages_core.md) |
 | 抽卡记录同步与统计 | `src/pages/gacha-records.tsx`、`services/gacha_service.rs` | [pages_game_data.md](reference/frontend/pages_game_data.md)、[services_others.md](reference/backend/services_others.md) |
 | 抽卡图表与逐池六星间隔统计 | `src/components/gacha-pity-chart.tsx`、`gacha-stat-charts.tsx`、`src/utils/gachaIntervals.ts` | [components_sidebar_charts.md](reference/frontend/components_sidebar_charts.md)、[utils_services_b.md](reference/frontend/utils_services_b.md) |
 | 启动器：下载/校验/切服/进程管理 | `src/components/game-action-panel.tsx`、`src/utils/launcherService.ts` | [components_game_action_panel.md](reference/frontend/components_game_action_panel.md)、[utils_services_a.md](reference/frontend/utils_services_a.md)、[services_launcher.md](reference/backend/services_launcher.md) |
@@ -103,7 +105,7 @@
 | 文件 | 覆盖范围 |
 | --- | --- |
 | [reference/frontend/entry_and_app.md](reference/frontend/entry_and_app.md) | `main.tsx`、`App.tsx`（路由表）、`provider.tsx`、`i18n.ts`、`tray-panel.tsx`、`stores/`、`hooks/`、`lib/`、`config/site.ts`、`cards/startup-service.ts` |
-| [reference/frontend/pages_core.md](reference/frontend/pages_core.md) | `layouts/*`、`pages/dashboard.tsx`、`attendance.tsx`、`medals.tsx` |
+| [reference/frontend/pages_core.md](reference/frontend/pages_core.md) | `layouts/*`、`pages/dashboard.tsx`、`attendance.tsx`、`medals.tsx`、`domain.tsx`（区域信息独立页面）、`spaceship.tsx`（帝江号独立页面） |
 | [reference/frontend/pages_account.md](reference/frontend/pages_account.md) | `pages/account.tsx`（约 3600 行） |
 | [reference/frontend/pages_char_select.md](reference/frontend/pages_char_select.md) | `pages/char-select.tsx`（约 2560 行，**未被路由引用的死代码副本**） |
 | [reference/frontend/pages_settings_developer.md](reference/frontend/pages_settings_developer.md) | `pages/settings.tsx`（设置项清单）、`pages/developer.tsx` |

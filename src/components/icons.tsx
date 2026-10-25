@@ -102,6 +102,8 @@ export const TerminalIcon = createMorphIcon(Terminal);
 export const CopyIcon = createMorphIcon(Copy);
 export const ExternalLinkIcon = createMorphIcon(ExternalLink);
 export const GamepadIcon = createMorphIcon(Gamepad2);
+export const MapIcon = createMorphIcon(Map);
+export const SatelliteIcon = createMorphIcon(Satellite);
 
 export { MoonIcon as MoonFilledIcon, SunIcon as SunFilledIcon, HeartIcon as HeartFilledIcon };
 

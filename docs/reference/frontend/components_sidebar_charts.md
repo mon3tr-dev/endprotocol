@@ -11,8 +11,8 @@
 | --- | --- | --- |
 | `SearchResult` | dashboard-sidebar.tsx:50 | 接口：`id`、`title`、`description?`、`path`、`category`、`elementId?`（页面内锚点）、`titleEn/titleZh/descriptionEn/descriptionZh/categoryEn/categoryZh?`（跨语言检索字段）、`matchedLang?("current"/"en"/"zh")`、`matchedText?` |
 | `SidebarProps` | dashboard-sidebar.tsx:75 | props：`onNavigate?: () => void`（移动端点击导航后关闭抽屉的回调）、`collapsed?: boolean`（桌面端折叠为仅图标窄轨，默认 `false`）、`onToggleCollapsed?: () => void`（切换折叠状态；提供时页脚渲染折叠/展开按钮） |
-| `NavKey` | dashboard-sidebar.tsx:74 | 联合类型：`"dashboard" \| "characters" \| "medals" \| "attendance" \| "gacha"` |
-| `NAV_KEYS` | dashboard-sidebar.tsx:76 | 默认导航顺序数组（5 项），作为 `navOrder` 初值 |
+| `NavKey` | dashboard-sidebar.tsx:89 | 联合类型：`"dashboard" \| "characters" \| "medals" \| "attendance" \| "gacha" \| "todo" \| "domain" \| "spaceship"` |
+| `NAV_KEYS` | dashboard-sidebar.tsx:91 | 默认导航顺序数组（8 项，含 `/domain` 区域信息与 `/spaceship` 帝江号页），作为 `navOrder` 初值 |
 | `GripHandle` | dashboard-sidebar.tsx:84 | 六点拖拽手柄按钮（内联 SVG）。props：`onPointerDown`（必需）、`onDragEnd?`、`isDragging?`；`pointerUp`/`click` 均 `preventDefault+stopPropagation`（97-105），hover 时才显示（106） |
 | `Sidebar` | dashboard-sidebar.tsx:132 | 主组件，约 132-1973 行，见下方内部结构 |
 

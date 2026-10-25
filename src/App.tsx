@@ -15,8 +15,10 @@ const MedalsPage = lazy(() => import("@/pages/medals"));
 const AttendancePage = lazy(() => import("@/pages/attendance"));
 const GachaRecordsPage = lazy(() => import("@/pages/gacha-records"));
 const TodoPage = lazy(() => import("@/pages/todo"));
+const DomainPage = lazy(() => import("@/pages/domain"));
+const SpaceshipPage = lazy(() => import("@/pages/spaceship"));
 
-const ROUTES = ["/", "/settings", "/account", "/characters", "/medals", "/attendance", "/gacha", "/todo", "/developer"];
+const ROUTES = ["/", "/settings", "/account", "/characters", "/medals", "/attendance", "/gacha", "/todo", "/domain", "/spaceship", "/developer"];
 
 function RouteRestore() {
   const location = useLocation();
@@ -126,6 +128,22 @@ function App() {
             </DashboardLayout>
           }
           path="/todo"
+        />
+        <Route
+          element={
+            <DashboardLayout>
+              <DomainPage />
+            </DashboardLayout>
+          }
+          path="/domain"
+        />
+        <Route
+          element={
+            <DashboardLayout>
+              <SpaceshipPage />
+            </DashboardLayout>
+          }
+          path="/spaceship"
         />
         <Route
           element={

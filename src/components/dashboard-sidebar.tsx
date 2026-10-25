@@ -17,6 +17,8 @@ import {
   SearchIcon,
   PlusIcon,
   BookmarkIcon,
+  MapIcon,
+  SatelliteIcon,
 } from "@/components/icons";
 import { siteConfig } from "@/config/site";
 import { ThemeSwitch } from "@/components/theme-switch";
@@ -86,7 +88,7 @@ interface SidebarProps {
   onToggleCollapsed?: () => void;
 }
 
-type NavKey = "dashboard" | "characters" | "medals" | "attendance" | "gacha" | "todo";
+type NavKey = "dashboard" | "characters" | "medals" | "attendance" | "gacha" | "todo" | "domain" | "spaceship";
 
 const NAV_KEYS: NavKey[] = [
   "dashboard",
@@ -95,6 +97,8 @@ const NAV_KEYS: NavKey[] = [
   "attendance",
   "gacha",
   "todo",
+  "domain",
+  "spaceship",
 ];
 
 function GripHandle({
@@ -1913,6 +1917,122 @@ export const Sidebar = ({
                           onPointerDown={(e) => startNavDrag("todo", e)}
                           onDragEnd={endNavDrag}
                           isDragging={draggingNav === "todo"}
+                        />
+                      )}
+                    </div>
+                  );
+
+                case "domain":
+                  return (
+                    <div
+                      key="domain"
+                      className="relative group"
+                      onMouseEnter={() =>
+                        draggingNav &&
+                        draggingNav !== "domain" &&
+                        swapNav(draggingNav, "domain")
+                      }
+                    >
+                      <Link
+                        to="/domain"
+                        onClick={onNavigate}
+                        title={
+                          collapsed ? t("sidebar.domain") || "Domain" : undefined
+                        }
+                        className={clsx(
+                          "flex items-center rounded-xl transition-all duration-300 ease-in-out",
+                          collapsed
+                            ? "justify-center px-0 py-2.5 gap-0"
+                            : "gap-3 pl-3 pr-8 py-2.5",
+                          draggingNav === "domain" ? "opacity-60" : "",
+                          location.pathname === "/domain"
+                            ? "glass-surface-strong text-foreground"
+                            : "text-foreground hover:text-foreground",
+                        )}
+                      >
+                        <MapIcon
+                          className={clsx(
+                            "w-5 h-5 flex-shrink-0 transition-all duration-200",
+                            location.pathname === "/domain"
+                              ? ""
+                              : "group-hover:scale-110 group-hover:rotate-12",
+                          )}
+                        />
+                        <span
+                          className={clsx(
+                            "text-sm font-semibold whitespace-nowrap overflow-hidden transition-all duration-300 ease-in-out",
+                            collapsed
+                              ? "max-w-0 opacity-0"
+                              : "max-w-[10rem] opacity-100",
+                          )}
+                        >
+                          {t("sidebar.domain") || "Domain"}
+                        </span>
+                      </Link>
+                      {!collapsed && (
+                        <GripHandle
+                          onPointerDown={(e) => startNavDrag("domain", e)}
+                          onDragEnd={endNavDrag}
+                          isDragging={draggingNav === "domain"}
+                        />
+                      )}
+                    </div>
+                  );
+
+                case "spaceship":
+                  return (
+                    <div
+                      key="spaceship"
+                      className="relative group"
+                      onMouseEnter={() =>
+                        draggingNav &&
+                        draggingNav !== "spaceship" &&
+                        swapNav(draggingNav, "spaceship")
+                      }
+                    >
+                      <Link
+                        to="/spaceship"
+                        onClick={onNavigate}
+                        title={
+                          collapsed
+                            ? t("sidebar.spaceship") || "Spaceship"
+                            : undefined
+                        }
+                        className={clsx(
+                          "flex items-center rounded-xl transition-all duration-300 ease-in-out",
+                          collapsed
+                            ? "justify-center px-0 py-2.5 gap-0"
+                            : "gap-3 pl-3 pr-8 py-2.5",
+                          draggingNav === "spaceship" ? "opacity-60" : "",
+                          location.pathname === "/spaceship"
+                            ? "glass-surface-strong text-foreground"
+                            : "text-foreground hover:text-foreground",
+                        )}
+                      >
+                        <SatelliteIcon
+                          className={clsx(
+                            "w-5 h-5 flex-shrink-0 transition-all duration-200",
+                            location.pathname === "/spaceship"
+                              ? ""
+                              : "group-hover:scale-110 group-hover:rotate-12",
+                          )}
+                        />
+                        <span
+                          className={clsx(
+                            "text-sm font-semibold whitespace-nowrap overflow-hidden transition-all duration-300 ease-in-out",
+                            collapsed
+                              ? "max-w-0 opacity-0"
+                              : "max-w-[10rem] opacity-100",
+                          )}
+                        >
+                          {t("sidebar.spaceship") || "Spaceship"}
+                        </span>
+                      </Link>
+                      {!collapsed && (
+                        <GripHandle
+                          onPointerDown={(e) => startNavDrag("spaceship", e)}
+                          onDragEnd={endNavDrag}
+                          isDragging={draggingNav === "spaceship"}
                         />
                       )}
                     </div>

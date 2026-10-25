@@ -85,6 +85,8 @@
     "attendance": "Attendance",
     "gacha": "Gacha Records",
     "todo": "To-Do",
+    "domain": "Domain Info",
+    "spaceship": "Spaceship",
     "launcher": "Launcher",
     "help": "Help & Feedback"
   },
@@ -129,12 +131,28 @@
     "show_filters": "Filters",
     "hide_filters": "Hide Filters",
     "clear": "Reset Filters",
+    "unknown": "Unknown",
     "refresh": "Refresh",
     "refreshing": "Refreshing...",
     "delete": "Delete",
     "edit": "Edit",
     "reset": "Reset",
     "characters": "Characters"
+  },
+  "domain_page": {
+    "subtitle": "Overview of domain level, money and base settlements",
+    "domain": "Domain",
+    "money": "Money",
+    "empty": "No domain data",
+    "switch_account": "Switch Account"
+  },
+  "spaceship_page": {
+    "subtitle": "Spaceship cabins, levels and stationed operators (mood, trust)",
+    "switch_account": "Switch Account",
+    "total_rooms": "Cabins",
+    "stationed_total": "On Duty",
+    "room_levels": "Cabin Levels",
+    "section_rooms": "Cabin Details"
   },
   "filters": {
     "title": "Filter Characters",

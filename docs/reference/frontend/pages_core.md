@@ -210,6 +210,58 @@
 - i18n key：`sidebar.medals`、`card:ach_no_medals`。
 - 数据流：`getSelectedAccount()` → `roleDataService.getFullCharDetail(id)` → `detail.achieve.achieveMedals` → `MedalBrowser`。注意加载失败不显示错误提示，只会表现为「无勋章」空态（仅日志可见）。
 
+## `src/pages/domain.tsx`
+**职责**：区域信息独立页面。把 `domain_info` 卡片的数据（大世界区域等级、区域货币、基建建设点）以整页排版呈现：顶部页头（标题 + 账户切换按钮 + 刷新）→ 多区域胶囊切换 → 概览卡（区域名 / 等级 / 货币进度条）→ 建设点卡片网格（头像、名称、等级、MAX 徽标、货币与经验进度条、上次产出时间）。
+
+**导出**：`export default function DomainPage`（默认导出组件）。
+
+**主要依赖**：
+- 项目内：`@/components/cards/domain-info/domain-shared`（`DomainData`/`DomainSettlement`/`formatMoney`/`formatDateTime`/`getMoneyName`，与卡片共用）、`@/utils/roleDataService`（`queryData`、`clearCache`）、`@/utils/accountService`（`getAccounts`/`getSelectedAccount`/`refreshAccountData`）、`@/utils/configService`（`getConfig`/`setConfig`）、`@/components/ui/glass`、`@/components/custom-modal`、`@/components/ui/account-avatar`、`@/components/icons`（`CardIcon`）、`@/utils/imageLoader`（`Img`）、`@/types`（`resolveServerLabel`）。
+- 第三方：`react`、`react-i18next`。
+
+| 符号 | 位置 | 说明 |
+| --- | --- | --- |
+| `ROLE_CONFIG_KEY` | domain.tsx:38 | 配置键 `"domain_page_role_id"`，页面独立记忆的游戏账户；未设置时跟随全局选中账户 |
+| `percent(current, max)` | domain.tsx:40 | 进度百分比工具（钳制 0–100） |
+| `DomainPage()` | domain.tsx:50 | 页面组件 |
+| `loadData` | domain.tsx:55 | `useCallback`：解析 roleId（配置优先，其次 `getSelectedAccount`）→ `roleDataService.queryData(id, "char_detail", ["domain"])` → 写入 `domains` 并校正 `selectedDomainId` |
+| `handleRefresh` | domain.tsx:120 | `refreshAccountData()` → `roleDataService.clearCache(roleId, "char_detail", ["domain"])` → 重新加载 |
+| `handleSelectRole` | domain.tsx:135 | `setConfig(ROLE_CONFIG_KEY, id)` + 以该账户重新加载（下拉菜单项点击） |
+| 渲染 | domain.tsx:160+ | 加载进度圈 / 空态卡片（`domain_page.empty`）/ 概览卡 + 建设点网格 `grid-cols-1 sm:2 xl:3`；多区域时标题下方渲染毛玻璃胶囊区域 switch；页头账户切换为下拉菜单（样式对齐 `gacha-records.tsx`：`GlassButton` + 绝对定位列表 + 点击外部关闭），仅本页生效 |
+
+**备注**：
+- 路由：`/domain`（`App.tsx`，`ROUTES` 已加入 `/domain`），外层 `DashboardLayout`；侧栏入口见 `components/dashboard-sidebar.tsx` 的 `NavKey = "domain"`（`MapIcon`）。
+- **invoke 命令**：无直接 `invoke(...)`；间接 `query_role_data`（`roleDataService`）、`get_accounts`/`get_selected_account`/`refresh_accounts`（`accountService`）、`get_config`/`set_config`（`configService`）。
+- window 事件：监听 `accountChanged`（以全局选中账户重载）、`manualRefresh`（重载）。
+- i18n key：`sidebar.domain`、`domain_page.{subtitle,domain,money,empty,switch_account}`、`common.{unknown,refresh,cancel}`，卡片键复用 `card:domain_info_*`、`card:select_role`、`card:no_accounts`、`card:current`。
+- 与卡片的关系：卡片按 `cardId` 存 `DomainInfoCardSettings`；页面按 `ROLE_CONFIG_KEY` 全局存账户，两者互不影响。
+
+## `src/pages/spaceship.tsx`
+**职责**：帝江号独立页面。把 `spaceship` 卡片的数据（各舱室等级、派驻干员心情/信赖）以整页排版呈现：页头（图标标题 + 副标题 + 账户切换下拉 + 刷新）→ 概览卡（舱室数量、派驻干员总数、舱室等级 pill 一览）→ 舱室详情双列卡片（图标、名称、等级、每位派驻干员的头像色环 + 心情/信赖进度条）。点击概览区的舱室 pill 会弹出舱室详情 `CustomModal`。
+
+**导出**：`export default function SpaceshipPage`（默认导出组件）。
+
+**主要依赖**：
+- 项目内：`@/components/cards/spaceship/spaceship-shared`（类型 + 心情/信赖计算 + 排序，与卡片共用）、`@/utils/roleDataService`（`queryData`、`getFullCharDetail`、`clearCache`）、`@/utils/accountService`（`getAccounts`/`getSelectedAccount`/`refreshAccountData`）、`@/utils/configService`（`getConfig`/`setConfig`）、`@/components/ui/glass`、`@/components/custom-modal`、`@/components/icons`（`CardIcon`）、`@/utils/imageLoader`（`Img`）、`@/types`（`resolveServerLabel`）、`@/types/charDetail`。
+- 第三方：`react`、`react-i18next`、`clsx`。
+
+| 符号 | 位置 | 说明 |
+| --- | --- | --- |
+| `ROLE_CONFIG_KEY` | spaceship.tsx:43 | 配置键 `"spaceship_page_role_id"`，页面独立记忆的游戏账户；未设置时跟随全局选中账户 |
+| `SpaceshipPage()` | spaceship.tsx:45 | 页面组件 |
+| `loadData` | — | 并行 `queryData(id,"char_detail",["spaceShip"])` + `getFullCharDetail(id)`；写入 `rooms`/`charDetail` |
+| `handleRefresh` | — | `refreshAccountData()` → `clearCache` → 重新加载 |
+| `handleSelectRole` | — | 下拉菜单项点击：`setConfig` + 重载（账户下拉样式对齐 `gacha-records.tsx`） |
+| `sortedRooms` / `roomsWithChars` | — | `sortSpaceshipRooms`（总控中枢置顶）+ 每舱室解析派驻干员视图 |
+| `detailRoomIndex` | — | 舱室详情弹窗的打开索引（点击概览 pill 触发） |
+
+**备注**：
+- 路由：`/spaceship`（`App.tsx`，`ROUTES` 已加入），外层 `DashboardLayout`；侧栏入口 `NavKey = "spaceship"`（`SatelliteIcon`）。
+- **invoke 命令**：无直接 `invoke(...)`；间接 `query_role_data`、`get_accounts`/`get_selected_account`/`refresh_accounts`、`get_config`/`set_config`。
+- window 事件：监听 `accountChanged`、`manualRefresh`。
+- i18n key：`spaceship_page.{subtitle,switch_account,total_rooms,stationed_total,room_levels,section_rooms}`、`common.{unknown,refresh}`，其余复用卡片命名空间 `card:spaceship_*`。
+- 心情进度条渐变样式抽取为 `getMoodBarClass`（`spaceship-shared.ts`），页面使用；卡片仍用内联条件。
+
 ## `src/pages/todo.tsx`
 **职责**：To-Do 独立页面。左侧为列表管理（搜索、新建、拖拽排序、分组、复制、删除、设置），右侧为当前列表的完整编辑器（`TodoDetail`，与卡片/弹窗共用）；支持模板新建与 Markdown/JSON 导入导出；以 URL 查询参数 `?list=<id>` 记录当前列表。
 **导出**：`export default TodoPage`。
