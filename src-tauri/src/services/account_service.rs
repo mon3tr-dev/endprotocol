@@ -977,7 +977,7 @@ impl AccountService {
             ),
             ("token".to_string(), final_token.clone()),
         ];
-        skland
+        let response = skland
             .call_skland_api(
                 "POST",
                 "/web/v1/game/endfield/attendance",
@@ -988,7 +988,18 @@ impl AccountService {
                 extra_headers,
             )
             .await?;
-        log_info!("do_attendance_for_role: SUCCESS for role_id={}", role_id);
+        // `call_skland_api` 对「请勿重复签到」这类幂等结果也返回 Ok：
+        // 目标状态（今天已签到）已达成，仅日志上区分一下。
+        let code = response.get("code").and_then(|c| c.as_i64()).unwrap_or(0);
+        if code == 0 {
+            log_info!("do_attendance_for_role: SUCCESS for role_id={}", role_id);
+        } else {
+            log_info!(
+                "do_attendance_for_role: already signed today for role_id={} (code={})",
+                role_id,
+                code
+            );
+        }
         Ok(())
     }
 

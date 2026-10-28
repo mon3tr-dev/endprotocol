@@ -15,6 +15,8 @@ const SIGNATURE_BLOCK_THRESHOLD: u32 = 3;
 const DEVICE_FINGERPRINT_BLOCK_THRESHOLD: u32 = 3;
 /// 服务器时间与本地时间偏差超过该值时，直接判定为时钟异常。
 pub const CLOCK_SKEW_THRESHOLD_SECONDS: i64 = 180;
+/// 森空岛签到接口的「今天已经签过」业务码（响应文案通常为 `请勿重复签到！`）。
+const ATTENDANCE_ALREADY_SIGNED_CODE: i64 = 10001;
 
 static APP_HANDLE: OnceLock<AppHandle> = OnceLock::new();
 static BLOCKED: AtomicBool = AtomicBool::new(false);
@@ -173,6 +175,23 @@ pub fn snapshot() -> ApiHealthSnapshot {
         .lock()
         .map(|state| state.clone())
         .unwrap_or_default()
+}
+
+/// 判断是否为「目标状态已达成」这类可预期的业务结果（幂等成功）。
+///
+/// 客户端无法提前知道角色当天是否已签到，因此重复签到时服务端会返回
+/// `code=10001, message=请勿重复签到！`。这是正常的业务分支而不是 API 故障：
+/// 不得计入连续失败、不得重试，也不应触发前端告警/熔断。
+pub fn is_benign_business_error(code: i64, message: &str) -> bool {
+    if code == 0 {
+        return false;
+    }
+    let lower = message.to_lowercase();
+    lower.contains("重复签到")
+        || lower.contains("已签到")
+        || lower.contains("已经签到")
+        || lower.contains("already signed")
+        || (code == ATTENDANCE_ALREADY_SIGNED_CODE && lower.contains("签到"))
 }
 
 pub fn classify_error(

@@ -31,8 +31,8 @@
 | `is_lazy_load_enabled` | commands/account.rs:322 | `state` | `Result<bool, String>` | `AccountService::is_lazy_load_enabled` |
 | `set_current_role_id` | commands/account.rs:331 | `state`、`role_id: Option<String>` | `Result<bool, String>` | `AccountService::set_current_role_id` |
 | `query_role_data` | commands/account.rs:353 | `state`、`role_id`、`api_name`、`paths: Vec<String>` | `Result<serde_json::Value, String>` | `AccountService::query_role_data` |
-| `get_attendance` | commands/attendance.rs:59 | `state: State<Arc<Mutex<AccountService>>>`、`role_id: String` | `Result<serde_json::Value, String>` | 本地 `lookup_cred_token`、`AccountService::check_and_refresh_user_cred`、`SklandService::call_skland_api`(GET)、`AvatarCacheService::get_or_download_image` |
-| `do_attendance` | commands/attendance.rs:181 | `state`、`role_id: String` | `Result<serde_json::Value, String>` | 本地 `lookup_cred_token`、`AccountService::check_and_refresh_user_cred`、`SklandService::call_skland_api`(POST) |
+| `get_attendance` | commands/attendance.rs:60 | `state: State<Arc<Mutex<AccountService>>>`、`role_id: String` | `Result<serde_json::Value, String>` | 本地 `lookup_cred_token`、`AccountService::check_and_refresh_user_cred`、`SklandService::call_skland_api`(GET)、`AvatarCacheService::get_or_download_image` |
+| `do_attendance` | commands/attendance.rs:182 | `state`、`role_id: String` | `Result<serde_json::Value, String>` | 本地 `lookup_cred_token`、`AccountService::check_and_refresh_user_cred`、`SklandService::call_skland_api`(POST) |
 | `capture_start` | commands/capture.rs:3 | 无 | `Result<CaptureStatus, String>` | `utils::capture::start` |
 | `capture_stop` | commands/capture.rs:8 | 无 | `Result<CaptureStatus, String>` | `utils::capture::stop` |
 | `capture_status` | commands/capture.rs:13 | 无 | `Result<CaptureStatus, String>` | `utils::capture::status` |
@@ -335,16 +335,16 @@
 遍历全部 `account_token_*` 配置项，在 `roles[]` 中按 `roleId` 精确匹配，返回 `(user_id, server_id, cred, token)`；找不到则返回 `AppError::AuthError`。配置键：`account_token_*`。
 
 ### `get_attendance`
-- 位置：attendance.rs:59，`#[tauri::command]`（async）
+- 位置：attendance.rs:60，`#[tauri::command]`（async）
 - 参数：`state: State<'_, Arc<Mutex<AccountService>>>`、`role_id: String`
 - 返回：`Result<serde_json::Value, String>`
 - 逻辑：① 本地 `lookup_cred_token` 找凭据；② `AccountService::check_and_refresh_user_cred(&user_id)` 尝试刷新（失败则回退旧凭据，不中断）；③ `AccountService::skland_service()` → `SklandService::call_skland_api("GET", "/web/v1/game/endfield/attendance", …)`，附带 `sk-game-role: 3_{role_id}_{server_id}` 与 `token` 头；④ 校验响应 `code==0` 否则返回 `Attendance API error: code=…`；⑤ 遍历 `data.resourceInfoMap`，用 `AvatarCacheService::get_or_download_image(url, ImageType::AttendanceIcon)` 把奖励图标下载到本地并把 `icon` 字段替换成 `local_path`。
 
 ### `do_attendance`
-- 位置：attendance.rs:181（async）
+- 位置：attendance.rs:182（async）
 - 参数：`state`、`role_id: String`
 - 返回：`Result<serde_json::Value, String>`
-- 逻辑：与 `get_attendance` 前三步相同，但以 `POST`（body `json!({})`）请求同一路径执行签到；同样校验 `code==0`。**不**下载奖励图标（与 `get_attendance` 不对称）。
+- 逻辑：与 `get_attendance` 前三步相同，但以 `POST`（body `json!({})`）请求同一路径执行签到；`code==0` 或 `api_health::is_benign_business_error` 判定为幂等成功（如 `code=10001, message=请勿重复签到！`）时返回 `Ok(json)`，其余业务码返回 `Attendance API error: code=…`。**不**下载奖励图标（与 `get_attendance` 不对称）。
 
 ---
 

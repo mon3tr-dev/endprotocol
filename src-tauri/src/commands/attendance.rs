@@ -5,6 +5,7 @@ use tokio::sync::Mutex;
 use crate::services::account_service::AccountService;
 use crate::services::avatar_cache_service::ImageType;
 use crate::services::config_service::ConfigService;
+use crate::utils::api_health;
 use crate::utils::AppError;
 use crate::{log_error, log_info};
 
@@ -231,14 +232,21 @@ pub async fn do_attendance(
     {
         Ok(json) => {
             let code = json.get("code").and_then(|c| c.as_i64()).unwrap_or(-1);
-            if code == 0 {
-                log_info!("do_attendance: SUCCESS for role_id={}", role_id);
+            let msg = json
+                .get("message")
+                .and_then(|m| m.as_str())
+                .unwrap_or("unknown");
+            // 「请勿重复签到」表示今天已经签过，对签到动作而言是幂等成功，
+            // 不应作为错误弹窗提示（`call_skland_api` 也已不计入 API 失败）。
+            if code == 0 || api_health::is_benign_business_error(code, msg) {
+                log_info!(
+                    "do_attendance: SUCCESS for role_id={} (code={}, message={})",
+                    role_id,
+                    code,
+                    msg
+                );
                 Ok(json)
             } else {
-                let msg = json
-                    .get("message")
-                    .and_then(|m| m.as_str())
-                    .unwrap_or("unknown");
                 log_error!("do_attendance: API returned code={}, message={}", code, msg);
                 Err(format!(
                     "Attendance API error: code={}, message={}",

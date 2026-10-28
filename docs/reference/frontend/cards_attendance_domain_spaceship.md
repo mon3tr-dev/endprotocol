@@ -45,7 +45,7 @@
 | `loadAccounts` | 171-178 | `getAccounts()` 缓存账号列表 |
 | effect（取数入口） | 180-188 | 设置未加载则等待；无 `selectedRoleId` 置 `unsigned`；否则 `fetchAttendance()` + `loadAccounts()` |
 | `completeSignIn` | 190-197 | `completing` → 600ms 后 `done`+`signed` 并重新 `fetchAttendance()` |
-| `handleSignIn` | 199-218 | `invoke("do_attendance", { roleId })`；成功 `addMessage(info)`，失败 `addMessage(urgent)` 并回到 `idle` |
+| `handleSignIn` | 202-227 | `invoke("do_attendance", { roleId })`；返回 `code === 10001`（今日已签到）用 `attendance_already_signed`、否则用 `attendance_sign_success` 提示，失败 `addMessage(urgent)` 并回到 `idle` |
 | effect（清理定时器） | 220-224 | 卸载时 `clearTimeout(completionTimer)` |
 | effect（启动任务订阅） | 226-250 | `CardStartupService.getTaskStatus` 置 `spinning`；`subscribe(roleId, …)` 运行中→`spinning`，`done/error`→`fetchAttendance()`；`onAutoSignChanged` 同步 `autoSignEnabled` |
 | effect（cardAction） | 252-261 | 监听 `window` `cardAction`，`action === "settings"` 时 `openSettings()` |
@@ -411,7 +411,7 @@
 
 1. `attendance/index.tsx:82-84` — 解构出的 `roleId` 被改名为 `_roleId` 且完全未使用；`isEditMode` 同样未使用（`spaceship` 只在 347 行用到编辑模式屏蔽点击，`domain-info` 则根本未声明该 prop）。
 2. `attendance/index.tsx:98` — `_signError` 状态被写入（153、159、167、215）但从未渲染，错误只通过 `addMessage` toast 呈现，属死状态。
-3. `attendance/locales/zh.json` 中 `attendance_signed`、`attendance_not_signed`、`attendance_sign_btn`、`attendance_sign_success`、`attendance_sign_failed`、`attendance_current_account`、`attendance_loading`、`attendance_network_error`、`attendance_already_signed`、`attendance_no_tomorrow` 共 10 个键在卡片目录内无任何引用；签到成功/失败提示在 `index.tsx:210/214` 里硬编码了中英文，未走 i18n。
+3. `attendance/locales/zh.json` 中 `attendance_signed`、`attendance_not_signed`、`attendance_sign_btn`、`attendance_current_account`、`attendance_loading`、`attendance_network_error`、`attendance_no_tomorrow` 共 7 个键在卡片目录内无任何引用；`attendance_sign_success` / `attendance_sign_failed` / `attendance_already_signed` 已由 `handleSignIn` 使用（i18n），不再硬编码中英文。
 4. `attendance-settings-modal.tsx:49` — effect 内读取 `localSelectedRoleId` 属闭包旧值（effect 依赖仅 `[isOpen]`），「无选中则默认第一个账号」仅在弹窗首次以 undefined 打开时可靠。
 5. 所有卡片 locale 被 `registry/loader.ts:42` `Object.assign` 合并进同一 `card` 命名空间，存在跨卡片同名键覆盖风险（如 attendance 与 character-list 都定义了 `confirm_delete_title`）。
 6. `attendance/index.tsx` 与 `src/pages/attendance.tsx` 各自独立调用 `get_attendance`/`do_attendance` 并复用 `parseAttendanceData`，签到逻辑存在两处重复实现。

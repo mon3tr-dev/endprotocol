@@ -463,7 +463,7 @@
 
 ## `src-tauri/src/utils/api_health.rs`
 **职责**：API 连续失败熔断器（约 222 行）。记录森空岛接口连续失败次数、分类与服务器时间偏差；达到阈值后置位全局 `BLOCKED`，后续 `call_skland_api` 立即失败，避免前端无限等待，并通过 `app:api-health` 事件通知前端弹出提示。
-**导出**：`ApiFailureKind`、`ApiHealthSnapshot`、`CLOCK_SKEW_THRESHOLD_SECONDS`、`init`、`ensure_available`、`record_success`、`record_failure`、`reset`、`snapshot`、`classify_error`。私有：`BLOCK_THRESHOLD`、`SIGNATURE_BLOCK_THRESHOLD`、`DEVICE_FINGERPRINT_BLOCK_THRESHOLD`、`APP_HANDLE`、`BLOCKED`、`STATE`、`state`。
+**导出**：`ApiFailureKind`、`ApiHealthSnapshot`、`CLOCK_SKEW_THRESHOLD_SECONDS`、`init`、`ensure_available`、`record_success`、`record_failure`、`reset`、`snapshot`、`classify_error`、`is_benign_business_error`。私有：`BLOCK_THRESHOLD`、`SIGNATURE_BLOCK_THRESHOLD`、`DEVICE_FINGERPRINT_BLOCK_THRESHOLD`、`ATTENDANCE_ALREADY_SIGNED_CODE`、`APP_HANDLE`、`BLOCKED`、`STATE`、`state`。
 **主要依赖**：`chrono`、`serde::Serialize`、`std::sync::{Mutex, OnceLock}`、`std::sync::atomic`、`tauri::{AppHandle, Emitter}`、`crate::utils::AppError`。
 
 | 符号 | 位置 | 说明 |
@@ -478,10 +478,12 @@
 | `record_failure(kind, message, clock_skew_seconds)` | :97 | 累计失败；确认时钟偏差或达到阈值时置 `BLOCKED` 并 `emit("app:api-health", snapshot)`，否则只记 warn 日志 |
 | `reset()` | :159 | 用户修复问题后清空熔断与计数（命令 `reset_api_health`） |
 | `snapshot()` | :171 | 返回当前状态（命令 `get_api_health`、诊断 manifest） |
-| `classify_error(code, message, clock_skew_seconds)` | :178 | 按服务器时间偏差、sign/timestamp/签名/过期、cred/token/401/403、5xx 等关键字分类；`数美`/`deviceprofile`/`device_id` 归类为 `DeviceFingerprint` |
+| `classify_error(code, message, clock_skew_seconds)` | :197 | 按服务器时间偏差、sign/timestamp/签名/过期、cred/token/401/403、5xx 等关键字分类；`数美`/`deviceprofile`/`device_id` 归类为 `DeviceFingerprint` |
+| `is_benign_business_error(code, message)` | :185 | 白名单：`code=10001`（已签到）或文案含 `重复签到`/`已签到`/`已经签到`/`already signed` 时返回 `true`，表示「目标状态已达成」的幂等成功，不应计失败、重试或告警 |
 
 **备注**：
 - 由 `services/skland_service.rs` 的 `call_skland_api` 调用：请求前 `ensure_available`，成功置 `record_success`，HTTP/JSON/业务错误按类型 `record_failure`；并从响应头 `Date` 计算本地时钟偏差。
+- `call_skland_api` 在计失败/重试之前先用 `is_benign_business_error` 拦截「请勿重复签到」这类结果：命中即 `record_success()` 并原样返回 JSON（`Ok`，`code` 非 0），由调用方按幂等成功处理（`commands/attendance.rs::do_attendance`、`AccountService::do_attendance_for_role`）。
 - 数美设备指纹（dId 获取）失败的计数在 `SklandService::fetch_new_did` 内部完成（`DeviceFingerprint`，阈值 3），`call_skland_api` 中 dId 失败不再重复计 `Network`。
 - 事件名 `app:api-health`；payload 即 `ApiHealthSnapshot`。前端 `src/utils/crashReporting.ts` 监听后收起 Splash 并把账户标记为不可用（`src/utils/accountAvailability.ts`），弹窗为非致命，可关闭后继续使用应用。
 - 静默模式不初始化该服务（不建立 WebView，也无业务请求）。

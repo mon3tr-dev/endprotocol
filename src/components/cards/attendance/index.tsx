@@ -209,16 +209,22 @@ export default function AttendanceCard({
     setSignPhase("spinning");
     setSignError(null);
     try {
-      await invoke<any>("do_attendance", { roleId: rid });
-      addMessage({ type: "info", title: i18n.language === "zh" ? "签到成功" : "Attendance Signed", tag: "attendance" });
+      const result = await invoke<any>("do_attendance", { roleId: rid });
+      // 后端把「请勿重复签到」(code 10001) 视为幂等成功，用不同文案提示。
+      const alreadySigned = result?.code === 10001;
+      addMessage({
+        type: "info",
+        title: t(alreadySigned ? "card:attendance_already_signed" : "card:attendance_sign_success"),
+        tag: "attendance",
+      });
       completeSignIn();
     } catch (e) {
       logError("[Attendance] POST failed:", e);
-      addMessage({ type: "urgent", title: i18n.language === "zh" ? "签到失败" : "Attendance Failed", body: String(e), tag: "attendance" });
+      addMessage({ type: "urgent", title: t("card:attendance_sign_failed"), body: String(e), tag: "attendance" });
       setSignError(String(e));
       setSignPhase("idle");
     }
-  }, [signPhase, attendanceState, settings.selectedRoleId, completeSignIn]);
+  }, [signPhase, attendanceState, settings.selectedRoleId, completeSignIn, t]);
 
   useEffect(() => {
     return () => {

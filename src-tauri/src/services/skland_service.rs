@@ -492,7 +492,7 @@ impl SklandService {
     /// - sign 计算（HMAC-SHA256 + MD5）
     /// - 认证 header 注入（cred、dId、sign、timestamp、User-Agent 等）
     /// - 请求日志记录
-    /// - JSON 解析 + code != 0 错误检查
+    /// - JSON 解析 + code != 0 错误检查（已知幂等结果如「请勿重复签到」除外）
     ///
     /// # 参数
     /// - `method` - "GET" 或 "POST"
@@ -503,7 +503,8 @@ impl SklandService {
     /// - `token` - 签名 token
     ///
     /// # 返回
-    /// 解析后的完整 JSON 响应（已校验 code == 0）
+    /// 解析后的完整 JSON 响应（`code == 0`；或 [`api_health::is_benign_business_error`]
+    /// 判定为幂等成功的业务码，此时调用方需自行识别 `code`）
     pub async fn call_skland_api(
         &self,
         method: &str,
@@ -632,6 +633,17 @@ impl SklandService {
                         .get("message")
                         .and_then(|m| m.as_str())
                         .unwrap_or("unknown");
+                    // 「请勿重复签到」等可预期结果表示目标状态已达成，属于正常响应：
+                    // 既不计入 API 失败、也不重试，原样返回由调用方按幂等成功处理。
+                    if api_health::is_benign_business_error(code, api_message) {
+                        api_health::record_success();
+                        log_info!(
+                            "Skland API benign business result: code={}, message={}",
+                            code,
+                            api_message
+                        );
+                        return Ok(json);
+                    }
                     let message = format!("API error: code={}, message={}", code, api_message);
                     let kind = api_health::classify_error(
                         code,
