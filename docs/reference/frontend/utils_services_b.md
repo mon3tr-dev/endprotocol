@@ -193,9 +193,9 @@
 **备注**：无 Tauri 命令、无 HTTP 端点、无缓存、无日志。输出为 `dangerouslySetInnerHTML` 直插的 HTML（源自服务端描述文本，未做额外转义）。
 
 ## `src/utils/logger.ts`
-**职责**：前端日志门面（共 173 行）。四级日志（DEBUG/INFO/WARN/ERROR）统一路由到控制台（带颜色 `%c` 样式）与 `localStorage` 持久化，内存环形缓冲区保留最近 5000 条，并可与后端日志合并输出。
+**职责**：前端日志门面（共 268 行）。四级日志（DEBUG/INFO/WARN/ERROR）统一路由到控制台（带颜色 `%c` 样式）与 `localStorage` 持久化，内存环形缓冲区保留最近 5000 条，并可与后端日志合并输出；低于当前 `minLevel` 的日志在入口处直接丢弃。默认级别为 INFO，未开启开发者模式时不会产生 DEBUG 日志。
 
-**导出**：`enum LogLevel`、`interface LoggerConfig`、`interface LogEntry`、默认单例 `logger`、便捷函数 `logDebug`/`logInfo`/`logWarn`/`logError`（`class Logger` 本身未导出）。
+**导出**：`enum LogLevel`、`interface LoggerConfig`、`interface LogEntry`、`parseLogLevel`、`logLevelToConfigValue`、默认单例 `logger`、便捷函数 `logDebug`/`logInfo`/`logWarn`/`logError`（`class Logger` 本身未导出）。
 
 **主要依赖**：无外部依赖；写入目标为浏览器 `console` 与 `localStorage`（key `app_logs`）。
 
@@ -206,33 +206,52 @@
 | `LogLevel` | logger.ts:1 | 枚举 `DEBUG=0, INFO=1, WARN=2, ERROR=3` |
 | `LoggerConfig` | logger.ts:15 | `{enableConsole, enableLocalStorage, minLevel, maxStorageSize}` |
 | `LogEntry` | logger.ts:22 | `{timestamp, level, message, module, source:"frontend"\|"backend", data?}` |
-| `logger`（default） | logger.ts:168 | `Logger` 单例，方法见下表 |
-| `logDebug` / `logInfo` / `logWarn` / `logError` | logger.ts:170–173 | 分别代理 `logger.debug/info/warn/error` |
+| `parseLogLevel` | logger.ts:39 | 把数字、数字字符串或 `"debug"/"info"/"warn"/"error"` 配置值解析为 `LogLevel`，默认回退 INFO |
+| `logLevelToConfigValue` | logger.ts:69 | 把 `LogLevel` 转成配置持久化字符串（小写） |
+| `logger`（default） | logger.ts:261 | `Logger` 单例，方法见下表 |
+| `logDebug` / `logInfo` / `logWarn` / `logError` | logger.ts:265–268 | 分别代理 `logger.debug/info/warn/error` |
 
 ### 日志级别方法与写入目标
 
 | 方法 | 位置 | 级别 | 写入目标 |
 | --- | --- | --- | --- |
-| `logger.debug(message, data?, module?)` | logger.ts:130 | DEBUG | ① 内存缓冲 `memoryBuffer`（上限 5000，超出裁剪头部）② `console.debug`（`%c` 青色 `#00BCD4` 样式前缀，受 `enableConsole`）③ `localStorage["app_logs"]`（上限 `maxStorageSize` 默认 1000 条，受 `enableLocalStorage` 且 `typeof window!=="undefined"`） |
-| `logger.info(...)` | logger.ts:134 | INFO | 同上，`console.info`，绿色 `#4CAF50` |
-| `logger.warn(...)` | logger.ts:138 | WARN | 同上，`console.warn`，橙色 `#FF9800` |
-| `logger.error(...)` | logger.ts:142 | ERROR | 同上，`console.error`，红色 `#F44336` |
-| `getLogs()` | logger.ts:146 | — | 返回 `memoryBuffer` 浅拷贝 |
-| `getPersistedLogs()` | logger.ts:151 | — | 读取 `localStorage["app_logs"]` 中的持久化日志（上限 1000 条），供崩溃诊断导出跨重载使用 |
-| `getAllLogs(backendLogs=[])` | logger.ts:155 | — | 后端日志 + 内存日志按 `timestamp.localeCompare` 合并排序（后端日志由调用方通过后端命令另行获取后传入，本文件不发命令） |
-| `clearLogs()` | logger.ts:163 | — | 清空内存缓冲并 `localStorage.removeItem("app_logs")` |
-| `updateConfig(config)` | logger.ts:168 | — | 合并更新运行时配置 |
+| `logger.debug(message, data?, module?)` | logger.ts:220 | DEBUG | ① 内存缓冲 `memoryBuffer`（上限 5000，超出裁剪头部）② `console.debug`（`%c` 青色 `#00BCD4` 样式前缀，受 `enableConsole`）③ `localStorage["app_logs"]`（上限 `maxStorageSize` 默认 1000 条，受 `enableLocalStorage` 且 `typeof window!=="undefined"`） |
+| `logger.info(...)` | logger.ts:224 | INFO | 同上，`console.info`，绿色 `#4CAF50` |
+| `logger.warn(...)` | logger.ts:228 | WARN | 同上，`console.warn`，橙色 `#FF9800` |
+| `logger.error(...)` | logger.ts:232 | ERROR | 同上，`console.error`，红色 `#F44336` |
+| `isEnabled(level)` | logger.ts:142 | — | `level >= config.minLevel`，写日志前统一过滤 |
+| `getLogs()` | logger.ts:236 | — | 返回 `memoryBuffer` 浅拷贝 |
+| `getPersistedLogs()` | logger.ts:241 | — | 读取 `localStorage["app_logs"]` 中的持久化日志（上限 1000 条），供崩溃诊断导出跨重载使用 |
+| `getAllLogs(backendLogs=[])` | logger.ts:245 | — | 后端日志 + 内存日志按 `timestamp.localeCompare` 合并排序（后端日志由调用方通过后端命令另行获取后传入，本文件不发命令） |
+| `clearLogs()` | logger.ts:251 | — | 清空内存缓冲并 `localStorage.removeItem("app_logs")` |
+| `updateConfig(config)` | logger.ts:256 | — | 合并更新运行时配置（`minLevel` 由 `logSettings.ts` 在启动 / 开发者模式变化时写入） |
 
 ### 内部结构（行号区间）
 
 | 区间 | 内容 |
 | --- | --- |
-| 1–36 | 枚举、类型、默认配置（`minLevel: DEBUG`、`maxStorageSize: 1000`） |
-| 38–128 | `Logger` 类：时间戳/颜色/`writeLog` 路由、localStorage 读写 |
-| 130–164 | 级别方法与查询/清理/配置方法 |
-| 166–173 | 单例与便捷函数 |
+| 1–73 | 枚举、类型、解析函数、默认配置（`minLevel: INFO`、`maxStorageSize: 1000`） |
+| 74–261 | `Logger` 类：截断、时间戳/颜色、`writeLog` 路由、localStorage 读写 |
+| 261–268 | 单例与便捷函数 |
 
-**备注**：**不写入文件，也不调用任何 Tauri 后端命令**；持久化仅 `localStorage`（key `app_logs`），控制台输出带时间戳 `[YYYY-MM-DD HH:mm:ss.mss] [LEVEL] [module]`。默认 `module` 为 `"frontend"`。跨模块调用约定为 `(message, data?, module?)`。
+**备注**：**不写入文件，也不调用任何 Tauri 后端命令**（后端级别同步由 `logSettings.ts` 调用 `set_log_level`）；持久化仅 `localStorage`（key `app_logs`）。控制台前缀为 `[HH:mm:ss.mss] [LEVEL] [module]`（仅时间，缩短输出），DEBUG 消息超过 600 字符、`data` 序列化超过 1200 字符时自动截断。默认 `module` 为 `"frontend"`。跨模块调用约定为 `(message, data?, module?)`。
+
+## `src/utils/logSettings.ts`
+**职责**：日志级别与开发者模式的桥接层（共 75 行）。启动时读取 `developer_mode` 与 `log_level`，计算生效级别并同时应用到前端 `logger` 与后端 `set_log_level` 命令；监听 `developerModeChange` 事件即时切换。
+
+**导出**：常量 `LOG_LEVEL_CONFIG_KEY`（`"log_level"`）、`resolveEffectiveLogLevel`、`handleDeveloperModeChange`、`setLogLevel`、`initLogSettings`。
+
+**主要依赖**：`@tauri-apps/api/core`（`invoke`）、`@/utils/configService`（`getConfig`/`setConfig`）、`@/utils/logger`（`logger`、`LogLevel`、`parseLogLevel`、`logLevelToConfigValue`）。
+
+| 符号 | 位置 | 说明 |
+| --- | --- | --- |
+| `LOG_LEVEL_CONFIG_KEY` | logSettings.ts:10 | 与后端共享的配置键，值 `"debug"｜"info"｜"warn"｜"error"` |
+| `resolveEffectiveLogLevel(devMode, level)` | logSettings.ts:17 | 开发者模式关闭时返回 `max(level, INFO)`，保证 DEBUG 不输出 |
+| `handleDeveloperModeChange(enabled)` | logSettings.ts:36 | 更新模块内开发者模式状态并立即应用级别 |
+| `setLogLevel(level)` | logSettings.ts:42 | 持久化 `log_level` 后应用级别（开发者页面调用） |
+| `initLogSettings()` | logSettings.ts:52 | 幂等初始化：并行读取 `developer_mode` / `log_level` → 应用 → 注册 `developerModeChange` 监听 |
+
+**备注**：**配置键** `developer_mode`、`log_level`；**invoke** `set_log_level`（参数 `{ level }`）；**窗口事件** `developerModeChange`（`detail.enabled`）。浏览器环境（无 Tauri）时 invoke 失败会静默忽略。
 
 ## `src/utils/overlayScrollbar.ts`
 **职责**：悬浮覆盖式滚动条初始化器（共 37 行）。扫描文档中 `overflow-y: auto/scroll` 的元素并改为 `overflow-y: overlay`，加 `data-ovs` 标记防重复处理；用 `MutationObserver` 持续接管后续新增的可滚动节点。
@@ -376,3 +395,21 @@
 | `isWindowsPlatform` | 通过 `navigator.platform`（`Win*`）或 UA（`Windows`）判断 Windows；navigator 不存在时返回 `false` |
 
 **备注**：当前用于限定 Windows 原生屏幕取色器和游戏启动器；不依赖 IPC、配置或第三方库。
+
+## `src/utils/browserViewService.ts`
+**职责**：in-app browser 原生子 Webview 的后端导航服务封装。JS 侧 `@tauri-apps/api/webview` 的 `Webview` 类只有生命周期与布局方法（无 back/forward/reload/navigate/url），这些能力由 `src-tauri/src/commands/browser.rs` 以 app command 暴露，本文件统一加类型并把失败显式转成返回值，不抛给 UI 层。
+**导出**：`BrowserActionResult`（接口）、`browserGoBack`、`browserGoForward`、`browserReload`、`browserNavigate`、`browserCurrentUrl`、`BrowserPageLoadPayload`（接口）。
+**主要依赖**：`@tauri-apps/api/core`（`invoke`）、`@/utils/logger`。
+
+| 符号 | 说明 |
+| --- | --- |
+| `BrowserActionResult` | `{ ok: boolean; error?: string }`，后退/前进/刷新/导航的显式结果 |
+| `toError` / `run`（私有） | 统一 `invoke` + try/catch + `logger.warn` |
+| `browserGoBack(label)` | `invoke("browser_go_back", { webviewLabel })`，等效 `history.back()` |
+| `browserGoForward(label)` | `invoke("browser_go_forward", { webviewLabel })` |
+| `browserReload(label)` | `invoke("browser_reload", { webviewLabel })` |
+| `browserNavigate(label, url)` | `invoke("browser_navigate", { webviewLabel, url })`，就地导航保留实例与历史 |
+| `browserCurrentUrl(label)` | `invoke<string>("browser_current_url", …)`，失败返回 `null` |
+| `BrowserPageLoadPayload` | `browser://page-load` 负载 `{ label, url, event: "started" \| "finished" }` |
+
+**备注**：`invoke` 命令 `browser_go_back` / `browser_go_forward` / `browser_reload` / `browser_navigate` / `browser_current_url`；`browser://page-load` 事件由后端 `lib.rs` 的 `on_page_load` 发出。调用方仅 `components/in-app-browser.tsx`。

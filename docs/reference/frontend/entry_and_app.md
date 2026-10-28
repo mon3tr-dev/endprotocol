@@ -5,7 +5,7 @@
 ## `src/main.tsx`
 **职责**：主窗口（index.html）的唯一入口。在渲染前从配置服务读取语言与主题并应用（避免闪白/闪黑），随后挂载 React 应用，并在渲染后串行触发卡片注册、启动任务、更新检查、托盘数据拉取等副作用；原生 HTML Splash 覆盖 React 启动与首屏初始数据加载。
 **导出**：（无导出）
-**主要依赖**：`react` / `react-dom/client` / `react-router-dom`（BrowserRouter）、`./App.tsx`、`./provider.tsx`、`./i18n`、`@/styles/globals.css`、`@/utils/configService`、`@/utils/theme`（`DEFAULT_GLASS_CLARITY`、`applyGlassClarity`、`applyThemeColor`、`applyThemeMode`、`resolveThemeColor` 及类型 `ThemeColor`/`ThemeMode`）、`@/cards/startup-service`、`@/components/cards/registry/loader`、`@/utils/overlayScrollbar`、`@/utils/updateService`、`@/utils/logger`、`@/utils/trayService`（`refreshTrayUserData`）、`@/utils/backgroundSettings`、`@/utils/launcherService`、`@/utils/startupProgress`、`@/utils/accountAvailability`（`loadAccountAvailability`）。
+**主要依赖**：`react` / `react-dom/client` / `react-router-dom`（BrowserRouter）、`./App.tsx`、`./provider.tsx`、`./i18n`、`@/styles/globals.css`、`@/utils/configService`、`@/utils/theme`（`DEFAULT_GLASS_CLARITY`、`applyGlassClarity`、`applyThemeColor`、`applyThemeMode`、`resolveThemeColor` 及类型 `ThemeColor`/`ThemeMode`）、`@/cards/startup-service`、`@/components/cards/registry/loader`、`@/utils/overlayScrollbar`、`@/utils/updateService`、`@/utils/logger`、`@/utils/logSettings`（`initLogSettings`）、`@/utils/trayService`（`refreshTrayUserData`）、`@/utils/backgroundSettings`、`@/utils/launcherService`、`@/utils/startupProgress`、`@/utils/accountAvailability`（`loadAccountAvailability`）。
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
@@ -14,7 +14,7 @@
 | `setStartupPhase(12, …)` / `setStartupPhase(30, …)` | main.tsx:51 / 68 | 更新静态 Splash 的初始化阶段文案 |
 | `armStartupTimeout()` | main.tsx:53 | 配置初始化前启动 45 秒启动看门狗，覆盖 IPC/配置读取永久挂起、React 未挂载的卡死场景 |
 | `syncSilentLaunchConfig` | main.tsx:54 | 完整前端启动时将既有 localStorage 的游戏目录/渠道迁移到 `ConfigService` |
-| 配置读取 + 主题应用 | main.tsx:57-75 | 并行读 `app.language`/`theme_mode`/`theme_color`/`theme_custom_colors`/`glass_clarity` 与 `loadBackgroundSettings()`/`loadAccountAvailability()`；`resolveThemeColor` 解析色板后依次 `applyThemeColor`、`applyThemeMode`、`applyGlassClarity`（渲染前应用，避免闪白） |
+| 配置读取 + 主题应用 | main.tsx:57-75 | 并行读 `app.language`/`theme_mode`/`theme_color`/`theme_custom_colors`/`glass_clarity` 与 `loadBackgroundSettings()`/`loadAccountAvailability()`/`initLogSettings()`；`resolveThemeColor` 解析色板后依次 `applyThemeColor`、`applyThemeMode`、`applyGlassClarity`（渲染前应用，避免闪白） |
 | `ReactDOM.createRoot(...).render(...)` | main.tsx:80-88 | `StrictMode > BrowserRouter > Provider > App`，挂载到 `#root` |
 | `beginStartupTracking(...)` | main.tsx:89-92 | React 挂载后开始跟踪首屏请求 |
 | 托盘数据刷新 | main.tsx:106-115 | 读 `tray_user_role_id` → `refreshTrayUserData(roleId)`（`@/utils/trayService`），本文件不再直接 `invoke` |
@@ -23,6 +23,7 @@
 **备注**：
 - 主题逻辑已迁移：本文件原先自定义的 `ThemeMode`/`ThemeColor`/`PRESET_COLORS`/`findColors`/`applyThemeColor`/`applyThemeMode` 全部移到 `@/utils/theme`（见 [utils_services_a.md](utils_services_a.md)），`main.tsx` 只负责读配置并调用这些函数。
 - 初始化读取的配置键：`app.language`、`theme_mode`、`theme_color`、`theme_custom_colors`、`glass_clarity`，并 `loadBackgroundSettings()` 与 `loadAccountAvailability()`（渲染前恢复上一轮的账户不可用状态，让首屏即显示正确状态）；语言未保存时按 `navigator.language` 以 `zh` 开头判定中/英（main.tsx:66）；主题色默认 indigo、主题模式默认 `system`、玻璃清晰度默认 55（均由 `@/utils/theme` 的默认常量兜底）。
+- `initLogSettings()` 在渲染前读取 `developer_mode` 与 `log_level`，未开启开发者模式时把前后端日志级别都限制为 INFO 及以上，并注册 `developerModeChange` 监听，后续切换立即生效。
 - 前端启动时另外同步 localStorage 键 `launcher_install_path`、`launcher_channel` 至同名 app config 键，供之后的 `--silent --launch-game` 使用；同步失败经 logger 明确记录。
 - 渲染结构：`StrictMode > BrowserRouter > Provider > App`，挂载到 `#root`（main.tsx:80-88）。
 - 启动 Splash 在 `index.html` 中由静态 HTML/CSS 提前展示，使用 `/app-icon.png`；背景层复用 `loadBackgroundSettings()` 设置的用户背景图、透明度和模糊度，没有自定义背景时回退到主题渐变。配置读取完成后继续保持显示。`startupProgress.ts` 汇总启动任务、仪表板首载、角色数据 IPC 与公告/背景加载，在请求静稳 650ms 后将进度补满并淡出；初始化配置异常时保留 Splash 并显示错误文案与 `#startup-splash-error` 操作面板（导出诊断日志/打开日志目录/重新加载）；45 秒超时同样停止加载并展示未完成请求数。

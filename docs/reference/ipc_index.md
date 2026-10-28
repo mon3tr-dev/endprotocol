@@ -1,6 +1,8 @@
 # IPC 命令索引（前端 invoke ↔ 后端定义）
 
-> 由脚本扫描 `#[tauri::command]` 与前端 `invoke('...')` 自动生成。共 127 个后端命令，其中 110 个在前端有直接调用；17 个未见前端调用。行号基于当前工作区版本。
+> 由脚本扫描 `#[tauri::command]` 与前端 `invoke('...')` 自动生成。共 133 个后端命令，其中 116 个在前端有直接调用；17 个未见前端调用。行号基于当前工作区版本。
+>
+> 注：`browser_go_back` / `browser_go_forward` / `browser_reload` / `browser_navigate` / `browser_current_url` 经 `src/utils/browserViewService.ts` 的私有 `run(command, args)` 动态调用（`invoke(command, …)`，命令名不是字面量），脚本的字面量正则扫不到，已人工补录。
 
 每个命令的参数、返回值与内部调用链见 [commands.md](backend/commands.md)；前端侧的封装函数见各 `utils_services_*.md`。
 
@@ -14,6 +16,11 @@
 | `app_quit` | [src-tauri/src/commands/tray.rs:87](backend/commands.md) | [src/components/crash-report-host.tsx](../../src/components/crash-report-host.tsx)<br>[src/components/custom-titlebar.tsx](../../src/components/custom-titlebar.tsx)<br>[src/components/tray-panel.tsx](../../src/components/tray-panel.tsx)<br>[src/components/ui/global-error-fallback.tsx](../../src/components/ui/global-error-fallback.tsx) |
 | `auto_detect_proxy` | [src-tauri/src/commands/proxy.rs:55](backend/commands.md) | [src/utils/proxyService.ts](../../src/utils/proxyService.ts) |
 | `batch_logout` | [src-tauri/src/commands/account.rs:169](backend/commands.md) | [src/utils/accountService.ts](../../src/utils/accountService.ts) |
+| `browser_current_url` | [src-tauri/src/commands/browser.rs:92](backend/commands.md) | [src/utils/browserViewService.ts](../../src/utils/browserViewService.ts) |
+| `browser_go_back` | [src-tauri/src/commands/browser.rs:36](backend/commands.md) | [src/utils/browserViewService.ts](../../src/utils/browserViewService.ts) |
+| `browser_go_forward` | [src-tauri/src/commands/browser.rs:48](backend/commands.md) | [src/utils/browserViewService.ts](../../src/utils/browserViewService.ts) |
+| `browser_navigate` | [src-tauri/src/commands/browser.rs:77](backend/commands.md) | [src/utils/browserViewService.ts](../../src/utils/browserViewService.ts) |
+| `browser_reload` | [src-tauri/src/commands/browser.rs:63](backend/commands.md) | [src/utils/browserViewService.ts](../../src/utils/browserViewService.ts) |
 | `cancel_download` | [src-tauri/src/commands/updater.rs:135](backend/commands.md) | —（前端未调用） |
 | `capture_delete_session` | [src-tauri/src/commands/capture.rs:32](backend/commands.md) | [src/pages/developer.tsx](../../src/pages/developer.tsx) |
 | `capture_dir` | [src-tauri/src/commands/capture.rs:37](backend/commands.md) | [src/pages/developer.tsx](../../src/pages/developer.tsx) |
@@ -26,7 +33,7 @@
 | `check_and_refresh_cred` | [src-tauri/src/commands/account.rs:295](backend/commands.md) | [src/utils/accountService.ts](../../src/utils/accountService.ts) |
 | `check_update_endpoint` | [src-tauri/src/commands/updater.rs:57](backend/commands.md) | —（前端未调用） |
 | `clear_proxy_settings` | [src-tauri/src/commands/proxy.rs:85](backend/commands.md) | [src/utils/proxyService.ts](../../src/utils/proxyService.ts) |
-| `close_window` | [src-tauri/src/commands/window.rs:21](backend/commands.md) | —（前端未调用） |
+| `close_window` | [src-tauri/src/commands/window.rs:42](backend/commands.md) | —（前端未调用） |
 | `create_game_shortcut` | [src-tauri/src/commands/startup.rs:272](backend/commands.md) | [src/utils/launcherService.ts](../../src/utils/launcherService.ts) |
 | `delete_background_image` | [src-tauri/src/commands/image.rs:190](backend/commands.md) | [src/components/appearance-settings.tsx](../../src/components/appearance-settings.tsx) |
 | `do_attendance` | [src-tauri/src/commands/attendance.rs:181](backend/commands.md) | [src/components/cards/attendance/index.tsx](../../src/components/cards/attendance/index.tsx) |
@@ -67,20 +74,20 @@
 | `hide_tray_panel` | [src-tauri/src/commands/tray.rs:72](backend/commands.md) | —（前端未调用） |
 | `install_update_endpoint` | [src-tauri/src/commands/updater.rs:72](backend/commands.md) | [src/utils/updateService.ts](../../src/utils/updateService.ts) |
 | `is_lazy_load_enabled` | [src-tauri/src/commands/account.rs:322](backend/commands.md) | [src/utils/roleDetailService.ts](../../src/utils/roleDetailService.ts) |
-| `launcher_browse_folder` | [src-tauri/src/commands/launcher.rs:615](backend/commands.md) | [src/utils/launcherService.ts](../../src/utils/launcherService.ts) |
+| `launcher_browse_folder` | [src-tauri/src/commands/launcher.rs:610](backend/commands.md) | [src/utils/launcherService.ts](../../src/utils/launcherService.ts) |
 | `launcher_cancel_all` | [src-tauri/src/commands/launcher.rs:341](backend/commands.md) | [src/utils/launcherService.ts](../../src/utils/launcherService.ts) |
 | `launcher_cancel_download` | [src-tauri/src/commands/launcher.rs:302](backend/commands.md) | [src/utils/launcherService.ts](../../src/utils/launcherService.ts) |
 | `launcher_cancel_switch` | [src-tauri/src/commands/launcher.rs:335](backend/commands.md) | [src/utils/launcherService.ts](../../src/utils/launcherService.ts) |
-| `launcher_check_executable` | [src-tauri/src/commands/launcher.rs:753](backend/commands.md) | [src/utils/launcherService.ts](../../src/utils/launcherService.ts) |
-| `launcher_check_game_running` | [src-tauri/src/commands/launcher.rs:761](backend/commands.md) | [src/utils/launcherService.ts](../../src/utils/launcherService.ts) |
+| `launcher_check_executable` | [src-tauri/src/commands/launcher.rs:748](backend/commands.md) | [src/utils/launcherService.ts](../../src/utils/launcherService.ts) |
+| `launcher_check_game_running` | [src-tauri/src/commands/launcher.rs:756](backend/commands.md) | [src/utils/launcherService.ts](../../src/utils/launcherService.ts) |
 | `launcher_check_status` | [src-tauri/src/commands/launcher.rs:50](backend/commands.md) | [src/utils/launcherService.ts](../../src/utils/launcherService.ts) |
 | `launcher_decrypt_file` | [src-tauri/src/commands/launcher.rs:348](backend/commands.md) | —（前端未调用） |
-| `launcher_detect_channel` | [src-tauri/src/commands/launcher.rs:703](backend/commands.md) | [src/utils/launcherService.ts](../../src/utils/launcherService.ts) |
+| `launcher_detect_channel` | [src-tauri/src/commands/launcher.rs:698](backend/commands.md) | [src/utils/launcherService.ts](../../src/utils/launcherService.ts) |
 | `launcher_get_announcements` | [src-tauri/src/commands/launcher.rs:365](backend/commands.md) | [src/utils/launcherService.ts](../../src/utils/launcherService.ts) |
 | `launcher_get_background_image` | [src-tauri/src/commands/launcher.rs:387](backend/commands.md) | [src/utils/launcherService.ts](../../src/utils/launcherService.ts) |
 | `launcher_get_banners` | [src-tauri/src/commands/launcher.rs:354](backend/commands.md) | [src/utils/launcherService.ts](../../src/utils/launcherService.ts) |
-| `launcher_get_disk_space` | [src-tauri/src/commands/launcher.rs:632](backend/commands.md) | [src/utils/launcherService.ts](../../src/utils/launcherService.ts) |
-| `launcher_get_game_playtime` | [src-tauri/src/commands/launcher.rs:768](backend/commands.md) | [src/utils/launcherService.ts](../../src/utils/launcherService.ts) |
+| `launcher_get_disk_space` | [src-tauri/src/commands/launcher.rs:627](backend/commands.md) | [src/utils/launcherService.ts](../../src/utils/launcherService.ts) |
+| `launcher_get_game_playtime` | [src-tauri/src/commands/launcher.rs:763](backend/commands.md) | [src/utils/launcherService.ts](../../src/utils/launcherService.ts) |
 | `launcher_get_notice_content` | [src-tauri/src/commands/launcher.rs:376](backend/commands.md) | [src/utils/launcherService.ts](../../src/utils/launcherService.ts) |
 | `launcher_get_payload_state` | [src-tauri/src/commands/launcher.rs:291](backend/commands.md) | [src/utils/launcherService.ts](../../src/utils/launcherService.ts) |
 | `launcher_get_process_read_bytes` | [src-tauri/src/commands/launcher.rs:32](backend/commands.md) | [src/utils/launcherService.ts](../../src/utils/launcherService.ts) |
@@ -88,16 +95,16 @@
 | `launcher_has_download_cache` | [src-tauri/src/commands/launcher.rs:321](backend/commands.md) | [src/utils/launcherService.ts](../../src/utils/launcherService.ts) |
 | `launcher_install_or_update` | [src-tauri/src/commands/launcher.rs:71](backend/commands.md) | [src/utils/launcherService.ts](../../src/utils/launcherService.ts) |
 | `launcher_install_preload` | [src-tauri/src/commands/launcher.rs:248](backend/commands.md) | [src/utils/launcherService.ts](../../src/utils/launcherService.ts) |
-| `launcher_kill_game` | [src-tauri/src/commands/launcher.rs:781](backend/commands.md) | [src/utils/launcherService.ts](../../src/utils/launcherService.ts) |
+| `launcher_kill_game` | [src-tauri/src/commands/launcher.rs:776](backend/commands.md) | [src/utils/launcherService.ts](../../src/utils/launcherService.ts) |
 | `launcher_preload_download` | [src-tauri/src/commands/launcher.rs:204](backend/commands.md) | [src/utils/launcherService.ts](../../src/utils/launcherService.ts) |
 | `launcher_reset_download_cancel` | [src-tauri/src/commands/launcher.rs:329](backend/commands.md) | [src/utils/launcherService.ts](../../src/utils/launcherService.ts) |
-| `launcher_scan_install_dir` | [src-tauri/src/commands/launcher.rs:691](backend/commands.md) | [src/utils/launcherService.ts](../../src/utils/launcherService.ts) |
+| `launcher_scan_install_dir` | [src-tauri/src/commands/launcher.rs:686](backend/commands.md) | [src/utils/launcherService.ts](../../src/utils/launcherService.ts) |
 | `launcher_start_game` | [src-tauri/src/commands/launcher.rs:442](backend/commands.md) | [src/utils/launcherService.ts](../../src/utils/launcherService.ts) |
-| `launcher_switch_channel` | [src-tauri/src/commands/launcher.rs:819](backend/commands.md) | [src/utils/launcherService.ts](../../src/utils/launcherService.ts) |
+| `launcher_switch_channel` | [src-tauri/src/commands/launcher.rs:815](backend/commands.md) | [src/utils/launcherService.ts](../../src/utils/launcherService.ts) |
 | `launcher_verify_and_repair` | [src-tauri/src/commands/launcher.rs:134](backend/commands.md) | [src/utils/launcherService.ts](../../src/utils/launcherService.ts) |
 | `logout_account` | [src-tauri/src/commands/account.rs:156](backend/commands.md) | [src/utils/accountService.ts](../../src/utils/accountService.ts) |
-| `minimize_to_tray` | [src-tauri/src/commands/window.rs:28](backend/commands.md) | [src/components/custom-titlebar.tsx](../../src/components/custom-titlebar.tsx) |
-| `minimize_window` | [src-tauri/src/commands/window.rs:3](backend/commands.md) | [src/components/custom-titlebar.tsx](../../src/components/custom-titlebar.tsx) |
+| `minimize_to_tray` | [src-tauri/src/commands/window.rs:49](backend/commands.md) | [src/components/custom-titlebar.tsx](../../src/components/custom-titlebar.tsx)<br>[src/components/in-app-browser.tsx](../../src/components/in-app-browser.tsx) |
+| `minimize_window` | [src-tauri/src/commands/window.rs:24](backend/commands.md) | [src/components/custom-titlebar.tsx](../../src/components/custom-titlebar.tsx)<br>[src/components/in-app-browser.tsx](../../src/components/in-app-browser.tsx) |
 | `pick_steam_icon` | [src-tauri/src/commands/startup.rs:243](backend/commands.md) | [src/utils/launcherService.ts](../../src/utils/launcherService.ts) |
 | `pick_steam_icon_source` | [src-tauri/src/commands/startup.rs:253](backend/commands.md) | [src/utils/launcherService.ts](../../src/utils/launcherService.ts) |
 | `query_role_data` | [src-tauri/src/commands/account.rs:353](backend/commands.md) | [src/utils/roleDataService.ts](../../src/utils/roleDataService.ts)<br>[src/utils/roleDetailService.ts](../../src/utils/roleDetailService.ts) |
@@ -121,6 +128,7 @@
 | `set_config` | [src-tauri/src/commands/config.rs:46](backend/commands.md) | [src/utils/configService.ts](../../src/utils/configService.ts)<br>[src/utils/launcherService.ts](../../src/utils/launcherService.ts) |
 | `set_current_role_id` | [src-tauri/src/commands/account.rs:331](backend/commands.md) | [src/utils/roleDetailService.ts](../../src/utils/roleDetailService.ts) |
 | `set_lazy_load_enabled` | [src-tauri/src/commands/account.rs:308](backend/commands.md) | [src/utils/roleDetailService.ts](../../src/utils/roleDetailService.ts) |
+| `set_log_level` | [src-tauri/src/commands/logs.rs:11](backend/commands.md) | [src/utils/logSettings.ts](../../src/utils/logSettings.ts) |
 | `set_proxy_config` | [src-tauri/src/commands/config.rs:23](backend/commands.md) | —（前端未调用） |
 | `set_selected_account` | [src-tauri/src/commands/account.rs:277](backend/commands.md) | [src/utils/accountService.ts](../../src/utils/accountService.ts) |
 | `set_tray_user` | [src-tauri/src/commands/tray.rs:19](backend/commands.md) | [src/utils/trayService.ts](../../src/utils/trayService.ts) |
@@ -130,6 +138,6 @@
 | `sync_gacha_records` | [src-tauri/src/commands/gacha.rs:116](backend/commands.md) | [src/pages/gacha-records.tsx](../../src/pages/gacha-records.tsx) |
 | `sync_weapon_gacha_records` | [src-tauri/src/commands/gacha.rs:179](backend/commands.md) | [src/pages/gacha-records.tsx](../../src/pages/gacha-records.tsx) |
 | `test_proxy_connection` | [src-tauri/src/commands/proxy.rs:29](backend/commands.md) | [src/utils/proxyService.ts](../../src/utils/proxyService.ts) |
-| `toggle_maximize_window` | [src-tauri/src/commands/window.rs:10](backend/commands.md) | [src/components/custom-titlebar.tsx](../../src/components/custom-titlebar.tsx) |
+| `toggle_maximize_window` | [src-tauri/src/commands/window.rs:31](backend/commands.md) | [src/components/custom-titlebar.tsx](../../src/components/custom-titlebar.tsx)<br>[src/components/in-app-browser.tsx](../../src/components/in-app-browser.tsx) |
 | `update_tray_user_data` | [src-tauri/src/commands/tray.rs:45](backend/commands.md) | [src/utils/trayService.ts](../../src/utils/trayService.ts) |
 | `write_file` | [src-tauri/src/commands/updater.rs:104](backend/commands.md) | —（前端未调用） |

@@ -563,6 +563,8 @@
       "level_info": "INFO",
       "level_warn": "WARN",
       "level_error": "ERROR",
+      "level_setting": "Log level",
+      "level_setting_desc": "Logs below the selected level are discarded; DEBUG is disabled when developer mode is off",
       "clear": "Clear",
       "no_logs": "No logs",
       "source_frontend": "FE",
@@ -675,6 +677,17 @@
     "collapse": "Collapse",
     "preparing": "Preparing...",
     "downloading": "Downloading..."
+  },
+  "browser": {
+    "back": "Back",
+    "forward": "Forward",
+    "refresh": "Refresh",
+    "open_in_browser": "Open in Browser",
+    "close": "Close Browser",
+    "minimize": "Minimize",
+    "maximize": "Maximize",
+    "restore": "Restore",
+    "quit_window": "Close Window"
   },
   "tray": {
     "title": "ENDPROTOCOL",

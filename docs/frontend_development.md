@@ -22,7 +22,7 @@
 - **状态管理**: 优先使用 React Hooks (`useState`, `useEffect`)；跨窗口/轻量全局状态用 `src/stores/`（`inAppBrowser.ts`、`launcherMode.ts`）。
 - **样式编写**: 使用 Tailwind CSS 原子类 + `src/components/ui/glass` 的玻璃组件；深色模式通过 `globals.css` 的 `.dark` 类切换。
 - **国际化**: 用户可见文本必须通过 `useTranslation` 从 `locales/` 获取；卡片文案放各自的 `locales/{zh,en}.json`（合并进 `card` 命名空间）。
-- **日志记录**: 使用 `src/utils/logger.ts` 的 `logger` / `logInfo` / `logError` / `logDebug`，**禁止 `console.log`**。
+- **日志记录**: 使用 `src/utils/logger.ts` 的 `logger` / `logInfo` / `logError` / `logDebug`，**禁止 `console.log`**；日志级别由开发者模式下的 `log_level` 控制（关闭开发者模式时 DEBUG 自动屏蔽）。
 - **IPC 调用**: 页面/组件不直接散写 `invoke`，统一走 `src/utils/*Service.ts` 封装；需要新增命令时先在封装层加函数（含类型与错误兜底）。
 - **错误处理**: 封装层统一 `try/catch` + `logError`，并明确失败时的返回值约定（空数组/`false`/`null`）。
 

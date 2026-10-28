@@ -214,7 +214,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     const bgSrc = showVideo ? bgVideoSrc : bgImageSrc;
 
     return (
-      <div className="flex flex-col h-screen">
+      <div className="relative flex flex-col h-screen">
         {/* Full-bleed background */}
         <div className="fixed inset-0 z-0">
           {bgSrc ? (
@@ -229,10 +229,19 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                   className="w-full h-full object-cover"
                 />
               ) : (
-                <img
-                  src={bgSrc}
-                  alt="Background"
-                  className="w-full h-full object-cover"
+                // 图片背景规则（等价 CSS object-fit/background-size: cover）：
+                // 保持原始宽高比，取 max(W/w, H/h) 等比缩放，使缩放后的宽和高都
+                // ≥ 容器，从而完全覆盖、不留空白；溢出的一边（长边方向）居中裁掉。
+                <div
+                  role="img"
+                  aria-label="Background"
+                  className="w-full h-full"
+                  style={{
+                    backgroundImage: `url("${bgSrc}")`,
+                    backgroundRepeat: "no-repeat",
+                    backgroundPosition: "center",
+                    backgroundSize: "cover",
+                  }}
                 />
               )}
               <div className="absolute inset-0 bg-gradient-to-t from-background/50 via-transparent to-background/10" />
@@ -249,7 +258,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
           <GameBackgroundSwitch mode={bgMediaMode} media={bgMedia} />
         )}
 
-        {/* In-app browser overlay — below titlebar */}
+        {/* In-app browser overlay — 全屏覆盖（含标题栏），自带窗口控制 */}
         <InAppBrowser />
 
         {/* Content layer */}

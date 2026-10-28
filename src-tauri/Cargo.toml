@@ -18,7 +18,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "~2.12", features = ["tray-icon"] }
+tauri = { version = "~2.12", features = ["tray-icon", "unstable"] } # unstable：in-app browser 动态创建子 Webview，见 commands/browser.rs
 tauri-plugin-opener = "~2.7"
 tauri-plugin-fs = "~2.6"
 serde = { version = "1", features = ["derive"] }
@@ -67,10 +67,11 @@ zip = { version = "4.6.1", default-features = false, features = ["aes-crypto", "
 #   Win32_System_Environment            —— GetEnvironmentVariableW / ExpandEnvironmentStringsW
 #   Win32_System_Console                —— GetConsoleWindow（隐藏 helper 控制台）
 #   Win32_System_Diagnostics_Debug      —— FormatMessageW（Win32 错误文本）
+#   Win32_System_Diagnostics_ToolHelp   —— CreateToolhelp32Snapshot（utils/process.rs 进程枚举）
 #   Win32_System_JobObjects             —— 直接启动路径的 Job（应用退出时兜底终止挂起父进程）
 #   Win32_System_LibraryLoader          —— FindResourceW / LoadLibraryExW（game_icon 图标提取）
 #   Win32_Storage_FileSystem            —— 文件/句柄相关常量
-windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_UI_WindowsAndMessaging", "Win32_System_Com", "Win32_UI_Shell", "Win32_System_Threading", "Win32_System_Power", "Win32_System_Performance", "Win32_Security", "Win32_Security_Cryptography", "Win32_Security_Cryptography_Catalog", "Win32_Security_Cryptography_Sip", "Win32_Security_WinTrust", "Win32_System_Registry", "Win32_System_Environment", "Win32_System_Console", "Win32_System_Diagnostics_Debug", "Win32_System_JobObjects", "Win32_System_LibraryLoader", "Win32_Storage_FileSystem"] }
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_UI_WindowsAndMessaging", "Win32_System_Com", "Win32_UI_Shell", "Win32_System_Threading", "Win32_System_Power", "Win32_System_Performance", "Win32_Security", "Win32_Security_Cryptography", "Win32_Security_Cryptography_Catalog", "Win32_Security_Cryptography_Sip", "Win32_Security_WinTrust", "Win32_System_Registry", "Win32_System_Environment", "Win32_System_Console", "Win32_System_Diagnostics_Debug", "Win32_System_Diagnostics_ToolHelp", "Win32_System_JobObjects", "Win32_System_LibraryLoader", "Win32_Storage_FileSystem"] }
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-updater = "~2.13"

@@ -17,6 +17,10 @@
     "core:window:allow-primary-monitor",
     "core:window:allow-outer-position",
     "core:window:allow-outer-size",
+    "core:webview:allow-create-webview",
+    "core:webview:allow-webview-close",
+    "core:webview:allow-set-webview-position",
+    "core:webview:allow-set-webview-size",
     "opener:default",
     "opener:allow-open-url"
   ]

@@ -205,29 +205,39 @@
 **备注**：通过 `launcherService` 调用 `get_game_launch_command` / `create_game_shortcut` / `steam_shortcut_defaults` / `pick_steam_icon` / `pick_steam_icon_source` / `extract_steam_icon` / `add_steam_shortcut`，并用 `set_config` 同步 `launcher_install_path` / `launcher_channel` / `launcher_dx11`；图标预览额外 `invoke("read_image_file")`。剪贴板使用浏览器 Clipboard API。localStorage 键：`launcher_cancel_behavior`、`launcher_verify_threads`、`launcher_download_threads`、`launcher_download_resume`、`launcher_dx11`、`launcher_install_path`、`launcher_channel`；window 事件：`game-launch-settings-sync`。下载线程数与断点续传由下载调用方（`game-action-panel.tsx`）在发起安装/预下载时读取并透传后端。文案位于 `settings.game_launch.*` 与 `launcher.*`。
 
 ## `src/components/in-app-browser.tsx`
-**职责**：应用内嵌浏览器覆盖层——玻璃工具栏（前进/后退/刷新/地址栏/关闭）+ 加载进度条 + 沙箱 `iframe`，开合与地址由 `@/stores/inAppBrowser` 状态驱动。
+**职责**：应用内嵌浏览器覆盖层——玻璃工具栏（后退/前进/刷新/外部打开/地址栏/关闭）+ **窗口控制组**（最小化/最大化-还原/关闭，接管被覆盖的标题栏）+ 加载进度条 + **原生子 Webview**（Tauri `new Webview()`，用于加载被 `X-Frame-Options` / CSP 禁止内嵌的站点），非 Tauri 环境降级为沙箱 `iframe`。开合与地址由 `@/stores/inAppBrowser` 状态驱动。
 **导出**：`InAppBrowser`。
-**主要依赖**：`react`、`@/stores/inAppBrowser`（`isBrowserOpen`、`getInAppBrowserUrl`、`closeInAppBrowser`、`navigateInAppBrowser`、`subscribeInAppBrowser`）。
+**主要依赖**：`react`、`react-i18next`、`@tauri-apps/api/core`（`isTauri`/`invoke`）、`@tauri-apps/api/webview`（`Webview`）、`@tauri-apps/api/dpi`（`LogicalPosition`/`LogicalSize`）、`@tauri-apps/api/window`（`getCurrentWindow`）、`@tauri-apps/api/event`（`listen`）、`@tauri-apps/plugin-opener`（`openUrl`）、`@/utils/logger`、`@/utils/configService`（`getConfig`）、`@/components/close-confirm-dialog`、`@/components/ui/app-icon`（`MinimizeIcon`/`MaximizeIcon`/`RestoreIcon`/`CloseIcon`）、`@/components/icons`（`ExternalLinkIcon`）、`@/stores/inAppBrowser`（`isBrowserOpen`、`getInAppBrowserUrl`、`closeInAppBrowser`、`subscribeInAppBrowser`）、`@/utils/browserViewService`（`browserGoBack`/`browserGoForward`/`browserReload`/`browserNavigate`/`browserCurrentUrl`、`BrowserPageLoadPayload`）。
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
-| `InAppBrowser`（export） | 10-167 | 无 props；未打开时返回 `null` |
+| `WEBVIEW_LABEL_PREFIX` | 36 | 子 Webview label 前缀，后端 `on_page_load` 按此前缀过滤转发事件 |
+| `webviewSeq` | 39 | label 递增序列，避免新旧实例撞 label |
+| `WEBVIEW_BACKGROUND` | 49 | 创建参数里的原生层底色（RGBA 元组，白色不透明）：未绘制区须与站点色调一致，否则深色底配深色字不可读 |
+| `WebviewHandle`（接口） | 52-56 | `{ webview, settled }`；`settled` 在 `tauri://created` / `tauri://error` 任一落定后 resolve |
+| `InAppBrowser`（export） | 58-601 | 无 props；未打开时返回 `null` |
 
 **内部结构**：
-- 11-15 行：`isOpen`/`url`/`inputValue`/`loading` 状态与 `iframeRef`。
-- 17-26 行：订阅 store，变化时同步开关、地址、输入框并置 `loading=true`。
-- 28-30 行：`url` 变化时同步输入框。
-- 32-34 行：`handleClose` 调 `closeInAppBrowser()`。
-- 36-50 行：`handleBack`/`handleForward` 尝试操作 `iframe.contentWindow.history`，跨域异常静默忽略。
-- 52-57 行：`handleRefresh` 重设 `iframe.src = url` 并置加载中。
-- 59-69 行：`handleNavigate`——去空格、无协议自动补 `https://`，写 store 并置加载中。
-- 71-76 行：回车触发导航。
-- 78 行：`!isOpen` 时返回 `null`。
-- 81-147 行：玻璃工具栏（后退 85-94、前进 97-106、刷新 109-118、地址栏 121-134、关闭 137-146，图标为内联 SVG）。
-- 150-154 行：`loading` 时的顶部脉冲进度条。
-- 157-164 行：`iframe`（`sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-modals allow-downloads"`，`onLoad` 关闭 loading）。
+- 64-68 行：`containerRef`（占位容器）、`handleRef`（Webview 句柄）、`iframeRef`（降级分支）。
+- 73-101 行：窗口控制状态 `isMaximized`，`checkMaximizedState` 读 `getCurrentWindow().isMaximized()`，并监听 `tauri://resize` / `tauri://move` 同步图标。
+- 103-108 行：读配置键 `close_action`（`ask`/`minimize_to_tray`/`close`）。
+- 110-156 行：`handleWindowMinimize` → `invoke("minimize_window")`；`handleWindowMaximize` → `invoke("toggle_maximize_window")` + 100ms 后 `checkMaximizedState`；`handleWindowClose` 按 `closeAction` 分支（`ask` → 弹 `CloseConfirmDialog`，否则 `minimize_to_tray` / `app_quit`）。
+- 161-190 行：store 订阅；浏览器已打开时再次跳转走 `navigateHandle`（就地导航，保留实例与浏览历史）。
+- 203-219 行：`syncBounds`——用 `getBoundingClientRect()` 换算逻辑坐标，调 `setPosition`/`setSize`（主窗口 `decorations(false)`，视口原点即客户区原点）。
+- 228-272 行：`createWebview`——`new Webview(getCurrentWindow(), label, { url, x, y, width, height, backgroundColor, focus: false })`，并把 `once("tauri://created"/"tauri://error")` 包成 `settled`。`focus: false` 避免原生层夺走主窗口焦点导致工具栏按钮点不动。
+- 283-296 行：`destroyWebview`——先等 `settled` 再 `close()`，防止创建未完成时关闭失败泄漏原生层；带实例身份校验，异步竞态下不误关新实例。
+- 305-326 行：生命周期 effect——`isOpen` 转 true 创建、转 false（关闭/挂起）销毁；`ResizeObserver` + `window resize` 双通道同步尺寸。
+- 329-357 行：`listen("browser://page-load")` 驱动 loading 与地址栏回填。
+- 365-373 行：`syncUrlFromWebview` 在地址栏点击时回读真实地址（补 SPA `pushState` 不触发 on_page_load 的盲区）。
+- 377-435 行：`handleBack`/`handleForward`/`handleRefresh`/`handleOpenExternal`（非 Tauri 回落到 `iframe.contentWindow`）。
+- 441 行：`!isOpen` 时返回 `null`。
+- 446-568 行：玻璃工具栏。**布局保持在 Webview 区域之外**（原生层会覆盖 DOM），空白区即窗口拖拽区（`WebkitAppRegion: drag`）；按钮区显式 `no-drag`。534-567 行的窗口控制组在 `isTauri()` 时渲染。
+- 571-575 行：`loading` 时的顶部脉冲进度条。
+- 581-592 行：占位容器 `div ref={containerRef}`；`!isTauri()` 时在容器内渲染降级 `iframe`（`sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-modals allow-downloads"`，`onLoad` 关闭 loading）。
 
-**备注**：无 `invoke`、无 `listen`、无 `emit`、无配置键；开合状态完全来自 `@/stores/inAppBrowser` 的订阅。注意：前进/后退依赖同源，跨域时静默失败；地址栏导航不改写浏览器 history（仅 store + iframe）。
+**备注**：`invoke` 命令（见 [../backend/commands.md](../backend/commands.md)）：`browser_go_back`、`browser_go_forward`、`browser_reload`、`browser_navigate`、`browser_current_url`（经 `@/utils/browserViewService` 包装）；窗口控制走 `minimize_window`、`toggle_maximize_window`、`minimize_to_tray`、`app_quit`；`listen` 事件：`browser://page-load`（后端 `lib.rs` 的 `on_page_load` 桥接）；配置键：`close_action`；无 `postMessage` 依赖。开合状态仍来自 `@/stores/inAppBrowser` 的订阅。地址栏导航不改写浏览器 history（仅 store + Webview）。原生层会覆盖 DOM，因此高于浏览器区域的浮层（标题栏消息浮窗 z-[10005]、弹窗 z-[100]/z-[200]）在浏览器打开时会不可见，属已知取舍。
+
+> ⚠️ 窗口控制必须走 app command（`minimize_window` / `toggle_maximize_window`），**不能**改用 `plugin:window|*` 前端 API：后者受 capability 作用域约束（子 webview 会继承 `main` 的 ACL），且 `is-maximized` 等 getter 在本项目 capability 下未授权（实测报 `window.is-maximized not allowed`）。app command 不经 capabilities 授权，行为稳定。
 
 ## `src/components/tray-panel.tsx`
 **职责**：系统托盘悬浮面板——头部右上角展示**游戏账号等级**徽标，下方是当前用户的头像/昵称/理智（含自然回复倒计时）、每日活跃、每周事务、通行证五项数据，并提供「显示窗口」「退出」两个操作。视觉与主界面统一：`glass-native` 原生磨砂层（背景真透明、不再叠 CSS blur）、主题色圆点 + 全大写字距品牌标题、`glass` 风格的细进度条、`MorphIcon` 图标、全量 i18n 文案。

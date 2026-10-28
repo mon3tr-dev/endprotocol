@@ -48,12 +48,13 @@
 | Wiki 表格/技能描述解析 | `src/utils/wikiTableParser.ts`、`skillDescParser.tsx` | [utils_services_b.md](reference/frontend/utils_services_b.md) |
 | 网络代理（HTTP / SOCKS5、系统代理读取、连通性测试） | `src/components/network-settings.tsx`、`src/utils/proxyService.ts`、`src-tauri/src/commands/proxy.rs`、`src-tauri/src/utils/proxy.rs` | [components_settings_panels.md](reference/frontend/components_settings_panels.md)、[utils_services_a.md](reference/frontend/utils_services_a.md)、[commands.md](reference/backend/commands.md)、[utils.md](reference/backend/utils.md) |
 | 网络抓包（开发者页） | `src-tauri/src/utils/capture.rs` | [utils.md](reference/backend/utils.md) |
+| 内嵌浏览器（原生子 Webview，加载禁嵌站点） | `src/components/in-app-browser.tsx`、`src/stores/inAppBrowser.ts`、`src/utils/browserViewService.ts`、`src-tauri/src/commands/browser.rs`、`src-tauri/src/lib.rs`（`on_page_load` 桥） | [components_settings_panels.md](reference/frontend/components_settings_panels.md)、[utils_services_b.md](reference/frontend/utils_services_b.md)、[commands.md](reference/backend/commands.md)、[bootstrap.md](reference/backend/bootstrap.md) |
 
 ### 1.2 横切关注点
 
 | 需求 | 位置 | 详细参考 |
 | --- | --- | --- |
-| **IPC 命令在哪定义 / 前端谁调用** | 生成的对照表 | [ipc_index.md](reference/ipc_index.md)（127 个命令全表） |
+| **IPC 命令在哪定义 / 前端谁调用** | 生成的对照表 | [ipc_index.md](reference/ipc_index.md)（132 个命令全表） |
 | 新增/修改一个 Tauri 命令 | `src-tauri/src/commands/`、`src-tauri/src/lib.rs` | [commands.md](reference/backend/commands.md)、[bootstrap.md](reference/backend/bootstrap.md)、[backend_development.md](backend_development.md) |
 | 错误类型与转换 | `src-tauri/src/utils/error.rs` | [utils.md](reference/backend/utils.md) |
 | 加密与签名（RSA/AES/DES/HMAC） | `src-tauri/src/utils/hg_crypto.rs`、`services/skland_service.rs` | [utils.md](reference/backend/utils.md)、[services_skland.md](reference/backend/services_skland.md) |

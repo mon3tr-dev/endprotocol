@@ -482,13 +482,8 @@ pub(crate) async fn launch_game(
         });
     }
 
-    // Kill existing game processes first
-    let mut kill_command = std::process::Command::new("taskkill");
-    #[cfg(target_os = "windows")]
-    kill_command.creation_flags(windows_sys::Win32::System::Threading::CREATE_NO_WINDOW);
-    let _ = kill_command.args(["/F", "/IM", exe_name]).output();
-
-    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    // Kill existing game processes first（原生快照，含子进程树；无残留时立刻返回）
+    let _ = crate::utils::process::terminate_processes(exe_name);
 
     #[cfg(target_os = "windows")]
     {
@@ -773,7 +768,7 @@ pub fn launcher_get_game_playtime() -> GamePlaytime {
 /// 结束游戏进程。
 ///
 /// 游戏由**提权** helper 创建（见 `utils/official_launcher.rs`），所以未提权的本进程执行
-/// `taskkill` / `TerminateProcess` 只会拿到 `Access is denied` —— 这正是「停止」点了没反应
+/// `TerminateProcess` 只会拿到 `ERROR_ACCESS_DENIED` —— 这正是「停止」点了没反应
 /// 的原因。这里先就地试一次（本进程已提权时不必弹 UAC），仍有残留则经 UAC 以管理员权限
 /// 重试同一个动作，并把最终存活状态回给界面。
 ///
@@ -786,9 +781,10 @@ pub async fn launcher_kill_game(channel: String) -> Result<bool, String> {
     #[cfg(target_os = "windows")]
     {
         let name = process_name.to_string();
-        // tasklist/taskkill 与 UAC 等待都是阻塞调用，不占用 tokio 工作线程。
+        // 进程快照 / TerminateProcess 与 UAC 等待都是阻塞调用，不占用 tokio 工作线程。
         let outcome = tokio::task::spawn_blocking(move || {
-            if !crate::utils::process::has_processes(&name) {
+            // 单次快照预检：本来就没有残留时直接返回，连终止调用都不必发起。
+            if !crate::utils::process::exists_once(&name) {
                 return Ok(false);
             }
             crate::utils::official_launcher::kill_game_process(&name)

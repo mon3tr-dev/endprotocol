@@ -90,14 +90,14 @@
 - **invoke 命令名（经服务间接触发）**：`set_tray_user`、`update_tray_user_data`、`query_role_data`（`setTrayUser`→`refreshTrayUserData`→`roleDataService.queryData`）、`is_lazy_load_enabled` / `set_lazy_load_enabled`（roleDetailService）、`fetch_url`（updateService 内部拉取更新元数据）；代理相关命令全部由 `NetworkSettings` 经 `proxyService` 触发（见 `components_settings_panels.md`）。
 - **配置键**：`refresh_on_account_switch`、`wiki_detail_preload`、`close_action`、`tray_user_role_id`、`developer_mode`（本文件直接读写）；`update_channel`、`update_source`（经 updateService 间接读写）；委托组件另用 `proxy_config`、`app.language`、`theme_mode`、`theme_color`、`theme_custom_colors`、`bg_image_path`、`bg_image_opacity`、`bg_blur`、`glass_clarity`。
 - **i18n key 前缀**：`settings.title`、`common.managePreferences`、`settings.general.*`（含 `language`、`close_action*`、`tray_user*`、`title`）、`settings.network.*`（`title`/`desc`，网络卡标题）、`settings.game_launch.title`、`settings.appearance.title`、`settings.system_resource.title`、`settings.todo.title`、`settings.developer.*`（`title`/`enable`/`enable_desc`/`warning_*`）、`settings.update_channel.*`、`settings.update_source.*`、`settings.update.*`（`app_version`/`tauri_version`/`platform`/`latest_version`/`release_date`/`license*`/`open_source_credits`/`special_thanks`/`xel_launcher_desc`/`better_endfield_desc`）。
-- **窗口事件**：`openUpdateDialog`（监听，settings.tsx:331）、`developerModeChange`（派发两次，settings.tsx:216、:226，detail 为 `{enabled:boolean}`）。
+- **窗口事件**：`openUpdateDialog`（监听，settings.tsx:331）、`developerModeChange`（派发两次，settings.tsx:216、:226，detail 为 `{enabled:boolean}`；`@/utils/logSettings` 监听后同步前后端日志级别，关闭时回到 INFO）。
 - **DOM 锚点 id**：`settings-general`、`settings-language`、`settings-refresh-on-switch`、`settings-lazy-load`、`settings-wiki-detail-preload`、`settings-close-action`、`settings-tray-user`、`settings-network`、`settings-game-launch`、`settings-appearance`、`settings-system-resource`、`settings-todo`、`settings-developer`、`settings-about`。
 - 非持久化展示项：远端版本徽标、版本四宫格、发布日期、identifier、License、20 条开源致谢（内联数组）、2 条特别鸣谢（Xel-Launcher / Better-Endfield，内联数组，说明文案走 i18n）、GitHub/License 外链、「检查更新」与「更新到 vX」按钮。
 
 ## `src/pages/developer.tsx`
-**文件职责**：应用「开发者」路由页（`/developer`）。自上而下提供三块能力：图片缓存调优（模式/容量/统计/逐项浏览）、网络请求录制与会话回放（启动停止、分页读取、请求/响应详情）、前后端合并日志查看器（来源与级别过滤、轮询刷新）。
-**导出**：`export default function DeveloperPage()`（developer.tsx:138），仅此一个导出；其余接口/常量/辅助函数均为模块内私有。
-**主要依赖**：`react-i18next`、`@/components/ui/glass`（GlassButton/GlassCard/GlassLabel/GlassMeter/GlassNumberField/GlassSkeleton/GlassSwitch/GlassTable）、`react`（useState/useEffect/useRef/useMemo/useCallback）、`@/utils/configService`（`getConfig`/`setConfig`）、`@/utils/imageCacheManager`（`cacheManager`、`CacheMode`）、`@tauri-apps/plugin-opener`（`revealItemInDir`）、`@/utils/logger`（`logger`、`LogEntry`、`LogLevel`、`logError`）、`@tauri-apps/api/core`（`invoke`）、`morphicons/react`（`MorphIcon`）、`lucide`（`FileText`、`Settings`）。
+**文件职责**：应用「开发者」路由页（`/developer`）。自上而下提供三块能力：图片缓存调优（模式/容量/统计/逐项浏览）、网络请求录制与会话回放（启动停止、分页读取、请求/响应详情）、前后端合并日志查看器（来源与级别过滤、日志级别调整、轮询刷新）。
+**导出**：`export default function DeveloperPage()`（developer.tsx:142），仅此一个导出；其余接口/常量/辅助函数均为模块内私有。
+**主要依赖**：`react-i18next`、`@/components/ui/glass`（GlassButton/GlassCard/GlassLabel/GlassMeter/GlassNumberField/GlassSelect/GlassSkeleton/GlassSwitch/GlassTable）、`react`（useState/useEffect/useRef/useMemo/useCallback）、`@/utils/configService`（`getConfig`/`setConfig`）、`@/utils/imageCacheManager`（`cacheManager`、`CacheMode`）、`@tauri-apps/plugin-opener`（`revealItemInDir`）、`@/utils/logger`（`logger`、`LogEntry`、`LogLevel`、`parseLogLevel`、`logError`）、`@/utils/logSettings`（`setLogLevel`）、`@tauri-apps/api/core`（`invoke`）、`morphicons/react`（`MorphIcon`）、`lucide`（`FileText`、`Settings`）。
 
 ### 内部结构总览
 | 区间 | 内容 |
@@ -108,20 +108,19 @@
 | developer.tsx:70-95 | 模块级辅助：`formatBytes`、`formatBodyText`（JSON 美化 + 截断 + base64 标注） |
 | developer.tsx:97-130 | 日志级别样式映射：`LOG_LEVEL_NAMES`、`LEVEL_BADGE_BG`、`LEVEL_TEXT`、`LEVEL_BG_SOFT`、`LEVEL_BORDER` |
 | developer.tsx:132-136 | `MAX_VISIBLE_LOGS = 500`、`MAX_MESSAGE_LENGTH = 300`、类型 `LogFilter` / `LogLevelFilter` |
-| developer.tsx:138-167 | `DeveloperPage` state：缓存、日志过滤、录制会话与详情、`cacheEntries` useMemo（:155） |
-| developer.tsx:169-280 | 录制相关 handler：`refreshCapture`、`loadCaptureEntries`、`handleCaptureStart/Stop`、`handleViewSession`、`handleCloseSession`、`handleDeleteSession`、`handleOpenCaptureDir`、`handleAutoStartChange` |
-| developer.tsx:282-293 | 两个录制 effect：初始化（刷新 + 读 `capture_autostart`）、录制中每 2s 轮询状态 |
-| developer.tsx:295-318 | 缓存配置加载 effect：读 `cache_mode`/`cache_max_entries`/`cache_max_size_mb` 并 `cacheManager.configure` |
-| developer.tsx:320-363 | `fetchBackendLogs`（invoke 拉后端日志、按 timestamp 去重、超量裁剪）与 3s 轮询 effect（:359-363） |
-| developer.tsx:365-375 | 日志容器贴近底部时自动滚底 effect |
-| developer.tsx:377-395 | `filteredLogs` useMemo：合并前后端 → 按来源/级别过滤 → 按时间排序 → 取末 500 条 |
-| developer.tsx:397-434 | 缓存与日志操作：`handleCacheModeChange`、`handleCacheMaxEntriesChange`、`handleCacheMaxSizeMBChange`、`refreshCacheStats`、`cleanInactive`、`clearLogs` |
-| developer.tsx:436-441 | `truncateMessage`：超 300 字符截断加省略号 |
-| developer.tsx:443-450 | 页头（`settings.developer.title` + `settings.developer.enable_desc`） |
-| developer.tsx:452-648 | 图片缓存卡 `#developer-cache`：骨架屏 459-468；模式开关 471-491；manual 模式下条数输入 497-520、容量输入 522-545；统计/清理 549-587；缓存明细表折叠 589-643 |
-| developer.tsx:650-1017 | 网络录制卡 `#developer-capture`：标题与开始/停止/目录/刷新按钮 651-715；功能说明 717-721；启动自动录制开关 723-745；错误提示 747-749；状态条 751-768；会话表 770-844；会话内条目表 846-927；单条详情面板 929-1014 |
-| developer.tsx:1019-1138 | 日志卡 `#developer-logs`：标题与导出诊断/刷新/清除 1021-1034；来源 tabs 1036-1060；级别过滤 chips 1062-1085；日志列表 1087-1137 |
-| developer.tsx:1139-1142 | 收尾闭合 |
+| developer.tsx:142-171 | `DeveloperPage` state：缓存、日志过滤与级别、录制会话与详情、`cacheEntries` useMemo |
+| developer.tsx:169-283 | 录制相关 handler：`refreshCapture`、`loadCaptureEntries`、`handleCaptureStart/Stop`、`handleViewSession`、`handleCloseSession`、`handleDeleteSession`、`handleOpenCaptureDir`、`handleAutoStartChange` |
+| developer.tsx:285-296 | 两个录制 effect：初始化（刷新 + 读 `capture_autostart`）、录制中每 2s 轮询状态 |
+| developer.tsx:298-326 | 缓存与日志级别配置加载 effect：读 `cache_mode`/`cache_max_entries`/`cache_max_size_mb`/`log_level` 并 `cacheManager.configure` |
+| developer.tsx:328-371 | `fetchBackendLogs`（invoke 拉后端日志、按 timestamp 去重、超量裁剪）与 3s 轮询 effect |
+| developer.tsx:373-383 | 日志容器贴近底部时自动滚底 effect |
+| developer.tsx:385-403 | `filteredLogs` useMemo：合并前后端 → 按来源/级别过滤 → 按时间排序 → 取末 500 条 |
+| developer.tsx:405-449 | 缓存与日志操作：`handleCacheModeChange`、`handleCacheMaxEntriesChange`、`handleCacheMaxSizeMBChange`、`refreshCacheStats`、`cleanInactive`、`clearLogs`、`handleLogLevelChange` |
+| developer.tsx:451-456 | `truncateMessage`：超 300 字符截断加省略号 |
+| developer.tsx:458-465 | 页头（`settings.developer.title` + `settings.developer.enable_desc`） |
+| developer.tsx:467-663 | 图片缓存卡 `#developer-cache`：骨架屏；模式开关；manual 模式下条数/容量输入；统计/清理；缓存明细表折叠 |
+| developer.tsx:665-1055 | 网络录制卡 `#developer-capture`：标题与开始/停止/目录/刷新按钮；功能说明；启动自动录制开关；错误提示；状态条；会话表；会话内条目表；单条详情面板 |
+| developer.tsx:1056-1185 | 日志卡 `#developer-logs`：标题与导出诊断/刷新/清除；日志级别选择 1084-1104；来源 tabs 1106-1130；级别过滤 chips 1132-1155；日志列表 1157-1207 |
 
 ### 组件与函数清单
 | 符号 | 位置 | 说明 |
@@ -142,8 +141,9 @@
 | `LEVEL_BORDER` | developer.tsx:125-130 | 级别过滤 chip 边框色 |
 | `MAX_VISIBLE_LOGS` / `MAX_MESSAGE_LENGTH` | developer.tsx:132-133 | `500`（列表上限）/ `300`（单条消息截断长度） |
 | `LogFilter` / `LogLevelFilter`（type） | developer.tsx:135-136 | `"all" \| "frontend" \| "backend"`；`LogLevel \| "all"` |
-| `DeveloperPage`（default） | developer.tsx:138 | 页面根组件 |
-| `cacheEntries`（useMemo） | developer.tsx:155 | 依赖 `cacheStats` 重算 `cacheManager.getEntries()` |
+| `DeveloperPage`（default） | developer.tsx:142 | 页面根组件 |
+| `logLevel` / `setLogLevelState` | developer.tsx:154 | 当前日志级别（开发者模式内可调，默认 DEBUG） |
+| `cacheEntries`（useMemo） | developer.tsx:161 | 依赖 `cacheStats` 重算 `cacheManager.getEntries()` |
 | `refreshCapture` | developer.tsx:169-180 | 并行 `capture_status` + `capture_list_sessions`，失败静默（非 Tauri 环境） |
 | `loadCaptureEntries` | developer.tsx:182-200 | `capture_read_entries`（offset/limit=100），按 `replace` 决定覆盖或追加，失败写 `captureError` |
 | `handleCaptureStart` | developer.tsx:202-214 | `capture_start` 后刷新状态 |
@@ -154,24 +154,25 @@
 | `handleOpenCaptureDir` | developer.tsx:262-270 | `capture_dir` 取目录后 `revealItemInDir` 在文件管理器中显示 |
 | `handleAutoStartChange` | developer.tsx:272-280 | 写配置 `capture_autostart`，失败回滚入 `captureError` |
 | 初始化/轮询 effect | developer.tsx:282-293 | 挂载刷新录制状态并读 `capture_autostart`；`recording` 时每 2000ms 轮询 |
-| 缓存配置加载 effect | developer.tsx:295-318 | 读三键（回退 smart/200/100）→ `cacheManager.configure` → 刷新统计 |
-| `fetchBackendLogs` | developer.tsx:320-357 | `get_backend_logs` → level 字符串映射 → 按 timestamp 去重累入 `backendLogsRef`，超过 `MAX_VISIBLE_LOGS*2` 裁剪并重建去重集合 → 递增 `displayKey` 触发重渲染 |
-| 后端日志轮询 effect | developer.tsx:359-363 | 立即拉取一次，之后每 3000ms |
-| 自动滚底 effect | developer.tsx:365-375 | 距底部 <80px 时 `requestAnimationFrame` 滚到底 |
-| `filteredLogs`（useMemo） | developer.tsx:377-395 | 前端 `logger.getLogs()` + `backendLogsRef` 合并 → 来源/级别过滤 → timestamp 升序 → 末 500 条 |
-| `handleCacheModeChange` | developer.tsx:397-402 | `cacheManager.configure({mode})` + 写 `cache_mode` + 刷新统计 |
-| `handleCacheMaxEntriesChange` | developer.tsx:404-410 | 夹取 10–5000 → configure + 写 `cache_max_entries` |
-| `handleCacheMaxSizeMBChange` | developer.tsx:412-418 | 夹取 10–10000 → configure + 写 `cache_max_size_mb` |
-| `refreshCacheStats` | developer.tsx:420-422 | 重取 `cacheManager.getStats()` |
-| `cleanInactive` | developer.tsx:424-427 | `cacheManager.evictInactive()` 后刷新统计 |
-| `clearLogs` | developer.tsx:432 | 清前端日志 + 空置后端缓存与去重集合 + 递增 `displayKey` |
-| `handleExportDiagnostics` | developer.tsx:439 | `exportDiagnostics("Developer log export")` → `revealDiagnostics(path)` → 成功/失败 `pushGlobalAlert` |
-| `truncateMessage` | developer.tsx:461 | 消息超 300 字符截断 |
+| 缓存与日志级别配置加载 effect | developer.tsx:298-326 | 读四键（回退 smart/200/100/DEBUG）→ `cacheManager.configure` → 刷新统计 |
+| `fetchBackendLogs` | developer.tsx:328-365 | `get_backend_logs` → level 字符串映射 → 按 timestamp 去重累入 `backendLogsRef`，超过 `MAX_VISIBLE_LOGS*2` 裁剪并重建去重集合 → 递增 `displayKey` 触发重渲染 |
+| 后端日志轮询 effect | developer.tsx:367-371 | 立即拉取一次，之后每 3000ms |
+| 自动滚底 effect | developer.tsx:373-383 | 距底部 <80px 时 `requestAnimationFrame` 滚到底 |
+| `filteredLogs`（useMemo） | developer.tsx:385-403 | 前端 `logger.getLogs()` + `backendLogsRef` 合并 → 来源/级别过滤 → timestamp 升序 → 末 500 条 |
+| `handleCacheModeChange` | developer.tsx:405-410 | `cacheManager.configure({mode})` + 写 `cache_mode` + 刷新统计 |
+| `handleCacheMaxEntriesChange` | developer.tsx:412-418 | 夹取 10–5000 → configure + 写 `cache_max_entries` |
+| `handleCacheMaxSizeMBChange` | developer.tsx:420-426 | 夹取 10–10000 → configure + 写 `cache_max_size_mb` |
+| `refreshCacheStats` | developer.tsx:428-430 | 重取 `cacheManager.getStats()` |
+| `cleanInactive` | developer.tsx:432-435 | `cacheManager.evictInactive()` 后刷新统计 |
+| `clearLogs` | developer.tsx:437-442 | 清前端日志 + 空置后端缓存与去重集合 + 递增 `displayKey` |
+| `handleLogLevelChange` | developer.tsx:444-449 | `parseLogLevel` → 本地 state → `logSettings.setLogLevel`（持久化 `log_level` 并同步前后端）→ 递增 `displayKey` |
+| `handleExportDiagnostics` | developer.tsx:451-478 | `exportDiagnostics("Developer log export")` → `revealDiagnostics(path)` → 成功/失败 `pushGlobalAlert` |
+| `truncateMessage` | developer.tsx:480-485 | 消息超 300 字符截断 |
 
 **备注**：
-- **invoke 命令名（全部）**：`capture_status`（:172）、`capture_list_sessions`（:173）、`capture_read_entries`（:185，参数 `id`/`offset`/`limit`）、`capture_start`（:206）、`capture_stop`（:220）、`capture_delete_session`（:251，参数 `id`）、`capture_dir`（:264）、`get_backend_logs`（:322）。
+- **invoke 命令名（全部）**：`capture_status`、`capture_list_sessions`、`capture_read_entries`（参数 `id`/`offset`/`limit`）、`capture_start`、`capture_stop`、`capture_delete_session`（参数 `id`）、`capture_dir`、`get_backend_logs`；日志级别变更经 `@/utils/logSettings` 间接 invoke `set_log_level`。
 - **诊断导出**：日志卡「导出诊断日志」经 `@/utils/diagnostics`（`export_diagnostics`）打包前后端日志、崩溃报告与系统信息，成功后用 `revealItemInDir` 定位 zip；失败通过 `pushGlobalAlert` 提示。
-- **配置键**：`capture_autostart`（读 :284，写 :275）、`cache_mode`（读 :299，写 :400）、`cache_max_entries`（读 :300，写 :408）、`cache_max_size_mb`（读 :301，写 :416）。缓存参数同步下发给 `cacheManager.configure`，改完立即刷新 `getStats()`。
+- **配置键**：`capture_autostart`、`cache_mode`、`cache_max_entries`、`cache_max_size_mb`、`log_level`。缓存参数同步下发给 `cacheManager.configure`，改完立即刷新 `getStats()`；`log_level` 经 `logSettings.setLogLevel` 持久化并同步到后端 `set_log_level`。
 - **i18n key 前缀**：`settings.cache.*`（title/mode/mode_smart_desc/mode_manual_desc/max_entries*/max_size_mb*/current_cache/clean_inactive/entries_count/size_usage/cached_resources/filename/size/status/status_pinned/status_active/status_inactive/open_file_location/no_cached）、`settings.logs.title`、`settings.developer.title`、`settings.developer.enable_desc`、`common.refresh`。
 - **未走 i18n 的文案**：网络录制整卡（标题、按钮、说明、表头、详情面板，:650-1016）与日志卡的清除按钮、tabs、级别 chips、空态（:1031-1131）均使用 `i18n.language === "zh"` 三元硬编码中英双语，未接入翻译资源。
 - **DOM 锚点 id**：`developer-cache`、`developer-capture`、`developer-logs`。

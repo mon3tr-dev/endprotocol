@@ -660,7 +660,7 @@ derive 均为 `Serialize, Deserialize, Clone, Debug` + 容器 `rename_all = "cam
 | `sub_channel` | game.rs:81 | 官服 1 / B服 2 / Global 6 / GooglePlay 802 |
 | `seq` | game.rs:91 | 国服 5，国际服 3 |
 | `executable_name` | game.rs:99 | 恒为 `"Endfield.exe"` |
-| `process_name` | game.rs:104 | 恒为 `"Endfield.exe"`（tasklist/taskkill 用） |
+| `process_name` | game.rs:104 | 恒为 `"Endfield.exe"`（`utils/process.rs` 的进程快照匹配与终止用） |
 
 ### `enum ActiveOperation`
 - 位置：game.rs:121

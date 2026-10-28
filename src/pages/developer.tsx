@@ -5,6 +5,7 @@ import {
   GlassLabel,
   GlassMeter,
   GlassNumberField,
+  GlassSelect,
   GlassSkeleton,
   GlassSwitch,
   GlassTable,
@@ -13,7 +14,8 @@ import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { getConfig, setConfig } from "@/utils/configService";
 import { cacheManager, CacheMode } from "@/utils/imageCacheManager";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
-import logger, { LogEntry, LogLevel } from "@/utils/logger";
+import logger, { LogEntry, LogLevel, logLevelToConfigValue, parseLogLevel } from "@/utils/logger";
+import { setLogLevel as applyLogLevel } from "@/utils/logSettings";
 import { invoke } from "@tauri-apps/api/core";
 import { logError } from "@/utils/logger";
 import { exportDiagnostics, revealDiagnostics } from "@/utils/diagnostics";
@@ -149,6 +151,7 @@ export default function DeveloperPage() {
 
   const [logSourceFilter, setLogSourceFilter] = useState<LogFilter>("all");
   const [logLevelFilter, setLogLevelFilter] = useState<LogLevelFilter>("all");
+  const [logLevel, setLogLevelState] = useState<LogLevel>(LogLevel.DEBUG);
   const [isExportingDiagnostics, setIsExportingDiagnostics] = useState(false);
   const logContainerRef = useRef<HTMLDivElement>(null);
   const backendLogsRef = useRef<LogEntry[]>([]);
@@ -298,10 +301,11 @@ export default function DeveloperPage() {
   useEffect(() => {
     const loadConfig = async () => {
       setIsConfigLoading(true);
-      const [mode, maxEntries, maxSizeMB] = await Promise.all([
+      const [mode, maxEntries, maxSizeMB, savedLogLevel] = await Promise.all([
         getConfig<CacheMode>("cache_mode"),
         getConfig<number>("cache_max_entries"),
         getConfig<number>("cache_max_size_mb"),
+        getConfig<string>("log_level"),
       ]);
       const resolvedMode = mode ?? "smart";
       const resolvedEntries = maxEntries ?? 200;
@@ -309,6 +313,7 @@ export default function DeveloperPage() {
       setCacheMode(resolvedMode);
       setCacheMaxEntries(resolvedEntries);
       setCacheMaxSizeMB(resolvedSize);
+      setLogLevelState(parseLogLevel(savedLogLevel, LogLevel.DEBUG));
       cacheManager.configure({
         mode: resolvedMode,
         maxEntries: resolvedEntries,
@@ -433,6 +438,13 @@ export default function DeveloperPage() {
     logger.clearLogs();
     backendLogsRef.current = [];
     knownTimestampsRef.current = new Set();
+    setDisplayKey((k) => k + 1);
+  };
+
+  const handleLogLevelChange = async (value: string) => {
+    const level = parseLogLevel(value, LogLevel.DEBUG);
+    setLogLevelState(level);
+    await applyLogLevel(level);
     setDisplayKey((k) => k + 1);
   };
 
@@ -1067,6 +1079,28 @@ export default function DeveloperPage() {
                 {i18n.language === "zh" ? "清除" : "Clear"}
               </GlassButton>
             </div>
+          </div>
+
+          {/* Log level setting */}
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-3 p-3 rounded-xl bg-default-100/40 border border-separator/50">
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-foreground">
+                {t("settings.logs.level_setting")}
+              </p>
+              <p className="text-xs text-muted mt-0.5">
+                {t("settings.logs.level_setting_desc")}
+              </p>
+            </div>
+            <GlassSelect
+              value={logLevelToConfigValue(logLevel)}
+              options={(
+                [LogLevel.DEBUG, LogLevel.INFO, LogLevel.WARN, LogLevel.ERROR] as const
+              ).map((level) => ({
+                value: logLevelToConfigValue(level),
+                label: LOG_LEVEL_NAMES[level],
+              }))}
+              onChange={handleLogLevelChange}
+            />
           </div>
 
           {/* Source tabs */}

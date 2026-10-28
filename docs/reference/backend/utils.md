@@ -117,75 +117,81 @@
 ---
 
 ## `src-tauri/src/utils/logger.rs`
-**职责**：自研日志系统（387 行）：控制台彩色输出 + 按日期文件落盘 + 内存环形缓冲（供前端读取），并提供 `tracing` 桥接层与 9 个导出宏。
-**导出**：`LogLevel`、`LogEntry`、`LoggerConfig`、`Logger`、`console_available`、`eprint_console`、`init_logger`、`get_logger`、`try_get_logger`、`init_tracing_subscriber`、宏 `log_debug!` / `log_info!` / `log_warn!` / `log_error!` / `log_debug_module!` / `log_info_module!` / `log_warn_module!` / `log_error_module!` / `safe_eprintln!`。私有项：`TracingBridgeLayer`、`TracingVisitor`、`GLOBAL_LOGGER`。
-**主要依赖**：`chrono`（Local 时间）、`serde::Serialize`、`tracing` / `tracing-subscriber`、`super::paths`、`std::sync::Mutex`。
+**职责**：自研日志系统（491 行）：控制台彩色输出 + 按日期文件落盘 + 内存环形缓冲（供前端读取），支持运行时切换日志级别；未开启开发者模式时默认 INFO，DEBUG 不进入内存/文件/控制台。包含 `tracing` 桥接层（输出裁剪到模块短名与紧凑字段）与 9 个导出宏。
+**导出**：`LogLevel`、`LogEntry`、`LoggerConfig`、`Logger`、`console_available`、`eprint_console`、`init_logger`、`get_logger`、`try_get_logger`、`set_log_level`、`init_tracing_subscriber`、宏 `log_debug!` / `log_info!` / `log_warn!` / `log_error!` / `log_debug_module!` / `log_info_module!` / `log_warn_module!` / `log_error_module!` / `safe_eprintln!`。私有项：`TracingBridgeLayer`、`TracingVisitor`、`GLOBAL_LOGGER`、`MAX_DEBUG_MESSAGE_CHARS`。
+**主要依赖**：`chrono`（Local 时间）、`serde::Serialize`、`tracing` / `tracing-subscriber`、`super::paths`、`std::sync::{atomic::{AtomicU8, Ordering}, Mutex}`。
 
 ### 日志级别与条目
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
-| `enum LogLevel { Debug, Info, Warn, Error }` | logger.rs:40 | 派生 `Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize`；派生序使 `level >= config.log_level` 可直接比较（logger.rs:169） |
-| `LogLevel::as_str` | logger.rs:48 | → `"DEBUG"`/`"INFO"`/`"WARN"`/`"ERROR"`（私有） |
-| `LogLevel::color_code` | logger.rs:57 | ANSI 颜色：Debug `\x1b[36m` 青、Info `\x1b[32m` 绿、Warn `\x1b[33m` 黄、Error `\x1b[31m` 红（私有） |
-| `struct LogEntry` | logger.rs:69 | 字段 `timestamp`(String) / `level`(LogLevel) / `module`(String) / `message`(String) / `source`(String，后端固定写 `"backend"`，logger.rs:148)；`Serialize` 供前端 |
-| `struct LoggerConfig` | logger.rs:78 | `log_to_console` / `log_to_file` / `log_level` / `log_dir: PathBuf` / `max_memory_entries`（私有字段外均为 pub） |
-| `impl Default for LoggerConfig` | logger.rs:86-97 | 默认：控制台开、文件开、级别 Debug、`log_dir = paths::log_dir()`（失败回退 `current_dir()/logs` 且 `current_dir().unwrap()`，logger.rs:92-93）、内存上限 5000 条 |
+| `enum LogLevel { Debug=0, Info=1, Warn=2, Error=3 }` | logger.rs:45 | 派生 `Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize`；`#[repr(u8)]` 便于存入 `AtomicU8`，派生序使 `level >= current_level` 可直接比较 |
+| `LogLevel::as_str` | logger.rs:53 | → `"DEBUG"`/`"INFO"`/`"WARN"`/`"ERROR"` |
+| `LogLevel::parse` | logger.rs:63 | 解析 `"debug"/"info"/"warn"/"error"`（大小写不敏感，`warning` 兼容），供 `set_log_level` 命令与启动配置使用 |
+| `LogLevel::from_u8` | logger.rs:77 | `AtomicU8` → 枚举（私有，越界按 ERROR） |
+| `LogLevel::color_code` | logger.rs:86 | ANSI 颜色：Debug `\x1b[36m` 青、Info `\x1b[32m` 绿、Warn `\x1b[33m` 黄、Error `\x1b[31m` 红（私有） |
+| `struct LogEntry` | logger.rs:98 | 字段 `timestamp`(String) / `level`(LogLevel) / `module`(String) / `message`(String) / `source`(String，后端固定写 `"backend"`)；`Serialize` 供前端 |
+| `struct LoggerConfig` | logger.rs:107 | `log_to_console` / `log_to_file` / `log_level` / `log_dir: PathBuf` / `max_memory_entries` |
+| `impl Default for LoggerConfig` | logger.rs:111-123 | 默认：控制台开、文件开、**级别 Info**、`log_dir = paths::log_dir()`（失败回退 `current_dir()/logs`）、内存上限 5000 条 |
 
 ### 控制台可用性（GUI 子系统保护）
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
-| `console_available() -> bool` | logger.rs:13、20 | Windows 实现 `GetConsoleWindow() != null`；非 Windows 恒真。`main.rs` 无条件使用 GUI 子系统后，进程可能根本没有控制台，此时 std 的 stderr 句柄不可用，直接 `eprintln!` 会 panic |
-| `eprint_console(fmt: Arguments)` | logger.rs:25 | `console_available()` 为真才 `eprintln!`；`safe_eprintln!` 宏的落点 |
-| `safe_eprintln!` 宏（`#[macro_export]`） | logger.rs:31 | 展开为 `$crate::utils::logger::eprint_console(format_args!(...))`；全 crate 的裸 `eprintln!` 均应替换为它（lib.rs、models/char_detail.rs、services/game_launcher_service.rs 已替换） |
+| `console_available() -> bool` | logger.rs:16、23 | Windows 实现 `GetConsoleWindow() != null`；非 Windows 恒真。`main.rs` 无条件使用 GUI 子系统后，进程可能根本没有控制台，此时 std 的 stderr 句柄不可用，直接 `eprintln!` 会 panic |
+| `eprint_console(fmt: Arguments)` | logger.rs:28 | `console_available()` 为真才 `eprintln!`；`safe_eprintln!` 宏的落点 |
+| `safe_eprintln!` 宏（`#[macro_export]`） | logger.rs:34 | 展开为 `$crate::utils::logger::eprint_console(format_args!(...))`；全 crate 的裸 `eprintln!` 均应替换为它 |
 
 ### Logger 实例
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
-| `struct Logger` | logger.rs:100 | 持有 `config`、`log_file: Mutex<Option<File>>`、`memory_buffer: Mutex<VecDeque<LogEntry>>` |
-| `Logger::new(config) -> Result<Self, Box<dyn Error>>` | logger.rs:107 | `log_to_file` 为真时调用 `init_log_file`（logger.rs:114-116） |
-| `init_log_file` | logger.rs:121 | `create_dir_all(log_dir)` → 文件名 `app-%Y-%m-%d.log`（logger.rs:123-124）→ `create(true).append(true)` 打开并存入 Mutex |
-| `format_timestamp` | logger.rs:133 | `%Y-%m-%d %H:%M:%S%.3f`（本地时间，毫秒精度） |
-| `write_log(level, module, message)` | logger.rs:137 | 核心写入：①构造 `LogEntry` 入内存 `VecDeque`，超 `max_memory_entries` 则 `pop_front` 淘汰（logger.rs:146-153）；②控制台：仅当 `log_to_console && level >= config.log_level` **且 `console_available()` 为真**，`eprintln!` 带颜色 + `\x1b[0m` 复位（logger.rs:163-171，GUI 无控制台时静默跳过而不是 panic）；③文件：`writeln!` 后立即 `flush()`，**无颜色**（logger.rs:174-181） |
-| `get_recent_logs() -> Vec<LogEntry>` | logger.rs:185 | 克隆整个内存缓冲；调用方 commands/logs.rs:6（`get_backend_logs` 命令） |
-| `info(&self, message: &str)` | logger.rs:190 | module 固定 `"backend"`（同名便捷方法 `debug`/`warn`/`error` 为死代码，已删除） |
-| `debug_fmt/info_fmt/warn_fmt/error_fmt(fmt: Arguments)` | logger.rs:194、198、202、206 | 接收 `format_args!`，供同名宏使用 |
-| `debug_with_module/info_with_module/warn_with_module/error_with_module(module, message)` | logger.rs:211、215、219、223 | 指定 module（tracing 桥接与带模块宏使用） |
+| `struct Logger` | logger.rs:126 | 持有 `config`、`level: AtomicU8`（运行时可调，避免每条日志加锁）、`log_file: Mutex<Option<File>>`、`memory_buffer: Mutex<VecDeque<LogEntry>>` |
+| `Logger::new(config) -> Result<Self, Box<dyn Error>>` | logger.rs:135 | 用 `config.log_level` 初始化原子级别；`log_to_file` 为真时调用 `init_log_file` |
+| `init_log_file` | logger.rs:151 | `create_dir_all(log_dir)` → 文件名 `app-%Y-%m-%d.log` → `create(true).append(true)` 打开并存入 Mutex |
+| `format_timestamp` | logger.rs:163 | `%Y-%m-%d %H:%M:%S%.3f`（本地时间，毫秒精度） |
+| `level()` / `set_level()` / `is_enabled()` | logger.rs:167、171、175 | 读取/写入原子级别；`is_enabled` 即 `level >= current` |
+| `truncate_debug(message)` | logger.rs:179 | DEBUG 消息按字符截断到 800，追加 `… (N chars)`，避免超长 payload |
+| `write_log(level, module, message)` | logger.rs:188 | 核心写入：**入口先按当前级别过滤**（低于级别直接 return，不进入内存/文件）→ 构造 `LogEntry` 入内存 `VecDeque`，超 `max_memory_entries` 则 `pop_front`；控制台仅当 `log_to_console && console_available()`；文件 `writeln!` 后立即 `flush()` |
+| `get_recent_logs() -> Vec<LogEntry>` | logger.rs:247 | 克隆整个内存缓冲；调用方 commands/logs.rs（`get_backend_logs` 命令） |
+| `info(&self, message: &str)` | logger.rs:252 | module 固定 `"backend"` |
+| `debug_fmt/info_fmt/warn_fmt/error_fmt(fmt: Arguments)` | logger.rs:256、260、264、268 | 接收 `format_args!`，供同名宏使用 |
+| `debug_with_module/info_with_module/warn_with_module/error_with_module(module, message)` | logger.rs:273、277、281、285 | 指定 module（tracing 桥接与带模块宏使用） |
 
 ### 全局实例与初始化
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
-| `static GLOBAL_LOGGER: OnceLock<Logger>` | logger.rs:229 | 全局单例，`std::sync::OnceLock`（线程安全，无 `unsafe`） |
-| `init_logger() -> Result<(), Box<dyn Error>>` | logger.rs:231 | 用 `LoggerConfig::default()` 建实例并 `GLOBAL_LOGGER.set(logger)`（重复初始化返回 `Err("Logger already initialized")`），随后 `info("Logger initialized successfully")`；调用方 lib.rs:99、utils/official_launcher.rs:1081（提权 helper 进程，失败不中断启动，仅 `eprintln`） |
-| `get_logger() -> &'static Logger` | logger.rs:241 | `GLOBAL_LOGGER.get().expect("Logger not initialized. Call init_logger() first.")`；未初始化即调用会 panic |
-| `try_get_logger() -> Option<&'static Logger>` | logger.rs:248 | 未初始化时返回 `None`；供 panic hook 与诊断导出等「日志可能尚未就绪」的路径安全使用 |
-| `struct TracingBridgeLayer` + `impl Layer<S>` | logger.rs:247-279 | `on_event`：取 `metadata.level()/module_path()/target()`，用 `TracingVisitor` 收集字段，拼成 `[{target}] {fields}` 后按 ERROR/WARN/INFO/DEBUG\|TRACE 映射到 `*_with_module`（logger.rs:270-277） |
-| `struct TracingVisitor(String)` + `impl field::Visit` | logger.rs:281-318 | 实现 `record_debug/record_str/record_i64/record_u64/record_bool`，字段以 `name=value` 空格连接（未实现 record_f64 等） |
-| `init_tracing_subscriber()` | logger.rs:322 | `registry().with(TracingBridgeLayer).try_init().ok()`，已初始化则忽略；调用方 lib.rs:104。之后所有 `tracing::info!/debug!`（如 game_launcher_service 的 `tracing::info!`）都汇入本 Logger |
+| `static GLOBAL_LOGGER: OnceLock<Logger>` | logger.rs:291 | 全局单例，`std::sync::OnceLock`（线程安全，无 `unsafe`） |
+| `init_logger() -> Result<(), Box<dyn Error>>` | logger.rs:293 | 用 `LoggerConfig::default()`（默认 INFO）建实例并 `GLOBAL_LOGGER.set(logger)`，随后 `info("Logger initialized successfully")`；调用方 lib.rs、utils/official_launcher.rs（提权 helper 进程） |
+| `get_logger() -> &'static Logger` | logger.rs:303 | `GLOBAL_LOGGER.get().expect(...)`；未初始化即调用会 panic |
+| `try_get_logger() -> Option<&'static Logger>` | logger.rs:310 | 未初始化时返回 `None`；供 panic hook、诊断导出与 `set_log_level` 安全使用 |
+| `set_log_level(level)` | logger.rs:315 | 运行时更新全局日志级别；未初始化时静默忽略。调用方 `commands/logs.rs::set_log_level`、lib.rs setup（按 `developer_mode` / `log_level` 配置应用） |
+| `struct TracingBridgeLayer` + `impl Layer<S>` | logger.rs:321-383 | `enabled` 先按当前级别短路（级别关闭时 tracing 宏不再构造字段）；`on_event` 再取 module 路径最后一段，消息不再拼 `[target]` 前缀，仅保留字段汇总后调用 `*_with_module` |
+| `struct TracingVisitor(String)` + `impl field::Visit` | logger.rs:384-423 | 实现 `record_debug/record_str/record_i64/record_u64/record_bool`；`message` 字段去掉 `message=` 前缀，其它字段以 `name=value` 空格连接 |
+| `init_tracing_subscriber()` | logger.rs:425 | `registry().with(TracingBridgeLayer).try_init().ok()`，已初始化则忽略；调用方 lib.rs |
 
 ### 导出宏（均 `#[macro_export]`，路径 `$crate::utils::logger::get_logger()`）
 
 | 宏 | 位置 | 展开到 |
 | --- | --- | --- |
-| `log_debug!` / `log_info!` / `log_warn!` / `log_error!` | logger.rs:334、341、348、355 | `get_logger().*_fmt(format_args!(...))`，module=`backend` |
-| `log_debug_module!` / `log_info_module!` / `log_warn_module!` / `log_error_module!` | logger.rs:363、370、377、384 | `get_logger().*_with_module($module, &format_args!(...).to_string())` |
-| `safe_eprintln!` | logger.rs:31 | `console_available()` 为真才写 stderr（见上表）；供非 logger 系统的裸 `eprintln!` 使用 |
+| `log_debug!` / `log_info!` / `log_warn!` / `log_error!` | logger.rs:437、... | `get_logger().*_fmt(format_args!(...))`，module=`backend` |
+| `log_debug_module!` / `log_info_module!` / `log_warn_module!` / `log_error_module!` | logger.rs:466、... | `get_logger().*_with_module($module, &format_args!(...).to_string())` |
+| `safe_eprintln!` | logger.rs:34 | `console_available()` 为真才写 stderr（见上表）；供非 logger 系统的裸 `eprintln!` 使用 |
 
 **备注（格式 / 目标 / 轮转）**：
-- **单行格式**：`[YYYY-MM-DD HH:MM:SS.mmm] [LEVEL] [module] message`（logger.rs:133-139）。
+- **单行格式**：`[YYYY-MM-DD HH:MM:SS.mmm] [LEVEL] [module] message`。
 - **输出目标**：stderr（控制台，带 ANSI 色）与日志文件（无色）；内存缓冲同时保留 5000 条供前端 `get_backend_logs` 拉取。
+- **级别过滤**：内存缓冲、文件与控制台共用当前级别，**DEBUG 在开发者模式关闭时不会写入任何目标**；DEBUG 消息超过 800 字符自动截断。
+- **tracing 桥接**：模块名只保留最后一段（如 `game_launcher_service`），消息不再重复完整 crate 路径。
 - **轮转/清理**：仅有「按启动日期命名 `app-YYYY-MM-DD.log`」这一按日分文件的**命名**策略——文件句柄在 `init_logger` 时打开一次，**跨天不会切换文件，也没有任何旧日志删除/轮转逻辑**，历史日志会无限累积（异常项）。
-- 控制台按 `log_level` 过滤，但**文件与内存缓冲不过滤**，Debug 也会落盘。
 
 ---
 
 ## `src-tauri/src/utils/official_launcher.rs`
 **职责**：官方启动器父进程伪造 —— 在不打开鹰角启动器界面、不注入代码、不修改任何游戏文件的前提下启动《明日方舟：终末地》（约 1700 行，其中非 Windows 部分为返回错误的桩）。游戏会校验自己的**直接父进程**必须是签名有效的官方 `Games.exe`，本模块以 `CREATE_SUSPENDED` 创建官方启动器并永不恢复它（只有映像与签名存在），再用 `PROC_THREAD_ATTRIBUTE_PARENT_PROCESS` 把它指定为游戏进程的父进程，等待游戏退出后终止该挂起父进程并转发退出码。**已提权时由当前进程直接创建**（保留 Steam overlay 的 `CreateProcess` 注入链），未提权时才以 runas helper 完成创建。逻辑逐函数移植自 EndfieldNoLauncher 的 `src/launch.cpp`（AGPL-3.0，上游为 Better Endfield Next 的 `native/loaders/shared/official_launcher.cpp`，commit `514f6d6`），函数名与结构一一对应。
 **导出**：跨平台 —— `HELPER_FLAG`、`KILL_HELPER_FLAG`、`exit_code` 模块、`kill_exit_code` 模块、`LaunchToken`、`LaunchError`、`ElevatedLaunch`、`HelperOptions`、`KillOptions`、`quote_argument`、`quote_command_line`、`is_official_publisher`、`version_key`、`parse_helper_options`、`parse_kill_options`、`usage`；Windows 专属 —— `launch_via_official_parent`、`kill_game_process`、`process_is_elevated`、`shell_execute_game`、`try_run_helper`、`try_run_kill_helper`（其余全部私有）。
-**主要依赖**：`windows-sys`（`Win32_Security*` / `Win32_System_Threading` / `Win32_System_JobObjects` / `Win32_System_Registry` / `Win32_System_Environment` / `Win32_System_Console` / `Win32_System_Diagnostics_Debug` / `Win32_UI_Shell` / `Win32_UI_WindowsAndMessaging`）、`tracing`、`crate::utils::logger`（helper 写同一份日志文件）、`crate::utils::paths`（调用方算状态文件路径）。
+**主要依赖**：`windows-sys`（`Win32_Security*` / `Win32_System_Threading` / `Win32_System_JobObjects` / `Win32_System_Registry` / `Win32_System_Environment` / `Win32_System_Console` / `Win32_System_Diagnostics_Debug` / `Win32_UI_Shell` / `Win32_UI_WindowsAndMessaging`）、`tracing`、`crate::utils::logger`（helper 写同一份日志文件）、`crate::utils::paths`（调用方算状态文件路径）、`crate::utils::process`（进程快照与终止原语：`kill_game_process`、`run_kill_helper`、`kill_existing_game` 共用）。
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
@@ -193,7 +199,7 @@
 | `KILL_HELPER_FLAG` | :56 | `"--endfield-kill-helper"`，提权结束游戏 helper 的私有首参数（与启动 helper 共用同一个 exe） |
 | `PUBLISHER`（私有） | :59 | `"Shanghai Hypergryph Network Technology Co., Ltd."`，签名者证书 `O` 字段期望值（对应 C++ `kPublisher`） |
 | `pub mod exit_code` | :62-71 | `INVALID_ARGUMENTS=2` / `CREATE_FAILED=4` / `NO_VALID_LAUNCHER=7` / `WAIT_FAILED=8` |
-| `pub mod kill_exit_code` | :74-79 | `INVALID_ARGUMENTS=2` / `STILL_RUNNING=3`（提权 `taskkill` 之后同名进程仍存活） |
+| `pub mod kill_exit_code` | :74-79 | `INVALID_ARGUMENTS=2` / `STILL_RUNNING=3`（提权终止之后同名进程仍存活） |
 | `LaunchToken` | :83-102 | 失败/提示的机器可读标记（`not_found`/`no_launcher`/`cancelled`/`create`/`wait_failed`/`kill_failed`/`fallback`/`overlay_unavailable`/`unknown`），前端据此选 i18n 文案 |
 | `LaunchError` | :122-153 | `{ token, detail }`；`message()` 产出 `"<token>: <detail>"` 契约串；私有 `exit_code()` 把 token 映射回退出码（`kill_failed` 归入 `CREATE_FAILED`，仅用于 helper 内部错误路径） |
 | `ElevatedLaunch` | :166-168 | `{ helper_pid: Option<u32> }`；`Some` = 提权 helper 已建立，`None` = 当前进程已提权并直接创建了游戏 |
@@ -212,13 +218,13 @@
 | `OfficialParent` + `start` / `create_game` / `Drop` | :967-1134 | 挂起父进程（`CREATE_SUSPENDED\|CREATE_NO_WINDOW` + `SW_HIDE`，关线程句柄但永不 `ResumeThread`）与游戏创建（两段式属性列表 + `PROC_THREAD_ATTRIBUTE_PARENT_PROCESS` + `EXTENDED_STARTUPINFO_PRESENT`，`StartupInfo.cb = size_of::<STARTUPINFOEXW>()`）；`Drop` 只终止自己创建的进程并等 5s（对应 `OfficialParent`） |
 | `wait_for_game` / `write_status_file` | :1136-1162 | 等待游戏退出并读退出码（对应 `WaitForGame`）；创建成功后写 `pid=<n>` 状态文件 |
 | `LauncherJob` / `launch_in_process` | :1163-1264 | 直接启动路径：`CreateJobObjectW` + `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` 兜底终止挂起父进程；本进程创建「挂起官方父进程 + 游戏」，后台线程等待游戏退出并清理，返回 `ElevatedLaunch { helper_pid: None }` |
-| `try_run_kill_helper` / `run_kill_helper` | :1268-1300 | 提权结束游戏 helper 入口：在 logger/Tauri 初始化前由 `lib.rs` 截获，`ensure_console_hidden` + `parse_kill_options` → `process::terminate_processes` + `has_processes`，退出码 `0` / `STILL_RUNNING` |
+| `try_run_kill_helper` / `run_kill_helper` | :1268-1302 | 提权结束游戏 helper 入口：在 logger/Tauri 初始化前由 `lib.rs` 截获，`ensure_console_hidden` + `parse_kill_options` → `process::terminate_processes`，退出码按 `TerminateOutcome` 映射：`Terminated`/`Nothing` → `0`，`AccessDenied`/`StillRunning` → `STILL_RUNNING` |
 | `try_run_helper` / `run_helper` / `launch` | :1304-1410 | helper 入口与完整流程；`launch()` 是唯一持有 RAII 的作用域，析构（终止挂起父进程）完成后调用方才 `process::exit` |
-| `kill_existing_game`（私有，helper） | :1364 | `launch()` 开头以管理员权限执行 `taskkill /F /T /IM <game>`，清理上一局残留（含应用未提权时无法结束的提权游戏进程） |
+| `kill_existing_game`（私有，helper） | :1365 | `launch()` 开头以管理员权限调用 `process::terminate_processes`（原生快照 + `TerminateProcess`，含子进程树），清理上一局残留（含应用未提权时无法结束的提权游戏进程） |
 | `HelperProcess` | :1418-1482 | `ShellExecuteExW` 返回的 helper 进程句柄；`wait_early_exit(2.5s)` 宽限期探测、`wait_to_exit(timeout)` 阻塞取退出码、`watch_to_completion()` 分离线程收尾 |
 | `shell_execute_elevated` / `helper_parameters` | :1491-1571 | `ShellExecuteExW("runas", 自身 exe, ...)`，`SW_HIDE` + `SEE_MASK_NOCLOSEPROCESS\|NOASYNC\|FLAG_NO_UI\|NO_CONSOLE` |
 | `launch_via_official_parent` | :1576-1670 | 入口：先验签（失败即 `no_launcher`，调用方回退直接启动）→ **已提权时 `launch_in_process`**，否则 runas 重启自身 → 宽限期判定 |
-| `kill_game_process` / `kill_helper_parameters` | :1640-1686 | 结束游戏入口：先就地 `process::terminate_processes` + `has_processes`（已提权时到此为止，不弹 UAC）；仍有残留则 runas 重启自身跑 `--endfield-kill-helper`，阻塞等待退出码（`KILL_HELPER_TIMEOUT = 20s`），失败映射为 `kill_failed`（helper 退出码非 0 / 超时） |
+| `kill_game_process` / `kill_helper_parameters` | :1641-1700 | 结束游戏入口：先就地 `process::terminate_processes`，按 `TerminateOutcome` 分流 —— `Terminated` 返回 `Ok(true)`、`Nothing` 返回 `Ok(false)`（这两条都不弹 UAC），`AccessDenied`/`StillRunning` 才 runas 重启自身跑 `--endfield-kill-helper`，阻塞等待退出码（`KILL_HELPER_TIMEOUT = 10s`），失败映射为 `kill_failed`（helper 退出码非 0 / 超时） |
 | `shell_execute_game` | :1688-1730 | 回退路径：`ShellExecuteW(SW_SHOWNORMAL)` 直接启动游戏（旧实现的行为）；`arguments: &[String]` 逐个经 `quote_argument` 拼接后作为 `lpParameters` 传入，用于转发 `-force-d3d11` |
 | `mod tests` | :1771-1921 | 16 个单测：引号转义（结尾反斜杠 / 内嵌引号）、组织名比对、版本解析与数值比较、helper 参数解析、kill 参数解析与 `<name>.exe` 限制 |
 
@@ -227,14 +233,16 @@
 - **`runas` 两阶段（恰好一次 UAC）**：未提权一侧只做「查找 + 验签」，失败时不弹 UAC 就能给出结论；成功则 `runas` 重启自身，提权后的同一 exe 由 `lib.rs:39` 的 `try_run_helper()` 在 logger/Tauri 初始化**之前**截获（结束游戏的 `try_run_kill_helper()` 紧随其后，`lib.rs:47`）。
 - **`process::exit` 不跑析构**：helper 的完整流程必须先在一个函数内返回（RAII 析构 → 终止挂起的 `Games.exe`），再由 `lib.rs` 退出进程；若在持有父进程句柄时直接退出，那个 `Games.exe` 会永久残留。
 - **直接启动的清理**：`LauncherJob` 用 `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` 绑定挂起的 `Games.exe`，应用先退出（含崩溃）时由内核兜底终止；游戏正常退出时后台线程先 `Drop` 挂起父进程再关闭 Job。Job 在游戏创建之后才创建/赋值，因此不会把游戏本身纳入 Job。
-- **启动前清理旧游戏进程**：helper 在 `launch()` 开头执行 `taskkill /F /T /IM <game>`。应用未提权时 `launch_game` 里的同名 `taskkill` 会因 `Access is denied` 失败，残留的提权游戏进程只能由提权 helper 清理。若残留进程被游戏反作弊驱动保护（管理员也无法终止），则只能重启系统；`is_process_running` 会通过窗口/启动宽限判定把这类无窗口残留排除在「游戏中」之外。
+- **启动前清理旧游戏进程**：helper 在 `launch()` 开头调用 `process::terminate_processes`（原生快照 + `TerminateProcess`）。应用未提权时命令层的同名清理会因 `ERROR_ACCESS_DENIED` 失败，残留的提权游戏进程只能由提权 helper 清理。若残留进程被游戏反作弊驱动保护（管理员也无法终止），则只能重启系统；`is_process_running` 会通过窗口/启动宽限判定把这类无窗口残留排除在「游戏中」之外。
 - **不许 `FreeConsole`**：万一进程真的附有控制台（非正常路径），`FreeConsole` 会让之后所有 stderr 写入直接失败、且 logger 里的 `console_available()` 检查也无济于事（句柄已失效）；因此只隐藏窗口、不卸载控制台（`main.rs` 全构建 GUI 子系统后，正常路径本就无控制台，裸 `eprintln!` 也已统一走 `safe_eprintln!`）。
 - **签名句柄不跨提权边界**：helper 会重新验签并自己保持 `FILE_SHARE_READ` 句柄直到进程创建完成；未提权一侧的校验只是「不想让用户白弹一次 UAC」的 UX 过滤，**不要**因为「重复」而删掉 helper 里的那次。
 - **有意与上游一致的两处取舍**：`WTD_REVOCATION_CHECK_NONE`（不联网、不查吊销，离线可用）与只比对组织名不比指纹。
 - **状态文件**：`%LOCALAPPDATA%\cn.msk-network.endprotocol\launcher_helper_status`（路径由调用方传入），用于区分「helper 启动阶段失败」与「游戏创建成功但很快退出」——helper 退出码与游戏退出码共用同一段数值区间。
-- **结束游戏同样要提权**：游戏进程由提权 helper 创建，未提权的 EndProtocol 执行 `taskkill` / `TerminateProcess` 只会得到 `Access is denied`。`kill_game_process` 因此先就地试一次（本进程已提权时足以成功，不弹 UAC），还有残留才 `runas` 重启自身跑 `KILL_HELPER_FLAG`（`--endfield-kill-helper --name <Endfield.exe>`），由 `lib.rs` 在 logger/Tauri 初始化前截获；helper 只做 `process::terminate_processes` + `has_processes`，退出码 `0` = 已结束、`STILL_RUNNING` = 仍存活。用户取消 UAC 会由 `shell_execute_elevated` 映射为 `cancelled`，命令层把它作为 `Err("<token>: <detail>")` 交给前端展示。
+- **结束游戏同样要提权**：游戏进程由提权 helper 创建，未提权的 EndProtocol 调用 `OpenProcess(PROCESS_TERMINATE)` / `TerminateProcess` 只会得到 `ERROR_ACCESS_DENIED`。`kill_game_process` 因此先就地试一次（本进程已提权时足以成功，不弹 UAC）；`terminate_processes` 会把「拒绝」与「仍存活」区分开返回，所以**不需要**再等一轮存活轮询就能断定要提权，还有残留才 `runas` 重启自身跑 `KILL_HELPER_FLAG`（`--endfield-kill-helper --name <Endfield.exe>`），由 `lib.rs` 在 logger/Tauri 初始化前截获；helper 只做一次 `process::terminate_processes`（内部最多等 1.5 秒确认进程消失），退出码 `0` = 已结束、`STILL_RUNNING` = 仍存活。用户取消 UAC 会由 `shell_execute_elevated` 映射为 `cancelled`，命令层把它作为 `Err("<token>: <detail>")` 交给前端展示。
+- **旧实现的 `taskkill` / `wmic` 兜底已移除**：`wmic` 在新版 Windows 已弃用，且同样跨不过完整性级别边界，留着只会掩盖真正的原因（权限不足）；`taskkill` 子进程则单次要 340–390 ms，一轮存活轮询（旧 `has_processes`，6 次 × 500 ms）能白吃掉 10 秒，已全部由 Win32 快照（约 1–2 ms）替代，见 `utils/process.rs`。
 - **kill helper 的命令行只接受 `<name>.exe`**：这个提权入口若允许任意参数，就等于给应用开了一个「以管理员权限终止任意进程」的后门；`parse_kill_options` 因此拒绝路径、引号与非 `.exe` 目标。
 - **旧实现的 `wmic` 兜底已移除**：`wmic` 在新版 Windows 已弃用，且同样跨不过完整性级别边界，留着只会掩盖真正的原因（权限不足）。
+- **权限边界**：未提权的本进程只能结束与它同权限的进程，因此 `KILL_HELPER_FLAG` 用 `runas` 重启自身（见「结束游戏同样要提权」备注）。
 - 非 Windows 平台：`launch_via_official_parent` 返回 `unknown` 错误、`try_run_helper` / `try_run_kill_helper` 返回 `None`、`kill_game_process` 返回 `Ok(false)`、`process_is_elevated` 恒为 `false`，模块仍可编译（CI 会构建 macOS/Linux）。
 
 ---
@@ -396,23 +404,29 @@
 ---
 
 ## `src-tauri/src/utils/process.rs`
-**职责**：进程探测与结束辅助（约 220 行）。供 `launcher_check_game_running` / `launcher_kill_game` 命令、驻守等待与游戏运行时长统计共用：「进程是否真的在运行」查询（排除崩溃/挂起后残留的无窗口进程）与「结束同名进程」的执行原语。
-**导出**：`is_process_running`（async）、`list_process_ids`（sync）、`terminate_processes`（sync）、`has_processes`（sync）；私有：`STARTUP_GRACE_SECONDS`、`list_process_ids_async`、`parse_tasklist_pids`、`has_top_level_window`、`process_is_starting`。
-**主要依赖**：`tokio::process::Command`、`std::process::Command`、`windows-sys`（`Win32_System_Threading`、`Win32_UI_WindowsAndMessaging`，仅 Windows）。
+**职责**：进程探测与结束辅助（约 470 行）。供 `launcher_check_game_running` / `launcher_kill_game` 命令、启动前清理、驻守等待与游戏运行时长统计共用：「进程是否真的在运行」查询（排除崩溃/挂起后残留的无窗口进程）与「结束同名进程（含子进程树）」的执行原语。**全部走 Win32 进程快照（`CreateToolhelp32Snapshot`）+ `TerminateProcess`，不再起 `tasklist` / `taskkill` 子进程**：一个 `tasklist` 实测 340–390 ms，而一次原生快照只要 1–2 ms；`OpenProcess` 直接返回 `ERROR_ACCESS_DENIED`，「需要管理员权限」这个结论无须等待即可得出（旧实现因此把「点停止 → UAC 弹出」拖到 10 秒开外）。
+**导出**：`TerminateOutcome`、`is_process_running`（async）、`exists_once`（sync）、`wait_until_gone`（sync）、`terminate_processes`（sync）；私有：`TERMINATE_WAIT`、`TERMINATE_POLL`、`STARTUP_GRACE_SECONDS`、`running_pids`、`TerminateOne`、`terminate_one`、`ProcEntry`、`snapshot_processes`、`exe_name_from_wide`、`descendants_of`、`has_top_level_window`、`process_is_starting`；`mod tests`（仅 Windows）。
+**主要依赖**：`tokio::task::spawn_blocking`、`windows-sys`（`Win32_System_Threading`、`Win32_System_Diagnostics_ToolHelp`、`Win32_UI_WindowsAndMessaging`，仅 Windows）。
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
-| `is_process_running(process_name) -> bool`（pub async） | :14 | Windows：`tasklist /FI "IMAGENAME eq <name>" /FO CSV /NH` 取得同名 PID；任一 PID 拥有顶层窗口，或进程创建时间在 `STARTUP_GRACE_SECONDS` 内，即视为运行中；无窗口的陈旧进程（如 Application Hang 后仍 `STILL_ACTIVE` 的残留）返回 false。命令失败记 debug 日志并返回 false；非 Windows 恒 false。调用方：commands/launcher.rs（`launcher_check_game_running`）、utils/game_playtime.rs（`poll_loop`）、lib.rs（`wait_for_game_session`） |
-| `STARTUP_GRACE_SECONDS` | :35 | 90 秒；新进程尚未创建窗口时仍视为「正在启动」 |
-| `list_process_ids_async`（私有 async） | :38 | 异步 `tasklist`，交给 `parse_tasklist_pids` 解析 |
-| `parse_tasklist_pids`（私有） | :66 | 解析 `tasklist /FO CSV /NH` 输出：只保留镜像名忽略大小写完全匹配的行，取第 2 列 PID（两种查询共用同一段解析） |
-| `list_process_ids`（pub sync） | :94 | 同步版本，供 `spawn_blocking` / helper 进程使用；**不做**窗口/启动宽限过滤（`taskkill` 要的是「还有哪些同名进程活着」，包括界面判定为未运行的残留）。非 Windows 返回空 |
-| `terminate_processes`（pub sync） | :133 | 隐藏窗口 `taskkill /T /F /IM <name>`，随后对 `list_process_ids` 的每个 PID 再补一次 `taskkill /F /PID`；返回按名命令是否成功（通常 `Access is denied` 表示需要提权）。非 Windows 恒 `false` |
-| `has_processes`（pub sync） | :164 | 轮询 `list_process_ids`，最多约 3 秒（6 次 × 500ms）等终止生效；仍有进程返回 `true` |
-| `has_top_level_window`（私有） | :177 | `EnumWindows` + `GetWindowThreadProcessId` 判断 PID 是否拥有顶层窗口（跨完整性级别可见） |
-| `process_is_starting`（私有） | :206 | `OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION)` + `GetProcessTimes` 读取创建时间，与当前时间比较 |
+| `TerminateOutcome` | :17 | `Nothing`（本无同名进程）/ `Terminated`（已终止并确认消失）/ `AccessDenied`（至少一个进程拒绝当前权限，需要提权）/ `StillRunning`（已发出终止但短等待后仍存活）。后两者是调用方决定「要不要弹 UAC」的依据 |
+| `TERMINATE_WAIT` / `TERMINATE_POLL` | :30 / :32 | 发出终止后等待消失的上限 1500 ms 与轮询间隔 50 ms；进程一消失立刻返回，不再固定等满 3 秒 |
+| `STARTUP_GRACE_SECONDS` | :36 | 90 秒；新进程尚未创建窗口时仍视为「正在启动」 |
+| `is_process_running(process_name) -> bool`（pub async） | :46 | Windows：`spawn_blocking` 内取一次快照 → 同名 PID 任一拥有顶层窗口，或创建时间在 `STARTUP_GRACE_SECONDS` 内，即视为运行中；无窗口的陈旧进程（如 Application Hang 后仍 `STILL_ACTIVE` 的残留）返回 false。join 失败记 debug 日志并返回 false；非 Windows 恒 false。调用方：commands/launcher.rs（`launcher_check_game_running`）、utils/game_playtime.rs（`poll_loop`）、lib.rs（`wait_for_game_session`） |
+| `running_pids`（私有） | :70 | `is_process_running` 的同步内核：快照 → 名称匹配 → 窗口/启动宽限过滤 |
+| `exists_once(process_name) -> bool`（pub sync） | :81 | 单次快照判定同名进程是否存在，**不轮询**。与 `is_process_running` 不同，不做窗口/启动宽限过滤（结束流程要的是「还有哪些同名进程活着」，包括界面判定为未运行的残留）。非 Windows 恒 false |
+| `wait_until_gone(process_name, timeout) -> bool`（pub sync） | :97 | 循环 `exists_once`，一消失即返回 `true`，超时返回 `false`；非 Windows 恒 `true` |
+| `terminate_processes(process_name) -> TerminateOutcome`（pub sync） | :125 | 取一次快照 → 命中的 PID 连同其**全部后代**（`descendants_of`，等价 `taskkill /T /IM`）逐个 `OpenProcess(PROCESS_TERMINATE)` + `TerminateProcess`；`ERROR_ACCESS_DENIED` 记为拒绝，其它失败（进程刚退出等）忽略。随后 `wait_until_gone(TERMINATE_WAIT)`：起始无进程 → `Nothing`，消失 → `Terminated`，仍在且有拒绝 → `AccessDenied`，否则 `StillRunning`。非 Windows 返回 `Nothing` |
+| `TerminateOne` / `terminate_one`（私有） | :174 / :182 | 单 PID 结果：`Killed` / `AccessDenied` / `Gone(u32 错误码)`（句柄打不开或 `TerminateProcess` 失败时携带 Win32 码便于排查） |
+| `ProcEntry` / `snapshot_processes`（私有） | :219 / :227 | 一次全表进程快照（`TH32CS_SNAPPROCESS` + `Process32FirstW`/`NextW`，`CloseHandle` 收尾）；失败返回空表，调用方据此得到「无同名进程」的保守结论 |
+| `exe_name_from_wide`（私有） | :266 | `szExeFile`（NUL 结尾 UTF-16）→ `String` |
+| `descendants_of`（私有） | :276 | 按 `th32ParentProcessID` 反复扩展出 roots 的全部后代；**不收集父进程**（游戏由提权 helper 创建，杀父等于结束自己） |
+| `has_top_level_window`（私有） | :292 | `EnumWindows` + `GetWindowThreadProcessId` 判断 PID 是否拥有顶层窗口（跨完整性级别可见） |
+| `process_is_starting`（私有） | :321 | `OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION)` + `GetProcessTimes` 读取创建时间，与当前时间比较 |
+| `mod tests`（私有，`cfg(all(test, windows))`） | :353 | 6 个单测：后代收集含整棵子树、不追随父进程、`szExeFile` 截断、真机快照命中 `svchost.exe`、名字不存在时 `Nothing` 即时返回、端到端终止真实进程树（把 `cmd.exe` 复制成唯一名 `eptest<pid>.exe` 跑 `ping -n 30`，验证 `Terminated` 且根进程与 ping 子进程一起从快照消失） |
 
-**备注**：仅按镜像名判断会把杀不掉的无窗口挂起进程误报为「游戏中」；窗口/启动宽限判定修复了该误报。游戏正常运行时拥有主窗口，不受影响。`terminate_processes` / `has_processes` 被 `commands/launcher.rs`（`launcher_kill_game`）、`utils/official_launcher.rs`（`kill_game_process`、提权 kill helper 的 `run_kill_helper`）复用。
+**备注**：仅按镜像名判断会把杀不掉的无窗口挂起进程误报为「游戏中」；窗口/启动宽限判定修复了该误报。游戏正常运行时拥有主窗口，不受影响。`terminate_processes` / `exists_once` 被 `commands/launcher.rs`（`launcher_kill_game`、`launch_game` 的启动前清理）、`utils/official_launcher.rs`（`kill_game_process`、提权 kill helper 的 `run_kill_helper`、helper 的 `kill_existing_game`）复用。`TerminateOutcome::AccessDenied` 让未提权一侧**立刻**知道该走 UAC，不必再做一轮存活轮询——这是「停止」按钮响应速度的关键。
 
 ---
 

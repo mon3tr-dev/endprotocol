@@ -100,7 +100,7 @@ impl GameChannel {
         "Endfield.exe"
     }
 
-    /// 进程名（用于 tasklist/taskkill）
+    /// 进程名（用于 utils/process.rs 的进程快照匹配与终止）
     pub fn process_name(&self) -> &'static str {
         "Endfield.exe"
     }

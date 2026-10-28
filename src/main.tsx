@@ -13,6 +13,7 @@ import { loadAllCards } from "@/components/cards/registry/loader";
 import { initOverlayScrollbar } from "@/utils/overlayScrollbar";
 import { checkAndNotify } from "@/utils/updateService";
 import logger from "@/utils/logger";
+import { initLogSettings } from "@/utils/logSettings";
 import { refreshTrayUserData } from "@/utils/trayService";
 import { loadBackgroundSettings } from "@/utils/backgroundSettings";
 import { syncSilentLaunchConfig } from "@/utils/launcherService";
@@ -62,6 +63,7 @@ Promise.all([
   getConfig<number>("glass_clarity"),
   loadBackgroundSettings(),
   loadAccountAvailability(),
+  initLogSettings(),
 ]).then(([savedLang, savedMode, savedColor, savedCustom, savedClarity]) => {
   const lng = savedLang || (navigator.language.startsWith("zh") ? "zh" : "en");
   setInitialLanguage(lng);

@@ -1,7 +1,7 @@
 # Tauri 命令层（IPC 入口）— 文件功能参考
 
 > 逐文件精读源码生成。行号基于当前工作区版本，仅用于快速定位。
-> 覆盖范围：`src-tauri/src/commands/` 下 17 个文件，当前参考表收录 **127 个不同命令名**；源码含 127 处命令注解。注册入口见 `src-tauri/src/lib.rs` 的 `generate_handler!`。
+> 覆盖范围：`src-tauri/src/commands/` 下 18 个命令文件（另有 `mod.rs` 共 19 个 `.rs`），当前参考表收录 **132 个不同命令名**；源码含 135 处命令注解（`capture_screen`、`finish_screen_pick`、`run_installer` 各有 `cfg` 门控的两个版本，按名去重后为 132）。注册入口见 `src-tauri/src/lib.rs` 的 `generate_handler!`。
 
 ## 命令速查表
 
@@ -89,17 +89,18 @@
 | `launcher_get_announcements` | commands/launcher.rs:318 | `service`、`channel` | `Result<Vec<AnnouncementItem>, String>` | `GameLauncherService::get_announcements` |
 | `launcher_get_notice_content` | commands/launcher.rs:329 | `service`、`channel` | `Result<LauncherNoticeContent, String>` | `GameLauncherService::get_notice_content`（Banner + 公告合并内容） |
 | `launcher_get_background_image` | commands/launcher.rs:340 | `service`、`channel` | `Result<Option<BackgroundMedia>, String>` | `GameLauncherService::get_background_image` |
-| `launcher_start_game` | commands/launcher.rs:443 | `config_service: State<Arc<StdMutex<ConfigService>>>`、`install_path: String`、`channel: String`、`dx11: Option<bool>`（省略时读配置 `launcher_dx11`，默认 false） | `Result<LauncherResult, String>` | `parse_channel`、`taskkill /F /IM`、`official_launcher::launch_via_official_parent`（已提权时本进程直接伪造官方父进程；否则提权 helper）/ 回退 `direct_launch` → `shell_execute_game`；DX11 开启时给游戏参数追加 `-force-d3d11`；Steam 启动且应用未提权时在 `warning` 返回 `overlay_unavailable` |
+| `launcher_start_game` | commands/launcher.rs:443 | `config_service: State<Arc<StdMutex<ConfigService>>>`、`install_path: String`、`channel: String`、`dx11: Option<bool>`（省略时读配置 `launcher_dx11`，默认 false） | `Result<LauncherResult, String>` | `parse_channel`、`process::terminate_processes`（原生快照清理同名残留）、`official_launcher::launch_via_official_parent`（已提权时本进程直接伪造官方父进程；否则提权 helper）/ 回退 `direct_launch` → `shell_execute_game`；DX11 开启时给游戏参数追加 `-force-d3d11`；Steam 启动且应用未提权时在 `warning` 返回 `overlay_unavailable` |
 | `launcher_browse_folder` | commands/launcher.rs:523 | 无 | `Result<Option<String>, String>` | `rfd::FileDialog::pick_folder` |
 | `launcher_get_disk_space` | commands/launcher.rs:540 | `path: String` | `Result<DiskSpace, String>` | 调用 `powershell Get-PSDrive` 子进程解析 used/free |
 | `launcher_scan_install_dir` | commands/launcher.rs:599 | `service`、`channel`、`install_path` | `Result<FileScanResult, String>` | `GameLauncherService::scan_install_dir` |
 | `launcher_detect_channel` | commands/launcher.rs:611 | `install_path: String` | `Result<Option<String>, String>` | 纯本地特征文件探测（hgsdk.dll / PCGameSDK.dll / gfsdk.dll 等） |
 | `launcher_check_executable` | commands/launcher.rs:662 | `install_path: String`、`channel: String` | `Result<bool, String>` | `parse_channel` + `GameChannel::executable_name` + `Path::exists` |
-| `launcher_check_game_running` | commands/launcher.rs:670 | `channel: String` | `Result<bool, String>` | `parse_channel` + `utils::process::is_process_running`（同名进程需有顶层窗口或在 90 秒启动宽限内，排除无窗口挂起残留）；游戏面板每 3 秒轮询 |
-| `launcher_get_game_playtime` | commands/launcher.rs:677 | 无 | `GamePlaytime`（同步返回） | `utils::game_playtime::snapshot`（累计总时长 + 实时会话 + 运行态） |
-| `launcher_kill_game` | commands/launcher.rs:782 | `channel: String` | `Result<bool, String>`（失败为 `<token>: <detail>`） | `spawn_blocking` + `process::has_processes` → `official_launcher::kill_game_process`：就地 `taskkill /T /F /IM` + 按 PID 兜底，仍有残留则 runas 重启自身跑 `--endfield-kill-helper`（提权 `taskkill`） |
-| `launcher_switch_channel` | commands/launcher.rs:731 | `service`、`from_channel`、`to_channel`、`install_path`、`app: AppHandle` | `Result<String, String>` | `GameLauncherService::switch_channel` |
+| `launcher_check_game_running` | commands/launcher.rs:757 | `channel: String` | `Result<bool, String>` | `parse_channel` + `utils::process::is_process_running`（同名进程需有顶层窗口或在 90 秒启动宽限内，排除无窗口挂起残留）；游戏面板每 3 秒轮询 |
+| `launcher_get_game_playtime` | commands/launcher.rs:764 | 无 | `GamePlaytime`（同步返回） | `utils::game_playtime::snapshot`（累计总时长 + 实时会话 + 运行态） |
+| `launcher_kill_game` | commands/launcher.rs:777 | `channel: String` | `Result<bool, String>`（失败为 `<token>: <detail>`） | `spawn_blocking` + `process::exists_once`（单次快照预检）→ `official_launcher::kill_game_process`：就地 `process::terminate_processes`（原生快照 + `TerminateProcess`，含子进程树），`AccessDenied`/`StillRunning` 才 runas 重启自身跑 `--endfield-kill-helper`（提权终止） |
+| `launcher_switch_channel` | commands/launcher.rs:816 | `service`、`from_channel`、`to_channel`、`install_path`、`app: AppHandle` | `Result<String, String>` | `GameLauncherService::switch_channel` |
 | `get_backend_logs` | commands/logs.rs:4 | 无 | `Vec<LogEntry>` | `utils::logger::get_logger().get_recent_logs()` |
+| `set_log_level` | commands/logs.rs:11 | `level: String`（`"debug"｜"info"｜"warn"｜"error"`） | `Result<(), String>` | `LogLevel::parse` → `utils::logger::set_log_level`（运行时切换，持久化由前端 `set_config` 负责） |
 | `get_log_dir` | commands/diagnostics.rs:7 | 无 | `Result<String, String>` | `utils::paths::log_dir()` |
 | `export_diagnostics` | commands/diagnostics.rs:15 | `app: AppHandle`、`frontend_logs: Vec<FrontendLogEntry>`、`context: Option<String>` | `Result<String, String>` | `utils::diagnostics::export` |
 | `get_pending_crash_reports` | commands/diagnostics.rs:25 | 无 | `Vec<CrashReportInfo>` | `utils::crash::pending_reports` |
@@ -128,16 +129,21 @@
 | `check_update_endpoint` | commands/updater.rs:58 | `app: AppHandle`、`endpoint: String` | `Result<Option<UpdateEndpointInfo>, String>` | 限定镜像/GitHub 清单，使用 updater 检查本机平台与版本 |
 | `install_update_endpoint` | commands/updater.rs:73 | `app: AppHandle`、`endpoint: String` | `Result<(), String>` | 使用 updater 验签、下载并安装指定清单中的本机平台更新包；emit `download-progress` |
 | `run_installer` | commands/updater.rs:217 | `app: AppHandle`、`path: String` | `Result<(), String>` | Windows：静默启动 NSIS 安装器并退出应用；非 Windows：返回不支持错误 |
-| `minimize_window` | commands/window.rs:3 | `app: AppHandle<R>` | `()`（无返回） | `app.get_webview_window("main")` → `window.minimize()` |
-| `toggle_maximize_window` | commands/window.rs:10 | `app: AppHandle<R>` | `()`（无返回） | `is_maximized` → `maximize()` / `unmaximize()` |
-| `close_window` | commands/window.rs:21 | `app: AppHandle<R>` | `()`（无返回） | `window.close()` |
-| `minimize_to_tray` | commands/window.rs:28 | `app: AppHandle<R>` | `Result<(), String>` | `window.hide()` |
+| `minimize_window` | commands/window.rs:24 | `app: AppHandle<R>` | `()`（无返回） | `app.get_window("main")` → `window.minimize()` |
+| `toggle_maximize_window` | commands/window.rs:31 | `app: AppHandle<R>` | `()`（无返回） | `is_maximized` → `maximize()` / `unmaximize()` |
+| `close_window` | commands/window.rs:42 | `app: AppHandle<R>` | `()`（无返回） | `window.close()` |
+| `minimize_to_tray` | commands/window.rs:49 | `app: AppHandle<R>` | `Result<(), String>` | `window.hide()` |
 | `get_system_snapshot` | commands/system_resource.rs:9 | `state: State<Arc<Mutex<SystemResourceService>>>` | `Result<SystemSnapshot, String>` | `SystemResourceService::snapshot`（`spawn_blocking`；sysinfo + nvidia-smi） |
+| `browser_go_back` | commands/browser.rs:36 | `app: AppHandle<R>`、`webview_label: String` | `Result<(), String>` | `app.get_webview(label)` → `webview.eval("window.history.back();")` |
+| `browser_go_forward` | commands/browser.rs:48 | `app`、`webview_label: String` | `Result<(), String>` | `webview.eval("window.history.forward();")` |
+| `browser_reload` | commands/browser.rs:63 | `app`、`webview_label: String` | `Result<(), String>` | `webview.reload()`（重跑初始化脚本并触发 on_page_load） |
+| `browser_navigate` | commands/browser.rs:77 | `app`、`webview_label: String`、`url: String` | `Result<(), String>` | `Url::parse` → 校验 http/https → `webview.navigate(url)` |
+| `browser_current_url` | commands/browser.rs:92 | `app`、`webview_label: String` | `Result<String, String>` | `webview.url()` → `to_string()` |
 
 ---
 
 ## `src-tauri/src/commands/mod.rs`
-**职责**：纯模块声明文件，导出 `account`、`attendance`、`capture`、`card_config`、`color_picker`、`config`、`gacha`、`image`、`launcher`、`logs`、`startup`、`system_resource`、`tray`、`updater`、`window` 共 15 个子模块。无命令定义，无逻辑。
+**职责**：纯模块声明文件，导出 `account`、`attendance`、`browser`、`capture`、`card_config`、`color_picker`、`config`、`gacha`、`image`、`launcher`、`logs`、`startup`、`system_resource`、`tray`、`updater`、`window` 共 16 个子模块。无命令定义，无逻辑。
 
 ## `src-tauri/src/commands/startup.rs`
 **职责**：静默游戏启动命令的配置、命令行文本、Windows `.lnk` 快捷方式，以及 Steam 第三方游戏条目的参数弹窗支撑（默认值、图标提取、写入）。Steam 条目允许在 Steam 运行时写入（写完需重启 Steam 才可见）。
@@ -342,6 +348,35 @@
 
 ---
 
+## `src-tauri/src/commands/browser.rs`
+**职责**：in-app browser 原生子 Webview 的导航能力门面（99 行 / 5 个命令）。前端 `@tauri-apps/api/webview` 的 `Webview` 类只有生命周期与布局方法（无 `eval`/`navigate`/`reload`/`url`/`onPageLoad`），这些能力只在 Rust 侧 `tauri::Webview` 上存在，故在此以 app command 暴露；页面加载事件则由 `lib.rs` 的 `Builder::on_page_load` 反向桥接成 `browser://page-load` 事件。
+
+### 共享辅助函数 `get_webview`（browser.rs:23-33，非命令）
+`app.get_webview(label)` 取子 webview 实例，取不到返回 `webview not found: {label}`。
+
+### `browser_go_back`
+- 位置：browser.rs:36（async）；参数：`app: AppHandle<R>`、`webview_label: String`；返回：`Result<(), String>`
+- 逻辑：`webview.eval("window.history.back();")`。Rust 侧没有 `back()`，走 eval；在子 webview 内执行的是该页同源 history，不受宿主跨域限制（对应 iframe 方案里静默失败的能力）。
+
+### `browser_go_forward`
+- 位置：browser.rs:48（async）；同上，`eval("window.history.forward();")`。
+
+### `browser_reload`
+- 位置：browser.rs:63（async）；返回：`Result<(), String>`
+- 逻辑：`webview.reload()`。不用 `eval("location.reload()")`：`reload()` 会重跑 Tauri 注入的初始化脚本并照常触发 `on_page_load`，前端 loading 状态才能正确回落。
+
+### `browser_navigate`
+- 位置：browser.rs:77（async）；参数：`app`、`webview_label: String`、`url: String`；返回：`Result<(), String>`
+- 逻辑：`Url::parse` → **校验 scheme 必须是 http/https**（`WindowConfig.url` 的反序列化会把其它 scheme 当 `CustomProtocol`，而 `Webview::navigate` 只接受 http/https）→ `webview.navigate(url)`。就地导航保留实例与浏览历史，避免销毁重建。
+
+### `browser_current_url`
+- 位置：browser.rs:92（async）；返回：`Result<String, String>`
+- 逻辑：`webview.url()` → `to_string()`。用于地址栏聚焦时回读真实地址（补 SPA `pushState` 不触发 `on_page_load` 的盲区）。
+
+**安全边界**：`webview_label` 只能由主 webview（local origin）指定。子 webview 加载的是远程站点，属 remote origin，Tauri ACL 会直接拒绝它调用任何 app command（没有匹配 `remote` context 的 capability），因此远程页面无法用这些命令操纵自身或其它 webview。
+
+---
+
 ## `src-tauri/src/commands/capture.rs`
 **职责**：网络抓包会话的 IPC 门面（42 行 / 7 个命令），全部是对 `utils::capture` 模块函数的转发，无状态参数。
 
@@ -535,7 +570,7 @@
 - 31-50：`launcher_check_status`；52-102：`launcher_install_or_update`；104-159：`launcher_verify_and_repair`；161-170：`launcher_get_remote_version`；172-212：`launcher_preload_download`；214-248：`launcher_install_preload`；250-259：`launcher_get_payload_state`。
 - 261-305：下载控制、切服取消与解密。
 - 307-388：内容获取（banners / announcements / notice content / background media）。
-- 389-522：`launcher_start_game`（taskkill + 提权 helper 伪造官方父进程 + 回退直启）。
+- 389-522：`launcher_start_game`（原生快照清理残留 + 提权 helper 伪造官方父进程 + 回退直启）。
 - 540-597：`launcher_get_disk_space`；599-668：扫描安装目录与渠道探测。
 - 670-733：游戏运行检测与进程终止；735 起：`launcher_switch_channel`。
 
@@ -611,7 +646,7 @@
 - 位置：launcher.rs:443（async）
 - 参数：`config_service: State<Arc<StdMutex<ConfigService>>>`、`install_path: String`、`channel: String`、`dx11: Option<bool>`（为 `None` 时读取配置 `launcher_dx11`，缺省 false）
 - 返回：`Result<LauncherResult, String>`
-- 逻辑：用 `ch.executable_name()` 拼 exe 路径，不存在直接返回 `success:false`；启用 DX11 时构造游戏参数 `vec!["-force-d3d11"]`；先 `taskkill /F /IM <exe>` 杀残留进程并 `sleep(500ms)`；随后（Windows）在 `spawn_blocking` 中调用 `official_launcher::launch_via_official_parent` —— **游戏会校验自己的直接父进程必须是签名有效的官方 `Games.exe`**，该函数先查找 + 验签官方启动器（失败即 `no_launcher`），然后分两条路径：应用**已提权**时由当前进程直接创建「挂起且永不运行的官方启动器 + 以其为父进程的游戏进程」（保留 Steam overlay 的 `CreateProcess` 注入链）；**未提权**时用 `ShellExecuteExW("runas")` 以 `--endfield-launch-helper` 提权重启自身完成创建，命令侧用 2.5s 宽限期 + 状态文件判断 helper 是启动阶段失败还是游戏已创建。找不到签名有效的官方启动器时回退 `direct_launch`（`ShellExecuteW(SW_SHOWNORMAL)` + 游戏参数，即旧行为）并把原因放进 `LauncherResult.warning`。若当前进程由 Steam 拉起（`SteamClientLaunch` / `SteamAppId` / `SteamGameId` / `SteamOverlayGameId` 之一存在）且未提权，额外在 `warning` 返回 `overlay_unavailable`。非 Windows 走 `Command::spawn` 并传入 `game_arguments`。实际实现在 `launch_game`（launcher.rs:459），供静默启动直接调用。启动前先以应用权限执行 `taskkill /F /IM <exe>`；应用未提权时该命令无法结束上一局由提权进程创建的残留，提权 helper 在创建新游戏前会再执行 `taskkill /F /T /IM <exe>` 清理。
+- 逻辑：用 `ch.executable_name()` 拼 exe 路径，不存在直接返回 `success:false`；启用 DX11 时构造游戏参数 `vec!["-force-d3d11"]`；先 `process::terminate_processes(exe_name)` 清理残留（原生快照 + `TerminateProcess`，无残留时立刻返回，旧实现的 `taskkill /F /IM` + `sleep(500ms)` 已移除）；随后（Windows）在 `spawn_blocking` 中调用 `official_launcher::launch_via_official_parent` —— **游戏会校验自己的直接父进程必须是签名有效的官方 `Games.exe`**，该函数先查找 + 验签官方启动器（失败即 `no_launcher`），然后分两条路径：应用**已提权**时由当前进程直接创建「挂起且永不运行的官方启动器 + 以其为父进程的游戏进程」（保留 Steam overlay 的 `CreateProcess` 注入链）；**未提权**时用 `ShellExecuteExW("runas")` 以 `--endfield-launch-helper` 提权重启自身完成创建，命令侧用 2.5s 宽限期 + 状态文件判断 helper 是启动阶段失败还是游戏已创建。找不到签名有效的官方启动器时回退 `direct_launch`（`ShellExecuteW(SW_SHOWNORMAL)` + 游戏参数，即旧行为）并把原因放进 `LauncherResult.warning`。若当前进程由 Steam 拉起（`SteamClientLaunch` / `SteamAppId` / `SteamGameId` / `SteamOverlayGameId` 之一存在）且未提权，额外在 `warning` 返回 `overlay_unavailable`。非 Windows 走 `Command::spawn` 并传入 `game_arguments`。实际实现在 `launch_game`（launcher.rs:459），供静默启动直接调用。启动前先以应用权限调用 `process::terminate_processes`；应用未提权时它无法结束上一局由提权进程创建的残留（结果为 `AccessDenied`，仅记 debug），提权 helper 在创建新游戏前会再调用一次同一原语清理。
 - 并发保护：`static LAUNCH_IN_FLIGHT`（launcher.rs:405）保证同一时刻只有一次启动，避免重复点击弹出两次 UAC / 留下两套挂起的父进程。
 
 #### `launcher_start_game` 的 `message` / `warning` token 契约
@@ -648,19 +683,19 @@
 - 位置：launcher.rs:662（同步）；参数：`install_path: String`、`channel: String`；返回：`Result<bool, String>`；逻辑：`parse_channel` → `Path::exists` 判断渠道对应 exe 是否存在。
 
 ### `launcher_check_game_running`
-- 位置：launcher.rs:670（异步）；参数：`channel: String`；返回：`Result<bool, String>`；逻辑：`parse_channel` → `utils::process::is_process_running(ch.process_name())`（`tasklist` CSV 取得同名 PID，任一 PID 拥有顶层窗口或在 90 秒启动宽限内才视为运行中；无窗口的崩溃/挂起残留返回 false）。前端游戏面板每 3 秒调用，避免同步子进程阻塞 Tauri 主线程。
+- 位置：launcher.rs:757（异步）；参数：`channel: String`；返回：`Result<bool, String>`；逻辑：`parse_channel` → `utils::process::is_process_running(ch.process_name())`（进程快照取得同名 PID，任一 PID 拥有顶层窗口或在 90 秒启动宽限内才视为运行中；无窗口的崩溃/挂起残留返回 false）。前端游戏面板每 3 秒调用；快照与窗口判定在 `spawn_blocking` 中执行，不阻塞 Tauri 主线程。
 
 ### `launcher_get_game_playtime`
-- 位置：launcher.rs:677（同步）；参数：无；返回：`GamePlaytime`（`{ total_seconds, session_seconds, running }`）；逻辑：`utils::game_playtime::snapshot()`，返回累计总时长（不含当前会话）+ 当前会话时长 + 运行态。由后台探测任务 `utils::game_playtime` 维护，仅在 EndProtocol 运行期间统计。
+- 位置：launcher.rs:764（同步）；参数：无；返回：`GamePlaytime`（`{ total_seconds, session_seconds, running }`）；逻辑：`utils::game_playtime::snapshot()`，返回累计总时长（不含当前会话）+ 当前会话时长 + 运行态。由后台探测任务 `utils::game_playtime` 维护，仅在 EndProtocol 运行期间统计。
 
 ### `launcher_kill_game`
-- 位置：launcher.rs:782（async）
+- 位置：launcher.rs:777（async）
 - 参数：`channel: String`
 - 返回：`Result<bool, String>`（`true` = 进程已结束；`false` = 本来就没有同名进程；失败时 `Err("<token>: <detail>")`，token 为 `cancelled` / `kill_failed` / `unknown`）
-- 逻辑：`parse_channel` → `spawn_blocking` 里先 `process::has_processes` 判断是否真有残留，再走 `official_launcher::kill_game_process`：① 就地 `process::terminate_processes`（隐藏窗口 `taskkill /T /F /IM` + 逐个 `taskkill /F /PID` 兜底，本进程已提权时到此为止，不弹 UAC）；② 仍有存活进程时用 `ShellExecuteExW("runas")` 以 `--endfield-kill-helper --name <Endfield.exe>` 重启自身（`crate::run` 在 logger/Tauri 初始化前由 `try_run_kill_helper` 截获），并阻塞等待 helper 退出码（上限 20 秒）。游戏由提权 helper 创建，未提权的 `taskkill` 只会拿到 `Access is denied`，这正是旧实现「点了停止没反应」的原因；旧实现的 `wmic` 兜底已移除（`wmic` 在新版 Windows 已弃用，且同样过不了权限边界）。
+- 逻辑：`parse_channel` → `spawn_blocking` 里先 `process::exists_once`（单次快照预检，无残留直接返回 `false`），再走 `official_launcher::kill_game_process`：① 就地 `process::terminate_processes`（原生快照 + `OpenProcess(PROCESS_TERMINATE)`/`TerminateProcess`，含后代进程树；`Terminated`/`Nothing` 到此为止，不弹 UAC）；② 结果为 `AccessDenied` 或 `StillRunning` 时用 `ShellExecuteExW("runas")` 以 `--endfield-kill-helper --name <Endfield.exe>` 重启自身（`crate::run` 在 logger/Tauri 初始化前由 `try_run_kill_helper` 截获），并阻塞等待 helper 退出码（上限 10 秒）。游戏由提权 helper 创建，未提权的 `TerminateProcess` 只会拿到 `ERROR_ACCESS_DENIED` —— 这正是旧实现「点了停止没反应」的原因；`AccessDenied` 由 `TerminateOutcome` 直接给出，因此不需要再等一轮存活轮询（旧实现的两轮 `has_processes` + `taskkill` 子进程合计约 10 秒，是「UAC 弹得慢」的主因）。旧实现的 `wmic` 兜底已移除（`wmic` 在新版 Windows 已弃用，且同样过不了权限边界）。
 
 ### `launcher_switch_channel`
-- 位置：launcher.rs:731（async）
+- 位置：launcher.rs:816（async）
 - 参数：`service`、`from_channel: String`、`to_channel: String`、`install_path: String`、`app: AppHandle`
 - 返回：`Result<String, String>`（成功消息）
 - 逻辑：两个 channel 都经 `parse_channel` 校验，然后 `GameLauncherService::switch_channel(&from, &to, &install_path, app).await`（service 内部可用 app emit 进度/事件）。
@@ -709,13 +744,19 @@
 ---
 
 ## `src-tauri/src/commands/logs.rs`
-**职责**：后端日志读取（7 行 / 1 个命令），全目录最小文件。
+**职责**：后端日志读取与级别调整（2 个命令）。
 
 ### `get_backend_logs`
 - 位置：logs.rs:4，`#[tauri::command]`（**同步**）
 - 参数：无
 - 返回：`Vec<LogEntry>`
 - 逻辑：`utils::logger::get_logger().get_recent_logs()` 返回当前会话的全部内存日志；注意返回类型不是 `Result`。
+
+### `set_log_level`
+- 位置：logs.rs:11，`#[tauri::command]`（**同步**）
+- 参数：`level: String`
+- 返回：`Result<(), String>`
+- 逻辑：`LogLevel::parse(&level)`（大小写不敏感，支持 `warning`）→ `utils::logger::set_log_level(parsed)` 更新全局原子级别；未知级别返回 `"Unknown log level: ..."`。持久化由前端 `setLogLevel` 写入 `log_level` 配置，后端启动时在 `lib.rs` setup 中读取。
 
 ---
 
@@ -801,19 +842,24 @@
 ---
 
 ## `src-tauri/src/commands/window.rs`
-**职责**：主窗口基础控制（34 行 / 4 个命令），全部针对标签为 `"main"` 的 webview 窗口，均为同步命令。
+**职责**：主窗口基础控制（4 个命令 + 1 个私有取窗辅助函数），全部针对标签为 `"main"` 的窗口，均为同步命令。
+
+> ⚠️ **取窗必须用 `Manager::get_window`，不能用 `get_webview_window`**：`get_webview_window` 内部先 `get_webview(label)` 再检查 `window.is_webview_window()`，后者要求该窗口下**所有** webview 的 label 都等于窗口 label（tauri-2.12 `src/window/mod.rs:1257`）。in-app browser 打开时主窗口 "main" 下多出 label 为 `inapp-browser-N` 的子 webview，于是 `get_webview_window("main")` 返回 `None`，所有窗口命令会**静默失效**（表现为按钮点了没反应）。`Manager::get_window` 按窗口 label 查，不受子 webview 影响。
 
 ### `minimize_window`
-- 位置：window.rs:3（同步）；参数：`app: tauri::AppHandle<R>`；返回：`()`；逻辑：`app.get_webview_window("main")` → `window.minimize()`（忽略错误）。
+- 位置：window.rs:24（同步）；参数：`app: tauri::AppHandle<R>`；返回：`()`；逻辑：`main_window(&app)` → `window.minimize()`（忽略错误）。
 
 ### `toggle_maximize_window`
-- 位置：window.rs:10（同步）；参数：`app`；返回：`()`；逻辑：`is_maximized()`（失败按 false）→ 已最大化则 `unmaximize()`，否则 `maximize()`。
+- 位置：window.rs:31（同步）；参数：`app`；返回：`()`；逻辑：`main_window(&app)` → `is_maximized()`（失败按 false）→ 已最大化则 `unmaximize()`，否则 `maximize()`。
 
 ### `close_window`
-- 位置：window.rs:21（同步）；参数：`app`；返回：`()`；逻辑：`window.close()`，忽略错误。
+- 位置：window.rs:42（同步）；参数：`app`；返回：`()`；逻辑：`main_window(&app)` → `window.close()`，忽略错误。
 
 ### `minimize_to_tray`
-- 位置：window.rs:28（同步）；参数：`app`；返回：`Result<(), String>`；逻辑：`window.hide()` 隐藏主窗口到托盘，错误转字符串。
+- 位置：window.rs:49（同步）；参数：`app`；返回：`Result<(), String>`；逻辑：`main_window(&app)` → `window.hide()` 隐藏主窗口到托盘，错误转字符串。
+
+### `main_window`（私有辅助）
+- 位置：window.rs:18；参数：`&tauri::AppHandle<R>`；返回：`Option<tauri::Window<R>>`；逻辑：`app.get_window("main")`。取不到时返回 `None`，调用方全部静默跳过。
 
 ---
 

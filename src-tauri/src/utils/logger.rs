@@ -4,9 +4,13 @@ use std::collections::VecDeque;
 use std::fs::{File, OpenOptions};
 use std::io::Write;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::Mutex;
 
 use super::paths;
+
+/// 调试日志单条上限：避免超长 payload 拖慢日志面板与文件写入。
+const MAX_DEBUG_MESSAGE_CHARS: usize = 800;
 
 /// 当前进程是否持有可用的控制台（GUI 子系统启动且未 AttachConsole 时为 false）。
 /// std 的 `eprintln!` 在 stderr 句柄不可用时会 panic，控制台写入前必须先检查。
@@ -37,20 +41,41 @@ macro_rules! safe_eprintln {
 
 /// 日志级别
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[repr(u8)]
 pub enum LogLevel {
-    Debug,
-    Info,
-    Warn,
-    Error,
+    Debug = 0,
+    Info = 1,
+    Warn = 2,
+    Error = 3,
 }
 
 impl LogLevel {
-    fn as_str(&self) -> &'static str {
+    pub fn as_str(&self) -> &'static str {
         match self {
             LogLevel::Debug => "DEBUG",
             LogLevel::Info => "INFO",
             LogLevel::Warn => "WARN",
             LogLevel::Error => "ERROR",
+        }
+    }
+
+    /// 解析配置中的级别字符串（大小写不敏感）。
+    pub fn parse(value: &str) -> Option<Self> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "debug" => Some(LogLevel::Debug),
+            "info" => Some(LogLevel::Info),
+            "warn" | "warning" => Some(LogLevel::Warn),
+            "error" => Some(LogLevel::Error),
+            _ => None,
+        }
+    }
+
+    fn from_u8(value: u8) -> Self {
+        match value {
+            0 => LogLevel::Debug,
+            1 => LogLevel::Info,
+            2 => LogLevel::Warn,
+            _ => LogLevel::Error,
         }
     }
 
@@ -88,7 +113,8 @@ impl Default for LoggerConfig {
         Self {
             log_to_console: true,
             log_to_file: true,
-            log_level: LogLevel::Debug,
+            // 默认 INFO：未开启开发者模式时不记录 DEBUG。
+            log_level: LogLevel::Info,
             log_dir: paths::log_dir()
                 .unwrap_or_else(|_| std::env::current_dir().unwrap().join("logs")),
             max_memory_entries: 5000,
@@ -99,14 +125,18 @@ impl Default for LoggerConfig {
 /// 统一日志管理器
 pub struct Logger {
     config: LoggerConfig,
+    /// 运行时可调的日志级别（原子存储，避免在每条日志上取锁）。
+    level: AtomicU8,
     log_file: Mutex<Option<File>>,
     memory_buffer: Mutex<VecDeque<LogEntry>>,
 }
 
 impl Logger {
     pub fn new(config: LoggerConfig) -> Result<Self, Box<dyn std::error::Error>> {
+        let level = AtomicU8::new(config.log_level as u8);
         let mut logger = Self {
             config,
+            level,
             log_file: Mutex::new(None),
             memory_buffer: Mutex::new(VecDeque::new()),
         };
@@ -134,12 +164,44 @@ impl Logger {
         Local::now().format("%Y-%m-%d %H:%M:%S%.3f").to_string()
     }
 
+    pub fn level(&self) -> LogLevel {
+        LogLevel::from_u8(self.level.load(Ordering::Relaxed))
+    }
+
+    pub fn set_level(&self, level: LogLevel) {
+        self.level.store(level as u8, Ordering::Relaxed);
+    }
+
+    pub fn is_enabled(&self, level: LogLevel) -> bool {
+        level >= self.level()
+    }
+
+    fn truncate_debug(message: &str) -> String {
+        let length = message.chars().count();
+        if length <= MAX_DEBUG_MESSAGE_CHARS {
+            return message.to_string();
+        }
+        let truncated: String = message.chars().take(MAX_DEBUG_MESSAGE_CHARS).collect();
+        format!("{}… ({} chars)", truncated, length)
+    }
+
     fn write_log(&self, level: LogLevel, module: &str, message: &str) {
+        // 低于当前级别的日志不进入内存/文件，避免无意义的 DEBUG 累积。
+        if !self.is_enabled(level) {
+            return;
+        }
+
+        let message = if level == LogLevel::Debug {
+            Self::truncate_debug(message)
+        } else {
+            message.to_string()
+        };
+
         let entry = LogEntry {
             timestamp: Self::format_timestamp(),
             level,
             module: module.to_string(),
-            message: message.to_string(),
+            message,
             source: "backend".to_string(),
         };
 
@@ -157,12 +219,12 @@ impl Logger {
             entry.timestamp,
             level.as_str(),
             module,
-            message
+            entry.message
         );
 
         // 控制台输出（带颜色）。GUI 子系统下没有可用的控制台，
         // 直接写 stderr 会导致 std panic，必须先确认有控制台。
-        if self.config.log_to_console && level >= self.config.log_level {
+        if self.config.log_to_console {
             if console_available() {
                 let color = level.color_code();
                 let reset = "\x1b[0m";
@@ -249,77 +311,113 @@ pub fn try_get_logger() -> Option<&'static Logger> {
     GLOBAL_LOGGER.get()
 }
 
+/// 运行时切换全局日志级别（前端开发者设置调用）。
+pub fn set_log_level(level: LogLevel) {
+    if let Some(logger) = try_get_logger() {
+        logger.set_level(level);
+    }
+}
+
 /// tracing 层：将 tracing 事件桥接到自定义 Logger
 struct TracingBridgeLayer;
+
+fn map_tracing_level(level: tracing::Level) -> LogLevel {
+    match level {
+        tracing::Level::ERROR => LogLevel::Error,
+        tracing::Level::WARN => LogLevel::Warn,
+        tracing::Level::INFO => LogLevel::Info,
+        tracing::Level::DEBUG | tracing::Level::TRACE => LogLevel::Debug,
+    }
+}
 
 impl<S> tracing_subscriber::Layer<S> for TracingBridgeLayer
 where
     S: tracing::Subscriber,
 {
+    /// 让 tracing 宏在级别被禁用时直接短路，不构造字段。
+    fn enabled(
+        &self,
+        metadata: &tracing::Metadata<'_>,
+        _ctx: tracing_subscriber::layer::Context<'_, S>,
+    ) -> bool {
+        let mapped_level = map_tracing_level(*metadata.level());
+        try_get_logger()
+            .map(|logger| logger.is_enabled(mapped_level))
+            .unwrap_or(false)
+    }
+
     fn on_event(
         &self,
         event: &tracing::Event<'_>,
         _ctx: tracing_subscriber::layer::Context<'_, S>,
     ) {
-        let meta = event.metadata();
-        let level = *meta.level();
-        let module = meta.module_path().unwrap_or("unknown");
-        let target = meta.target();
+        let logger = get_logger();
+        let mapped_level = map_tracing_level(*event.metadata().level());
 
-        // 收集字段信息
+        // 在收集字段前就按级别丢弃，避免 DEBUG 日志的格式化开销。
+        if !logger.is_enabled(mapped_level) {
+            return;
+        }
+
+        let module = event
+            .metadata()
+            .module_path()
+            .unwrap_or("unknown")
+            .rsplit("::")
+            .next()
+            .unwrap_or("unknown");
+
+        // 收集字段信息。不再拼接 `[target]` 前缀：module 已单独展示，
+        // 去掉重复的完整 crate 路径可显著缩短日志。
         let mut visitor = TracingVisitor(String::new());
         event.record(&mut visitor);
 
-        let message = format!("[{}] {}", target, visitor.0);
-
-        let logger = get_logger();
-        match level {
-            tracing::Level::ERROR => logger.error_with_module(module, &message),
-            tracing::Level::WARN => logger.warn_with_module(module, &message),
-            tracing::Level::INFO => logger.info_with_module(module, &message),
-            tracing::Level::DEBUG | tracing::Level::TRACE => {
-                logger.debug_with_module(module, &message)
-            }
+        match mapped_level {
+            LogLevel::Error => logger.error_with_module(module, &visitor.0),
+            LogLevel::Warn => logger.warn_with_module(module, &visitor.0),
+            LogLevel::Info => logger.info_with_module(module, &visitor.0),
+            LogLevel::Debug => logger.debug_with_module(module, &visitor.0),
         }
     }
 }
 
 struct TracingVisitor(String);
 
-impl tracing::field::Visit for TracingVisitor {
-    fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+impl TracingVisitor {
+    fn push(&mut self, field: &tracing::field::Field, value: String) {
         if !self.0.is_empty() {
             self.0.push(' ');
         }
-        self.0.push_str(&format!("{}={:?}", field.name(), value));
+        // tracing 的格式化字符串就是 `message` 字段，去掉 `message=` 前缀。
+        if field.name() == "message" {
+            self.0.push_str(&value);
+        } else {
+            self.0.push_str(field.name());
+            self.0.push('=');
+            self.0.push_str(&value);
+        }
+    }
+}
+
+impl tracing::field::Visit for TracingVisitor {
+    fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+        self.push(field, format!("{:?}", value));
     }
 
     fn record_str(&mut self, field: &tracing::field::Field, value: &str) {
-        if !self.0.is_empty() {
-            self.0.push(' ');
-        }
-        self.0.push_str(&format!("{}={}", field.name(), value));
+        self.push(field, value.to_string());
     }
 
     fn record_i64(&mut self, field: &tracing::field::Field, value: i64) {
-        if !self.0.is_empty() {
-            self.0.push(' ');
-        }
-        self.0.push_str(&format!("{}={}", field.name(), value));
+        self.push(field, value.to_string());
     }
 
     fn record_u64(&mut self, field: &tracing::field::Field, value: u64) {
-        if !self.0.is_empty() {
-            self.0.push(' ');
-        }
-        self.0.push_str(&format!("{}={}", field.name(), value));
+        self.push(field, value.to_string());
     }
 
     fn record_bool(&mut self, field: &tracing::field::Field, value: bool) {
-        if !self.0.is_empty() {
-            self.0.push(' ');
-        }
-        self.0.push_str(&format!("{}={}", field.name(), value));
+        self.push(field, value.to_string());
     }
 }
 

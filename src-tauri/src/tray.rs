@@ -35,9 +35,13 @@ pub struct TrayUserInfo {
 }
 
 /// Show the main window and bring it to focus (cross-desktop on Windows)
+///
+/// 取窗口用 `Manager::get_window` 而非 `get_webview_window`：后者要求窗口下所有
+/// webview 的 label 都等于窗口 label，in-app browser 的子 webview（`inapp-browser-N`）
+/// 会让它返回 `None`，导致浏览器打开时托盘唤不回主窗口。
 pub fn show_main_window_focus<R: Runtime>(app: &tauri::AppHandle<R>) {
     if let Some(window) = app
-        .get_webview_window("main")
+        .get_window("main")
         .or_else(|| crate::create_main_window(app).ok())
     {
         let _ = window.unminimize();

@@ -387,7 +387,7 @@
 | `browseFolder` | launcherService.ts:363 | invoke `launcher_browse_folder`，无参，返回 `string \| null`（用户选择的目录） |
 | `checkExecutable` | launcherService.ts:226 | invoke `launcher_check_executable`，参数 `{installPath, channel}`，返回 `boolean` |
 | `checkGameRunning` | launcherService.ts:236 | invoke `launcher_check_game_running`，参数 `{channel}`，返回 `boolean` |
-| `killGame` | launcherService.ts:456 | invoke `launcher_kill_game`，参数 `{channel}`，返回 `boolean`（`true` = 已结束，`false` = 本来就没有进程）。**失败时 reject**，错误串为 `<token>: <detail>`（token 为 `cancelled` / `kill_failed` / `unknown`，文案见 `KILL_TOKEN_KEYS`（:81））；后端在未提权时会经 UAC 以管理员权限执行 `taskkill`，因此这里可能弹出提权确认 |
+| `killGame` | launcherService.ts:456 | invoke `launcher_kill_game`，参数 `{channel}`，返回 `boolean`（`true` = 已结束，`false` = 本来就没有进程）。**失败时 reject**，错误串为 `<token>: <detail>`（token 为 `cancelled` / `kill_failed` / `unknown`，文案见 `KILL_TOKEN_KEYS`（:81））；后端在未提权时会经 UAC 以管理员权限终止进程（`process::terminate_processes`），因此这里可能弹出提权确认；就地终止判定为 `AccessDenied` 时才弹，响应几乎即时 |
 | `getGamePlaytime` | launcherService.ts:365 | invoke `launcher_get_game_playtime`，无参，返回 `GamePlaytime {total_seconds, session_seconds, running}`（累计总时长 + 当前会话 + 运行态） |
 | `detectChannel` | launcherService.ts:252 | invoke `launcher_detect_channel`，参数 `{installPath}`，返回 `GameChannel \| null` |
 | `scanInstallDir` | launcherService.ts:258 | invoke `launcher_scan_install_dir`，参数 `{channel, installPath}`，返回 `FileScanResult`（损坏/缺失文件清单与字节统计） |

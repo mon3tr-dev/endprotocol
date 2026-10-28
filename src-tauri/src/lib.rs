@@ -2,7 +2,7 @@
 use std::net::{TcpStream, ToSocketAddrs};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex as StdMutex};
-use tauri::{Manager, Runtime, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
+use tauri::{Emitter, Manager, Runtime, WebviewUrl, WebviewWindowBuilder};
 use tokio::sync::Mutex;
 
 mod commands;
@@ -42,8 +42,8 @@ pub fn run() {
     }
 
     // 提权结束游戏 helper 模式（见 utils/official_launcher.rs）：同样是 runas 拉起的第二个
-    // 实例，只执行 `taskkill` 然后退出。必须在 logger / tracing / Tauri 初始化之前截获 ——
-    // logger 会持有日志文件句柄，而本进程的全部使命只是一条命令。
+    // 实例，只结束游戏进程然后退出。必须在 logger / tracing / Tauri 初始化之前截获 ——
+    // logger 会持有日志文件句柄，而本进程的全部使命只是一次进程终止。
     if let Some(code) = utils::official_launcher::try_run_kill_helper() {
         std::process::exit(code);
     }
@@ -184,11 +184,18 @@ pub fn run() {
             commands::window::toggle_maximize_window,
             commands::window::close_window,
             commands::window::minimize_to_tray,
+            // In-app browser commands (native child webview navigation)
+            commands::browser::browser_go_back,
+            commands::browser::browser_go_forward,
+            commands::browser::browser_reload,
+            commands::browser::browser_navigate,
+            commands::browser::browser_current_url,
             // Color picker commands
             commands::color_picker::capture_screen,
             commands::color_picker::finish_screen_pick,
             // Logger commands
             commands::logs::get_backend_logs,
+            commands::logs::set_log_level,
             // Diagnostics & crash handling commands
             commands::diagnostics::get_log_dir,
             commands::diagnostics::export_diagnostics,
@@ -259,12 +266,52 @@ pub fn run() {
             commands::startup::extract_steam_icon,
             commands::startup::add_steam_shortcut,
         ])
+        // 页面加载钩子：把子 Webview（in-app browser）的加载事件桥接成
+        // `browser://page-load` 事件发给前端。JS 侧 Webview 类没有
+        // onPageLoad/onNavigation，只能在 Rust 侧 on_page_load 里 emit。
+        .on_page_load(|webview, payload| {
+            if !webview.label().starts_with("inapp-browser-") {
+                return;
+            }
+            let kind = match payload.event() {
+                tauri::webview::PageLoadEvent::Started => "started",
+                tauri::webview::PageLoadEvent::Finished => "finished",
+            };
+            let data = serde_json::json!({
+                "label": webview.label(),
+                "url": payload.url().as_str(),
+                "event": kind,
+            });
+            let _ = webview.app_handle().emit("browser://page-load", &data);
+        })
         .setup(move |app| {
             // 主窗口与托盘面板仅在完整模式创建，静默模式不建立 WebView。
             utils::crash::set_app_handle(app.handle().clone());
             utils::api_health::init(app.handle().clone());
             let config_service = create_config_service()?;
             app.manage(config_service.clone());
+
+            // 在业务服务启动前应用开发者模式 / 日志级别配置。
+            {
+                let (developer_mode, preferred_level) = {
+                    let service = config_service.lock().map_err(|e| e.to_string())?;
+                    (
+                        service.get::<bool>("developer_mode").unwrap_or(false),
+                        service
+                            .get::<String>("log_level")
+                            .and_then(|value| utils::logger::LogLevel::parse(&value))
+                            .unwrap_or(utils::logger::LogLevel::Debug),
+                    )
+                };
+                // 未开启开发者模式时屏蔽 DEBUG。
+                let effective = if developer_mode {
+                    preferred_level
+                } else {
+                    preferred_level.max(utils::logger::LogLevel::Info)
+                };
+                utils::logger::set_log_level(effective);
+            }
+
             utils::game_playtime::init(config_service.clone());
             create_full_windows(app.handle())?;
 
@@ -541,12 +588,15 @@ fn create_full_windows<R: Runtime>(app: &tauri::AppHandle<R>) -> Result<(), Stri
 
 pub(crate) fn create_main_window<R: Runtime>(
     app: &tauri::AppHandle<R>,
-) -> Result<WebviewWindow<R>, String> {
-    if let Some(window) = app.get_webview_window("main") {
+) -> Result<tauri::Window<R>, String> {
+    // 注意：这里不能用 `get_webview_window("main")` 判断窗口是否已存在——它要求窗口下
+    // 所有 webview 的 label 都等于窗口 label，in-app browser 的子 webview
+    // （`inapp-browser-N`）会让它返回 None，进而重复创建主窗口。
+    if let Some(window) = app.get_window("main") {
         return Ok(window);
     }
 
-    let window = WebviewWindowBuilder::new(app, "main", app_webview_url(app, "index.html")?)
+    let webview_window = WebviewWindowBuilder::new(app, "main", app_webview_url(app, "index.html")?)
         .title("endprotocol")
         .inner_size(1200.0, 700.0)
         .resizable(true)
@@ -564,8 +614,8 @@ pub(crate) fn create_main_window<R: Runtime>(
 
     if let Some(config) = app.try_state::<Arc<StdMutex<ConfigService>>>() {
         let config = config.inner().clone();
-        let window_for_close = window.clone();
-        window.on_window_event(move |event| {
+        let window_for_close = webview_window.clone();
+        webview_window.on_window_event(move |event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 let action = config
                     .lock()
@@ -580,7 +630,9 @@ pub(crate) fn create_main_window<R: Runtime>(
             }
         });
     }
-    Ok(window)
+
+    app.get_window("main")
+        .ok_or_else(|| "main window was not registered after creation".to_string())
 }
 
 fn app_webview_url<R: Runtime>(

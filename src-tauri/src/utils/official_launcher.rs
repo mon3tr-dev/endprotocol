@@ -52,7 +52,7 @@ pub const HELPER_FLAG: &str = "--endfield-launch-helper";
 /// 以管理员权限结束游戏的私有首参数（与启动 helper 共用同一个 exe）。
 ///
 /// 未提权的本进程只能结束与它同权限的进程；游戏由提权 helper 创建，因此结束它同样需要
-/// 管理员权限，否则 `taskkill` 只会得到 `Access is denied`。
+/// 管理员权限，否则 `OpenProcess(PROCESS_TERMINATE)` 只会得到 `ERROR_ACCESS_DENIED`。
 pub const KILL_HELPER_FLAG: &str = "--endfield-kill-helper";
 
 /// 官方发行方组织名，对应签名者证书的 `O` 字段（2.5.4.10）。
@@ -74,7 +74,7 @@ pub mod exit_code {
 pub mod kill_exit_code {
     /// 命令行无效。
     pub const INVALID_ARGUMENTS: i32 = 2;
-    /// `taskkill` 执行之后同名进程仍然存活（反作弊/驱动保护，管理员也无法结束）。
+    /// 结束动作执行之后同名进程仍然存活（反作弊/驱动保护，管理员也无法结束）。
     pub const STILL_RUNNING: i32 = 3;
 }
 
@@ -433,9 +433,9 @@ mod win {
     /// 到等待游戏那一步（启动阶段失败），据此把失败原因回传给界面。正常启动耗时远低于此值。
     const HELPER_GRACE: Duration = Duration::from_millis(2500);
 
-    /// 等待结束游戏 helper 的上限。helper 只执行 `taskkill` 与存活轮询（最长约 3 秒），
-    /// 因此这个值只需覆盖「UAC 确认之后的那一小段」。
-    const KILL_HELPER_TIMEOUT: Duration = Duration::from_secs(20);
+    /// 等待结束游戏 helper 的上限。helper 只做一次进程快照 + `TerminateProcess`，随后最多
+    /// 等 1.5 秒确认进程消失，因此这个值只需覆盖「UAC 确认之后的那一小段」。
+    const KILL_HELPER_TIMEOUT: Duration = Duration::from_secs(10);
 
     // ---------------------------- 句柄与错误文本 ----------------------------
 
@@ -1264,7 +1264,7 @@ mod win {
     /// 并返回应使用的退出码。
     ///
     /// 与 [`try_run_helper`] 一样由 `lib.rs::run()` 在 logger/Tauri 初始化之前调用，因此
-    /// 这个进程全程没有窗口、没有托盘，唯一副作用就是 `taskkill`。
+    /// 这个进程全程没有窗口、没有托盘，唯一副作用就是结束游戏进程。
     pub fn try_run_kill_helper() -> Option<i32> {
         let arguments: Vec<String> = std::env::args_os()
             .map(|argument| argument.to_string_lossy().into_owned())
@@ -1289,12 +1289,13 @@ mod win {
             return 0;
         }
 
-        // 提权进程直接结束同名进程（含子进程树），再按 PID 兜底。
-        crate::utils::process::terminate_processes(&options.process_name);
-        if crate::utils::process::has_processes(&options.process_name) {
-            return kill_exit_code::STILL_RUNNING;
+        // 提权进程直接结束同名进程（含子进程树），原生快照 + TerminateProcess。
+        use crate::utils::process::TerminateOutcome;
+        match crate::utils::process::terminate_processes(&options.process_name) {
+            TerminateOutcome::Terminated | TerminateOutcome::Nothing => 0,
+            // AccessDenied 在提权上下文里意味着进程受驱动保护，与 StillRunning 同等处理。
+            _ => kill_exit_code::STILL_RUNNING,
         }
-        0
     }
 
     // ---------------------------- helper：完整启动流程 ----------------------------
@@ -1360,21 +1361,21 @@ mod win {
     /// 启动前清理同名旧游戏进程（含崩溃/挂起后残留的提权进程）。
     ///
     /// helper 以管理员权限运行，能终止由它自己创建的游戏进程；应用本身未提权时，
-    /// `launch_game` 里的 `taskkill` 无法结束后者的残留。
+    /// 直接启动路径的结束调用无法结束后者的残留。
     fn kill_existing_game(game: &Path) {
         let Some(file_name) = game.file_name().and_then(|name| name.to_str()) else {
             return;
         };
-        use std::os::windows::process::CommandExt;
+        use crate::utils::process::TerminateOutcome;
 
-        let mut command = std::process::Command::new("taskkill");
-        command.creation_flags(CREATE_NO_WINDOW);
-        match command.args(["/F", "/T", "/IM", file_name]).output() {
-            Ok(output) if output.status.success() => {
+        match crate::utils::process::terminate_processes(file_name) {
+            TerminateOutcome::Terminated => {
                 tracing::info!("[launcher] terminated existing game processes ({file_name})");
             }
-            Ok(_) => {}
-            Err(error) => tracing::warn!("[launcher] could not run taskkill: {error}"),
+            TerminateOutcome::AccessDenied | TerminateOutcome::StillRunning => {
+                tracing::warn!("[launcher] existing {file_name} processes could not be terminated");
+            }
+            TerminateOutcome::Nothing => {}
         }
     }
 
@@ -1633,16 +1634,28 @@ mod win {
 
     /// 结束游戏进程；未提权时经 UAC 以管理员权限重试。
     ///
-    /// 游戏由提权 helper 创建，本进程未提权时的 `taskkill` 只会拿到 `Access is denied`，
-    /// 因此真正的结束动作交给提权后的同一个 exe（`KILL_HELPER_FLAG`）。成功后返回 `Ok(true)`；
+    /// 游戏由提权 helper 创建，本进程未提权时的 `TerminateProcess` 只会拿到
+    /// `ERROR_ACCESS_DENIED`，因此真正的结束动作交给提权后的同一个 exe（`KILL_HELPER_FLAG`）。成功后返回 `Ok(true)`；
     /// 进程在 UAC 之后仍存活（反作弊驱动保护 / 超时）返回 `kill_failed`，用户取消 UAC 返回
     /// `cancelled`，前端据此给出可操作的提示。
     pub fn kill_game_process(process_name: &str) -> Result<bool, LaunchError> {
         // 先就地试一次：游戏由本进程直接创建（本进程已提权）时这一步就成功了，不弹 UAC。
-        crate::utils::process::terminate_processes(process_name);
-        if !crate::utils::process::has_processes(process_name) {
-            tracing::info!("[launcher] {process_name} terminated in-process");
-            return Ok(true);
+        // 结果是 AccessDenied / StillRunning 才需要提权；Nothing / Terminated 直接返回。
+        match crate::utils::process::terminate_processes(process_name) {
+            crate::utils::process::TerminateOutcome::Terminated => {
+                tracing::info!("[launcher] {process_name} terminated in-process");
+                return Ok(true);
+            }
+            crate::utils::process::TerminateOutcome::Nothing => {
+                tracing::info!("[launcher] {process_name} not running");
+                return Ok(false);
+            }
+            crate::utils::process::TerminateOutcome::AccessDenied => {
+                tracing::info!("[launcher] {process_name} needs elevation to terminate");
+            }
+            crate::utils::process::TerminateOutcome::StillRunning => {
+                tracing::warn!("[launcher] {process_name} survived in-process terminate");
+            }
         }
 
         let executable = std::env::current_exe().map_err(|error| {
@@ -1655,7 +1668,7 @@ mod win {
         tracing::info!("[launcher] escalating to terminate {process_name}: {parameters}");
         let helper = shell_execute_elevated(&executable, &parameters)?;
 
-        // helper 只跑一条 taskkill：等它结束（而不是提前返回），调用方拿到的才是最终状态。
+        // helper 只做一次快照 + TerminateProcess：等它结束（而不是提前返回），调用方拿到的才是最终状态。
         let code = helper.wait_to_exit(KILL_HELPER_TIMEOUT);
         tracing::info!("[launcher] kill helper exited with code {code:?}");
         match code {

@@ -28,10 +28,53 @@ export interface LogEntry {
   data?: unknown;
 }
 
+/** 调试日志过长会拖慢控制台并挤占日志面板，统一截断。 */
+const MAX_DEBUG_MESSAGE_LENGTH = 600;
+const MAX_DATA_LENGTH = 1200;
+
+/**
+ * 将配置值解析为日志级别。
+ * 支持数字、枚举值以及 "debug"/"info"/"warn"/"error" 字符串。
+ */
+export function parseLogLevel(value: unknown, fallback = LogLevel.INFO): LogLevel {
+  if (typeof value === "number" && value >= LogLevel.DEBUG && value <= LogLevel.ERROR) {
+    return value as LogLevel;
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (trimmed !== "" && /^\d+$/.test(trimmed)) {
+      const numeric = Number(trimmed);
+      if (numeric >= LogLevel.DEBUG && numeric <= LogLevel.ERROR) {
+        return numeric as LogLevel;
+      }
+    }
+    switch (trimmed.toLowerCase()) {
+      case "debug":
+        return LogLevel.DEBUG;
+      case "info":
+        return LogLevel.INFO;
+      case "warn":
+      case "warning":
+        return LogLevel.WARN;
+      case "error":
+        return LogLevel.ERROR;
+      default:
+        break;
+    }
+  }
+  return fallback;
+}
+
+/** 配置持久化使用的字符串形式。 */
+export function logLevelToConfigValue(level: LogLevel): string {
+  return LOG_LEVEL_NAMES[level].toLowerCase();
+}
+
+// 默认不输出 DEBUG；开发者模式会按配置提升到 DEBUG。
 const DEFAULT_CONFIG: LoggerConfig = {
   enableConsole: true,
   enableLocalStorage: true,
-  minLevel: LogLevel.DEBUG,
+  minLevel: LogLevel.INFO,
   maxStorageSize: 1000,
 };
 
@@ -52,6 +95,11 @@ class Logger {
     return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}.${ms}`;
   }
 
+  /** 控制台只保留时分秒，避免每行前缀过长。 */
+  private getConsoleTimestamp(timestamp: string): string {
+    return timestamp.slice(11);
+  }
+
   private getLevelColor(level: LogLevel): string {
     switch (level) {
       case LogLevel.DEBUG: return "#00BCD4";
@@ -61,17 +109,55 @@ class Logger {
     }
   }
 
+  private truncate(value: string, maxLength: number): string {
+    if (value.length <= maxLength) return value;
+    return `${value.slice(0, maxLength)}… (${value.length} chars)`;
+  }
+
+  /** 避免超长 data 撑爆 localStorage / 控制台（仅对 DEBUG 做额外序列化检查）。 */
+  private normalizeData(level: LogLevel, data: unknown): unknown {
+    if (data === undefined || data === null) return data;
+    if (typeof data === "string") {
+      return level === LogLevel.DEBUG
+        ? this.truncate(data, MAX_DATA_LENGTH)
+        : data;
+    }
+    if (level === LogLevel.DEBUG && typeof data === "object") {
+      try {
+        const json = JSON.stringify(data);
+        if (json.length > MAX_DATA_LENGTH) {
+          return this.truncate(json, MAX_DATA_LENGTH);
+        }
+      } catch {
+        return String(data);
+      }
+    }
+    return data;
+  }
+
+  private getLevel(): LogLevel {
+    return this.config.minLevel;
+  }
+
+  isEnabled(level: LogLevel): boolean {
+    return level >= this.getLevel();
+  }
+
   private writeLog(level: LogLevel, message: string, module: string, data?: unknown): void {
-    if (level < this.config.minLevel) return;
+    if (!this.isEnabled(level)) return;
 
     const timestamp = this.getTimestamp();
+    const normalizedData = this.normalizeData(level, data);
     const entry: LogEntry = {
       timestamp,
       level,
-      message,
+      message:
+        level === LogLevel.DEBUG
+          ? this.truncate(message, MAX_DEBUG_MESSAGE_LENGTH)
+          : message,
       module,
       source: "frontend",
-      data,
+      data: normalizedData,
     };
 
     this.memoryBuffer.push(entry);
@@ -82,20 +168,24 @@ class Logger {
     if (this.config.enableConsole) {
       const levelName = LOG_LEVEL_NAMES[level];
       const color = this.getLevelColor(level);
-      const prefix = `%c[${timestamp}] [${levelName}] [${module}]`;
+      const prefix = `%c${this.getConsoleTimestamp(timestamp)} [${levelName}] [${module}]`;
       const style = `color:${color};font-weight:bold`;
+      const args: unknown[] = [prefix, style, entry.message];
+      if (normalizedData !== undefined && normalizedData !== null) {
+        args.push(normalizedData);
+      }
       switch (level) {
         case LogLevel.DEBUG:
-          console.debug(prefix, style, message, data ?? "");
+          console.debug(...args);
           break;
         case LogLevel.INFO:
-          console.info(prefix, style, message, data ?? "");
+          console.info(...args);
           break;
         case LogLevel.WARN:
-          console.warn(prefix, style, message, data ?? "");
+          console.warn(...args);
           break;
         case LogLevel.ERROR:
-          console.error(prefix, style, message, data ?? "");
+          console.error(...args);
           break;
       }
     }

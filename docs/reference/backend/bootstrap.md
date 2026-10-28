@@ -35,8 +35,9 @@
 | `dispatch_instance_request` | lib.rs:371 | 主实例收到第二实例转交的参数：含 `--launch-game` 时以 `--dx11` 转发启动游戏（`exit_when_game_ends=false`），随后显示主窗口 |
 | `wait_for_game_session`（async） | lib.rs:384 | 驻守实例的驻留等待：每 2 秒通过 `utils::process::is_process_running`（窗口/90 秒启动宽限判定，排除无窗口挂起残留）探测 `Endfield.exe`；检测到运行后等待其退出；若 120 秒内未出现（启动失败/被取消）也结束等待，供 Steam 判定「游戏中」并记录时长 |
 | `start_game_from_config` | lib.rs:404 | 读取 `launcher_install_path` / `launcher_channel` / `launcher_dx11` 并调用 `commands::launcher::launch_game`；`dx11: Option<bool>` 优先取命令行 `--dx11`，`None` 时回退配置 `launcher_dx11`（默认 false）；`exit_when_game_ends=true`（仅驻守实例）时启动成功后调用 `wait_for_game_session`，游戏退出后才退出本进程；启动失败时同样退出 |
-| `create_full_windows` / `create_main_window` / `app_webview_url` / `dev_asset_url` | lib.rs:492 / 516 / 560 / 608 | 完整模式按需创建窗口；debug 优先连 Vite，开发服务器不可用时改由自定义协议 `endprotocol` 提供 `frontendDist` 资源 |
-| `register_dev_asset_protocol` / `dev_asset_error_response` | lib.rs:620 / 649 | debug 专用：注册 `endprotocol` URI scheme，经 `asset_resolver()` 提供构建产物（含 `.html`、目录 `index.html` 与入口 `index.html` 回退） |
+| `create_full_windows` / `create_main_window` / `app_webview_url` / `dev_asset_url` | lib.rs:542 / 566 / 617 / 665 | 完整模式按需创建窗口；debug 优先连 Vite，开发服务器不可用时改由自定义协议 `endprotocol` 提供 `frontendDist` 资源。**`create_main_window` 返回 `tauri::Window<R>` 而非 `WebviewWindow<R>`**，且判重用 `app.get_window("main")`：`get_webview_window` 要求窗口下所有 webview 的 label 都等于窗口 label，in-app browser 的子 webview 会让它返回 `None` |
+| `register_dev_asset_protocol` / `dev_asset_error_response` | lib.rs:677 / 706 | debug 专用：注册 `endprotocol` URI scheme，经 `asset_resolver()` 提供构建产物（含 `.html`、目录 `index.html` 与入口 `index.html` 回退） |
+| `.on_page_load(...)`（Builder 钩子） | lib.rs:268-285 | **in-app browser 事件桥**：把 label 以 `inapp-browser-` 开头的子 Webview 的 `PageLoadEvent::Started/Finished` 转成 `browser://page-load` 事件（`{ label, url, event }`）emit 给前端；其它 webview（主窗、tray-panel）直接 return，不产生事件 |
 
 ### 内部结构
 
@@ -49,8 +50,8 @@
 | lib.rs:77-241 | 完整模式：初始化日志、创建单实例插件、注册 updater/process/opener/fs 插件与完整命令集 |
 | lib.rs:243-317 | 完整模式 setup：动态窗口、全量服务、原托盘面板和账户刷新；`--launch-game` 时启动游戏 |
 | lib.rs:325-491 | 配置初始化、第二实例请求转发（仅主实例）、按需启动游戏与驻留等待（`wait_for_game_session`） |
-| lib.rs:492-607 | 完整模式窗口动态创建与关闭行为 |
-| lib.rs:608-655 | debug 专用：`endprotocol` 自定义协议，经 `asset_resolver()` 提供 `frontendDist` 构建产物 |
+| lib.rs:542-614 | 完整模式窗口动态创建与关闭行为 |
+| lib.rs:615-662 | debug 专用：`endprotocol` 自定义协议，经 `asset_resolver()` 提供 `frontendDist` 构建产物 |
 
 **插件注册**：
 | 插件 | 行 | 对应 capability |
@@ -126,7 +127,7 @@
 | `TRAY_PANEL_LABEL` | tray.rs:10 | `"tray-panel"`，与动态创建的托盘面板窗口 label 对应 |
 | `PANEL_WIDTH` / `PANEL_HEIGHT` | tray.rs:14-15 | 288.0 × 376.0，**回退尺寸**：仅在 `outer_size()` 取不到真实窗口尺寸时用于定位；实际窗口尺寸由 `lib.rs::create_full_windows` 的 `inner_size(288.0, 376.0)` 决定，改一处需同步另一处 |
 | `struct TrayUserInfo` | tray.rs:20（derive :16-19） | 托盘展示的角色数据，serde `camelCase`，13 个 `Option` 字段：`role_id`、`nickname`、`avatar`、`account_level`、`cur_stamina`、`max_stamina`、`max_ts`、`daily_activation`、`max_daily_activation`、`weekly_score`、`weekly_total`、`bp_cur_level`、`bp_max_level`；配置键 `tray_user_info`。`account_level`（:25）是**游戏账号等级**（`char_detail` 的 `base.level`），供面板右上角徽标显示；`bp_cur_level`/`bp_max_level` 是通行证等级，二者不可混用 |
-| `show_main_window_focus` | tray.rs:38 | 取或动态创建 `main` 窗口 → `unminimize()` + `show()`；Windows 分支额外 `ShowWindow(SW_SHOW)` + `SetForegroundWindow` |
+| `show_main_window_focus` | tray.rs:42 | 取或动态创建 `main` 窗口 → `unminimize()` + `show()`；Windows 分支额外 `ShowWindow(SW_SHOW)` + `SetForegroundWindow`。取窗用 `app.get_window("main")`（非 `get_webview_window`），否则 in-app browser 打开时托盘唤不回主窗口 |
 | `show_panel_at_position`（私有） | tray.rs:68 | 面板可见则隐藏；否则按**真实窗口物理尺寸**（`panel.outer_size()`）居中定位于托盘图标上方 8px，并用 `app.monitor_from_point` 取所在显示器工作区做 clamp，防止面板越出屏幕；随后 show + focus |
 | `setup_tray` | tray.rs:111 | 完整模式读配置 `tray_user_info`，创建唯一托盘图标；**左键双击**显示主窗并关面板，**右键抬起**弹出原有面板 |
 | `build_tray` | tray.rs:127 | 唯一图标构建逻辑；左键双击显示主窗并隐藏面板，右键抬起弹出面板 |
@@ -165,7 +166,7 @@
 | `lib.name` | :14 | `endprotocol_lib` — `_lib` 后缀避免与 bin 同名冲突（Windows 特有问题，见 :11-13 注释引用 rust-lang/cargo#8519） |
 | `lib.crate-type` | :15 | `["staticlib", "cdylib", "rlib"]`（支持移动端静态链接 + 常规 Rust 引用） |
 | `build-dependencies.tauri-build` | :17-18 | `2`，features 空 |
-| `dependencies.tauri` | :21 | `2` + feature `tray-icon`（托盘必需） |
+| `dependencies.tauri` | :21 | `~2.12` + features `tray-icon`（托盘必需）、`unstable`（**in-app browser 必需**：`new Webview()` 走 `plugin:webview|create_webview`，未开启该 feature 时此命令固定返回 `UnstableFeatureNotSupported`，详见 `commands/browser.rs`） |
 | `dependencies.tauri-plugin-opener` / `-fs` | :22-23 | 打开 URL/路径、文件系统插件（完整模式注册） |
 | `dependencies.serde` / `serde_json` | :24-25 | 序列化（serde 带 `derive`） |
 | `dependencies.reqwest` | :26 | `0.12` + `json`、`stream`（流式下载） |
@@ -179,7 +180,7 @@
 | `dependencies.rsa` | :43 | RSA 加密（登录/凭证） |
 | `dependencies.flate2` | :44 | `zlib` 后端的 gzip 压缩/解压 |
 | `dependencies.base64` / `bytes` / `http` | :45-47 | 编码与 HTTP 基础类型 |
-| `dependencies.windows-sys` | Cargo.toml | `0.61`，仅 `cfg(windows)` 目标依赖；features：`Win32_Foundation`、`Win32_Graphics_Gdi`、`Win32_UI_WindowsAndMessaging`、`Win32_System_Com`、`Win32_UI_Shell`、`Win32_System_Threading`（托盘取前台窗口、取色、进程检测）、`Win32_System_Power` / `Win32_System_Performance`（system_resource_service 采集实测 CPU 频率）；**免启动器启动**额外需要：`Win32_Security`（`CreateProcessW` 的 `SECURITY_ATTRIBUTES` 参数门控）、`Win32_Security_Cryptography` + `Win32_Security_Cryptography_Catalog` + `Win32_Security_Cryptography_Sip`（`WinVerifyTrust` 数据结构与两个 `WTHelper*` 函数）、`Win32_Security_WinTrust`、`Win32_System_Registry`（Reg* 与 `SHELLEXECUTEINFOW`）、`Win32_System_Environment`、`Win32_System_Console`、`Win32_System_Diagnostics_Debug`、`Win32_Storage_FileSystem`（见 utils/official_launcher.rs） |
+| `dependencies.windows-sys` | Cargo.toml | `0.61`，仅 `cfg(windows)` 目标依赖；features：`Win32_Foundation`、`Win32_Graphics_Gdi`、`Win32_UI_WindowsAndMessaging`、`Win32_System_Com`、`Win32_UI_Shell`、`Win32_System_Threading`（托盘取前台窗口、取色、进程检测/终止）、`Win32_System_Power` / `Win32_System_Performance`（system_resource_service 采集实测 CPU 频率）、`Win32_System_Diagnostics_ToolHelp`（utils/process.rs 的 `CreateToolhelp32Snapshot` 进程枚举）；**免启动器启动**额外需要：`Win32_Security`（`CreateProcessW` 的 `SECURITY_ATTRIBUTES` 参数门控）、`Win32_Security_Cryptography` + `Win32_Security_Cryptography_Catalog` + `Win32_Security_Cryptography_Sip`（`WinVerifyTrust` 数据结构与两个 `WTHelper*` 函数）、`Win32_Security_WinTrust`、`Win32_System_Registry`（Reg* 与 `SHELLEXECUTEINFOW`）、`Win32_System_Environment`、`Win32_System_Console`、`Win32_System_Diagnostics_Debug`、`Win32_Storage_FileSystem`（见 utils/official_launcher.rs） |
 | `dependencies.sysinfo` | Cargo.toml | 系统资源采集（CPU/内存/磁盘/网络/温度传感器），见 `services/system_resource_service.rs` |
 | `dependencies.uuid` / `hex` / `rand` | :49-51 | UUID v4、十六进制、随机数 |
 | `dependencies.indexmap` | :52 | 有序 map（带 `serde`） |
@@ -234,7 +235,7 @@
 ---
 
 ## `src-tauri/capabilities/default.json`
-**职责**：主窗口与托盘面板共用的基础 ACL 权限（23 行）。
+**职责**：主窗口与托盘面板共用的基础 ACL 权限（27 行）。
 **导出**：无。
 
 ### 逐 key 说明
@@ -244,11 +245,11 @@
 | `identifier` | :3 | `default` |
 | `description` | :4 | "Capability for the main window and tray panel" |
 | `windows` | :5 | `["main", "tray-panel"]` — 对两个窗口同时生效 |
-| `permissions` | :6-22 | 见下表 |
+| `permissions` | :6-25 | 见下表 |
 
 | 权限 | 行 | 用途 |
 | --- | --- | --- |
-| `core:default` | :7 | Tauri core 默认集（事件、资源等基础能力） |
+| `core:default` | :7 | Tauri core 默认集（事件、资源等基础能力；含 `core:webview:default` 的 `allow-get-all-webviews`/`allow-webview-position`/`allow-webview-size`） |
 | `core:window:allow-minimize` | :8 | 最小化 |
 | `core:window:allow-maximize` / `allow-unmaximize` | :9-10 | 最大化/还原（配合 `toggle_maximize_window` 之外的前端 API） |
 | `core:window:allow-close` | :11 | 关闭窗口 |
@@ -258,10 +259,17 @@
 | `core:window:allow-set-position` | :16 | 设定位置 |
 | `core:window:allow-primary-monitor` | :17 | 查询主显示器 |
 | `core:window:allow-outer-position` / `allow-outer-size` | :18-19 | 查询窗口外框位置/尺寸（最大化状态判断等） |
-| `opener:default` | :20 | opener 插件默认集（含 `reveal_item_in_dir`、mailto/tel/http(s) URL） |
-| `opener:allow-open-url` | :21 | 无 scope 限制地打开任意 URL |
+| `core:webview:allow-create-webview` | :20 | in-app browser：`new Webview()` → `plugin:webview\|create_webview`（**不在 `core:webview:default` 内**） |
+| `core:webview:allow-webview-close` | :21 | 卸载/关闭时销毁子 Webview（`Webview#close()`） |
+| `core:webview:allow-set-webview-position` | :22 | 同步子 Webview 位置（`Webview#setPosition()`） |
+| `core:webview:allow-set-webview-size` | :23 | 同步子 Webview 尺寸（`Webview#setSize()`） |
+| `opener:default` | :24 | opener 插件默认集（含 `reveal_item_in_dir`、mailto/tel/http(s) URL） |
+| `opener:allow-open-url` | :25 | 无 scope 限制地打开任意 URL |
 
-**备注**：**未授予** `core:window:allow-start-dragging`；前端自绘标题栏改用 CSS `WebkitAppRegion: "drag"`（custom-titlebar.tsx:170/208）实现拖动，未调用 `startDragging()`。
+**备注**：
+- **未授予** `core:window:allow-start-dragging`；前端自绘标题栏改用 CSS `WebkitAppRegion: "drag"`（custom-titlebar.tsx:170/208）实现拖动，未调用 `startDragging()`。
+- 子 Webview 的 `url`/`backgroundColor` 走创建参数（`create_webview` 一次带上），因此**不需要** `allow-set-webview-background-color`；后退/前进/刷新/导航/取地址由 `commands/browser.rs` 的 app command 承担，而 app command **不经 capabilities 授权**（本项目无 `__app-acl__` manifest，local origin 下直接放行），所以此处无需为 `browser_*` 添加权限项。
+- `windows` 只列 `main`/`tray-panel`：能力按窗口匹配后对该窗口的**全部** webview 生效，故 `inapp-browser-*` 子 webview 自动继承这几条 `core:webview:*` 权限（本会话只用主 webview 调它们，子 webview 是 remote origin，无法调用任何 app command）。
 
 ---
 

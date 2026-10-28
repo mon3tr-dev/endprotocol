@@ -563,6 +563,8 @@
       "level_info": "信息",
       "level_warn": "警告",
       "level_error": "错误",
+      "level_setting": "日志级别",
+      "level_setting_desc": "低于所选级别的日志将不再记录；未开启开发者模式时默认屏蔽调试日志",
       "clear": "清除",
       "no_logs": "暂无日志",
       "source_frontend": "前端",
@@ -675,6 +677,17 @@
     "collapse": "收起",
     "preparing": "准备中...",
     "downloading": "下载中..."
+  },
+  "browser": {
+    "back": "后退",
+    "forward": "前进",
+    "refresh": "刷新",
+    "open_in_browser": "在浏览器中打开",
+    "close": "关闭浏览器",
+    "minimize": "最小化",
+    "maximize": "最大化",
+    "restore": "还原",
+    "quit_window": "关闭窗口"
   },
   "tray": {
     "title": "ENDPROTOCOL",
