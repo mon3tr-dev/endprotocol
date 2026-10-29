@@ -191,13 +191,28 @@ export function InAppBrowser() {
     return subscribeInAppBrowser(() => {
       const open = isBrowserOpen();
       const u = getInAppBrowserUrl();
-      // 关闭：在 React 卸载 DOM **之前**就把原生层收掉。原生子 Webview 不受 React
-      // 生命周期约束，若等 useEffect 清理（在浏览器绘制之后）才 hide，就会出现
-      // 「工具栏立刻没了、网页还杵在那儿、过一下才消失」的卡顿感。
+      // 关闭：先把原生子 Webview 真正 hide 掉、确认落定后，再 setState 让 React
+      // 卸载 DOM 工具栏。原生层不受 React 生命周期约束，若只 fire-and-forget 一个
+      // hide() 就立刻 setIsOpen(false)，React 卸载发生在下一帧、而 hide 的 IPC
+      // 还在路上，就会出现「工具栏先没、网页内容卡一下才消失」。
+      // 注意：hide() 需要 `core:webview:allow-webview-hide` 权限（capabilities/default.json），
+      // 缺权限时会被 ACL 拒绝——这里 catch 住继续走原流程，最坏退化为旧行为。
       if (!open && handleRef.current) {
-        handleRef.current.webview.hide().catch(() => {
-          /* 未创建完 / 已销毁：destroyWebview 里还会再试一次 */
-        });
+        const handle = handleRef.current;
+        void handle.webview
+          .hide()
+          .catch(() => {
+            /* 未创建完 / 已销毁：destroyWebview 里还会再试一次 */
+          })
+          .finally(() => {
+            // hide 往返期间用户又点了打开：open 分支已把状态刷新，丢弃这次过期关闭
+            if (isBrowserOpen()) return;
+            setIsOpen(false);
+            setUrl(u);
+            setLoading(true);
+            urlRef.current = u;
+          });
+        return;
       }
       setIsOpen(open);
       setUrl(u);

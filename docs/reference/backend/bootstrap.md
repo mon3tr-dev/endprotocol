@@ -235,7 +235,7 @@
 ---
 
 ## `src-tauri/capabilities/default.json`
-**职责**：主窗口与托盘面板共用的基础 ACL 权限（27 行）。
+**职责**：主窗口与托盘面板共用的基础 ACL 权限（28 行）。
 **导出**：无。
 
 ### 逐 key 说明
@@ -245,7 +245,7 @@
 | `identifier` | :3 | `default` |
 | `description` | :4 | "Capability for the main window and tray panel" |
 | `windows` | :5 | `["main", "tray-panel"]` — 对两个窗口同时生效 |
-| `permissions` | :6-25 | 见下表 |
+| `permissions` | :6-27 | 见下表 |
 
 | 权限 | 行 | 用途 |
 | --- | --- | --- |
@@ -261,13 +261,15 @@
 | `core:window:allow-outer-position` / `allow-outer-size` | :18-19 | 查询窗口外框位置/尺寸（最大化状态判断等） |
 | `core:webview:allow-create-webview` | :20 | in-app browser：`new Webview()` → `plugin:webview\|create_webview`（**不在 `core:webview:default` 内**） |
 | `core:webview:allow-webview-close` | :21 | 卸载/关闭时销毁子 Webview（`Webview#close()`） |
-| `core:webview:allow-set-webview-position` | :22 | 同步子 Webview 位置（`Webview#setPosition()`） |
-| `core:webview:allow-set-webview-size` | :23 | 同步子 Webview 尺寸（`Webview#setSize()`） |
-| `opener:default` | :24 | opener 插件默认集（含 `reveal_item_in_dir`、mailto/tel/http(s) URL） |
-| `opener:allow-open-url` | :25 | 无 scope 限制地打开任意 URL |
+| `core:webview:allow-webview-hide` | :22 | 关闭 in-app browser 时**先隐藏**子 Webview 再卸载 DOM（`Webview#hide()`，**不在 `core:webview:default` 内**；缺它时 hide 被 ACL 拒绝且被 catch 吞掉，表现为「工具栏先消失、网页内容卡一下才消失」） |
+| `core:webview:allow-set-webview-position` | :23 | 同步子 Webview 位置（`Webview#setPosition()`） |
+| `core:webview:allow-set-webview-size` | :24 | 同步子 Webview 尺寸（`Webview#setSize()`） |
+| `opener:default` | :25 | opener 插件默认集（含 `reveal_item_in_dir`、mailto/tel/http(s) URL） |
+| `opener:allow-open-url` | :26 | 无 scope 限制地打开任意 URL |
 
 **备注**：
 - **未授予** `core:window:allow-start-dragging`；前端自绘标题栏改用 CSS `WebkitAppRegion: "drag"`（custom-titlebar.tsx:170/208）实现拖动，未调用 `startDragging()`。
+- **未授予** `core:webview:allow-webview-show`：重新打开浏览器总是新建子 Webview（`in-app-browser.tsx` 生命周期 effect），没有「隐藏后复用」路径，无需 show。
 - 子 Webview 的 `url`/`backgroundColor` 走创建参数（`create_webview` 一次带上），因此**不需要** `allow-set-webview-background-color`；后退/前进/刷新/导航/取地址由 `commands/browser.rs` 的 app command 承担，而 app command **不经 capabilities 授权**（本项目无 `__app-acl__` manifest，local origin 下直接放行），所以此处无需为 `browser_*` 添加权限项。
 - `windows` 只列 `main`/`tray-panel`：能力按窗口匹配后对该窗口的**全部** webview 生效，故 `inapp-browser-*` 子 webview 自动继承这几条 `core:webview:*` 权限（本会话只用主 webview 调它们，子 webview 是 remote origin，无法调用任何 app command）。
 
