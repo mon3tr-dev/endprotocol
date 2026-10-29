@@ -2842,6 +2842,17 @@ impl GameLauncherService {
                     "platform": "Windows",
                     "source": "launcher"
                 }
+            },
+            {
+                "kind": "get_sidebar",
+                "get_sidebar_req": {
+                    "appcode": api_channel.app_code(),
+                    "language": "zh-cn",
+                    "channel": api_channel.channel(),
+                    "sub_channel": api_channel.sub_channel(),
+                    "platform": "Windows",
+                    "source": "launcher"
+                }
             }
         ]);
 
@@ -2963,10 +2974,75 @@ impl GameLauncherService {
             announcements.len()
         );
 
+        let sidebars = Self::parse_sidebars(&raw);
+        crate::safe_eprintln!("[Launcher] get_notice_content: {} sidebars", sidebars.len());
+
         Ok(LauncherNoticeContent {
             banners,
             announcements,
+            sidebars,
         })
+    }
+
+    /// 解析 `get_sidebar_rsp`：把「条目自身」与「sidebar_labels[0]」两处链接合并成扁平列表。
+    ///
+    /// 官方数据不一致：社媒条目把地址放在 `pic.url`（二维码）+ `jump_url`，
+    /// 而 `CS` 这类条目 `pic` 为 null、地址只在 `sidebar_labels[0].jump_url`。
+    /// 侧边栏解析失败不影响公告主流程，故整体失败时返回空列表。
+    fn parse_sidebars(raw: &serde_json::Value) -> Vec<SidebarItem> {
+        let mut sidebars = Vec::new();
+
+        let Some(rsps) = raw.get("proxy_rsps").and_then(|v| v.as_array()) else {
+            return sidebars;
+        };
+
+        for rsp in rsps {
+            let Some(sidebar_rsp) = rsp.get("get_sidebar_rsp") else {
+                continue;
+            };
+
+            let parsed: SidebarRsp = match serde_json::from_value(sidebar_rsp.clone()) {
+                Ok(v) => v,
+                Err(e) => {
+                    crate::safe_eprintln!("[Launcher] Failed to parse get_sidebar_rsp: {}", e);
+                    return sidebars;
+                }
+            };
+
+            for item in parsed.sidebars {
+                let label = item.sidebar_labels.first();
+
+                // 链接、二维码与文案都优先取条目自身，缺失时回退到第一条 label（CS 即属此类）
+                let jump_url = if !item.jump_url.is_empty() {
+                    item.jump_url.clone()
+                } else {
+                    label.map(|l| l.jump_url.clone()).unwrap_or_default()
+                };
+                let qr_url = match &item.pic {
+                    Some(pic) if !pic.url.is_empty() => pic.url.clone(),
+                    _ => label.map(|l| l.pic_url.clone()).unwrap_or_default(),
+                };
+                let title = match &item.pic {
+                    Some(pic) if !pic.description.as_deref().unwrap_or("").is_empty() => {
+                        pic.description.clone().unwrap_or_default()
+                    }
+                    _ => label.map(|l| l.content.clone()).unwrap_or_default(),
+                };
+                let need_token =
+                    item.need_token || label.map(|l| l.need_token).unwrap_or(false);
+
+                sidebars.push(SidebarItem {
+                    media: item.media,
+                    display_type: item.display_type,
+                    title,
+                    qr_url,
+                    jump_url,
+                    need_token,
+                });
+            }
+        }
+
+        sidebars
     }
 
     /// 获取启动器背景媒体（图片或视频）
