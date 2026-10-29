@@ -39,6 +39,14 @@ const WEBVIEW_LABEL_PREFIX = "inapp-browser-";
 let webviewSeq = 0;
 
 /**
+ * 工具栏高度（`h-11` = 44 逻辑像素）。
+ *
+ * 作为量不到工具栏时的兜底下限：原生子 Webview 永远画在 DOM 之上，一旦它的 y 落到
+ * 工具栏区域，工具栏就直接看不见了，所以这里宁可硬编码也不能退回「不裁剪」。
+ */
+const TOOLBAR_MIN_HEIGHT = 44;
+
+/**
  * 原生层底色：白色。
  *
  * 这是「页面未绘制区域」透出来的颜色，必须跟被加载站点的色调一致，而不是跟应用主题：
@@ -63,6 +71,11 @@ export function InAppBrowser() {
 
   /** 原生 Webview 模式：占位容器 + 实例引用 */
   const containerRef = useRef<HTMLDivElement>(null);
+  /**
+   * 工具栏元素。原生子 Webview 永远画在 DOM 之上（z-index 对它无效），所以工具栏是否
+   * 可见完全取决于 Webview 的矩形有没有压到它——这里量出工具栏下沿作为 y 的下限。
+   */
+  const toolbarRef = useRef<HTMLDivElement>(null);
   const handleRef = useRef<WebviewHandle | null>(null);
   /** 非 Tauri 环境（纯浏览器开发调试）的降级分支 */
   const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -178,6 +191,14 @@ export function InAppBrowser() {
     return subscribeInAppBrowser(() => {
       const open = isBrowserOpen();
       const u = getInAppBrowserUrl();
+      // 关闭：在 React 卸载 DOM **之前**就把原生层收掉。原生子 Webview 不受 React
+      // 生命周期约束，若等 useEffect 清理（在浏览器绘制之后）才 hide，就会出现
+      // 「工具栏立刻没了、网页还杵在那儿、过一下才消失」的卡顿感。
+      if (!open && handleRef.current) {
+        handleRef.current.webview.hide().catch(() => {
+          /* 未创建完 / 已销毁：destroyWebview 里还会再试一次 */
+        });
+      }
       setIsOpen(open);
       setUrl(u);
       setLoading(true);
@@ -194,29 +215,59 @@ export function InAppBrowser() {
    * ============================================================ */
 
   /**
-   * 把 Webview 的位置尺寸同步到占位容器。
+   * 量出原生子 Webview 应该占据的矩形（视口 CSS 逻辑像素）。
    *
-   * `getBoundingClientRect()` 是相对视口的 CSS 逻辑像素；主窗口是无装饰窗口
+   * `getBoundingClientRect()` 是相对视口的逻辑像素；主窗口是无装饰窗口
    * （`decorations(false)`），视口左上角即窗口客户区左上角，因此可直接作为
    * Webview 相对宿主窗口的逻辑坐标传给 setPosition/setSize。
+   *
+   * 但这条等价关系只在「主 webview 铺满客户区、且两边像素换算完全一致」时成立。
+   * 一旦客户区原点与视口原点对不上（窗口边框/阴影、DPI 缩放、布局尚未稳定时测量），
+   * 偏差不是「整体错几像素」，而是原生层直接压到工具栏上方——原生子 Webview 永远
+   * 画在 DOM 之上，z-index 拦不住它，表现就是「浏览器工具栏被刷新掉看不见了」。
+   * 所以这里用工具栏实测下沿作为 y 的硬下限：宁可底部少画几像素，也绝不盖住工具栏。
+   *
+   * 创建与后续同步共用本函数，避免两条路径量出不同的矩形。
    */
+  const measureBounds = useCallback(() => {
+    const container = containerRef.current;
+    if (!container) return null;
+    const rect = container.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return null;
+
+    // 工具栏下沿（视口逻辑像素）：原生层不得越过这条线。
+    // 量不到时退回「窗口顶部 + 工具栏高度」这个硬下限，而不是不裁剪。
+    const toolbarBottom =
+      toolbarRef.current?.getBoundingClientRect().bottom ??
+      TOOLBAR_MIN_HEIGHT;
+    const y = Math.max(rect.top, toolbarBottom);
+    return {
+      x: Math.max(0, Math.round(rect.x)),
+      y: Math.max(0, Math.round(y)),
+      width: Math.max(1, Math.round(rect.width)),
+      height: Math.max(1, Math.round(rect.bottom - y)),
+    };
+  }, []);
+
   const syncBounds = useCallback(async () => {
     const handle = handleRef.current;
-    const container = containerRef.current;
-    if (!handle || !container) return;
-    const rect = container.getBoundingClientRect();
-    if (rect.width <= 0 || rect.height <= 0) return;
+    const bounds = measureBounds();
+    if (!handle || !bounds) return;
     try {
       await handle.webview.setPosition(
-        new LogicalPosition(Math.round(rect.x), Math.round(rect.y)),
+        new LogicalPosition(bounds.x, bounds.y),
       );
       await handle.webview.setSize(
-        new LogicalSize(Math.round(rect.width), Math.round(rect.height)),
+        new LogicalSize(bounds.width, bounds.height),
+      );
+      // 原生层矩形是「工具栏被盖住」这类问题的唯一变量，留一条 debug 便于事后定位
+      logger.debug(
+        `[browser] webview bounds ${bounds.x},${bounds.y} ${bounds.width}x${bounds.height}`,
       );
     } catch (error) {
       logger.warn(`[browser] syncBounds failed: ${String(error)}`);
     }
-  }, []);
+  }, [measureBounds]);
 
   /**
    * 创建子 Webview。
@@ -227,17 +278,16 @@ export function InAppBrowser() {
    */
   const createWebview = useCallback(
     (target: string): WebviewHandle | null => {
-      const container = containerRef.current;
-      if (!container || !target) return null;
-      const rect = container.getBoundingClientRect();
+      const bounds = measureBounds();
+      if (!bounds || !target) return null;
       const label = `${WEBVIEW_LABEL_PREFIX}${++webviewSeq}`;
 
       const webview = new Webview(getCurrentWindow(), label, {
         url: target,
-        x: Math.max(0, Math.round(rect.x)),
-        y: Math.max(0, Math.round(rect.y)),
-        width: Math.max(1, Math.round(rect.width)),
-        height: Math.max(1, Math.round(rect.height)),
+        x: bounds.x,
+        y: bounds.y,
+        width: bounds.width,
+        height: bounds.height,
         backgroundColor: WEBVIEW_BACKGROUND,
         // 不抢焦点：否则原生层会夺走主窗口焦点，工具栏按钮无法点击
         focus: false,
@@ -284,6 +334,15 @@ export function InAppBrowser() {
     const target = handle ?? handleRef.current;
     if (!target) return;
     if (handleRef.current === target) handleRef.current = null;
+
+    // 先同步发出 hide()：DOM 工具栏随 React 卸载立刻消失，而原生层要等 close() 走完
+    // IPC 才没，两者之间会留下「工具栏没了、网页还挂着」的空窗（看起来像卡一下）。
+    // hide() 与 close() 不同，它不等 settled 也能发出；若实例尚未创建完则失败，
+    // 无副作用——随后 settled 落定时 close() 仍会把它收掉。
+    target.webview.hide().catch(() => {
+      /* 未创建完 / 已销毁：忽略，交给下面的 close() */
+    });
+
     void target.settled.then(async () => {
       try {
         await target.webview.close();
@@ -325,6 +384,14 @@ export function InAppBrowser() {
     };
   }, [isOpen, createWebview, destroyWebview, syncBounds]);
 
+  // loading 条出现/消失会改变占位容器的 top 与高度（它是容器的兄弟节点）。
+  // ResizeObserver 只在尺寸变化时触发，这里显式跟着 loading 再同步一次，
+  // 保证原生层矩形始终贴合最新布局，不会停留在旧位置上盖住工具栏。
+  useEffect(() => {
+    if (!handleRef.current) return;
+    void syncBounds();
+  }, [loading, syncBounds]);
+
   // loading / 地址显示：后端 on_page_load 桥接出来的 browser://page-load 事件。
   useEffect(() => {
     if (!isTauri()) return;
@@ -337,9 +404,14 @@ export function InAppBrowser() {
       if (!payload || !handle || payload.label !== handle.webview.label) return;
       if (payload.event === "started") {
         setLoading(true);
+        void syncBounds();
         return;
       }
       setLoading(false);
+      // 加载完成后布局可能已经变化（loading 条收起、页面撑开滚动条），
+      // 而原生层矩形不会自己跟随 DOM —— 这里主动重贴一次，避免它停在旧位置上
+      // 盖住工具栏（工具栏是 DOM，原生子 Webview 永远画在它上面，z-index 无效）。
+      void syncBounds();
       // 页面内跳转 / 重定向同步到地址显示（只读，不触发再导航）
       if (payload.url) {
         urlRef.current = payload.url;
@@ -354,7 +426,7 @@ export function InAppBrowser() {
       disposed = true;
       unlisten?.();
     };
-  }, []);
+  }, [syncBounds]);
 
   /**
    * 地址栏点击时回读一次真实地址。
@@ -449,6 +521,7 @@ export function InAppBrowser() {
        * 布局保持在 Webview 区域之外，避免被原生层覆盖。
        */}
       <div
+        ref={toolbarRef}
         className="h-11 flex items-center gap-1.5 pl-3 pr-2 shrink-0 bg-background/60 backdrop-blur-xl border-b border-white/10"
       >
         {/* Back */}

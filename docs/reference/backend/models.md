@@ -750,6 +750,7 @@ derive 均为 `Serialize, Deserialize, Clone, Debug` + 容器 `rename_all = "cam
 | `get_banner_rsp` | `Option<BannerRsp>` | `rename`（同名） + `skip_serializing_if = "Option::is_none"` | Banner 响应 |
 | `get_announcement_rsp` | `Option<AnnouncementRsp>` | `rename`（同名） + `skip_serializing_if = "Option::is_none"` | 公告响应 |
 | `get_main_bg_image_rsp` | `Option<MainBgImageRsp>` | `rename`（同名） + `skip_serializing_if = "Option::is_none"` | 主界面背景图响应 |
+| `get_sidebar_rsp` | `Option<SidebarRsp>` | `rename`（同名） + `skip_serializing_if = "Option::is_none"` | 右侧栏（社媒/工具）响应 |
 
 ### `struct GetLatestGameRsp`
 - 位置：game.rs:197
@@ -938,15 +939,61 @@ derive 均为 `Serialize, Deserialize, Clone, Debug` + 容器 `rename_all = "cam
 | `jump_url` | `String` | — | 跳转链接 |
 
 ### `struct LauncherNoticeContent`
-- 位置：game.rs:408
+- 位置：game.rs:409
 - derive：同上
-- 用途：公告页聚合内容（Banner + 公告列表）。
+- 用途：公告页聚合内容（Banner + 公告列表 + 右侧栏条目）。
 - 字段：
 
 | 字段 | 类型 | serde | 含义 |
 | --- | --- | --- | --- |
 | `banners` | `Vec<BannerItem>` | — | Banner 列表 |
 | `announcements` | `Vec<AnnouncementItem>` | — | 公告列表 |
+| `sidebars` | `Vec<SidebarItem>` | — | 启动器右侧栏条目（社媒二维码 + 工具入口），由 `get_sidebar` 合并而来 |
+
+### `struct SidebarItem`
+- 位置：game.rs:421
+- derive：同上
+- 用途：**后端聚合后的**侧边栏条目（给前端）。官方数据把链接分散在条目自身与 `sidebar_labels[]` 两处，`GameLauncherService::parse_sidebars` 已合并成这一层扁平结构，前端不再处理分组。
+- 字段：
+
+| 字段 | 类型 | serde | 含义 |
+| --- | --- | --- | --- |
+| `media` | `String` | — | 渠道标识（`Skland`/`Bilibili`/`Weibo`/`Taptap`/`Douyin`/`Xiaohongshu`/`Wechat`/`CS`/`SklandTool`），前端据此匹配本地图标 |
+| `display_type` | `String` | — | 原样透传：`DisplayType_LIST`（单条链接）/ `DisplayType_GRID`（一组工具链接） |
+| `title` | `String` | — | 悬停提示与二维码说明（`pic.description`，缺失时取 `sidebar_labels[0].content`） |
+| `qr_url` | `String` | — | 二维码图片地址（`pic.url`，缺失时取 `sidebar_labels[0].pic_url`），空串表示无图 |
+| `jump_url` | `String` | — | 点击打开的网页地址，空串表示只能扫码（如微信公众号） |
+| `need_token` | `bool` | — | 官方是否要求带登录态（仅透传，当前前端未使用） |
+
+### `struct SidebarRsp`
+- 位置：game.rs:479
+- derive：同上
+- 用途：`get_sidebar_rsp` 响应体。
+- 字段：
+
+| 字段 | 类型 | serde | 含义 |
+| --- | --- | --- | --- |
+| `sidebars` | `Vec<SidebarApiItem>` | `default` | 侧边栏原始条目列表 |
+
+### `struct SidebarApiItem`
+- 位置：game.rs:485
+- derive：同上
+- 用途：侧边栏 API 原始条目（含分组结构，仅后端解析用）。
+- 字段：
+
+| 字段 | 类型 | serde | 含义 |
+| --- | --- | --- | --- |
+| `media` | `String` | `default` | 渠道标识 |
+| `display_type` | `String` | `default` | `DisplayType_LIST` / `DisplayType_GRID` |
+| `pic` | `Option<SidebarPic>` | `default` | 二维码图片（`CS`、`SklandTool` 为 null） |
+| `sidebar_labels` | `Vec<SidebarLabel>` | `default` | 子链接列表（`GRID` 有 6 条，`CS` 有 1 条） |
+| `jump_url` | `String` | `default` | 条目自身跳转地址（社媒条目使用） |
+| `need_token` | `bool` | `default` | 是否需要登录态 |
+
+### `struct SidebarPic` / `struct SidebarLabel`
+- 位置：game.rs:501 / game.rs:509
+- derive：同上
+- 用途：侧边栏条目的图片与子链接。`SidebarPic { url, description: Option<String> }`；`SidebarLabel { content, jump_url, pic_url, need_token }`（全部 `default`）。
 
 ### `struct BannerRsp`
 - 位置：game.rs:415

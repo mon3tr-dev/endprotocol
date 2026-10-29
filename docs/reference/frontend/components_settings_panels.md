@@ -218,22 +218,25 @@
 | `InAppBrowser`（export） | 58-601 | 无 props；未打开时返回 `null` |
 
 **内部结构**：
-- 64-68 行：`containerRef`（占位容器）、`handleRef`（Webview 句柄）、`iframeRef`（降级分支）。
+- 64-80 行：`containerRef`（占位容器）、`toolbarRef`（玻璃工具栏，用于量出原生层不得越过的下沿）、`handleRef`（Webview 句柄）、`iframeRef`（降级分支）。
+- 47 行：`TOOLBAR_MIN_HEIGHT = 44`（`h-11` 逻辑像素），量不到工具栏时的兜底下限。
 - 73-101 行：窗口控制状态 `isMaximized`，`checkMaximizedState` 读 `getCurrentWindow().isMaximized()`，并监听 `tauri://resize` / `tauri://move` 同步图标。
 - 103-108 行：读配置键 `close_action`（`ask`/`minimize_to_tray`/`close`）。
 - 110-156 行：`handleWindowMinimize` → `invoke("minimize_window")`；`handleWindowMaximize` → `invoke("toggle_maximize_window")` + 100ms 后 `checkMaximizedState`；`handleWindowClose` 按 `closeAction` 分支（`ask` → 弹 `CloseConfirmDialog`，否则 `minimize_to_tray` / `app_quit`）。
 - 161-190 行：store 订阅；浏览器已打开时再次跳转走 `navigateHandle`（就地导航，保留实例与浏览历史）。
-- 203-219 行：`syncBounds`——用 `getBoundingClientRect()` 换算逻辑坐标，调 `setPosition`/`setSize`（主窗口 `decorations(false)`，视口原点即客户区原点）。
-- 228-272 行：`createWebview`——`new Webview(getCurrentWindow(), label, { url, x, y, width, height, backgroundColor, focus: false })`，并把 `once("tauri://created"/"tauri://error")` 包成 `settled`。`focus: false` 避免原生层夺走主窗口焦点导致工具栏按钮点不动。
-- 283-296 行：`destroyWebview`——先等 `settled` 再 `close()`，防止创建未完成时关闭失败泄漏原生层；带实例身份校验，异步竞态下不误关新实例。
-- 305-326 行：生命周期 effect——`isOpen` 转 true 创建、转 false（关闭/挂起）销毁；`ResizeObserver` + `window resize` 双通道同步尺寸。
-- 329-357 行：`listen("browser://page-load")` 驱动 loading 与地址栏回填。
-- 365-373 行：`syncUrlFromWebview` 在地址栏点击时回读真实地址（补 SPA `pushState` 不触发 on_page_load 的盲区）。
-- 377-435 行：`handleBack`/`handleForward`/`handleRefresh`/`handleOpenExternal`（非 Tauri 回落到 `iframe.contentWindow`）。
-- 441 行：`!isOpen` 时返回 `null`。
-- 446-568 行：玻璃工具栏。**布局保持在 Webview 区域之外**（原生层会覆盖 DOM），空白区即窗口拖拽区（`WebkitAppRegion: drag`）；按钮区显式 `no-drag`。534-567 行的窗口控制组在 `isTauri()` 时渲染。
-- 571-575 行：`loading` 时的顶部脉冲进度条。
-- 581-592 行：占位容器 `div ref={containerRef}`；`!isTauri()` 时在容器内渲染降级 `iframe`（`sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-modals allow-downloads"`，`onLoad` 关闭 loading）。
+- 224-242 行：`measureBounds`——**创建与同步共用的唯一测量入口**，用 `getBoundingClientRect()` 换算逻辑坐标，并把 y 钳制在工具栏下沿之上（`Math.max(rect.top, toolbarBottom)`）。原生子 Webview 永远画在 DOM 之上、z-index 无效，一旦它的 y 落进工具栏区域，工具栏就直接看不见，所以宁可底部少画几像素也不越线；量不到工具栏时退回 `TOOLBAR_MIN_HEIGHT` 硬下限而非不裁剪。
+- 244-258 行：`syncBounds`——把 `measureBounds` 的结果写回 `setPosition`/`setSize`，并 debug 记录实际矩形（工具栏遮挡类问题的唯一线索）。
+- 271-315 行：`createWebview`——`new Webview(getCurrentWindow(), label, { url, ...measureBounds(), backgroundColor, focus: false })`，并把 `once("tauri://created"/"tauri://error")` 包成 `settled`。`focus: false` 避免原生层夺走主窗口焦点导致工具栏按钮点不动。
+- 325-338 行：`destroyWebview`——先等 `settled` 再 `close()`，防止创建未完成时关闭失败泄漏原生层；带实例身份校验，异步竞态下不误关新实例。
+- 344-365 行：生命周期 effect——`isOpen` 转 true 创建、转 false（关闭/挂起）销毁；`ResizeObserver` + `window resize` 双通道同步尺寸。
+- 370-376 行：`loading` 变化时再同步一次。loading 条是占位容器的**兄弟节点**，出现/收起会改变容器的 `top`；`ResizeObserver` 只在尺寸变化时触发，位置变化不触发，故显式补一次。
+- 378-412 行：`listen("browser://page-load")` 驱动 loading 与地址栏回填，并在 `started`/`finished` 两个时机各 `syncBounds()` 一次（加载完成时布局可能已变化：loading 条收起、页面撑出滚动条）。
+- 420-428 行：`syncUrlFromWebview` 在地址栏点击时回读真实地址（补 SPA `pushState` 不触发 on_page_load 的盲区）。
+- 432-490 行：`handleBack`/`handleForward`/`handleRefresh`/`handleOpenExternal`（非 Tauri 回落到 `iframe.contentWindow`）。
+- 496 行：`!isOpen` 时返回 `null`。
+- 505-568 行：玻璃工具栏（`ref={toolbarRef}`）。**布局保持在 Webview 区域之外**（原生层会覆盖 DOM），空白区即窗口拖拽区（`WebkitAppRegion: drag`）；按钮区显式 `no-drag`。窗口控制组在 `isTauri()` 时渲染。
+- 626-630 行：`loading` 时的顶部脉冲进度条。
+- 637-648 行：占位容器 `div ref={containerRef}`；`!isTauri()` 时在容器内渲染降级 `iframe`（`sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-modals allow-downloads"`，`onLoad` 关闭 loading）。
 
 **备注**：`invoke` 命令（见 [../backend/commands.md](../backend/commands.md)）：`browser_go_back`、`browser_go_forward`、`browser_reload`、`browser_navigate`、`browser_current_url`（经 `@/utils/browserViewService` 包装）；窗口控制走 `minimize_window`、`toggle_maximize_window`、`minimize_to_tray`、`app_quit`；`listen` 事件：`browser://page-load`（后端 `lib.rs` 的 `on_page_load` 桥接）；配置键：`close_action`；无 `postMessage` 依赖。开合状态仍来自 `@/stores/inAppBrowser` 的订阅。地址栏导航不改写浏览器 history（仅 store + Webview）。原生层会覆盖 DOM，因此高于浏览器区域的浮层（标题栏消息浮窗 z-[10005]、弹窗 z-[100]/z-[200]）在浏览器打开时会不可见，属已知取舍。
 

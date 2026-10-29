@@ -838,7 +838,12 @@
     "stop_failed_title": "停止游戏失败",
     "stop_err_cancelled": "已取消管理员授权。游戏由管理员权限启动，结束它同样需要管理员权限，请允许 UAC 提示后重试。",
     "stop_err_kill_failed": "未能结束游戏进程：{{detail}}。若游戏仍在前台运行，可能是反作弊驱动保护了进程，请重启系统后再试。",
-    "stop_err_unknown": "停止失败：{{detail}}"
+    "stop_err_unknown": "停止失败：{{detail}}",
+    "sidebar": {
+      "title": "官方社媒",
+      "open_hint": "点击打开网页",
+      "scan_only": "仅支持扫码"
+    }
   },
   "todo_page": {
     "title": "待办事项",

@@ -191,6 +191,8 @@ pub struct ProxyResponse {
         skip_serializing_if = "Option::is_none"
     )]
     pub get_main_bg_image_rsp: Option<MainBgImageRsp>,
+    #[serde(rename = "get_sidebar_rsp", skip_serializing_if = "Option::is_none")]
+    pub get_sidebar_rsp: Option<SidebarRsp>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -403,11 +405,34 @@ pub struct AnnouncementItem {
     pub jump_url: String,
 }
 
-/// 公告内容（含 Banner + 公告列表）
+/// 公告内容（含 Banner + 公告 + 侧边栏链接）
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LauncherNoticeContent {
     pub banners: Vec<BannerItem>,
     pub announcements: Vec<AnnouncementItem>,
+    pub sidebars: Vec<SidebarItem>,
+}
+
+/// 启动器侧边栏（官方社媒 / 工具）条目。
+///
+/// 对应 `get_sidebar_rsp.sidebars[]`。原始数据里链接可能放在条目自身
+/// （`jump_url` / `pic`），也可能只放在 `sidebar_labels[0]`（如 `CS`），
+/// 后端已把两处合并成单个扁平条目，前端不必再处理分组结构。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SidebarItem {
+    /// 渠道标识，如 `Skland` / `Bilibili` / `Weibo` / `Taptap` / `Douyin` /
+    /// `Xiaohongshu` / `Wechat` / `CS` / `SklandTool`，前端据此匹配本地图标。
+    pub media: String,
+    /// 展示类型原值：`DisplayType_LIST`（单条链接）或 `DisplayType_GRID`（一组工具链接）。
+    pub display_type: String,
+    /// 悬停提示与二维码说明文案（`pic.description`，缺失时取 `sidebar_labels[0].content`）。
+    pub title: String,
+    /// 二维码 / 配图地址（`pic.url`），为空表示没有可展示的图（如客服条目）。
+    pub qr_url: String,
+    /// 点击打开的网页地址，为空表示只能扫码（如微信公众号）。
+    pub jump_url: String,
+    /// 官方是否要求带登录态打开该链接（仅透传，当前前端未使用）。
+    pub need_token: bool,
 }
 
 /// Banner API 响应
@@ -448,6 +473,49 @@ pub struct AnnouncementApiItem {
     pub start_ts: Option<String>,
     #[serde(default, alias = "jumpUrl", alias = "jump_url")]
     pub jump_url: Option<String>,
+}
+
+/// 侧边栏 API 响应
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SidebarRsp {
+    #[serde(default)]
+    pub sidebars: Vec<SidebarApiItem>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SidebarApiItem {
+    #[serde(default)]
+    pub media: String,
+    #[serde(default)]
+    pub display_type: String,
+    #[serde(default)]
+    pub pic: Option<SidebarPic>,
+    #[serde(default)]
+    pub sidebar_labels: Vec<SidebarLabel>,
+    #[serde(default)]
+    pub jump_url: String,
+    #[serde(default)]
+    pub need_token: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SidebarPic {
+    #[serde(default)]
+    pub url: String,
+    #[serde(default)]
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SidebarLabel {
+    #[serde(default)]
+    pub content: String,
+    #[serde(default)]
+    pub jump_url: String,
+    #[serde(default)]
+    pub pic_url: String,
+    #[serde(default)]
+    pub need_token: bool,
 }
 
 /// 背景图 API 响应

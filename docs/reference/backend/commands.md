@@ -87,7 +87,7 @@
 | `launcher_decrypt_file` | commands/launcher.rs:336 | `file_path: String` | `Result<String, String>` | `utils::hg_crypto::decrypt_file_to_string` |
 | `launcher_get_banners` | commands/launcher.rs:307 | `service`、`channel` | `Result<Vec<BannerItem>, String>` | `GameLauncherService::get_banners` |
 | `launcher_get_announcements` | commands/launcher.rs:318 | `service`、`channel` | `Result<Vec<AnnouncementItem>, String>` | `GameLauncherService::get_announcements` |
-| `launcher_get_notice_content` | commands/launcher.rs:329 | `service`、`channel` | `Result<LauncherNoticeContent, String>` | `GameLauncherService::get_notice_content`（Banner + 公告合并内容） |
+| `launcher_get_notice_content` | commands/launcher.rs:377 | `service`、`channel` | `Result<LauncherNoticeContent, String>` | `GameLauncherService::get_notice_content`（Banner + 公告 + 右侧栏 `sidebars` 合并内容） |
 | `launcher_get_background_image` | commands/launcher.rs:340 | `service`、`channel` | `Result<Option<BackgroundMedia>, String>` | `GameLauncherService::get_background_image` |
 | `launcher_start_game` | commands/launcher.rs:443 | `config_service: State<Arc<StdMutex<ConfigService>>>`、`install_path: String`、`channel: String`、`dx11: Option<bool>`（省略时读配置 `launcher_dx11`，默认 false） | `Result<LauncherResult, String>` | `parse_channel`、`process::terminate_processes`（原生快照清理同名残留）、`official_launcher::launch_via_official_parent`（已提权时本进程直接伪造官方父进程；否则提权 helper）/ 回退 `direct_launch` → `shell_execute_game`；DX11 开启时给游戏参数追加 `-force-d3d11`；Steam 启动且应用未提权时在 `warning` 返回 `overlay_unavailable` |
 | `launcher_browse_folder` | commands/launcher.rs:523 | 无 | `Result<Option<String>, String>` | `rfd::FileDialog::pick_folder` |
@@ -637,7 +637,7 @@
 - 位置：launcher.rs:318（async）；参数：`service`、`channel`；返回：`Result<Vec<AnnouncementItem>, String>`；逻辑：`GameLauncherService::get_announcements(&ch)`。
 
 ### `launcher_get_notice_content`
-- 位置：launcher.rs:329（async）；参数：`service`、`channel`；返回：`Result<LauncherNoticeContent, String>`；逻辑：`GameLauncherService::get_notice_content(&ch)`（Banner + 公告合并内容）。
+- 位置：launcher.rs:377（async）；参数：`service`、`channel`；返回：`Result<LauncherNoticeContent, String>`；逻辑：`GameLauncherService::get_notice_content(&ch)`（Banner + 公告 + 右侧栏 `sidebars` 合并内容，一次 `batch_proxy_web_raw` 带 `get_banner`/`get_announcement`/`get_sidebar` 三项）。
 
 ### `launcher_get_background_image`
 - 位置：launcher.rs:340（async）；参数：`service`、`channel`；返回：`Result<Option<BackgroundMedia>, String>`；逻辑：`GameLauncherService::get_background_image(&ch)`。

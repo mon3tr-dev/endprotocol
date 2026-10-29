@@ -838,7 +838,12 @@
     "stop_failed_title": "Failed to Stop the Game",
     "stop_err_cancelled": "Administrator authorization was cancelled. The game runs elevated, so stopping it requires the same rights; allow the UAC prompt and retry.",
     "stop_err_kill_failed": "Could not terminate the game process: {{detail}}. If the game is still running, an anti-cheat driver may protect it; restart Windows and try again.",
-    "stop_err_unknown": "Failed to stop the game: {{detail}}"
+    "stop_err_unknown": "Failed to stop the game: {{detail}}",
+    "sidebar": {
+      "title": "Official Channels",
+      "open_hint": "Click to open in browser",
+      "scan_only": "Scan only"
+    }
   },
   "todo_page": {
     "title": "To-Do",

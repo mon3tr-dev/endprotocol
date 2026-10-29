@@ -24,6 +24,7 @@ import {
 } from "@/stores/inAppBrowser";
 import { InAppBrowser } from "@/components/in-app-browser";
 import { GameActionPanel } from "@/components/game-action-panel";
+import { GameSidebarRail } from "@/components/game-sidebar-rail";
 import { useTranslation } from "react-i18next";
 import { MorphIcon } from "morphicons/react";
 import {
@@ -37,6 +38,7 @@ import {
   type GameChannel,
   type BannerItem,
   type AnnouncementItem,
+  type SidebarItem,
   getNoticeContent,
   getBackgroundImage,
 } from "@/utils/launcherService";
@@ -64,6 +66,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   });
   const [banners, setBanners] = useState<BannerItem[]>([]);
   const [announcements, setAnnouncements] = useState<AnnouncementItem[]>([]);
+  const [sidebars, setSidebars] = useState<SidebarItem[]>([]);
   const [bannerIndex, setBannerIndex] = useState(0);
   const [bannerHovered, setBannerHovered] = useState(false);
   const bannerPrevIndexRef = useRef(0);
@@ -134,15 +137,19 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
             content.banners.length,
             "banners,",
             content.announcements.length,
-            "announcements",
+            "announcements,",
+            content.sidebars?.length ?? 0,
+            "sidebars",
           );
           setBanners(content.banners);
           setAnnouncements(content.announcements);
+          setSidebars(content.sidebars ?? []);
         })
         .catch((e) => {
           console.error("[Dashboard] Failed to load notices:", e);
           setBanners([]);
           setAnnouncements([]);
+          setSidebars([]);
         }),
     ]);
 
@@ -260,6 +267,9 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
 
         {/* In-app browser overlay — 全屏覆盖（含标题栏），自带窗口控制 */}
         <InAppBrowser />
+
+        {/* 右侧官方社媒栏：收起为浮标，靠近右边缘展开，悬停出二维码 */}
+        <GameSidebarRail items={sidebars} />
 
         {/* Content layer */}
         <div className="relative z-10 flex-1 flex flex-col p-4 lg:p-8">

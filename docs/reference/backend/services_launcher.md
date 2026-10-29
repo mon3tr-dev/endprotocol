@@ -116,7 +116,8 @@
 | `async fn batch_proxy_web`（私有） | L2322-2395 | 批量代理请求并解析响应 |
 | `pub async fn get_banners` / `get_announcements` | L2397-2477 | 获取 Banner 与公告 |
 | `async fn batch_proxy_web_raw`（私有） | L2479-2505 | 批量代理并返回原始 `serde_json::Value` |
-| `pub async fn get_notice_content` / `get_background_image` / `classify_media_type` | L2507-2743 | 获取公告内容与背景媒体 |
+| `pub async fn get_notice_content` / `get_background_image` / `classify_media_type` | L2812-2970 / L3049-3108 / L3111-3123 | 公告 + Banner + 侧边栏三合一请求、背景媒体与媒体类型判定 |
+| `fn parse_sidebars`（私有关联 fn） | L2992-3046 | 把 `get_sidebar_rsp` 的分组结构（`pic` + `sidebar_labels[]`）合并成扁平 `Vec<SidebarItem>`；解析失败只记日志并返回空表，不影响公告主流程 |
 | `pub async fn switch_channel` | L2745-3073 | 输入 `from_channel`、`to_channel`、`install_path`、`app` → 计算清单差异、下载差异文件、备份并应用，支持取消回滚 → `Ok(to_remote.version)` / `Err` |
 
 > 方法总数 48：模块级 7、`MultipartZipReader` 3、`GameLauncherService` impl 内 38（其中公开方法 19）。上表列出服务 API 与预下载安装相关辅助方法。`download_file_with_resume` / `download_and_verify` 仍保留在代码中，但没有任何调用方（死代码）。
@@ -158,6 +159,10 @@
 安装步骤：取最新包与解压密钥 → 确认预下载版本和分卷可用 → 将已取到的包信息传给 `preload_download`（不重复请求 API，透传 `max_concurrent` 与 `resume`；已有完整分卷会复用，否则立即下载）→ 直接解密解压到暂存目录 → 应用暂存文件 → 拉取安装后清单并保存 payload 状态 → 清理暂存目录 → 前端执行快速校验。安装失败时保留分卷暂存以便重试。
 目录定位/清理见 L2200-2225；版本标记文件与建目录见 L2176-2198。
 
+### 公告与侧边栏（L2812-3046）
+- `get_notice_content` 一次 `batch_proxy_web_raw` 请求带上三项 `proxy_reqs`：`get_banner`、`get_announcement`、`get_sidebar`（B 服复用官服参数），分别解析为 `banners` / `announcements` / `sidebars`。
+- `parse_sidebars` 负责抹平官方数据的两种形态：社媒条目把二维码放在 `pic.url`、地址放在 `jump_url`；`CS` 这类条目 `pic` 为 null，文案与地址只在 `sidebar_labels[0]`。合并规则是「条目自身优先、缺失回退第一条 label」，输出扁平 `SidebarItem`。`SklandTool`（`DisplayType_GRID`，6 条森空岛工具链接）原样透传，由前端决定不展示。
+
 ### 渠道检测与切换
 `switch_channel` 依次比较两渠道清单、下载差异文件、备份并移除旧渠道文件、应用新渠道文件、清理暂存；切换期间检查取消标志并尝试回滚。
 
@@ -166,7 +171,7 @@
 
 ### 远程接口
 - `POST https://launcher.hypergryph.com/api/proxy/batch_proxy` / Gryphline 对应端点：请求 `get_latest_game`，读取 `pkg.file_path`、`pre_patch` 和可选 `pkg.cd_key`。
-- `POST https://launcher.hypergryph.com/api/proxy/web/batch_proxy` / Gryphline 对应端点：获取 Banner、公告与背景信息。
+- `POST https://launcher.hypergryph.com/api/proxy/web/batch_proxy` / Gryphline 对应端点：获取 Banner、公告、右侧栏（`get_sidebar`）与背景信息。
 - `GET {resource_base_url}/game_files`：获取加密清单；`GET {resource_base_url}/{manifest.path}`：下载安装/修复文件。
 - `GET {patch.url}`：下载预下载补丁分卷。预下载包只有在 `pkg.cd_key` 非空时才可安装；密钥只在后端使用，不序列化给前端。
 - 要取到 `pre_patch`，`get_latest_game` 请求必须携带本地版本；没有本地分卷时，安装流程会下载同一组 `pre_patch.patches[]`，之后仍按相同的分卷校验、解密和安装步骤处理。

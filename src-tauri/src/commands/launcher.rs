@@ -372,7 +372,7 @@ pub async fn launcher_get_announcements(
     svc.get_announcements(&ch).await
 }
 
-/// 获取启动器公告内容（Banner + 公告合并）
+/// 获取启动器公告内容（Banner + 公告 + 右侧栏合并）
 #[tauri::command]
 pub async fn launcher_get_notice_content(
     service: tauri::State<'_, Arc<Mutex<GameLauncherService>>>,

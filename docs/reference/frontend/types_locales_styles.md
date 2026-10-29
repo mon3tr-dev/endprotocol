@@ -122,12 +122,14 @@
 | `resolveServerLabel()` (function) | index.ts:43 | 按 lang（zh 之外一律 en）解析服务器标签，未知值回退为原始 server 字符串 |
 
 ## `src/locales/zh/translation.json`
-**职责**：中文 i18n 资源，共 830 行、760 个叶子 key、17 个顶层命名空间。
+**职责**：中文 i18n 资源，共 867 行、789 个叶子 key、20 个顶层命名空间。
 **顶层命名空间清单**（这是重点，要完整列出）：
 
 | 命名空间/key 前缀 | 用途 | 大致行号 |
 | --- | --- | --- |
-| `nav.*` | 顶部导航（dashboard/analytics/projects/team/calendar） | :2 |
+| `startup.*` | Splash 启动文案（4 个 key） | :2 |
+| `crash.*` | 崩溃提示与诊断导出文案（51 个 key） | :8 |
+| `nav.*` | 顶部导航（dashboard/analytics/projects/team/calendar） | :61 |
 | `menu.*` | 菜单（profile/settings/help） | :9 |
 | `sidebar.*` | 侧边栏全部入口文案（含 characters/medals/attendance/gacha/todo/launcher/developer） | :14 |
 | `common.*` | 通用文案：分页（common.pagination.* :32）、搜索、保存/取消/确认、刷新、删除/编辑、占位符统计卡片文案（totalRevenue 等模板遗留） | :31 |
@@ -153,15 +155,16 @@
 | `tab.*` | 标签页 CRUD、搜索、删除确认 | :388 |
 | `character_detail.*` | 角色详情页 Tab（skills/talents/info）与空态文案 | :413 |
 | `messages.*` | 消息中心：相对时间（分钟/小时/天前）、展开收起、下载状态 | :427 |
+| `browser.*` | 内嵌浏览器工具栏：前进/后退/刷新/打开外部/关闭等（9 个 key） | :681 |
 | `tray.*` | 托盘悬浮面板：品牌标题、理智/每日活跃/每周事务/通行证标签、等级、已满/回满/下次回复、未选用户提示、显示主窗口/退出（13 个 key） | :660 |
-| `launcher.*` | 启动器：安装/更新/校验修复/渠道切换/预下载/预下载中/预下载确认/启动设置/磁盘与文件扫描等完整流程（本文件最大分组，128 个 key） | :512 |
+| `launcher.*` | 启动器：安装/更新/校验修复/渠道切换/预下载/预下载中/预下载确认/启动设置/磁盘与文件扫描等完整流程；子分组 `launcher.sidebar.*`（游戏界面右侧官方社媒栏：标题/打开网页提示/仅支持扫码，:842）（本文件最大分组，137 个 key） | :707 |
 | `todo_page.*` | To-Do 页面：标题/描述、导入导出、新建/搜索列表、分组、空态等 | :644 |
 
-- **与 en/translation.json 的 key 差异**：无。经脚本对比，zh 与 en 叶子 key 均为 760 个，键集合完全一致（既无 zh 缺键也无 en 缺键），且两文件结构逐行对齐（行号一一对应）。
+- **与 en/translation.json 的 key 差异**：无。经脚本对比，zh 与 en 叶子 key 均为 789 个，键集合完全一致（既无 zh 缺键也无 en 缺键），且两文件结构逐行对齐（行号一一对应）。
 - **异常（两边共有）**：`settings.update` 内存在重复键 —— `latest_version` 同时出现于 :177 与 :187、`release_date` 同时出现于 :179 与 :188。JSON 解析时后者覆盖前者（zh 实际生效值为 :187 的“远端最新版本”、:188 的“发布日期”；en 同理）。建议后续合并为 `latest_version_remote` 之类的独立键。
 
 ## `src/locales/en/translation.json`
-**职责**：英文 i18n 资源，与 zh 文件同为 830 行、760 个叶子 key、17 个顶层命名空间，行号与 zh 完全对应（见上表）。
+**职责**：英文 i18n 资源，与 zh 文件同为 867 行、789 个叶子 key、20 个顶层命名空间，行号与 zh 完全对应（见上表）。
 - 主要差异仅在文案语言，个别本地化选择值得注意：`settings.characters.cultivation_talents` zh 为“基建技能”而 en 为 “O.M.V. Dijiang Skills”（帝江号相关译名）；`settings.logs.level_*` en 使用大写日志级别（DEBUG/INFO/WARN/ERROR），`source_frontend/source_backend` 缩写为 FE/BE。
 - 同样存在 `settings.update` 的 `latest_version` / `release_date` 重复键（:177/:187、:179/:188），与 zh 完全一致。
 

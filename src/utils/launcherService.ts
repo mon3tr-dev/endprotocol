@@ -130,6 +130,27 @@ export interface AnnouncementItem {
 export interface LauncherNoticeContent {
   banners: BannerItem[];
   announcements: AnnouncementItem[];
+  /** 官方启动器右侧栏数据（社媒二维码 + 工具入口） */
+  sidebars: SidebarItem[];
+}
+
+/**
+ * 侧边栏条目（后端 `get_sidebar_rsp` 已合并成扁平结构）。
+ *
+ * `media` 是渠道标识（`Skland`/`Bilibili`/`Weibo`/`Taptap`/`Douyin`/
+ * `Xiaohongshu`/`Wechat`/`CS`/`SklandTool`），前端据此匹配本地图标；
+ * `display_type` 为 `DisplayType_LIST`（单链接）或 `DisplayType_GRID`（一组工具链接）。
+ */
+export interface SidebarItem {
+  media: string;
+  display_type: string;
+  /** 悬停提示 / 二维码说明文案 */
+  title: string;
+  /** 二维码图片地址，空串表示无图 */
+  qr_url: string;
+  /** 点击打开的网页地址，空串表示只能扫码 */
+  jump_url: string;
+  need_token: boolean;
 }
 
 export interface FileScanResult {

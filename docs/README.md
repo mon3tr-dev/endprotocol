@@ -36,6 +36,7 @@
 | 抽卡记录同步与统计 | `src/pages/gacha-records.tsx`、`services/gacha_service.rs` | [pages_game_data.md](reference/frontend/pages_game_data.md)、[services_others.md](reference/backend/services_others.md) |
 | 抽卡图表与逐池六星间隔统计 | `src/components/gacha-pity-chart.tsx`、`gacha-stat-charts.tsx`、`src/utils/gachaIntervals.ts` | [components_sidebar_charts.md](reference/frontend/components_sidebar_charts.md)、[utils_services_b.md](reference/frontend/utils_services_b.md) |
 | 启动器：下载/校验/切服/进程管理 | `src/components/game-action-panel.tsx`、`src/utils/launcherService.ts` | [components_game_action_panel.md](reference/frontend/components_game_action_panel.md)、[utils_services_a.md](reference/frontend/utils_services_a.md)、[services_launcher.md](reference/backend/services_launcher.md) |
+| 游戏界面右侧官方社媒栏（浮标 + 靠近展开 + 二维码 flyout，数据来自 `get_sidebar`） | `src/components/game-sidebar-rail.tsx`、`src/layouts/dashboard.tsx`、后端 `GameLauncherService::get_notice_content` / `parse_sidebars` | [components_dialogs.md](reference/frontend/components_dialogs.md)、[pages_core.md](reference/frontend/pages_core.md)、[services_launcher.md](reference/backend/services_launcher.md)、[models.md](reference/backend/models.md) |
 | 启动游戏 / 免启动器启动 / 为什么要 UAC / Steam Overlay 注入链 | `src-tauri/src/commands/launcher.rs`（`launcher_start_game`）、`src-tauri/src/utils/official_launcher.rs` | [commands.md](reference/backend/commands.md)、[utils.md](reference/backend/utils.md) |
 | 静默启动、单实例转发、游戏快捷方式与命令行、Steam 第三方游戏注入（名字/图标/DX11/Overlay 管理员快捷方式）、DX11 启动（`--dx11` / `-force-d3d11`） | `src-tauri/src/lib.rs`、`src-tauri/src/commands/startup.rs`、`src-tauri/src/utils/steam.rs`、`src-tauri/src/utils/game_icon.rs`、`src/components/game-launch-settings.tsx` | [bootstrap.md](reference/backend/bootstrap.md)、[commands.md](reference/backend/commands.md)、[utils.md](reference/backend/utils.md)、[components_settings_panels.md](reference/frontend/components_settings_panels.md) |
 | 应用自更新 | `src/utils/updateService.ts`、`commands/updater.rs` | [utils_services_b.md](reference/frontend/utils_services_b.md)、[commands.md](reference/backend/commands.md) |
@@ -111,7 +112,7 @@
 | [reference/frontend/pages_char_select.md](reference/frontend/pages_char_select.md) | `pages/char-select.tsx`（约 2560 行，**未被路由引用的死代码副本**） |
 | [reference/frontend/pages_settings_developer.md](reference/frontend/pages_settings_developer.md) | `pages/settings.tsx`（设置项清单）、`pages/developer.tsx` |
 | [reference/frontend/pages_game_data.md](reference/frontend/pages_game_data.md) | `pages/characters.tsx`、`gacha-records.tsx` |
-| [reference/frontend/components_dialogs.md](reference/frontend/components_dialogs.md) | 14 个弹窗与交互组件（标题栏、模态框、标签页、取色器、分页…） |
+| [reference/frontend/components_dialogs.md](reference/frontend/components_dialogs.md) | 15 个弹窗与交互组件（标题栏、模态框、标签页、取色器、分页、游戏右侧社媒栏…） |
 | [reference/frontend/components_settings_panels.md](reference/frontend/components_settings_panels.md) | `appearance-settings`（能力清单）、语言/主题切换、启动器设置、内嵌浏览器、托盘面板、更新弹窗 |
 | [reference/frontend/components_game_action_panel.md](reference/frontend/components_game_action_panel.md) | `game-action-panel.tsx`（约 2400 行） |
 | [reference/frontend/components_sidebar_charts.md](reference/frontend/components_sidebar_charts.md) | `dashboard-sidebar.tsx`（约 1700 行）、两个抽卡图表组件 |
@@ -133,7 +134,7 @@
 | --- | --- |
 | `responses/` | 抓取的森空岛/Wiki API 响应样本（`wiki_*.json`、`gacha/`、`weapon/` 等，共 28 个文件），用于联调与解析器调试 |
 | `wiki_data/` | Wiki 数据的临时/派生数据目录（当前为空） |
-| `public/` | Vite 静态资源（图标、`app-icon.png`） |
+| `public/` | Vite 静态资源（图标、`app-icon.png`、`assets/icons/`（职业/属性/潜力/专精等游戏图标，以及 `assets/icons/sidebar/` 的 9 个反色白色社媒图标，统一 32×32 画布）） |
 | `prom-assets/` | 宣传物料图片（`promotional-cover.html`、`promotional-demo.html` 使用） |
 | `tray-panel.html` | 托盘面板的独立 HTML 入口（对应 `src/tray-panel.tsx`） |
 | `index.html` | 主窗口 HTML 入口 |
