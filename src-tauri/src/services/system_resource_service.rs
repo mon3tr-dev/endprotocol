@@ -425,13 +425,22 @@ impl Default for SystemResourceService {
 
 /// 通过 nvidia-smi 采集 NVIDIA GPU 指标。非 NVIDIA / 未安装驱动时返回 Err。
 fn probe_nvidia_smi() -> Result<Vec<GpuInfo>, String> {
-    let output = Command::new("nvidia-smi")
-        .args([
-            "--query-gpu=index,name,utilization.gpu,memory.total,memory.used,temperature.gpu,power.draw,fan.speed",
-            "--format=csv,noheader,nounits",
-        ])
-        .output()
-        .map_err(|e| e.to_string())?;
+    let mut command = Command::new("nvidia-smi");
+    command.args([
+        "--query-gpu=index,name,utilization.gpu,memory.total,memory.used,temperature.gpu,power.draw,fan.speed",
+        "--format=csv,noheader,nounits",
+    ]);
+    // `nvidia-smi.exe` 是**控制台子系统**程序（PE Subsystem = 3）。本进程是 GUI 子系统
+    // （`windows_subsystem = "windows"`，没有控制台），Windows 派生控制台程序时会为它新建
+    // 一个控制台窗口 —— 屏幕上的黑框就是它。GPU 采样每 `GPU_REFRESH_INTERVAL` 一次，
+    // 前端卡片按 `refreshMs`（默认 1000ms）轮询快照，所以这个黑框会以秒级频率反复闪现。
+    // 加上 `CREATE_NO_WINDOW` 后子进程仍带自己的控制台（`ConsoleHandle` 有效），只是不再显示。
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(windows_sys::Win32::System::Threading::CREATE_NO_WINDOW);
+    }
+    let output = command.output().map_err(|e| e.to_string())?;
 
     if !output.status.success() {
         return Err("nvidia-smi failed".to_string());

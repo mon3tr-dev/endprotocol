@@ -321,10 +321,11 @@
 | `collect_disks` | 私有 | 每分区容量、使用率、读写速率与累计读写（`DiskUsage` 的 `read_bytes`/`written_bytes` ÷ elapsed） |
 | `collect_networks` | 私有 | 每网卡上下行速率（`received()`/`transmitted()` ÷ elapsed）与累计流量，按活跃度排序 |
 | `collect_gpus` | 私有 | 每 2s 调用一次 `probe_nvidia_smi` 并缓存；无 NVIDIA 驱动/GPU 时返回空并记录 `gpu_unavailable` |
-| `probe_nvidia_smi` | 私有 | `nvidia-smi --query-gpu=index,name,utilization.gpu,memory.total,memory.used,temperature.gpu,power.draw,fan.speed --format=csv,noheader,nounits`，`[N/A]` 解析为 `None` |
+| `probe_nvidia_smi` | 私有 | `nvidia-smi --query-gpu=index,name,utilization.gpu,memory.total,memory.used,temperature.gpu,power.draw,fan.speed --format=csv,noheader,nounits`，`[N/A]` 解析为 `None`；Windows 下以 `CREATE_NO_WINDOW` 派生（见下） |
 
 **备注**：
 - 首次快照的 CPU 使用率可能为 0（sysinfo 需要两次间隔 ≥ `MINIMUM_CPU_UPDATE_INTERVAL` 的刷新），前端轮询 ≥500ms，第二次起数值正常。
+- **子进程必须带 `CREATE_NO_WINDOW`**：`nvidia-smi.exe` 是控制台子系统程序（PE Subsystem = 3），而本进程是 GUI 子系统（`main.rs` 的 `windows_subsystem = "windows"`，没有控制台）。缺了 `CREATE_NO_WINDOW`，Windows 会为子进程**新建一个可见的控制台窗口** —— 就是安装版运行时反复闪现的黑框（采样每 2s 一次、前端默认每秒轮询，因此频率是秒级）。加标志后子进程照样得到自己的控制台（`ConsoleHandle` 有效），只是不显示。新增任何 `Command::new` 派生控制台程序时都要带这个标志，或者用 `#![windows_subsystem]` 之外的方案显式创建隐藏控制台。
 - **CPU 频率**：Windows 上 `sysinfo`/`PROCESSOR_POWER_INFORMATION` 返回的是标称频率（如 3201 MHz），无法反映睿频；本服务改用 PDH `% Processor Performance`（睿频时 >100）× 标称频率得到实测值（实测对应机器 130.5% × 3201 ≈ 4176 MHz）。PDH 句柄非 `Send`，因此整个查询生命周期都放在专属后台线程内，`snapshot()` 只读取缓存值，不阻塞。
 - 速率为「上次刷新以来的字节数 / 间隔秒数」，因此刷新频率会直接影响速率精度；前端默认 1s。
 - 被命令调用：`commands/system_resource.rs::get_system_snapshot`（`State<Arc<std::sync::Mutex<SystemResourceService>>>`，`spawn_blocking` 内执行）。
