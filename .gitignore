@@ -10,6 +10,8 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+# Linux bundle output (AppImage etc.)
+dist-linux/
 *.local
 
 # Editor directories and files
