@@ -62,6 +62,7 @@
 - 路由表（path → 页面）：`/`→dashboard、`/settings`→settings、`/account`→account、`/characters`→characters、`/medals`→medals、`/attendance`→attendance、`/gacha`→gacha-records、`/todo`→todo、`/domain`→domain、`/spaceship`→spaceship、`/developer`→developer；无 404/通配路由。
 - 配置键 `last_route` 由 `RouteRestore` 读写；`ROUTES` 与上述路径必须同步维护。
 - 分包策略：页面为路由级懒加载（`React.lazy`），页面 `Suspense` 边界位于 `layouts/dashboard.tsx` 的 `<main>` 内，因此切换页面时侧边栏/标题栏保持挂载；第三方库由 `vite.config.ts` 的 `rollupOptions.output.manualChunks` 拆分为 `vendor-react`/`vendor-echarts`/`vendor-zrender`/`vendor-i18n`/`vendor-ui`/`vendor-dnd`/`vendor-tauri` 等 chunk。
+- 分包约束：这些 chunk 之间不得存在回边，包归属用「包根锚定」判定（不能用 `id.includes("react-dom")`，它会命中 `@radix-ui/react-dom`）。出现 `Circular chunk:` 时 Rollup 会重排模块顶层声明，导致 React 工厂变量在其模块求值前被写入、前端在 `main.tsx` 之前抛错，Splash 永远停在「正在启动…」——该症状只在 Linux 发行版复现。
 
 ## `src/App.css`
 **职责**：Vite/Tauri 模板遗留的全局样式（logo hover 光晕、根字体、按钮/输入框基础样式、暗色偏好媒体查询）。当前 `App.tsx` 与 `main.tsx` 均未导入它，实际样式来自 `@/styles/globals.css`。
