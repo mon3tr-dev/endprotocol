@@ -182,7 +182,9 @@
 | 159-190 行 | `.glass-field` 原生玻璃输入控件（底色 + 模糊位于 `::before` 独立层；`input/textarea/select` 因不支持伪元素改为直接铺底色、去掉模糊） |
 | 162-163 行 | `color-scheme` 过渡、移动端点击高亮重置 |
 | 166-171 行 | Tauri 窗口背景变量组 + `body` 背景色（浅/深两套） |
-| 172-186 行 | `.dashboard-background` 固定背景层（背景图 + 三层渐变叠加 + blur） |
+| 234-236 行 | `html[data-window-effects="fallback"] body` —— 无原生窗口磨砂的平台（Linux / WebKitGTK、开发态浏览器）改用不透明的 `--background`，让 `.dashboard-background` 的主题渐变像 Windows 一样渲染出来；属性由 `@/utils/platform` 的 `applyWindowEffectsSupport()` 在首屏前写入 |
+| 238-261 行（规则在 258-261） | `html[data-window-radius="self"]` —— 无边框窗口的圆角兜底：仅 Linux（WebKitGTK）生效（Windows 交 DWM、macOS 交系统），用 `clip-path: inset(0 round 12px)` 挂在根元素上，而不是 `overflow:hidden`，因为后者裁不住 `fixed` 后代 |
+| 262-297 行 | `.dashboard-background` 固定背景层（背景图 + 三层渐变叠加 + blur） |
 | 187-206 行 | 对比度自适应文本（`.adaptive-contrast-text`、弱化文字色强制改用 `--foreground`、全局 `text-shadow`） |
 | 206-224 行 | `.titlebar-mode-toggle` 标题栏模式切换胶囊动画（`.is-game` 右移） |
 | 226-227 行 | `::selection` 选区配色 |
@@ -202,6 +204,7 @@
 - 表面：`--background`、`--foreground`、`--surface`、`--overlay`、`--field`、`--content1/2/3`、`--muted`、`--separator`、`--border`、`--ring`、`--radius`
 - HeroUI 桥接：`--heroui-primary`、`--heroui-primary-300`、`--heroui-foreground`、`--heroui-danger`、`--heroui-success`、`--heroui-warning`、`--heroui-default-400`（59-65 行，均指向上述变量）
 - **玻璃参数（166 行）**：`--bg-opacity`(0.33)、`--bg-image`、`--bg-image-opacity`(0.5)、`--bg-blur`(16px)、`--glass-blur`(28px)、`--glass-surface-opacity`(78%)、`--glass-strong-opacity`(85%)、`--glass-field-opacity`(80%)。这些值由设置页的“背景透明度/磨砂/毛玻璃清晰度”滑杆在运行时改写。
+- **`--bg-opacity` 的适用范围**：`body` 的 `rgba(255,255,255,.33)` / `rgba(10,12,16,.33)` 只在有原生窗口磨砂的平台（Windows Acrylic、macOS Vibrancy）成立——系统层在窗口背后提供模糊背衬，半透明主体才观感正常。Linux（WebKitGTK）拿不到任何系统级效果，同一份半透明底色会让整窗透出桌面、主题渐变只渲染一半，观感等同「纯透明」；因此 `html[data-window-effects="fallback"]` 下 `body` 改为不透明 `--background`。
 
 **主题切换 / 深色模式实现**：
 1. 深色由 `@custom-variant dark`（:3）定义，JS 在 `<html>` 上挂 `.dark` 类（而非 `prefers-media-query`）驱动；`.dark` 块（67-95 行）覆盖颜色变量，`color-scheme` 由 light 翻转为 dark。

@@ -217,6 +217,48 @@ body {
 body::before {
   display: none;
 }
+
+/* ------------------------------------------------------------------
+ * 无原生窗口磨砂的平台（Linux / WebKitGTK、开发态浏览器）
+ *
+ * 主窗口以 `transparent(true)` 创建，Windows/macOS 由系统级 Acrylic /
+ * Vibrancy 提供磨砂背衬；而 `tauri::vibrancy::set_window_effects` 只对
+ * Windows 与 macOS 分发，Linux 分支直接返回成功、什么也不做。于是这里的
+ * 半透明 `body`（--bg-opacity 0.33）没有背衬，桌面会整片透出来，
+ * `.dashboard-background` 的主题渐变只剩半个图层，观感就是「纯透明」。
+ *
+ * 因此对没有原生磨砂的窗口铺一层不透明底色，让主题渐变像 Windows 一样
+ * 真正渲染出来。属性由 `@/utils/platform` 的 `applyWindowEffectsSupport()`
+ * 在首屏渲染前写入 `<html>`。
+ * ------------------------------------------------------------------ */
+html[data-window-effects="fallback"] body {
+  background: var(--background);
+}
+
+/* ------------------------------------------------------------------
+ * 窗口圆角（无边框窗口）
+ *
+ * 主窗口 `decorations(false)`，四角原本是直角：
+ *   - Windows 11 由 DWM 自动给窗口加圆角；
+ *   - macOS 由系统给无边框窗口圆角；
+ *   - Linux（WebKitGTK）两者都没有，只能前端自己裁。
+ *
+ * **不能用 `overflow:hidden` + `border-radius`**：实测它裁不住
+ * `position: fixed` 后代，`fixed inset-0` 的层照样是直角并铺满视口，
+ * 而本界面到处是 `fixed inset-0`（背景层、模态遮罩、抽屉）。
+ *
+ * **必须把 `clip-path` 挂在 `<html>` 上**：挂在中间的包裹元素会同时成为
+ * `fixed` 后代的包含块，导致整层偏移（实测确认）；挂在根元素上则既不改变
+ * fixed 的视口定位，又能把包括 fixed 在内的一切裁出圆角。
+ * 同时 `clip-path` 与 `backdrop-filter` 可以共存，玻璃模糊不受影响（实测确认）。
+ *
+ * Tauri 的 NSIS / AppImage 安装包都不做窗口 shadow，圆角外侧露出的就是桌面，
+ * 因此这里不需要额外补阴影。
+ * ------------------------------------------------------------------ */
+html[data-window-radius="self"] {
+  --window-radius: 12px;
+  clip-path: inset(0 round var(--window-radius));
+}
 .dashboard-background {
   position: fixed;
   inset: -64px;

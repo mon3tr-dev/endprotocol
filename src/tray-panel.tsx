@@ -6,6 +6,7 @@ import { getConfig } from "./utils/configService";
 import { listen } from "@tauri-apps/api/event";
 import { setInitialLanguage } from "./i18n";
 import logger from "./utils/logger";
+import { applyWindowEffectsSupport } from "./utils/platform";
 import {
   DEFAULT_GLASS_CLARITY,
   applyGlassClarity,
@@ -69,6 +70,8 @@ async function initTheme() {
 
 void initLanguage();
 void initTheme();
+// 托盘浮层是独立 webview，同样需要知道有没有原生磨砂 / 是否自己裁圆角。
+applyWindowEffectsSupport();
 
 ReactDOM.createRoot(document.getElementById("tray-panel-root")!).render(
   <React.StrictMode>

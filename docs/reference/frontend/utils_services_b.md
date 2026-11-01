@@ -386,15 +386,20 @@
 **备注**：无 IPC、无事件；纯字符串处理，供 `pages/todo.tsx` 的导入导出按钮调用。
 
 ## `src/utils/platform.ts`
-**职责**：同步判断当前 WebView/浏览器运行平台，供平台能力受限的 UI 做一致性门控。
-**导出**：`isWindowsPlatform(): boolean`。
-**主要依赖**：浏览器 `navigator.platform` 与 `navigator.userAgent`。
+**职责**：同步判断当前 WebView/浏览器运行平台，供平台能力受限的 UI 做一致性门控；并把「窗口是否有原生磨砂」「窗口圆角由谁负责」写进根元素供样式层分流。
+**导出**：`isWindowsPlatform(): boolean`、`isMacPlatform(): boolean`、`supportsNativeWindowEffects(): boolean`、`needsSelfDrawnWindowRadius(): boolean`、`applyWindowEffectsSupport(): void`。
+**主要依赖**：浏览器 `navigator.platform` / `navigator.userAgent`、`document.documentElement`。
 
-| 符号 | 说明 |
-| --- | --- |
-| `isWindowsPlatform` | 通过 `navigator.platform`（`Win*`）或 UA（`Windows`）判断 Windows；navigator 不存在时返回 `false` |
+| 符号 | 位置 | 说明 |
+| --- | --- | --- |
+| `isWindowsPlatform` | platform.ts:1 | 通过 `navigator.platform`（`Win*`）或 UA（`Windows`）判断 Windows；navigator 不存在时返回 `false` |
+| `isMacPlatform` | platform.ts:8 | 通过 `navigator.platform`（`Mac*`）或 UA（`Mac OS X` / `Macintosh`）判断 macOS |
+| `isTauriWindow`（私有） | platform.ts:21 | 读 `window.__TAURI_INTERNALS__`（Tauri v2 在每个 webview 注入）判断是否真在 Tauri 窗口内，不引入 `@tauri-apps/api`，保持本模块零依赖 |
+| `supportsNativeWindowEffects` | platform.ts:38 | Tauri 窗口内且为 Windows 或 macOS 才算有原生窗口磨砂。依据是 Tauri 的 `vibrancy::set_window_effects` 只按 `#[cfg(windows)]` / `#[cfg(target_os = "macos")]` 分发，Linux（WebKitGTK）分支什么都不做；直接用浏览器打开 dev server 时同样按无磨砂处理 |
+| `needsSelfDrawnWindowRadius` | platform.ts:53 | Tauri 窗口内、且非 Windows 也非 macOS（即 Linux）时为 `true`：这类无边框窗口没有系统圆角，需前端自己裁 |
+| `applyWindowEffectsSupport` | platform.ts:68 | 写 `<html data-window-effects="native\|fallback">` 与 `<html data-window-radius="native\|self">`；必须在首屏渲染前调用（`main.tsx` 在 `setStartupPhase(12)` 之后、读配置之前调用，`tray-panel.tsx` 在挂载 React 前调用），否则会先闪一帧透明背景/直角窗口 |
 
-**备注**：当前用于限定 Windows 原生屏幕取色器和游戏启动器；不依赖 IPC、配置或第三方库。
+**备注**：`isWindowsPlatform` 用于限定 Windows 原生屏幕取色器和游戏启动器；`applyWindowEffectsSupport` 供 `globals.css` 分流两条样式——`data-window-effects="fallback"` 时给 `body` 铺不透明的 `--background`，让 `.dashboard-background` 的主题渐变在没有系统 Acrylic 的平台上真正渲染出来；`data-window-radius="self"` 时用 `clip-path: inset(0 round 12px)` 把整个窗口裁圆（Windows 交 DWM、macOS 交系统，只有 Linux 需要）。不依赖 IPC、配置或第三方库。
 
 ## `src/utils/browserViewService.ts`
 **职责**：in-app browser 原生子 Webview 的后端导航服务封装。JS 侧 `@tauri-apps/api/webview` 的 `Webview` 类只有生命周期与布局方法（无 back/forward/reload/navigate/url），这些能力由 `src-tauri/src/commands/browser.rs` 以 app command 暴露，本文件统一加类型并把失败显式转成返回值，不抛给 UI 层。

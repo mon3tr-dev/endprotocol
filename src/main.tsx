@@ -26,6 +26,7 @@ import {
 } from "@/utils/startupProgress";
 import { installCrashHandlers } from "@/utils/crashReporting";
 import { loadAccountAvailability } from "@/utils/accountAvailability";
+import { applyWindowEffectsSupport } from "@/utils/platform";
 import {
   DEFAULT_GLASS_CLARITY,
   applyGlassClarity,
@@ -53,6 +54,8 @@ if (bootErrorPanel) {
 
 // Initialize language and theme from config service before rendering
 setStartupPhase(12, i18n.t("startup.loadingSettings"));
+// 决定窗口是否需要前端自绘底色（Linux 无系统级磨砂），必须在首屏前生效。
+applyWindowEffectsSupport();
 // Cover the case where an IPC invoke never resolves and React is never mounted.
 armStartupTimeout();
 void syncSilentLaunchConfig().catch((error: unknown) => {

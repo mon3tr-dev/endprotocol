@@ -5,13 +5,14 @@
 ## `src/main.tsx`
 **职责**：主窗口（index.html）的唯一入口。在渲染前从配置服务读取语言与主题并应用（避免闪白/闪黑），随后挂载 React 应用，并在渲染后串行触发卡片注册、启动任务、更新检查、托盘数据拉取等副作用；原生 HTML Splash 覆盖 React 启动与首屏初始数据加载。
 **导出**：（无导出）
-**主要依赖**：`react` / `react-dom/client` / `react-router-dom`（BrowserRouter）、`./App.tsx`、`./provider.tsx`、`./i18n`、`@/styles/globals.css`、`@/utils/configService`、`@/utils/theme`（`DEFAULT_GLASS_CLARITY`、`applyGlassClarity`、`applyThemeColor`、`applyThemeMode`、`resolveThemeColor` 及类型 `ThemeColor`/`ThemeMode`）、`@/cards/startup-service`、`@/components/cards/registry/loader`、`@/utils/overlayScrollbar`、`@/utils/updateService`、`@/utils/logger`、`@/utils/logSettings`（`initLogSettings`）、`@/utils/trayService`（`refreshTrayUserData`）、`@/utils/backgroundSettings`、`@/utils/launcherService`、`@/utils/startupProgress`、`@/utils/accountAvailability`（`loadAccountAvailability`）。
+**主要依赖**：`react` / `react-dom/client` / `react-router-dom`（BrowserRouter）、`./App.tsx`、`./provider.tsx`、`./i18n`、`@/styles/globals.css`、`@/utils/configService`、`@/utils/theme`（`DEFAULT_GLASS_CLARITY`、`applyGlassClarity`、`applyThemeColor`、`applyThemeMode`、`resolveThemeColor` 及类型 `ThemeColor`/`ThemeMode`）、`@/cards/startup-service`、`@/components/cards/registry/loader`、`@/utils/overlayScrollbar`、`@/utils/updateService`、`@/utils/logger`、`@/utils/logSettings`（`initLogSettings`）、`@/utils/trayService`（`refreshTrayUserData`）、`@/utils/backgroundSettings`、`@/utils/launcherService`、`@/utils/startupProgress`、`@/utils/accountAvailability`（`loadAccountAvailability`）、`@/utils/platform`（`applyWindowEffectsSupport`）。
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
 | `installCrashHandlers()` | main.tsx:39 | 在最前面安装全局 `error` / `unhandledrejection` / 后端崩溃 / API 熔断监听（`@/utils/crashReporting`） |
 | `clearTimeout(window.__endprotocolBootTimer)` | main.tsx:42-43 | 取消 `index.html` 中「前端脚本未启动」的静态兜底计时器，并隐藏静态错误面板；随后把 `window.__endprotocolBootTimer` 置为 `undefined`，让 `index.html` 的早期错误监听停手（此后由 `installCrashHandlers` 的崩溃弹窗接管） |
 | `setStartupPhase(12, …)` / `setStartupPhase(30, …)` | main.tsx:51 / 68 | 更新静态 Splash 的初始化阶段文案 |
+| `applyWindowEffectsSupport()` | main.tsx:58 | 在 `setStartupPhase(12)` 之后、读配置之前把 `<html data-window-effects="native\|fallback">` 与 `<html data-window-radius="native\|self">` 写定：Windows/macOS 走系统 Acrylic/Vibrancy 与系统圆角，Linux（WebKitGTK）拿不到系统效果，`globals.css` 据此给 `body` 铺不透明底色、并把窗口用 `clip-path` 裁圆（见 [types_locales_styles.md](types_locales_styles.md)） |
 | `armStartupTimeout()` | main.tsx:53 | 配置初始化前启动 45 秒启动看门狗，覆盖 IPC/配置读取永久挂起、React 未挂载的卡死场景 |
 | `syncSilentLaunchConfig` | main.tsx:54 | 完整前端启动时将既有 localStorage 的游戏目录/渠道迁移到 `ConfigService` |
 | 配置读取 + 主题应用 | main.tsx:57-75 | 并行读 `app.language`/`theme_mode`/`theme_color`/`theme_custom_colors`/`glass_clarity` 与 `loadBackgroundSettings()`/`loadAccountAvailability()`/`initLogSettings()`；`resolveThemeColor` 解析色板后依次 `applyThemeColor`、`applyThemeMode`、`applyGlassClarity`（渲染前应用，避免闪白） |
@@ -110,15 +111,15 @@
 ## `src/tray-panel.tsx`
 **职责**：托盘面板窗口（`tray-panel.html`）的第二入口：初始化语言与完整主题（模式 / 主题色 / 玻璃清晰度），订阅主题变更事件实时跟随，然后把 `TrayPanel` 组件挂到 `#tray-panel-root`。
 **导出**：（无导出）
-**主要依赖**：`react` / `react-dom/client`、`./components/tray-panel`（TrayPanel）、`./styles/globals.css`、`./utils/configService`（getConfig）、`./utils/theme`（`loadTheme`、`applyThemeMode`、`applyThemeColor`、`applyGlassClarity`、`resolveThemeColor`）、`./utils/logger`、`./i18n`（`setInitialLanguage`）、`@tauri-apps/api/event`（listen）。
+**主要依赖**：`react` / `react-dom/client`、`./components/tray-panel`（TrayPanel）、`./styles/globals.css`、`./utils/configService`（getConfig）、`./utils/theme`（`loadTheme`、`applyThemeMode`、`applyThemeColor`、`applyGlassClarity`、`resolveThemeColor`）、`./utils/logger`、`./utils/platform`（`applyWindowEffectsSupport`）、`./i18n`（`setInitialLanguage`）、`@tauri-apps/api/event`（listen）。
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
 | `initLanguage()` | tray-panel.tsx:25-38 | 读 `app.language`，缺省按 `navigator.language` 推断 zh/en 并 `setInitialLanguage`；失败仅记日志 |
 | `refreshThemeColor()` | tray-panel.tsx:40-46 | 主题色没有独立事件，故随 `theme-changed` 一并重读 `theme_color` + `theme_custom_colors` 并 `applyThemeColor` |
 | `initTheme()` | tray-panel.tsx:48-67 | `loadTheme()` 一次性应用模式/主题色/清晰度（失败回退 `system`），并注册 `listen("theme-changed")` 同步三者 |
-| 顶层调用 | tray-panel.tsx:69-70 | 模块加载即执行 `void initLanguage()`、`void initTheme()` |
-| 渲染调用 | tray-panel.tsx:72-76 | `StrictMode > TrayPanel` 挂到 `#tray-panel-root` |
+| 顶层调用 | tray-panel.tsx:71-74 | 模块加载即执行 `void initLanguage()`、`void initTheme()`，随后 `applyWindowEffectsSupport()` 写定窗口磨砂/圆角属性（托盘是同 label 独立的 webview，不继承主窗口） |
+| 渲染调用 | tray-panel.tsx:76-80 | `StrictMode > TrayPanel` 挂到 `#tray-panel-root` |
 
 **备注**：
 - 双入口区分：根目录 `src/tray-panel.tsx` 是 HTML 入口（tray-panel.html 引用，vite.config.ts:40 定义 rollup input `tray-panel`，Tauri 窗口 label `tray-panel`，见 `src-tauri/src/lib.rs::create_full_windows`）；`src/components/tray-panel.tsx` 是被渲染的组件本体。
