@@ -227,5 +227,77 @@
         }, 30000);
       })();
     </script>
+    <script>
+      // 模块求值阶段的错误发生在 main.tsx 之内，此时 React 的崩溃处理器还没装上，
+      // 界面只会停在「正在启动…」而没有任何线索（例如 vendor chunk 抛
+      // `Cannot set properties of undefined (setting 'Activity')`）。
+      // 这里在文档最早期挂一次监听，把首个未捕获错误直接写进 Splash 的错误面板。
+      (function () {
+        var shown = false;
+
+        function describe(target) {
+          if (target && target.tagName) {
+            var url = target.src || target.href || "";
+            return (
+              "resource load failed: <" +
+              target.tagName.toLowerCase() +
+              "> " +
+              url
+            );
+          }
+          return "";
+        }
+
+        function show(detail) {
+          // main.tsx 启动后会清掉 __endprotocolBootTimer 并卸载静态面板；
+          // 那之后由 React 侧的崩溃弹窗接管，这里不再插手。
+          if (shown || window.__endprotocolBootTimer === undefined) return;
+          var panel = document.getElementById("startup-splash-error");
+          var detailElement = document.getElementById("startup-splash-error-detail");
+          var status = document.getElementById("startup-splash-status");
+          if (!panel) return;
+          shown = true;
+          panel.hidden = false;
+          if (status) {
+            status.textContent = navigator.language.toLowerCase().startsWith("zh")
+              ? "启动失败"
+              : "Startup failed";
+          }
+          if (detailElement) detailElement.textContent = detail;
+          var exportButton = document.getElementById("startup-splash-export");
+          var logsButton = document.getElementById("startup-splash-open-logs");
+          if (exportButton) exportButton.style.display = "none";
+          if (logsButton) logsButton.style.display = "none";
+        }
+
+        window.addEventListener(
+          "error",
+          function (event) {
+            if (event.__endprotocolHandled) return;
+            var resource = describe(event.target);
+            if (resource) {
+              show(resource);
+              return;
+            }
+            var location = event.filename
+              ? event.filename +
+                ":" +
+                (event.lineno || 0) +
+                ":" +
+                (event.colno || 0)
+              : "unknown location";
+            show((event.message || "Unknown error") + "\n" + location);
+          },
+          true,
+        );
+
+        window.addEventListener("unhandledrejection", function (event) {
+          var reason = event.reason;
+          var text =
+            (reason && (reason.stack || reason.message)) || String(reason);
+          show("Unhandled promise rejection\n" + text);
+        });
+      })();
+    </script>
   </body>
 </html>

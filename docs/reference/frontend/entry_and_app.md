@@ -10,7 +10,7 @@
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
 | `installCrashHandlers()` | main.tsx:39 | 在最前面安装全局 `error` / `unhandledrejection` / 后端崩溃 / API 熔断监听（`@/utils/crashReporting`） |
-| `clearTimeout(window.__endprotocolBootTimer)` | main.tsx:42 | 取消 `index.html` 中「前端脚本未启动」的静态兜底计时器，并隐藏静态错误面板 |
+| `clearTimeout(window.__endprotocolBootTimer)` | main.tsx:42-43 | 取消 `index.html` 中「前端脚本未启动」的静态兜底计时器，并隐藏静态错误面板；随后把 `window.__endprotocolBootTimer` 置为 `undefined`，让 `index.html` 的早期错误监听停手（此后由 `installCrashHandlers` 的崩溃弹窗接管） |
 | `setStartupPhase(12, …)` / `setStartupPhase(30, …)` | main.tsx:51 / 68 | 更新静态 Splash 的初始化阶段文案 |
 | `armStartupTimeout()` | main.tsx:53 | 配置初始化前启动 45 秒启动看门狗，覆盖 IPC/配置读取永久挂起、React 未挂载的卡死场景 |
 | `syncSilentLaunchConfig` | main.tsx:54 | 完整前端启动时将既有 localStorage 的游戏目录/渠道迁移到 `ConfigService` |
@@ -31,6 +31,7 @@
 - 托盘数据不再在本文件组装：字段映射（含 `accountLevel` 游戏账号等级）全部下沉到 `@/utils/trayService`（main.tsx:16），本文件只在启动后触发一次刷新，因此 `invoke`/`roleDataService`/`getAccounts` 已不再直接出现在此。
 - 魔数：3000（更新检查延迟 ms）、5000（托盘数据拉取延迟 ms）、0（启动任务延迟 ms）；进度/主题色阶键名 50–900 为 Tailwind 风格约定。
 - `index.html` 的启动动画遵循 `prefers-reduced-motion`，静态启动文案先按浏览器语言显示，配置读取后切换为应用保存语言。另有 30 秒静态兜底计时器 `window.__endprotocolBootTimer`：若前端模块脚本未执行（加载/语法错误），静态展示「启动超时」与重新加载按钮；`main.tsx` 一旦执行即清除该计时器，改由 `armStartupTimeout` 的 45 秒看门狗接管。
+- `index.html` 末尾另有一个**模块求值阶段**的早期错误监听（捕获阶段 `error` + `unhandledrejection`）：`main.tsx` 之前抛出的错误（例如 vendor chunk 的 `Cannot set properties of undefined (setting 'Activity')`、资源加载失败）此时 `installCrashHandlers` 还没装上，界面只会停在「正在启动…」；该监听把首个未捕获错误（含 `file:line:col` 或失败的资源 URL）直接写进 `#startup-splash-error-detail` 并把状态文案改为「启动失败」，同时隐藏导出/打开日志按钮（此时后端尚未就绪）。`main.tsx` 把 `__endprotocolBootTimer` 置为 `undefined` 后该监听立即失效，不会与 React 侧崩溃弹窗重复报告。
 
 ## `src/App.tsx`
 **职责**：定义应用的路由表（11 条顶层路由，全部包在 `DashboardLayout` 中），并初始化待办列表/每日重置调度；同时挂载路由恢复（记住/还原 `last_route`）与更新检查副作用。各页面通过 `React.lazy` + 动态 `import()` 按路由分包加载（页面加载态由 `DashboardLayout` 内的 `Suspense` 承载）。

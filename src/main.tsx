@@ -40,7 +40,10 @@ import {
 installCrashHandlers();
 // main.tsx 已执行：取消 index.html 中针对「前端脚本未启动」的静态兜底计时器，
 // 并撤销静态面板（避免慢启动时残留误报）。
+// 同时把标记置空：index.html 的早期错误监听只在「模块尚未接手」时报告错误，
+// 之后交给 React 侧的崩溃弹窗处理。
 window.clearTimeout(window.__endprotocolBootTimer);
+window.__endprotocolBootTimer = undefined;
 const bootErrorPanel = document.getElementById("startup-splash-error");
 if (bootErrorPanel) {
   bootErrorPanel.hidden = true;
