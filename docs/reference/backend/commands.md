@@ -120,19 +120,20 @@
 | `hide_tray_panel` | commands/tray.rs:72 | `app: AppHandle` | `Result<(), String>` | `tray::hide_tray_panel` |
 | `show_main_window` | commands/tray.rs:78 | `app: AppHandle` | `Result<(), String>` | `tray::show_main_window_focus` + `tray::hide_tray_panel` |
 | `app_quit` | commands/tray.rs:87 | `app: AppHandle` | `()`（无返回） | `app.exit(0)` |
-| `write_file` | commands/updater.rs:105 | `path: String`、`data: Vec<u8>` | `Result<(), String>` | `fs::create_dir_all(parent)` + `fs::write` |
-| `get_temp_dir` | commands/updater.rs:117 | 无 | `Result<String, String>` | `std::env::temp_dir` |
-| `fetch_url` | commands/updater.rs:125 | `url: String` | `Result<String, String>` | `capture::send`（reqwest GET）→ `resp.text()` |
-| `cancel_download` | commands/updater.rs:139 | 无 | `()`（无返回） | 模块级 `DOWNLOAD_CANCELLED` AtomicBool 置 true |
-| `reset_download_cancel` | commands/updater.rs:145 | 无 | `()`（无返回） | `DOWNLOAD_CANCELLED` 置 false |
-| `download_file` | commands/updater.rs:153 | `app: AppHandle`、`url: String`、`path: String` | `Result<u64, String>` | `capture::send_stream` 流式下载，每 256KB emit `download-progress` |
+| `tray_available` | commands/tray.rs:96 | 无 | `bool` | `crate::tray::is_tray_available()`：Windows/macOS 恒 true；Linux 仅在托盘构建成功且会话总线存在 `org.kde.StatusNotifierWatcher` 时为 true |
+| `write_file` | commands/updater.rs:150 | `path: String`、`data: Vec<u8>` | `Result<(), String>` | `fs::create_dir_all(parent)` + `fs::write` |
+| `get_temp_dir` | commands/updater.rs:161 | 无 | `Result<String, String>` | `std::env::temp_dir` |
+| `fetch_url` | commands/updater.rs:167 | `url: String` | `Result<String, String>` | `capture::send`（reqwest GET）→ `resp.text()` |
+| `cancel_download` | commands/updater.rs:181 | 无 | `()`（无返回） | 模块级 `DOWNLOAD_CANCELLED` AtomicBool 置 true，`install_update_endpoint` 下载循环中检查并取消 |
+| `reset_download_cancel` | commands/updater.rs:187 | 无 | `()`（无返回） | `DOWNLOAD_CANCELLED` 置 false，`install_update_endpoint` 启动前复位 |
+| `download_file` | commands/updater.rs:195 | `app: AppHandle`、`url: String`、`path: String` | `Result<u64, String>` | `capture::send_stream` 流式下载，每 256KB emit `download-progress` |
 | `check_update_endpoint` | commands/updater.rs:58 | `app: AppHandle`、`endpoint: String` | `Result<Option<UpdateEndpointInfo>, String>` | 限定镜像/GitHub 清单，使用 updater 检查本机平台与版本 |
-| `install_update_endpoint` | commands/updater.rs:73 | `app: AppHandle`、`endpoint: String` | `Result<(), String>` | 使用 updater 验签、下载并安装指定清单中的本机平台更新包；emit `download-progress` |
-| `run_installer` | commands/updater.rs:217 | `app: AppHandle`、`path: String` | `Result<(), String>` | Windows：静默启动 NSIS 安装器并退出应用；非 Windows：返回不支持错误 |
+| `install_update_endpoint` | commands/updater.rs:73 | `app: AppHandle`、`endpoint: String` | `Result<(), String>` | 限定端点后流式下载到 temp 文件，下载循环中检查 `DOWNLOAD_CANCELLED` 取消标志并删除半成品，完成后用 `update.install()` 验签安装；emit `download-progress` |
+| `run_installer` | commands/updater.rs:260/280 | `app: AppHandle`、`path: String` | `Result<(), String>` | Windows：静默启动 NSIS 安装器并退出应用；非 Windows：返回不支持错误 |
 | `minimize_window` | commands/window.rs:24 | `app: AppHandle<R>` | `()`（无返回） | `app.get_window("main")` → `window.minimize()` |
 | `toggle_maximize_window` | commands/window.rs:31 | `app: AppHandle<R>` | `()`（无返回） | `is_maximized` → `maximize()` / `unmaximize()` |
 | `close_window` | commands/window.rs:42 | `app: AppHandle<R>` | `()`（无返回） | `window.close()` |
-| `minimize_to_tray` | commands/window.rs:49 | `app: AppHandle<R>` | `Result<(), String>` | `window.hide()` |
+| `minimize_to_tray` | commands/window.rs:49 | `app: AppHandle<R>` | `Result<(), String>` | 托盘可用 → `window.hide()`；托盘不可用（`tray::is_tray_available()` 为 false）→ `app.exit(0)`，避免窗口隐藏后用户无法恢复 |
 | `get_system_snapshot` | commands/system_resource.rs:9 | `state: State<Arc<Mutex<SystemResourceService>>>` | `Result<SystemSnapshot, String>` | `SystemResourceService::snapshot`（`spawn_blocking`；sysinfo + nvidia-smi） |
 | `browser_go_back` | commands/browser.rs:36 | `app: AppHandle<R>`、`webview_label: String` | `Result<(), String>` | `app.get_webview(label)` → `webview.eval("window.history.back();")` |
 | `browser_go_forward` | commands/browser.rs:48 | `app`、`webview_label: String` | `Result<(), String>` | `webview.eval("window.history.forward();")` |
@@ -761,7 +762,7 @@
 ---
 
 ## `src-tauri/src/commands/tray.rs`
-**职责**：托盘菜单/托盘面板的 IPC（90 行 / 7 个命令）。配置键固定为 `tray_user_info`（类型 `TrayUserInfo`），菜单刷新调用 `crate::tray` 模块的函数。
+**职责**：托盘菜单/托盘面板的 IPC（98 行 / 8 个命令）。配置键固定为 `tray_user_info`（类型 `TrayUserInfo`），菜单刷新调用 `crate::tray` 模块的函数。
 
 ### `get_tray_user_info`
 - 位置：tray.rs:8（同步）
@@ -794,28 +795,32 @@
 ### `app_quit`
 - 位置：tray.rs:87（同步）；参数：`app`；返回：`()`；逻辑：`app.exit(0)` 直接退出进程。
 
+### `tray_available`
+- 位置：tray.rs:96（同步）；参数：无；返回：`bool`
+- 逻辑：`crate::tray::is_tray_available()`。Windows/macOS 托盘恒可用；Linux 上需要托盘构建成功且会话总线里存在 `org.kde.StatusNotifierWatcher`（GNOME 默认没有，`TrayIconBuilder::build()` 却会成功），否则返回 false。前端据此隐藏「最小化到托盘」。
+
 ---
 
 ## `src-tauri/src/commands/updater.rs`
 **职责**：应用自更新所需的通用原语（下载/写文件/装包，含 9 个命令）。Tauri updater 插件按本机平台检查、验签、安装；预览/频道切换使用受限的镜像/GitHub 清单端点。另含模块级静态 `DOWNLOAD_CANCELLED: AtomicBool` 作为下载取消开关。
 
 ### `write_file`
-- 位置：updater.rs:105（同步）；参数：`path: String`、`data: Vec<u8>`；返回：`Result<(), String>`；逻辑：`fs::create_dir_all(parent)` 后 `fs::write`，**任意路径皆可写**。
+- 位置：updater.rs:150（同步）；参数：`path: String`、`data: Vec<u8>`；返回：`Result<(), String>`；逻辑：`fs::create_dir_all(parent)` 后 `fs::write`，**任意路径皆可写**。
 
 ### `get_temp_dir`
-- 位置：updater.rs:117（同步）；参数：无；返回：`Result<String, String>`；逻辑：`std::env::temp_dir()` 字符串化。
+- 位置：updater.rs:161（同步）；参数：无；返回：`Result<String, String>`；逻辑：`std::env::temp_dir()` 字符串化。
 
 ### `fetch_url`
-- 位置：updater.rs:125（async）；参数：`url: String`；返回：`Result<String, String>`；逻辑：`capture::send(&client, client.get(&url))` 后 `resp.text()`，**任意 URL 可 GET**。
+- 位置：updater.rs:167（async）；参数：`url: String`；返回：`Result<String, String>`；逻辑：`capture::send(&client, client.get(&url))` 后 `resp.text()`，**任意 URL 可 GET**。
 
 ### `cancel_download`
-- 位置：updater.rs:139（同步）；参数：无；返回：`()`；逻辑：`DOWNLOAD_CANCELLED.store(true, SeqCst)`，`download_file` 循环下次检查时退出并删除半成品文件。
+- 位置：updater.rs:181（同步）；参数：无；返回：`()`；逻辑：`DOWNLOAD_CANCELLED.store(true, SeqCst)`，`install_update_endpoint` 下载循环下次检查时退出并删除半成品文件。
 
 ### `reset_download_cancel`
-- 位置：updater.rs:145（同步）；参数：无；返回：`()`；逻辑：`DOWNLOAD_CANCELLED.store(false, SeqCst)`，新下载前调用。
+- 位置：updater.rs:187（同步）；参数：无；返回：`()`；逻辑：`DOWNLOAD_CANCELLED.store(false, SeqCst)`，`install_update_endpoint` 启动前复位。
 
 ### `download_file`
-- 位置：updater.rs:153（async）
+- 位置：updater.rs:195（async）
 - 参数：`app: AppHandle`、`url: String`、`path: String`
 - 返回：`Result<u64, String>`（写入的总字节数）
 - 逻辑：开始时重置取消标志 → `capture::send_stream` 取流 → 建父目录与目标文件 → 逐 chunk 写盘，每累计 ≥256KB（或下完）`app.emit("download-progress", {downloaded, total})`；检测到取消标志则删除文件并返回 `Err("Download cancelled")`；结束 `flush` 并返回字节数。
@@ -831,10 +836,10 @@
 - 位置：updater.rs:73（async）
 - 参数：`app: AppHandle`、`endpoint: String`
 - 返回：`Result<(), String>`
-- 逻辑：重新检查清单中的本机更新，调用 updater 插件下载、验签并安装，并 emit `download-progress`。
+- 逻辑：启动前复位取消标志；仅允许受限端点；流式下载更新包到 temp 文件，下载循环每 chunk 检查 `DOWNLOAD_CANCELLED`，检测到取消则删除半成品并返回错误；完成后读字节并用 `update.install(bytes)` 验签安装；期间 `app.emit("download-progress", {downloaded, total})`。
 
 ### `run_installer`
-- 位置：updater.rs:217（async）
+- 位置：updater.rs:260（windows）/280（not-windows）（async）
 - 参数：`app: AppHandle`、`path: String`
 - 返回：`Result<(), String>`
 - 逻辑：Windows 下以 `CREATE_NO_WINDOW` 标志静默启动安装器并传 `/S`（NSIS 静默参数），`sleep(2s)` 等安装器起来后 `app.exit(0)` 让出文件占用，由安装器替换并重启应用；非 Windows 返回明确的不支持错误。
@@ -904,7 +909,7 @@
 
 ## 汇总
 
-- 命令总数：**127**（account 23、launcher 26、capture 7、gacha 7、tray 7、updater 9、image 6、config 7、proxy 6、window 4、card_config 3、attendance 2、color_picker 2、logs 1、system_resource 1；`mod.rs` 0）。
+- 命令总数：**128**（account 23、launcher 26、capture 7、gacha 7、tray 8、updater 9、image 6、config 7、proxy 6、window 4、card_config 3、attendance 2、color_picker 2、logs 1、system_resource 1；`mod.rs` 0）。
 - 事件 emit：`launcher-progress`（launcher.rs）、`download-progress`（updater.rs）。
 - 关键配置键：`account_token_*`（含 `cred`/`token`/`u8token`/`roles[]`）、`selected_account_id`、`card_settings.{card_id}`、`tray_user_info`、`proxy_config`（代理设置，写入后同步刷新全局代理缓存），以及前端侧的 `system_resource_defaults` / `todo_lists` / `todo_defaults`（经 config 命令读写）；相关本地文件：`gacha_avatar_map.json`、`total.json`、`backgrounds/bg.webp`。
 - 主要状态（managed state）：`Arc<std::sync::Mutex<ConfigService>>`（config/tray/proxy 直接用）、`Arc<tokio::sync::Mutex<AccountService>>`（account/attendance/card_config/gacha）、`Arc<GachaService>`、`Arc<Mutex<GameLauncherService>>`、`Arc<std::sync::Mutex<SystemResourceService>>`（见 `lib.rs` 的 `setup`）。

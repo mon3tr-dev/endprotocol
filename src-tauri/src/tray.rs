@@ -1,3 +1,4 @@
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tauri::{
     tray::{MouseButton, TrayIconBuilder, TrayIconEvent},
@@ -13,6 +14,18 @@ const TRAY_PANEL_LABEL: &str = "tray-panel";
 /// 实际窗口尺寸以 `lib.rs::create_full_windows` 为准。
 const PANEL_WIDTH: f64 = 288.0;
 const PANEL_HEIGHT: f64 = 376.0;
+
+/// 系统托盘是否可用。
+///
+/// Windows/macOS 恒为 true；Linux 上还要求会话总线里存在 StatusNotifier 宿主，
+/// 否则图标注册成功却没有任何面板显示它（GNOME 默认即如此）。托盘不可用时必须
+/// 禁止「最小化到托盘」式的隐藏驻留：窗口一藏，普通用户既找不到入口也杀不掉进程。
+static TRAY_AVAILABLE: AtomicBool = AtomicBool::new(false);
+
+/// 返回系统托盘当前是否可用。
+pub fn is_tray_available() -> bool {
+    TRAY_AVAILABLE.load(Ordering::Relaxed)
+}
 
 /// Tray user info stored in config
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default)]
@@ -125,7 +138,16 @@ pub fn setup_tray<R: Runtime>(
 
     let tooltip = user_info.nickname.as_deref().unwrap_or("EndProtocol");
 
-    build_tray(app, tooltip)
+    match build_tray(app, tooltip) {
+        Ok(()) => {
+            TRAY_AVAILABLE.store(tray_effectively_available(), Ordering::Relaxed);
+            Ok(())
+        }
+        Err(error) => {
+            TRAY_AVAILABLE.store(false, Ordering::Relaxed);
+            Err(error)
+        }
+    }
 }
 
 fn build_tray<R: Runtime>(
@@ -199,4 +221,69 @@ pub fn hide_tray_panel<R: Runtime>(app: &tauri::AppHandle<R>) -> Result<(), Stri
         panel.hide().map_err(|e| e.to_string())?;
     }
     Ok(())
+}
+
+/// 托盘是否真的能显示给用户。
+#[cfg(not(target_os = "linux"))]
+fn tray_effectively_available() -> bool {
+    true
+}
+
+#[cfg(target_os = "linux")]
+fn tray_effectively_available() -> bool {
+    status_notifier_host_available()
+}
+
+/// Linux 上托盘图标走 StatusNotifierItem 协议，libappindicator 只负责把图标注册到
+/// 会话总线；没有宿主（`org.kde.StatusNotifierWatcher`）时 `TrayIconBuilder::build()`
+/// 照样返回 Ok，但图标不会出现在任何面板上。GNOME 默认就是这种状态，所以必须探测。
+///
+/// 探测命令优先 `gdbus`（glib2，输出 `(true,)`），退回 `dbus-send`（dbus，输出
+/// `boolean true`）。两者都不可用时按「没有托盘」处理——宁可关闭时退出，也不能
+/// 把用户藏进一个没有入口的后台进程。
+#[cfg(target_os = "linux")]
+fn status_notifier_host_available() -> bool {
+    use std::process::Command;
+
+    let checks: [(&str, &[&str]); 2] = [
+        (
+            "gdbus",
+            &[
+                "call",
+                "--session",
+                "--dest",
+                "org.freedesktop.DBus",
+                "--object-path",
+                "/org/freedesktop/DBus",
+                "--method",
+                "org.freedesktop.DBus.NameHasOwner",
+                "org.kde.StatusNotifierWatcher",
+            ],
+        ),
+        (
+            "dbus-send",
+            &[
+                "--session",
+                "--dest=org.freedesktop.DBus",
+                "--type=method_call",
+                "--print-reply",
+                "/org/freedesktop/DBus",
+                "org.freedesktop.DBus.NameHasOwner",
+                "string:org.kde.StatusNotifierWatcher",
+            ],
+        ),
+    ];
+
+    for (program, args) in checks {
+        let Ok(output) = Command::new(program).args(args).output() else {
+            continue;
+        };
+        if !output.status.success() {
+            continue;
+        }
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        return stdout.contains("true");
+    }
+
+    false
 }

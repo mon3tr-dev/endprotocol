@@ -42,6 +42,12 @@ pub fn close_window<R: Runtime>(app: tauri::AppHandle<R>) {
 
 #[tauri::command]
 pub fn minimize_to_tray<R: Runtime>(app: tauri::AppHandle<R>) -> Result<(), String> {
+    // 没有系统托盘时隐藏窗口等于把用户关进一个没有入口的后台进程：窗口不可见、
+    // 进程还在，单实例插件还会让之后启动的新实例直接退出。此时降级为退出应用。
+    if !crate::tray::is_tray_available() {
+        app.exit(0);
+        return Ok(());
+    }
     if let Some(window) = main_window(&app) {
         window.hide().map_err(|e| e.to_string())?;
     }

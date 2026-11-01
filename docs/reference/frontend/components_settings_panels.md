@@ -221,8 +221,8 @@
 - 64-80 行：`containerRef`（占位容器）、`toolbarRef`（玻璃工具栏，用于量出原生层不得越过的下沿）、`handleRef`（Webview 句柄）、`iframeRef`（降级分支）。
 - 47 行：`TOOLBAR_MIN_HEIGHT = 44`（`h-11` 逻辑像素），量不到工具栏时的兜底下限。
 - 73-101 行：窗口控制状态 `isMaximized`，`checkMaximizedState` 读 `getCurrentWindow().isMaximized()`，并监听 `tauri://resize` / `tauri://move` 同步图标。
-- 103-108 行：读配置键 `close_action`（`ask`/`minimize_to_tray`/`close`）。
-- 110-156 行：`handleWindowMinimize` → `invoke("minimize_window")`；`handleWindowMaximize` → `invoke("toggle_maximize_window")` + 100ms 后 `checkMaximizedState`；`handleWindowClose` 按 `closeAction` 分支（`ask` → 弹 `CloseConfirmDialog`，否则 `minimize_to_tray` / `app_quit`）。
+- 116-124 行：读配置键 `close_action`（`ask`/`minimize_to_tray`/`close`），并查询 `isTrayAvailable()` 决定是否允许「最小化到托盘」。
+- 134-185 行：`handleWindowMinimize` → `invoke("minimize_window")`；`handleWindowMaximize` → `invoke("toggle_maximize_window")` + 100ms 后 `checkMaximizedState`；`handleWindowClose` 在托盘不可用（`isTrayAvailable()` 为 false）时直接 `invoke("app_quit")`，否则按 `closeAction` 分支（`ask` → 弹 `CloseConfirmDialog`，否则 `minimize_to_tray` / `app_quit`）。
 - 161-190 行：store 订阅；浏览器已打开时再次跳转走 `navigateHandle`（就地导航，保留实例与浏览历史）。
 - 224-242 行：`measureBounds`——**创建与同步共用的唯一测量入口**，用 `getBoundingClientRect()` 换算逻辑坐标，并把 y 钳制在工具栏下沿之上（`Math.max(rect.top, toolbarBottom)`）。原生子 Webview 永远画在 DOM 之上、z-index 无效，一旦它的 y 落进工具栏区域，工具栏就直接看不见，所以宁可底部少画几像素也不越线；量不到工具栏时退回 `TOOLBAR_MIN_HEIGHT` 硬下限而非不裁剪。
 - 244-258 行：`syncBounds`——把 `measureBounds` 的结果写回 `setPosition`/`setSize`，并 debug 记录实际矩形（工具栏遮挡类问题的唯一线索）。
@@ -295,10 +295,10 @@
 - 92-94 行：`handleClose`。
 - 96-175 行：`renderChangelog`——`loading` 显示骨架屏（97-106）、`failed`/`unavailable` 显示警告条（108-131）、`success` 按行渲染 `#`/`##`/`- ` 层级（133-172）。
 - 177-247 行：`renderVersionInfo`——检查中显示骨架（178-201）；有更新时展示当前版本、最新版本、渠道、发布日期四格（205-246）。
-- 249-339 行：`GlassModal` 结构——Backdrop（254）、Header（257-292，含下载图标、标题、版本箭头/骨架）、Body（294-312，版本信息 + 下载中旋转提示 299-308 + 日志）、Footer（314-334，下载中仅一个禁用按钮，否则「稍后」+「下载更新」）。
-- 250-253 行：`onOpenChange` 直接透传（下载中允许关闭，下载在后台继续）。
+- 249-339 行：`GlassModal` 结构——Backdrop（254）、Header（257-292，含下载图标、标题、版本箭头/骨架）、Body（294-312，版本信息 + 下载中旋转提示 299-308 + 日志）、Footer（314-334，下载中显示「停止下载」按钮（danger），否则「稍后」+「下载更新」）。
+- 250-253 行：`onOpenChange` 直接透传（下载中点「停止下载」会先停止下载再关闭；仅关闭对话框不中断已发起的下载任务）。
 
-**备注**：本文件不直接 `invoke`/`listen`/`emit`，也不直接读写配置键——所有 Tauri 交互（含更新检查/下载/渠道）封装在 `@/utils/updateService`。window 事件：无。涉及的 `localStorage`/事件均由该 service 内部管理。i18n 键：`settings.update.update_available/checking/current_version/latest_version/channel/release_date/changelog_failed/downloading/downloading_install/later/download_update`、`settings.update_channel.stable/preview`。
+**备注**：本文件不直接 `invoke`/`listen`/`emit`，也不直接读写配置键——所有 Tauri 交互（含更新检查/下载/渠道）封装在 `@/utils/updateService`。window 事件：无。涉及的 `localStorage`/事件均由该 service 内部管理。i18n 键：`settings.update.update_available/checking/current_version/latest_version/channel/release_date/changelog_failed/downloading/downloading_install/later/download_update/stop_download`、`settings.update_channel.stable/preview`。
 
 ## `src/components/system-resource-settings.tsx`
 **职责**：全局设置页「系统资源卡片」分区，配置新增系统资源卡片/卡片组时的默认值。

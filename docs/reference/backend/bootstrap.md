@@ -95,7 +95,7 @@
 
 **备注**：`lib.rs` 本身**没有任何 `emit`/`listen`**，也**没有全局应用菜单**；完整模式右键托盘仍打开原有托盘面板。
 
-### 命令总表（完整模式 `.invoke_handler` 注册 114 个命令；驻守模式不注册 IPC 命令）
+### 命令总表（完整模式 `.invoke_handler` 注册 128 个命令；驻守模式不注册 IPC 命令）
 
 完整命令清单与定义/调用关系见 [commands.md](commands.md) 和 [ipc_index.md](../ipc_index.md)；驻守分支为纯 `Builder::default().setup(...)`（lib.rs:59-75），不注册单实例插件，也无 `.invoke_handler`。
 
@@ -115,25 +115,27 @@
 ---
 
 ## `src-tauri/src/tray.rs`
-**职责**：系统托盘图标与托盘悬浮面板（tray-panel 窗口）的创建、定位、显隐与 tooltip 更新（198 行）。仅在完整模式创建；`--silent --launch-game` 驻守实例不显示托盘。
-**导出**：`TrayUserInfo`、`show_main_window_focus`、`setup_tray`、`update_tray_menu`、`show_tray_panel`、`hide_tray_panel`；私有 `show_panel_at_position`、`build_tray`。
+**职责**：系统托盘图标与托盘悬浮面板（tray-panel 窗口）的创建、定位、显隐与 tooltip 更新，并记录托盘是否真的可用（289 行）。仅在完整模式创建；`--silent --launch-game` 驻守实例不显示托盘。
+**导出**：`TrayUserInfo`、`show_main_window_focus`、`setup_tray`、`update_tray_menu`、`show_tray_panel`、`hide_tray_panel`、`is_tray_available`；私有 `show_panel_at_position`、`build_tray`、`tray_effectively_available`、`status_notifier_host_available`。
 **主要依赖**：`tauri::tray::{TrayIconBuilder, TrayIconEvent, MouseButton}`、`tauri::{Emitter, Manager, Runtime}`、`windows-sys`（仅 Windows 分支）、`crate::services::config_service::ConfigService`。
 
 ### 内部结构
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
-| `TRAY_ID` | tray.rs:9 | `"main-tray"`，托盘图标唯一 ID（`app.tray_by_id` 用） |
-| `TRAY_PANEL_LABEL` | tray.rs:10 | `"tray-panel"`，与动态创建的托盘面板窗口 label 对应 |
-| `PANEL_WIDTH` / `PANEL_HEIGHT` | tray.rs:14-15 | 288.0 × 376.0，**回退尺寸**：仅在 `outer_size()` 取不到真实窗口尺寸时用于定位；实际窗口尺寸由 `lib.rs::create_full_windows` 的 `inner_size(288.0, 376.0)` 决定，改一处需同步另一处 |
-| `struct TrayUserInfo` | tray.rs:20（derive :16-19） | 托盘展示的角色数据，serde `camelCase`，13 个 `Option` 字段：`role_id`、`nickname`、`avatar`、`account_level`、`cur_stamina`、`max_stamina`、`max_ts`、`daily_activation`、`max_daily_activation`、`weekly_score`、`weekly_total`、`bp_cur_level`、`bp_max_level`；配置键 `tray_user_info`。`account_level`（:25）是**游戏账号等级**（`char_detail` 的 `base.level`），供面板右上角徽标显示；`bp_cur_level`/`bp_max_level` 是通行证等级，二者不可混用 |
-| `show_main_window_focus` | tray.rs:42 | 取或动态创建 `main` 窗口 → `unminimize()` + `show()`；Windows 分支额外 `ShowWindow(SW_SHOW)` + `SetForegroundWindow`。取窗用 `app.get_window("main")`（非 `get_webview_window`），否则 in-app browser 打开时托盘唤不回主窗口 |
-| `show_panel_at_position`（私有） | tray.rs:68 | 面板可见则隐藏；否则按**真实窗口物理尺寸**（`panel.outer_size()`）居中定位于托盘图标上方 8px，并用 `app.monitor_from_point` 取所在显示器工作区做 clamp，防止面板越出屏幕；随后 show + focus |
-| `setup_tray` | tray.rs:111 | 完整模式读配置 `tray_user_info`，创建唯一托盘图标；**左键双击**显示主窗并关面板，**右键抬起**弹出原有面板 |
-| `build_tray` | tray.rs:127 | 唯一图标构建逻辑；左键双击显示主窗并隐藏面板，右键抬起弹出面板 |
-| `update_tray_menu` | tray.rs:163 | 按 `TrayUserInfo.nickname` 更新 tooltip，并向 tray-panel 窗口发送 `tray-user-info-updated` |
-| `show_tray_panel` | tray.rs:180 | 命令入口的 toggle 显隐（可见→hide，否则 show+focus） |
-| `hide_tray_panel` | tray.rs:193 | 强制隐藏面板（无错误时返回 Ok） |
+| `TRAY_ID` | tray.rs:10 | `"main-tray"`，托盘图标唯一 ID（`app.tray_by_id` 用） |
+| `TRAY_PANEL_LABEL` | tray.rs:11 | `"tray-panel"`，与动态创建的托盘面板窗口 label 对应 |
+| `PANEL_WIDTH` / `PANEL_HEIGHT` | tray.rs:15-16 | 288.0 × 376.0，**回退尺寸**：仅在 `outer_size()` 取不到真实窗口尺寸时用于定位；实际窗口尺寸由 `lib.rs::create_full_windows` 的 `inner_size(288.0, 376.0)` 决定，改一处需同步另一处 |
+| `TRAY_AVAILABLE` / `is_tray_available` | tray.rs:23 / :26 | 托盘可用性标志：`setup_tray` 成功后写入 `tray_effectively_available()` 的结果。`minimize_to_tray`、窗口关闭兜底与前端 `tray_available` 命令都读它；不可用时禁止隐藏驻留 |
+| `tray_effectively_available` / `status_notifier_host_available`（私有） | tray.rs:228 / :245 | Windows/macOS 恒可用；Linux 用 `gdbus`（回退 `dbus-send`）查询会话总线是否存在 `org.kde.StatusNotifierWatcher`。两者都不可用时按「无托盘」处理，避免 GNOME 等环境把窗口藏进后台 |
+| `struct TrayUserInfo` | tray.rs:30 | 托盘展示的角色数据，serde `camelCase`，13 个 `Option` 字段：`role_id`、`nickname`、`avatar`、`account_level`、`cur_stamina`、`max_stamina`、`max_ts`、`daily_activation`、`max_daily_activation`、`weekly_score`、`weekly_total`、`bp_cur_level`、`bp_max_level`；配置键 `tray_user_info`。`account_level` 是**游戏账号等级**（`char_detail` 的 `base.level`），供面板右上角徽标显示；`bp_cur_level`/`bp_max_level` 是通行证等级，二者不可混用 |
+| `show_main_window_focus` | tray.rs:55 | 取或动态创建 `main` 窗口 → `unminimize()` + `show()`；Windows 分支额外 `ShowWindow(SW_SHOW)` + `SetForegroundWindow`。取窗用 `app.get_window("main")`（非 `get_webview_window`），否则 in-app browser 打开时托盘唤不回主窗口 |
+| `show_panel_at_position`（私有） | tray.rs:85 | 面板可见则隐藏；否则按**真实窗口物理尺寸**（`panel.outer_size()`）居中定位于托盘图标上方 8px，并用 `app.monitor_from_point` 取所在显示器工作区做 clamp，防止面板越出屏幕；随后 show + focus |
+| `setup_tray` | tray.rs:128 | 完整模式读配置 `tray_user_info`，创建唯一托盘图标；**左键双击**显示主窗并关面板，**右键抬起**弹出原有面板。创建成功才把 `TRAY_AVAILABLE` 置为 `tray_effectively_available()`，失败则置 false（`lib.rs` 不再因托盘失败而中止启动） |
+| `build_tray` | tray.rs:153 | 唯一图标构建逻辑；左键双击显示主窗并隐藏面板，右键抬起弹出面板 |
+| `update_tray_menu` | tray.rs:189 | 按 `TrayUserInfo.nickname` 更新 tooltip，并向 tray-panel 窗口发送 `tray-user-info-updated` |
+| `show_tray_panel` | tray.rs:206 | 命令入口的 toggle 显隐（可见→hide，否则 show+focus） |
+| `hide_tray_panel` | tray.rs:219 | 强制隐藏面板（无错误时返回 Ok） |
 
 **备注**：托盘只在完整模式创建；`--silent` 实例不显示托盘、不进入托盘交接流程。`update_tray_menu`、`show_tray_panel`、`hide_tray_panel` 被 `commands/tray.rs` 调用。`TrayUserInfo` 由前端 `src/utils/trayService.ts` 组装后写入，新增字段需同时改该服务与 `src/components/tray-panel.tsx` 复用的同名类型。
 

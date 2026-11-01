@@ -22,6 +22,7 @@ import {
 } from "@/utils/messageStore";
 import { MessageCard } from "@/components/message-card";
 import { getConfig } from "@/utils/configService";
+import { isTrayAvailable } from "@/utils/trayService";
 import {
   getLauncherMode,
   setLauncherMode,
@@ -40,6 +41,7 @@ export const CustomTitlebar = () => {
   const [hasUrgent, setHasUrgent] = useState(() => hasUrgentUnread());
   const [showCloseConfirm, setShowCloseConfirm] = useState(false);
   const [closeAction, setCloseAction] = useState<string>("ask");
+  const [trayAvailable, setTrayAvailable] = useState(true);
   const [viewMode, setViewMode] = useState<LauncherViewMode>(getLauncherMode);
   const supportsLauncher = isWindowsPlatform();
   const [newMessage, setNewMessage] = useState<AppMessage | null>(null);
@@ -91,6 +93,11 @@ export const CustomTitlebar = () => {
     });
   }, []);
 
+  // 无系统托盘时不允许「最小化到托盘」：窗口一藏就没有任何入口，进程也退不掉。
+  useEffect(() => {
+    isTrayAvailable().then(setTrayAvailable);
+  }, []);
+
   const checkMaximizedState = async () => {
     try {
       const win = getCurrentWindow();
@@ -140,6 +147,11 @@ export const CustomTitlebar = () => {
 
   const handleClose = async () => {
     try {
+      // 无系统托盘时「最小化到托盘」没有意义：直接退出。
+      if (!trayAvailable) {
+        await invoke("app_quit");
+        return;
+      }
       if (closeAction === "ask") {
         setShowCloseConfirm(true);
       } else if (closeAction === "minimize_to_tray") {
@@ -154,7 +166,7 @@ export const CustomTitlebar = () => {
 
   const handleConfirmClose = async (action: "close" | "minimize_to_tray") => {
     try {
-      if (action === "minimize_to_tray") {
+      if (action === "minimize_to_tray" && trayAvailable) {
         await invoke("minimize_to_tray");
       } else {
         await invoke("app_quit");
@@ -184,7 +196,13 @@ export const CustomTitlebar = () => {
           data-tauri-drag-region="deep"
         >
           <div className="flex items-center gap-2.5">
-            <div className="w-2 h-2 rounded-full bg-primary/60" />
+            <img
+              src="/app-icon.png"
+              alt=""
+              aria-hidden="true"
+              draggable={false}
+              className="h-[18px] w-[18px] shrink-0 select-none"
+            />
             <h1 className="adaptive-contrast-text text-sm font-bold tracking-widest">
               {viewMode === "game" ? t("launcher.game_title") : "ENDPROTOCOL"}
             </h1>
@@ -299,6 +317,7 @@ export const CustomTitlebar = () => {
         isOpen={showCloseConfirm}
         onOpenChange={setShowCloseConfirm}
         onConfirm={handleConfirmClose}
+        allowMinimize={trayAvailable}
       />
     </>
   );

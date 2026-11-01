@@ -21,7 +21,7 @@ import {
 } from "@tauri-apps/api/app";
 import { getConfig, setConfig } from "@/utils/configService";
 import { roleDetailService } from "@/utils/roleDetailService";
-import { setTrayUser } from "@/utils/trayService";
+import { isTrayAvailable, setTrayUser } from "@/utils/trayService";
 import { SettingsDivider } from "@/components/ui/settings-row";
 import {
   fetchRemoteVersion,
@@ -56,6 +56,7 @@ export default function SettingsPage() {
   const [lazyLoadEnabled, setLazyLoadEnabled] = useState(true);
   const [wikiDetailPreload, setWikiDetailPreload] = useState(false);
   const [closeAction, setCloseAction] = useState<string>("ask");
+  const [trayAvailable, setTrayAvailable] = useState(true);
   const [trayUserRoleId, setTrayUserRoleId] = useState<string>("");
   const [accounts, setAccounts] = useState<
     Array<{ id: string; nickname: string; avatar: string }>
@@ -98,6 +99,7 @@ export default function SettingsPage() {
         identifier,
         closeAct,
         trayUser,
+        trayAvailability,
       ] = await Promise.all([
         getConfig<boolean>("refresh_on_account_switch"),
         roleDetailService.isLazyLoadEnabled(),
@@ -108,6 +110,7 @@ export default function SettingsPage() {
         getIdentifier(),
         getConfig<string>("close_action"),
         getConfig<string>("tray_user_role_id"),
+        isTrayAvailable(),
       ]);
       setRefreshOnSwitch(value ?? false);
       setLazyLoadEnabled(lazyLoadValue);
@@ -118,6 +121,12 @@ export default function SettingsPage() {
       setAppId(identifier);
       setCloseAction(closeAct ?? "ask");
       setTrayUserRoleId(trayUser ?? "");
+      setTrayAvailable(trayAvailability);
+      // 托盘不可用时把残留的 minimize_to_tray 收敛为 close，避免选项无高亮、行为含糊。
+      if (!trayAvailability && closeAct === "minimize_to_tray") {
+        setCloseAction("close");
+        void setConfig("close_action", "close");
+      }
       setIsConfigLoading(false);
 
       // Load accounts for tray user selection
@@ -614,6 +623,11 @@ export default function SettingsPage() {
                     <p className="text-sm text-muted mt-0.5">
                       {t("settings.general.close_action_desc")}
                     </p>
+                    {!trayAvailable && (
+                      <p className="text-xs text-muted mt-1">
+                        {t("settings.general.close_action_tray_unavailable")}
+                      </p>
+                    )}
                   </div>
                   <div className="flex gap-2">
                     {[
@@ -621,10 +635,16 @@ export default function SettingsPage() {
                         value: "close",
                         label: t("settings.general.close_action_close"),
                       },
-                      {
-                        value: "minimize_to_tray",
-                        label: t("settings.general.close_action_minimize"),
-                      },
+                      ...(trayAvailable
+                        ? [
+                            {
+                              value: "minimize_to_tray",
+                              label: t(
+                                "settings.general.close_action_minimize",
+                              ),
+                            },
+                          ]
+                        : []),
                       {
                         value: "ask",
                         label: t("settings.general.close_action_ask"),

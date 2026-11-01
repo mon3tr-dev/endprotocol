@@ -76,7 +76,7 @@
 | 切换账户时刷新数据 | 配置键 `refresh_on_account_switch`（state `refreshOnSwitch`） | `GlassSwitch` | `false` | state 55；读 102/112；写 181；UI 525-549 |
 | 懒加载模式 | 后端持久状态，经 `roleDetailService`：invoke `is_lazy_load_enabled` / `set_lazy_load_enabled`（不走 `configService`） | `GlassSwitch` | `true`（读取失败时后端兜底 true） | state 56；读 103/113；写 187；UI 553-575 |
 | 启动时预加载 Wiki 详情 | 配置键 `wiki_detail_preload`（state `wikiDetailPreload`） | `GlassSwitch` | `false` | state 57；读 105/114；写 195；UI 579-603 |
-| 关闭窗口行为 | 配置键 `close_action`（state `closeAction`，取值 `close`/`minimize_to_tray`/`ask`） | 三段式文字按钮组 | `ask` | state 58；读 109/119；写 200；UI 608-647 |
+| 关闭窗口行为 | 配置键 `close_action`（state `closeAction`，取值 `close`/`minimize_to_tray`/`ask`）；托盘不可用（`isTrayAvailable()` 为 false）时选项里不出现 `minimize_to_tray`，并在描述下显示「无系统托盘」提示 | 文字按钮组（2 或 3 段） | `ask` | state 59；读 110/120；写 199-202；UI 612-651 |
 | 托盘显示角色 | 配置键 `tray_user_role_id`；invoke `set_tray_user`、`update_tray_user_data` 经 `@/utils/trayService` 的 `setTrayUser` 触发（state `trayUserRoleId`） | `GlassSelect`（选项来自动态 import 的 `getAccounts()` 账号昵称） | 空串（未选择） | state 59；读 110/120；写 203-207；UI 652-672 |
 | 开发者模式 | 配置键 `developer_mode` + 窗口事件 `developerModeChange`（state `developerMode`） | `GlassSwitch` + `GlassAlertDialog` 二次确认 | `false` | state 64-65；读 104/115；写 214/223；UI 851-858；对话框 1428-1460 |
 | 更新通道 | 配置键 `update_channel`（由 `updateService.getChannel/setChannel` 读写；state `updateChannel`） | 双卡片单选按钮（stable / preview） | `stable` | state 73；读 140；写 264-280、300-312；UI 922-992；警告框 1462-1528 |

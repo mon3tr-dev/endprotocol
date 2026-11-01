@@ -113,3 +113,24 @@ export async function setTrayUser(roleId: string): Promise<void> {
   }
   await refreshTrayUserData(roleId);
 }
+
+let cachedTrayAvailable: boolean | null = null;
+
+/**
+ * 系统托盘是否可用（后端 `tray_available`）。
+ *
+ * Linux 上没有 StatusNotifier 宿主（GNOME 默认）时为 false。此时「最小化到托盘」
+ * 会把窗口藏起来又不留任何入口，必须禁用，让关闭按钮直接退出应用。
+ */
+export async function isTrayAvailable(): Promise<boolean> {
+  if (cachedTrayAvailable !== null) return cachedTrayAvailable;
+  try {
+    cachedTrayAvailable = await invoke<boolean>("tray_available");
+  } catch (error) {
+    // 查询失败按「可用」处理：后端 minimize_to_tray 自身还有无托盘兜底（直接退出），
+    // 不能因为一次 IPC 失败就误伤 Windows/macOS 的正常托盘。
+    logger.warn("Failed to query tray availability: " + error, null, "TrayService");
+    cachedTrayAvailable = true;
+  }
+  return cachedTrayAvailable;
+}

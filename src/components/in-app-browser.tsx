@@ -9,6 +9,7 @@ import { listen } from "@tauri-apps/api/event";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import logger from "@/utils/logger";
 import { getConfig } from "@/utils/configService";
+import { isTrayAvailable } from "@/utils/trayService";
 import { CloseConfirmDialog } from "@/components/close-confirm-dialog";
 import {
   MinimizeIcon,
@@ -87,6 +88,7 @@ export function InAppBrowser() {
   const [isMaximized, setIsMaximized] = useState(false);
   const [showCloseConfirm, setShowCloseConfirm] = useState(false);
   const [closeAction, setCloseAction] = useState<string>("ask");
+  const [trayAvailable, setTrayAvailable] = useState(true);
 
   const checkMaximizedState = useCallback(async () => {
     try {
@@ -118,6 +120,7 @@ export function InAppBrowser() {
     getConfig<string>("close_action").then((value) => {
       setCloseAction(value ?? "ask");
     });
+    isTrayAvailable().then(setTrayAvailable);
   }, []);
 
   const handleWindowMinimize = useCallback(async () => {
@@ -140,7 +143,7 @@ export function InAppBrowser() {
   const runCloseAction = useCallback(
     async (action: "close" | "minimize_to_tray") => {
       try {
-        if (action === "minimize_to_tray") {
+        if (action === "minimize_to_tray" && trayAvailable) {
           await invoke("minimize_to_tray");
         } else {
           await invoke("app_quit");
@@ -151,11 +154,16 @@ export function InAppBrowser() {
         logger.error("Failed to execute close action: " + error, "Browser");
       }
     },
-    [],
+    [trayAvailable],
   );
 
   const handleWindowClose = useCallback(async () => {
     try {
+      // 无系统托盘时「最小化到托盘」没有意义：直接退出。
+      if (!trayAvailable) {
+        await invoke("app_quit");
+        return;
+      }
       if (closeAction === "ask") {
         setShowCloseConfirm(true);
       } else if (closeAction === "minimize_to_tray") {
@@ -166,7 +174,7 @@ export function InAppBrowser() {
     } catch (error) {
       logger.error("Failed to close window: " + error, "Browser");
     }
-  }, [closeAction]);
+  }, [closeAction, trayAvailable]);
 
   /* ---------- store 订阅 ---------- */
 
@@ -677,6 +685,7 @@ export function InAppBrowser() {
         isOpen={showCloseConfirm}
         onOpenChange={setShowCloseConfirm}
         onConfirm={runCloseAction}
+        allowMinimize={trayAvailable}
       />
     </div>
   );

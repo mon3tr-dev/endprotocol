@@ -1,6 +1,6 @@
 # IPC 命令索引（前端 invoke ↔ 后端定义）
 
-> 由脚本扫描 `#[tauri::command]` 与前端 `invoke('...')` 自动生成。共 133 个后端命令，其中 116 个在前端有直接调用；17 个未见前端调用。行号基于当前工作区版本。
+> 由脚本扫描 `#[tauri::command]` 与前端 `invoke('...')` 自动生成。共 134 个后端命令，其中 117 个在前端有直接调用；17 个未见前端调用。行号基于当前工作区版本。
 >
 > 注：`browser_go_back` / `browser_go_forward` / `browser_reload` / `browser_navigate` / `browser_current_url` 经 `src/utils/browserViewService.ts` 的私有 `run(command, args)` 动态调用（`invoke(command, …)`，命令名不是字面量），脚本的字面量正则扫不到，已人工补录。
 
@@ -139,5 +139,6 @@
 | `sync_weapon_gacha_records` | [src-tauri/src/commands/gacha.rs:179](backend/commands.md) | [src/pages/gacha-records.tsx](../../src/pages/gacha-records.tsx) |
 | `test_proxy_connection` | [src-tauri/src/commands/proxy.rs:29](backend/commands.md) | [src/utils/proxyService.ts](../../src/utils/proxyService.ts) |
 | `toggle_maximize_window` | [src-tauri/src/commands/window.rs:31](backend/commands.md) | [src/components/custom-titlebar.tsx](../../src/components/custom-titlebar.tsx)<br>[src/components/in-app-browser.tsx](../../src/components/in-app-browser.tsx) |
+| `tray_available` | [src-tauri/src/commands/tray.rs:96](backend/commands.md) | [src/utils/trayService.ts](../../src/utils/trayService.ts) |
 | `update_tray_user_data` | [src-tauri/src/commands/tray.rs:45](backend/commands.md) | [src/utils/trayService.ts](../../src/utils/trayService.ts) |
 | `write_file` | [src-tauri/src/commands/updater.rs:104](backend/commands.md) | —（前端未调用） |

@@ -7,9 +7,19 @@ interface CloseConfirmDialogProps {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
   onConfirm: (action: "close" | "minimize_to_tray") => void;
+  /**
+   * 系统托盘不可用时传 false，隐藏「最小化到托盘」。
+   * 没有托盘时隐藏窗口会让用户既看不到窗口也退不掉进程。
+   */
+  allowMinimize?: boolean;
 }
 
-export function CloseConfirmDialog({ isOpen, onOpenChange, onConfirm }: CloseConfirmDialogProps) {
+export function CloseConfirmDialog({
+  isOpen,
+  onOpenChange,
+  onConfirm,
+  allowMinimize = true,
+}: CloseConfirmDialogProps) {
   const { i18n } = useTranslation();
   const [rememberChoice, setRememberChoice] = useState(false);
 
@@ -44,19 +54,21 @@ export function CloseConfirmDialog({ isOpen, onOpenChange, onConfirm }: CloseCon
             <GlassAlertDialog.Footer>
               <div className="flex flex-col gap-2 w-full">
                 <div className="flex gap-2">
-                  <GlassButton
-                    variant="primary"
-                    className="flex-1"
-                    onPress={() => handleAction("minimize_to_tray")}
-                    startContent={
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="1.5">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z" />
-                      </svg>
-                    }
-                  >
-                    {i18n.language === "zh" ? "最小化到托盘" : "Minimize to Tray"}
-                  </GlassButton>
+                  {allowMinimize && (
+                    <GlassButton
+                      variant="primary"
+                      className="flex-1"
+                      onPress={() => handleAction("minimize_to_tray")}
+                      startContent={
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="1.5">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z" />
+                        </svg>
+                      }
+                    >
+                      {i18n.language === "zh" ? "最小化到托盘" : "Minimize to Tray"}
+                    </GlassButton>
+                  )}
                   <GlassButton
                     variant="danger"
                     className="flex-1"

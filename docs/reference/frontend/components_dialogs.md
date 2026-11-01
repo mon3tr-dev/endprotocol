@@ -33,10 +33,10 @@
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
-| `CloseConfirmDialogProps` | close-confirm-dialog.tsx:6 | 接口：`isOpen`（开关）、`onOpenChange(open)`（受控状态回写）、`onConfirm(action)`（`action` 为 `"close" \| "minimize_to_tray"`） |
+| `CloseConfirmDialogProps` | close-confirm-dialog.tsx:6 | 接口：`isOpen`（开关）、`onOpenChange(open)`（受控状态回写）、`onConfirm(action)`（`action` 为 `"close" \| "minimize_to_tray"`）、`allowMinimize?`（默认 `true`；为 `false` 时隐藏「最小化到托盘」，系统托盘不可用的环境用它避免窗口藏起来后无法恢复） |
 | `CloseConfirmDialog` | close-confirm-dialog.tsx:12 | 组件主体。内部状态 `rememberChoice`（close-confirm-dialog.tsx:14，布尔，「记住此选择」复选框，每次动作后重置） |
 | `handleAction` | close-confirm-dialog.tsx:16 | `async (action)`：若 `rememberChoice` 则先 `setConfig("close_action", action)`（close-confirm-dialog.tsx:18），随后 `onConfirm(action)` → `onOpenChange(false)` → 重置复选框 |
-| 布局常量/结构 | close-confirm-dialog.tsx:26-87 | `GlassAlertDialog > Backdrop > Container > Dialog`（`sm:max-w-[400px]`）+ `CloseTrigger` + `Header`（warning 图标 + 标题）+ `Body`（提示文案）+ `Footer`（两个 `GlassButton` + 记忆复选框） |
+| 布局常量/结构 | close-confirm-dialog.tsx:26-99 | `GlassAlertDialog > Backdrop > Container > Dialog`（`sm:max-w-[400px]`）+ `CloseTrigger` + `Header`（warning 图标 + 标题）+ `Body`（提示文案）+ `Footer`（「最小化到托盘」按钮仅在 `allowMinimize` 时渲染，另有「关闭程序」+ 记忆复选框） |
 
 **备注**：
 - 无 `invoke` / `listen`。
@@ -113,26 +113,27 @@
 ## `src/components/custom-titlebar.tsx`
 **职责**：自定义标题栏——包含品牌区、数据/游戏视图切换、通知铃铛与消息浮层、窗口最小化/最大化/关闭按钮，并挂载消息抽屉与关闭确认框。
 **导出**：`CustomTitlebar`
-**主要依赖**：`react`（`useState/useEffect/useRef`）、`react-dom`（`createPortal`）、`react-i18next`、`@tauri-apps/api/core`（`invoke`）、`@tauri-apps/api/window`（`getCurrentWindow`）、`@tauri-apps/api/event`（`listen`、`UnlistenFn`）、`@/components/ui/app-icon`（`MinimizeIcon`、`MaximizeIcon`、`RestoreIcon`、`CloseIcon`、`BellIcon`）、`@/components/app-info-drawer`、`@/components/close-confirm-dialog`、`@/utils/messageStore`（`getMessages`、`getUnreadCount`、`hasUrgentUnread`、`subscribeMessages`、`AppMessage`）、`@/components/message-card`、`@/utils/configService`（`getConfig`）、`@/stores/launcherMode`（`getLauncherMode`、`setLauncherMode`、`subscribeLauncherMode`、`LauncherViewMode`）、`@/utils/platform`（`isWindowsPlatform`）、`@/utils/logger`、`@/components/ui/toggle-group`（`ToggleGroup`、`ToggleGroupItem`）
+**主要依赖**：`react`（`useState/useEffect/useRef`）、`react-dom`（`createPortal`）、`react-i18next`、`@tauri-apps/api/core`（`invoke`）、`@tauri-apps/api/window`（`getCurrentWindow`）、`@tauri-apps/api/event`（`listen`、`UnlistenFn`）、`@/components/ui/app-icon`（`MinimizeIcon`、`MaximizeIcon`、`RestoreIcon`、`CloseIcon`、`BellIcon`）、`@/components/app-info-drawer`、`@/components/close-confirm-dialog`、`@/utils/messageStore`（`getMessages`、`getUnreadCount`、`hasUrgentUnread`、`subscribeMessages`、`AppMessage`）、`@/components/message-card`、`@/utils/configService`（`getConfig`）、`@/utils/trayService`（`isTrayAvailable`）、`@/stores/launcherMode`（`getLauncherMode`、`setLauncherMode`、`subscribeLauncherMode`、`LauncherViewMode`）、`@/utils/platform`（`isWindowsPlatform`）、`@/utils/logger`、`@/components/ui/toggle-group`（`ToggleGroup`、`ToggleGroupItem`）
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
 | `CustomTitlebar` | custom-titlebar.tsx:33 | 组件主体，无 props |
-| 局部状态 | custom-titlebar.tsx:35-45 | `isMaximized`、`infoOpen`（消息抽屉）、`unreadCount`、`hasUrgent`、`showCloseConfirm`、`closeAction`（默认 `"ask"`）、`viewMode`（初值 `getLauncherMode()`）、`newMessage`（浮层消息）、`flyoutOpen`（默认 `true`）；refs：`seenMessageIds`（已展示过的消息 id Set，初始为启动时队列内全部 id）、`flyoutTimer` |
+| 局部状态 | custom-titlebar.tsx:36-47 | `isMaximized`、`infoOpen`（消息抽屉）、`unreadCount`、`hasUrgent`、`showCloseConfirm`、`closeAction`（默认 `"ask"`）、`trayAvailable`（默认 `true`，由 `isTrayAvailable()` 回填）、`viewMode`（初值 `getLauncherMode()`）、`newMessage`（浮层消息）、`flyoutOpen`（默认 `true`）；refs：`seenMessageIds`（已展示过的消息 id Set，初始为启动时队列内全部 id）、`flyoutTimer` |
 | 消息订阅 effect | custom-titlebar.tsx:47-71 | `subscribeMessages`：仅在队首是**从未展示过的新消息**（`seenMessageIds` 中不存在）时弹出浮层并记录其 id；由于用 Set 判断「新增」，删除队首消息露出旧消息不会重复弹浮层。非进度型消息（`progress === undefined \|\| progress < 0`）5 秒后自动隐藏；若当前正在展示的消息已被从队列移除，则立即收起浮层；同时刷新 `unreadCount`、`hasUrgent` |
 | 定时器清理 effect | custom-titlebar.tsx:67-72 | 卸载时 `clearTimeout(flyoutTimer.current)` |
 | 视图模式订阅 effect | custom-titlebar.tsx:74-78 | `subscribeLauncherMode(() => setViewMode(getLauncherMode()))` |
-| 关闭行为配置 effect | custom-titlebar.tsx:81-85 | `getConfig<string>("close_action")` → `setCloseAction(value ?? "ask")` |
+| 关闭行为配置 effect | custom-titlebar.tsx:89-93 | `getConfig<string>("close_action")` → `setCloseAction(value ?? "ask")` |
+| 托盘可用性 effect | custom-titlebar.tsx:95-97 | `isTrayAvailable()` → `setTrayAvailable`；托盘不可用时关闭按钮直接 `app_quit`，并让 `CloseConfirmDialog` 隐藏「最小化到托盘」 |
 | `checkMaximizedState` | custom-titlebar.tsx:87 | `async`：`getCurrentWindow().isMaximized()` → `setIsMaximized`，异常记 `logger.error(..., "Titlebar")` |
 | 窗口事件 effect | custom-titlebar.tsx:97-115 | 先执行一次 `checkMaximizedState()`，再 `listen("tauri://resize")`（103 行）与 `listen("tauri://move")`（107 行）触发重新检查，清理时调用两个 `UnlistenFn` |
 | `handleMinimize` | custom-titlebar.tsx:117 | `await invoke("minimize_window")` |
 | `handleMaximize` | custom-titlebar.tsx:125 | `await invoke("toggle_maximize_window")`，100ms 后再 `checkMaximizedState()` 同步图标 |
-| `handleClose` | custom-titlebar.tsx:134 | 按 `closeAction` 分支：`"ask"` → `setShowCloseConfirm(true)`；`"minimize_to_tray"` → `invoke("minimize_to_tray")`；否则 `invoke("app_quit")` |
-| `handleConfirmClose` | custom-titlebar.tsx:148 | `(action: "close" \| "minimize_to_tray")`：分别 `invoke("minimize_to_tray")` / `invoke("app_quit")`；之后重新 `getConfig("close_action")` 回写本地 `closeAction`（用户可能勾选了「记住」） |
-| 渲染块 | custom-titlebar.tsx:165-289 | `titlebar-shell h-11`（拖动区用 `data-tauri-drag-region="deep"`，可点击元素由 Tauri `drag.js` 自动排除，需要禁止拖动的容器才写 `data-tauri-drag-region="false"`）：品牌圆点 + 标题（`viewMode === "game"` 显示 `launcher.game_title`，否则 `ENDPROTOCOL`，178 行）→ `ToggleGroup` 视图切换（182-204，值 `"data"` / `"game"`，写入 `setLauncherMode`）→ 弹性占位 → 铃铛按钮（211-226，未读角标 `99+` 截断，`hasUrgent` 用 `bg-danger`）→ 新消息浮层（228-246，`createPortal(document.body)` + `fixed right-12 top-10 z-[10005]`，内嵌 `MessageCard compact`）→ 窗口三键（248-282）→ `<AppInfoDrawer>`（286）与 `<CloseConfirmDialog>`（287-291） |
+| `handleClose` | custom-titlebar.tsx:148 | 托盘不可用（`trayAvailable === false`）时直接 `invoke("app_quit")`；否则按 `closeAction` 分支：`"ask"` → `setShowCloseConfirm(true)`；`"minimize_to_tray"` → `invoke("minimize_to_tray")`；否则 `invoke("app_quit")` |
+| `handleConfirmClose` | custom-titlebar.tsx:167 | `(action: "close" \| "minimize_to_tray")`：`minimize_to_tray` 且托盘可用时 `invoke("minimize_to_tray")`，其余情况一律 `invoke("app_quit")`；之后重新 `getConfig("close_action")` 回写本地 `closeAction`（用户可能勾选了「记住」） |
+| 渲染块 | custom-titlebar.tsx:165-289 | `titlebar-shell h-11`（拖动区用 `data-tauri-drag-region="deep"`，可点击元素由 Tauri `drag.js` 自动排除，需要禁止拖动的容器才写 `data-tauri-drag-region="false"`）：品牌区（`/app-icon.png` 链扣标 18×18 + 标题，`viewMode === "game"` 显示 `launcher.game_title`，否则 `ENDPROTOCOL`，178 行）→ `ToggleGroup` 视图切换（182-204，值 `"data"` / `"game"`，写入 `setLauncherMode`）→ 弹性占位 → 铃铛按钮（211-226，未读角标 `99+` 截断，`hasUrgent` 用 `bg-danger`）→ 新消息浮层（228-246，`createPortal(document.body)` + `fixed right-12 top-10 z-[10005]`，内嵌 `MessageCard compact`）→ 窗口三键（248-282）→ `<AppInfoDrawer>`（286）与 `<CloseConfirmDialog>`（287-291） |
 
 **备注**：
-- **invoke 命令**：`minimize_window`（custom-titlebar.tsx:119）、`toggle_maximize_window`（127）、`minimize_to_tray`（139、151）、`app_quit`（141、153）。
+- **invoke 命令**：`minimize_window`（custom-titlebar.tsx:133）、`toggle_maximize_window`（141）、`minimize_to_tray`（158、170）、`app_quit`（152、160、172）。
 - **listen 事件**：`tauri://resize`（103）、`tauri://move`（107）。
 - 其它事件源：`subscribeMessages`、`subscribeLauncherMode`（均为前端 store 回调，非 Tauri event）。
 - 层级：标题栏 `titlebar-shell`；**消息浮层经 portal 渲染到 `document.body`、`fixed` + `z-[10005]`，高于任何 modal/抽屉/全屏遮罩（modal backdrop `z-[100]`~`z-[300]`、快选菜单 `z-[9999]`、取色器 `z-[10001]`），保证打开弹窗时依然可见**；抽屉 `z-[200]/[210]`（在 `AppInfoDrawer` 内）。
@@ -352,11 +353,11 @@
 | 文件 | 行数 | 导出符号 |
 | --- | --- | --- |
 | custom-modal.tsx | 148 | `CustomModal`、`CustomModalHeader`、`CustomModalBody`、`CustomModalFooter` |
-| close-confirm-dialog.tsx | 89 | `CloseConfirmDialog` |
+| close-confirm-dialog.tsx | 101 | `CloseConfirmDialog` |
 | account-switch-modal.tsx | 196 | 默认 `AccountSwitchModal` |
 | add-card-modal.tsx | 234 | `AddCardModal` |
 | app-info-drawer.tsx | 71 | `AppInfoDrawer` |
-| custom-titlebar.tsx | 290 | `CustomTitlebar` |
+| custom-titlebar.tsx | 324 | `CustomTitlebar` |
 | role-select-modal.tsx | 182 | 默认 `RoleSelectModal` |
 | tab-editor-modal.tsx | 244 | `TabEditorModal` |
 | tab-selector.tsx | 196 | `TabSelector` |

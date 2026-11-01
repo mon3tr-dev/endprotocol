@@ -88,3 +88,11 @@ pub fn show_main_window<R: Runtime>(app: tauri::AppHandle<R>) -> Result<(), Stri
 pub fn app_quit<R: Runtime>(app: tauri::AppHandle<R>) {
     app.exit(0);
 }
+
+/// 系统托盘是否可用（Linux 无 StatusNotifier 宿主时为 false）。
+///
+/// 前端据此隐藏「最小化到托盘」选项：托盘不可用时隐藏窗口会让用户彻底失去入口。
+#[tauri::command]
+pub fn tray_available() -> bool {
+    crate::tray::is_tray_available()
+}

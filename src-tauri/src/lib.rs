@@ -229,6 +229,7 @@ pub fn run() {
             commands::tray::hide_tray_panel,
             commands::tray::show_main_window,
             commands::tray::app_quit,
+            commands::tray::tray_available,
             // Launcher commands
             commands::launcher::launcher_check_status,
             commands::launcher::launcher_get_process_read_bytes,
@@ -332,8 +333,13 @@ pub fn run() {
                 }
             }
 
-            tray::setup_tray(app.handle(), config_service.clone())
-                .map_err(|error| error.to_string())?;
+            // 托盘只是增强功能：Linux 上没有 StatusNotifier 宿主时创建失败或不可见，
+            // 不能因此让整个应用起不来，也不能允许把窗口藏进托盘。
+            if let Err(error) = tray::setup_tray(app.handle(), config_service.clone()) {
+                log_warn!(
+                    "[tray] system tray unavailable, minimize-to-tray disabled: {error}"
+                );
+            }
 
             // 初始化 Skland 服务
             let skland_service = Arc::new(SklandService::new(config_service.clone()));
@@ -622,6 +628,15 @@ pub(crate) fn create_main_window<R: Runtime>(
                     .ok()
                     .and_then(|config| config.get::<String>("close_action"))
                     .unwrap_or_else(|| "ask".to_string());
+
+                // 没有系统托盘时不允许隐藏驻留：窗口一藏，普通用户既找不到入口也
+                // 退不掉进程（单实例插件还会让之后启动的新实例顶到旧实例上）。
+                // 此时「关闭」必须真的等于退出。
+                if !crate::tray::is_tray_available() {
+                    api.prevent_close();
+                    window_for_close.app_handle().exit(0);
+                    return;
+                }
 
                 if action != "close" {
                     api.prevent_close();
