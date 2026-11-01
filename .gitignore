@@ -31,6 +31,9 @@ prom-assets/
 promotional-demo.html
 promotional-cover.html
 
+# Logo/icon design sources (only the generated icons are tracked)
+design/
+
 target/
 
 .VSCodeCounter/
