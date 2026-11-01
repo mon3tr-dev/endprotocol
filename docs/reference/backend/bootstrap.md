@@ -235,7 +235,7 @@
 ---
 
 ## `src-tauri/capabilities/default.json`
-**职责**：主窗口与托盘面板共用的基础 ACL 权限（28 行）。
+**职责**：主窗口与托盘面板共用的基础 ACL 权限（30 行）。
 **导出**：无。
 
 ### 逐 key 说明
@@ -245,7 +245,7 @@
 | `identifier` | :3 | `default` |
 | `description` | :4 | "Capability for the main window and tray panel" |
 | `windows` | :5 | `["main", "tray-panel"]` — 对两个窗口同时生效 |
-| `permissions` | :6-27 | 见下表 |
+| `permissions` | :6-28 | 见下表 |
 
 | 权限 | 行 | 用途 |
 | --- | --- | --- |
@@ -257,18 +257,20 @@
 | `core:window:allow-is-visible` | :14 | 查询可见性 |
 | `core:window:allow-set-focus` | :15 | 聚焦 |
 | `core:window:allow-set-position` | :16 | 设定位置 |
-| `core:window:allow-primary-monitor` | :17 | 查询主显示器 |
-| `core:window:allow-outer-position` / `allow-outer-size` | :18-19 | 查询窗口外框位置/尺寸（最大化状态判断等） |
-| `core:webview:allow-create-webview` | :20 | in-app browser：`new Webview()` → `plugin:webview\|create_webview`（**不在 `core:webview:default` 内**） |
-| `core:webview:allow-webview-close` | :21 | 卸载/关闭时销毁子 Webview（`Webview#close()`） |
-| `core:webview:allow-webview-hide` | :22 | 关闭 in-app browser 时**先隐藏**子 Webview 再卸载 DOM（`Webview#hide()`，**不在 `core:webview:default` 内**；缺它时 hide 被 ACL 拒绝且被 catch 吞掉，表现为「工具栏先消失、网页内容卡一下才消失」） |
-| `core:webview:allow-set-webview-position` | :23 | 同步子 Webview 位置（`Webview#setPosition()`） |
-| `core:webview:allow-set-webview-size` | :24 | 同步子 Webview 尺寸（`Webview#setSize()`） |
-| `opener:default` | :25 | opener 插件默认集（含 `reveal_item_in_dir`、mailto/tel/http(s) URL） |
-| `opener:allow-open-url` | :26 | 无 scope 限制地打开任意 URL |
+| `core:window:allow-start-dragging` | :17 | 自绘标题栏/浏览器工具栏的 `data-tauri-drag-region` 拖动（Tauri 的 `drag.js` 经此 API 发起窗口拖动） |
+| `core:window:allow-internal-toggle-maximize` | :18 | 拖动区**双击**切换最大化/还原（`drag.js` 内部走 `internal_toggle_maximize`） |
+| `core:window:allow-primary-monitor` | :19 | 查询主显示器 |
+| `core:window:allow-outer-position` / `allow-outer-size` | :20-21 | 查询窗口外框位置/尺寸（最大化状态判断等） |
+| `core:webview:allow-create-webview` | :22 | in-app browser：`new Webview()` → `plugin:webview\|create_webview`（**不在 `core:webview:default` 内**） |
+| `core:webview:allow-webview-close` | :23 | 卸载/关闭时销毁子 Webview（`Webview#close()`） |
+| `core:webview:allow-webview-hide` | :24 | 关闭 in-app browser 时**先隐藏**子 Webview 再卸载 DOM（`Webview#hide()`，**不在 `core:webview:default` 内**；缺它时 hide 被 ACL 拒绝且被 catch 吞掉，表现为「工具栏先消失、网页内容卡一下才消失」） |
+| `core:webview:allow-set-webview-position` | :25 | 同步子 Webview 位置（`Webview#setPosition()`） |
+| `core:webview:allow-set-webview-size` | :26 | 同步子 Webview 尺寸（`Webview#setSize()`） |
+| `opener:default` | :27 | opener 插件默认集（含 `reveal_item_in_dir`、mailto/tel/http(s) URL） |
+| `opener:allow-open-url` | :28 | 无 scope 限制地打开任意 URL |
 
 **备注**：
-- **未授予** `core:window:allow-start-dragging`；前端自绘标题栏改用 CSS `WebkitAppRegion: "drag"`（custom-titlebar.tsx:170/208）实现拖动，未调用 `startDragging()`。
+- **窗口拖动走 `data-tauri-drag-region`**（标题栏 `custom-titlebar.tsx`、in-app browser 工具栏 `in-app-browser.tsx`），因此需要 `allow-start-dragging`（拖动）与 `allow-internal-toggle-maximize`（拖动区双击最大化）。**不要退回 CSS `-webkit-app-region`**：它只在 Windows WebView2 123+ 生效，Linux 发行版用的 WebKitGTK 完全不认，那两块拖拽区在 Linux 上会毫无反应；`drag.js` 会自动排除按钮等可点击元素，组件里因此不再逐个标 `no-drag`（只有需要显式禁止的容器才写 `data-tauri-drag-region="false"`）。
 - **未授予** `core:webview:allow-webview-show`：重新打开浏览器总是新建子 Webview（`in-app-browser.tsx` 生命周期 effect），没有「隐藏后复用」路径，无需 show。
 - 子 Webview 的 `url`/`backgroundColor` 走创建参数（`create_webview` 一次带上），因此**不需要** `allow-set-webview-background-color`；后退/前进/刷新/导航/取地址由 `commands/browser.rs` 的 app command 承担，而 app command **不经 capabilities 授权**（本项目无 `__app-acl__` manifest，local origin 下直接放行），所以此处无需为 `browser_*` 添加权限项。
 - `windows` 只列 `main`/`tray-panel`：能力按窗口匹配后对该窗口的**全部** webview 生效，故 `inapp-browser-*` 子 webview 自动继承这几条 `core:webview:*` 权限（本会话只用主 webview 调它们，子 webview 是 remote origin，无法调用任何 app command）。

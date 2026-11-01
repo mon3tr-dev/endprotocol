@@ -129,7 +129,7 @@
 | `handleMaximize` | custom-titlebar.tsx:125 | `await invoke("toggle_maximize_window")`，100ms 后再 `checkMaximizedState()` 同步图标 |
 | `handleClose` | custom-titlebar.tsx:134 | 按 `closeAction` 分支：`"ask"` → `setShowCloseConfirm(true)`；`"minimize_to_tray"` → `invoke("minimize_to_tray")`；否则 `invoke("app_quit")` |
 | `handleConfirmClose` | custom-titlebar.tsx:148 | `(action: "close" \| "minimize_to_tray")`：分别 `invoke("minimize_to_tray")` / `invoke("app_quit")`；之后重新 `getConfig("close_action")` 回写本地 `closeAction`（用户可能勾选了「记住」） |
-| 渲染块 | custom-titlebar.tsx:165-289 | `titlebar-shell h-11`（`WebkitAppRegion: drag`，交互元素 `no-drag`）：品牌圆点 + 标题（`viewMode === "game"` 显示 `launcher.game_title`，否则 `ENDPROTOCOL`，178 行）→ `ToggleGroup` 视图切换（182-204，值 `"data"` / `"game"`，写入 `setLauncherMode`）→ 弹性占位 → 铃铛按钮（211-226，未读角标 `99+` 截断，`hasUrgent` 用 `bg-danger`）→ 新消息浮层（228-246，`createPortal(document.body)` + `fixed right-12 top-10 z-[10005]`，内嵌 `MessageCard compact`）→ 窗口三键（248-282）→ `<AppInfoDrawer>`（286）与 `<CloseConfirmDialog>`（287-291） |
+| 渲染块 | custom-titlebar.tsx:165-289 | `titlebar-shell h-11`（拖动区用 `data-tauri-drag-region="deep"`，可点击元素由 Tauri `drag.js` 自动排除，需要禁止拖动的容器才写 `data-tauri-drag-region="false"`）：品牌圆点 + 标题（`viewMode === "game"` 显示 `launcher.game_title`，否则 `ENDPROTOCOL`，178 行）→ `ToggleGroup` 视图切换（182-204，值 `"data"` / `"game"`，写入 `setLauncherMode`）→ 弹性占位 → 铃铛按钮（211-226，未读角标 `99+` 截断，`hasUrgent` 用 `bg-danger`）→ 新消息浮层（228-246，`createPortal(document.body)` + `fixed right-12 top-10 z-[10005]`，内嵌 `MessageCard compact`）→ 窗口三键（248-282）→ `<AppInfoDrawer>`（286）与 `<CloseConfirmDialog>`（287-291） |
 
 **备注**：
 - **invoke 命令**：`minimize_window`（custom-titlebar.tsx:119）、`toggle_maximize_window`（127）、`minimize_to_tray`（139、151）、`app_quit`（141、153）。

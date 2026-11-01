@@ -234,7 +234,7 @@
 - 420-428 行：`syncUrlFromWebview` 在地址栏点击时回读真实地址（补 SPA `pushState` 不触发 on_page_load 的盲区）。
 - 432-490 行：`handleBack`/`handleForward`/`handleRefresh`/`handleOpenExternal`（非 Tauri 回落到 `iframe.contentWindow`）。
 - 496 行：`!isOpen` 时返回 `null`。
-- 505-568 行：玻璃工具栏（`ref={toolbarRef}`）。**布局保持在 Webview 区域之外**（原生层会覆盖 DOM），空白区即窗口拖拽区（`WebkitAppRegion: drag`）；按钮区显式 `no-drag`。窗口控制组在 `isTauri()` 时渲染。
+- 505-568 行：玻璃工具栏（`ref={toolbarRef}`）。**布局保持在 Webview 区域之外**（原生层会覆盖 DOM），空白区即窗口拖拽区（`data-tauri-drag-region="deep"`，按钮由 Tauri `drag.js` 自动排除，地址栏等容器显式 `data-tauri-drag-region="false"`）；不用 `-webkit-app-region`，它在 WebKitGTK（Linux 发行版）上不生效。窗口控制组在 `isTauri()` 时渲染。
 - 626-630 行：`loading` 时的顶部脉冲进度条。
 - 637-648 行：占位容器 `div ref={containerRef}`；`!isTauri()` 时在容器内渲染降级 `iframe`（`sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-modals allow-downloads"`，`onLoad` 关闭 loading）。
 

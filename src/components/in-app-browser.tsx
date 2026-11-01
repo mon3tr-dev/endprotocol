@@ -527,23 +527,24 @@ export function InAppBrowser() {
 
   if (!isOpen) return null;
 
-  const noDrag = { WebkitAppRegion: "no-drag" } as React.CSSProperties;
-
   return (
     <div className="absolute inset-0 z-40 flex flex-col">
       {/*
        * 玻璃工具栏：整条覆盖标题栏高度（h-11），空白区即窗口拖拽区。
        * 布局保持在 Webview 区域之外，避免被原生层覆盖。
+       *
+       * 拖拽用 Tauri 的 `data-tauri-drag-region`：`-webkit-app-region` 在 WebKitGTK
+       * （Linux 发行版）上不生效，只有 Windows WebView2 123+ 支持。
        */}
       <div
         ref={toolbarRef}
         className="h-11 flex items-center gap-1.5 pl-3 pr-2 shrink-0 bg-background/60 backdrop-blur-xl border-b border-white/10"
+        data-tauri-drag-region="deep"
       >
         {/* Back */}
         <button
           type="button"
           onClick={handleBack}
-          style={noDrag}
           className="w-7 h-7 flex items-center justify-center rounded-lg text-muted hover:text-foreground hover:bg-white/10 transition-colors cursor-pointer"
           title={t("browser.back", "Back")}
         >
@@ -556,7 +557,6 @@ export function InAppBrowser() {
         <button
           type="button"
           onClick={handleForward}
-          style={noDrag}
           className="w-7 h-7 flex items-center justify-center rounded-lg text-muted hover:text-foreground hover:bg-white/10 transition-colors cursor-pointer"
           title={t("browser.forward", "Forward")}
         >
@@ -569,7 +569,6 @@ export function InAppBrowser() {
         <button
           type="button"
           onClick={handleRefresh}
-          style={noDrag}
           className="w-7 h-7 flex items-center justify-center rounded-lg text-muted hover:text-foreground hover:bg-white/10 transition-colors cursor-pointer"
           title={t("browser.refresh", "Refresh")}
         >
@@ -582,7 +581,6 @@ export function InAppBrowser() {
         <button
           type="button"
           onClick={handleOpenExternal}
-          style={noDrag}
           className="w-7 h-7 flex items-center justify-center rounded-lg text-muted hover:text-foreground hover:bg-white/10 transition-colors cursor-pointer"
           title={t("browser.open_in_browser", "Open in Browser")}
         >
@@ -592,7 +590,7 @@ export function InAppBrowser() {
         {/* 地址显示：只读，点击回读真实地址 */}
         <div
           className="flex-1 flex items-center h-7 px-2.5 rounded-lg bg-white/5 border border-white/10 min-w-0"
-          style={noDrag}
+          data-tauri-drag-region="false"
         >
           <svg className="w-3 h-3 text-muted shrink-0 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 11c0 3.517-1.009 6.799-2.753 9.571m-3.44-2.04l.054-.09A13.916 13.916 0 008 11a4 4 0 118 0c0 1.017-.07 2.019-.203 3m-2.118 6.844A21.88 21.88 0 0015.171 17m3.839 1.132c.645-2.266.99-4.659.99-7.132A8 8 0 008 4.07M3 15.364c.64-1.319 1-2.8 1-4.364 0-1.457.39-2.823 1.07-4" />
@@ -611,7 +609,6 @@ export function InAppBrowser() {
         <button
           type="button"
           onClick={handleClose}
-          style={noDrag}
           className="w-7 h-7 flex items-center justify-center rounded-lg text-muted hover:text-danger hover:bg-danger/10 transition-colors cursor-pointer mr-1"
           title={t("browser.close", "Close Browser")}
         >
@@ -622,13 +619,12 @@ export function InAppBrowser() {
         {isTauri() && (
           <div
             className="flex items-center rounded-xl overflow-hidden glass-surface border border-separator/60"
-            style={noDrag}
+            data-tauri-drag-region="false"
           >
             <button
               type="button"
               onClick={handleWindowMinimize}
               aria-label={t("browser.minimize", "Minimize")}
-              style={noDrag}
               className="flex h-7 w-8 items-center justify-center rounded-l-xl text-muted transition-all duration-200 hover:bg-white/10 hover:text-foreground hover:scale-105 active:scale-95 cursor-pointer"
             >
               <MinimizeIcon size={14} />
@@ -637,7 +633,6 @@ export function InAppBrowser() {
               type="button"
               onClick={handleWindowMaximize}
               aria-label={isMaximized ? t("browser.restore", "Restore") : t("browser.maximize", "Maximize")}
-              style={noDrag}
               className="flex h-7 w-8 items-center justify-center text-muted transition-all duration-200 hover:bg-white/10 hover:text-foreground hover:scale-105 active:scale-95 cursor-pointer"
             >
               {isMaximized ? <RestoreIcon size={14} /> : <MaximizeIcon size={14} />}
@@ -646,7 +641,6 @@ export function InAppBrowser() {
               type="button"
               onClick={handleWindowClose}
               aria-label={t("browser.quit_window", "Close Window")}
-              style={noDrag}
               className="flex h-7 w-8 items-center justify-center rounded-r-xl text-muted transition-all duration-200 hover:bg-danger/20 hover:text-danger hover:scale-105 active:scale-95 cursor-pointer"
             >
               <CloseIcon size={14} />

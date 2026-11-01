@@ -172,14 +172,18 @@ export const CustomTitlebar = () => {
   return (
     <>
       <div className="titlebar-shell relative h-11">
+        {/*
+         * 窗口拖拽用 Tauri 的 `data-tauri-drag-region`（"deep" = 子树空白处都能拖）。
+         * 不要用 `-webkit-app-region`：它在 WebKitGTK 上不生效（wry 自己的
+         * examples/custom_titlebar.rs 也注明 app-region 只在 Windows WebView2 123+ 受支持），
+         * 而 Linux 发行版走的正是 WebKitGTK，所以那两个 drag 区在 Linux 上完全没反应。
+         * 按钮等可点击元素由 Tauri 的 drag.js 自动排除，无需再逐个标 no-drag。
+         */}
         <div
           className="relative flex h-full items-center pl-5 pr-2"
-          style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
+          data-tauri-drag-region="deep"
         >
-          <div
-            className="flex items-center gap-2.5"
-            style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
-          >
+          <div className="flex items-center gap-2.5">
             <div className="w-2 h-2 rounded-full bg-primary/60" />
             <h1 className="adaptive-contrast-text text-sm font-bold tracking-widest">
               {viewMode === "game" ? t("launcher.game_title") : "ENDPROTOCOL"}
@@ -195,7 +199,7 @@ export const CustomTitlebar = () => {
               }}
               aria-label={`${t("launcher.mode_data")} / ${t("launcher.mode_game")}`}
               className={`titlebar-mode-toggle ml-2 relative grid h-7 w-[104px] grid-cols-2 overflow-hidden rounded-full border-white/20 bg-default-100/55 p-0.5 shadow-[inset_0_1px_1px_rgba(255,255,255,0.2)] ${viewMode === "game" ? "is-game" : ""}`}
-              style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+              data-tauri-drag-region="false"
             >
               <ToggleGroupItem
                 value="data"
@@ -212,17 +216,13 @@ export const CustomTitlebar = () => {
             </ToggleGroup>
           )}
 
-          <div
-            className="flex-1"
-            style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
-          />
-
+          <div className="flex-1" data-tauri-drag-region="deep" />
           <button
             type="button"
             onClick={() => setInfoOpen(true)}
             aria-label="Messages"
             className="relative flex h-7 w-7 items-center justify-center rounded-lg text-muted transition-all duration-200 hover:bg-white/10 hover:text-foreground hover:scale-110 active:scale-90 cursor-pointer mr-2"
-            style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+            data-tauri-drag-region="false"
           >
             <BellIcon size={14} />
             {unreadCount > 0 && (
@@ -238,7 +238,7 @@ export const CustomTitlebar = () => {
             createPortal(
               <div
                 className="fixed right-12 top-10 z-[10005] w-[340px] max-w-[calc(100vw-2rem)] rounded-xl glass-surface-strong p-1 shadow-xl animate-fade-in"
-                style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+                data-tauri-drag-region="false"
               >
                 <MessageCard
                   msg={newMessage}
@@ -258,7 +258,7 @@ export const CustomTitlebar = () => {
                 ? "bg-black/40 backdrop-blur-md border border-white/10"
                 : "glass-surface border border-separator/60"
             }`}
-            style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+            data-tauri-drag-region="false"
           >
             <button
               type="button"
