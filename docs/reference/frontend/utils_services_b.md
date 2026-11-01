@@ -33,8 +33,8 @@
 | `getIsDownloading` | updateService.ts:831 | 返回下载中标记 |
 | `getDownloadProgress` | updateService.ts:835 | 返回已下载字节数 |
 | `getDownloadTotal` | updateService.ts:839 | 返回总字节数 |
-| `downloadUpdate` | updateService.ts:843 | 下载并安装。预览/频道切换通过 `install_update_endpoint` 使用 Tauri updater 验签安装；稳定更新使用插件 `Update.download()`/`install()`；macOS/Linux 安装后 `relaunch()`。进度经 `addProgressMessage`/`updateProgressMessage` 展示，异常走 `pushGlobalAlert("danger", …)` |
-| `cancelDownload` | updateService.ts:945 | 中止当前下载控制器、复位进度、移除进度消息、`emitChange()` |
+| `downloadUpdate` | updateService.ts:843 | 下载并安装。启动前重置后端取消标志；预览/频道切换通过 `install_update_endpoint` 使用 Tauri updater 验签安装；稳定更新使用插件 `Update.download()`/`install()`；macOS/Linux 安装后 `relaunch()`。进度经 `addProgressMessage`/`updateProgressMessage` 展示，异常走 `pushGlobalAlert("danger", …)` |
+| `cancelDownload` | updateService.ts:949 | 中止当前下载控制器、向后端发送 `cancel_download` 命令停止下载、复位进度、移除进度消息、`emitChange()` |
 | `openUpdateDialog` | updateService.ts:959 | 派发 `window` 自定义事件 `openUpdateDialog` |
 | `subscribeUpdateState` | updateService.ts:972 | 注册状态监听（推入 `listeners`），返回退订函数 |
 | `subscribeDownloadProgress` | updateService.ts:979 | 与 `subscribeUpdateState` 共用 `listeners` 数组 |

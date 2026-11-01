@@ -865,6 +865,10 @@ export async function downloadUpdate(): Promise<void> {
   emitChange();
 
   try {
+    // Reset backend cancellation flag so a previously cancelled download
+    // does not block this one.
+    await invoke("reset_download_cancel");
+
     if (updaterEndpoint) {
       logger.info("Starting channel update via Tauri updater...", "Updater");
       const unlisten = await listen<{ downloaded: number; total: number }>(
@@ -947,6 +951,9 @@ export function cancelDownload(): void {
     downloadAbortController.abort();
     downloadAbortController = null;
   }
+
+  // Signal the backend to stop the in-progress download as well.
+  void invoke("cancel_download");
 
   isDownloading = false;
   downloadProgress = 0;

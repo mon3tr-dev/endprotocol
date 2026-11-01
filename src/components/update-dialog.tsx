@@ -5,6 +5,7 @@ import { GlassModalCompound as GlassModal } from "@/components/ui/modal";
 import { GlassSkeleton } from "@/components/ui/skeleton";
 import {
   checkForUpdate,
+  cancelDownload,
   downloadUpdate,
   getChannel,
   getCurrentUpdateInfo,
@@ -90,6 +91,11 @@ export function UpdateDialog({ isOpen, onOpenChange }: UpdateDialogProps) {
   }, [isDownloading]);
 
   const handleClose = useCallback(() => {
+    onOpenChange(false);
+  }, [onOpenChange]);
+
+  const handleStopDownload = useCallback(() => {
+    cancelDownload();
     onOpenChange(false);
   }, [onOpenChange]);
 
@@ -313,9 +319,11 @@ export function UpdateDialog({ isOpen, onOpenChange }: UpdateDialogProps) {
 
             <GlassModal.Footer className="flex items-center justify-end gap-3 px-8 py-4 border-t border-separator">
               {isDownloading ? (
-                <GlassButton variant="tertiary" onPress={handleClose} isDisabled>
-                  {t("settings.update.downloading")}
-                </GlassButton>
+                <>
+                  <GlassButton variant="danger" onPress={handleStopDownload}>
+                    {t("settings.update.stop_download")}
+                  </GlassButton>
+                </>
               ) : (
                 <>
                   <GlassButton variant="tertiary" onPress={handleClose}>

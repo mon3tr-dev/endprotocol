@@ -74,6 +74,10 @@ pub async fn install_update_endpoint(
     app: tauri::AppHandle,
     endpoint: String,
 ) -> Result<(), String> {
+    // Reset cancellation flag at start so a previously cancelled download
+    // does not block a new one.
+    DOWNLOAD_CANCELLED.store(false, Ordering::SeqCst);
+
     let updater = updater_for_endpoint(&app, &endpoint)?;
     let update = updater
         .check()
@@ -81,22 +85,63 @@ pub async fn install_update_endpoint(
         .map_err(|error| error.to_string())?
         .ok_or_else(|| "No compatible update is available".to_string())?;
 
-    let mut downloaded = 0_u64;
-    update
-        .download_and_install(
-            |chunk_length, content_length| {
-                downloaded += chunk_length as u64;
-                let _ = app.emit(
-                    "download-progress",
-                    serde_json::json!({
-                        "downloaded": downloaded,
-                        "total": content_length.unwrap_or(0),
-                    }),
-                );
-            },
-            || {},
-        )
+    // Stream the update package to a temp file so we can honour user
+    // cancellation mid-download. The file is removed on cancel or failure.
+    let download_url = update.download_url.clone();
+    let version = update.version.clone();
+
+    let client = reqwest::Client::new();
+    let resp = capture::send_stream(&client, client.get(download_url.clone()))
         .await
+        .map_err(|e| format!("Failed to start download from '{}': {}", download_url, e))?;
+
+    let total = resp.content_length().unwrap_or(0);
+    let temp_path = std::env::temp_dir().join(format!("endprotocol-update-{version}"));
+
+    let mut file = fs::File::create(&temp_path)
+        .map_err(|e| format!("Failed to create temp file '{}': {}", temp_path.display(), e))?;
+
+    let mut stream = resp.bytes_stream();
+    use futures_util::StreamExt;
+    let mut downloaded: u64 = 0;
+    let mut last_emit: u64 = 0;
+
+    while let Some(chunk) = stream.next().await {
+        // Honour cancellation requested via the `cancel_download` command.
+        if DOWNLOAD_CANCELLED.load(Ordering::SeqCst) {
+            drop(file);
+            let _ = fs::remove_file(&temp_path);
+            return Err("Download cancelled".into());
+        }
+
+        let chunk = chunk.map_err(|e| format!("Download stream error: {}", e))?;
+        file.write_all(&chunk)
+            .map_err(|e| format!("Failed to write to file: {}", e))?;
+        downloaded += chunk.len() as u64;
+
+        // Emit progress every ~256KB
+        if downloaded - last_emit >= 256 * 1024 || downloaded == total {
+            let _ = app.emit(
+                "download-progress",
+                serde_json::json!({
+                    "downloaded": downloaded,
+                    "total": total,
+                }),
+            );
+            last_emit = downloaded;
+        }
+    }
+
+    file.flush()
+        .map_err(|e| format!("Failed to flush file: {}", e))?;
+    drop(file);
+
+    let bytes = fs::read(&temp_path)
+        .map_err(|e| format!("Failed to read downloaded update: {}", e))?;
+    let _ = fs::remove_file(&temp_path);
+
+    update
+        .install(bytes)
         .map_err(|error| error.to_string())
 }
 
