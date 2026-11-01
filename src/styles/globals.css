@@ -150,18 +150,42 @@
   --radius-xl: calc(var(--radius) + 4px);
 }
 
-/* Native glass-field control style */
+/* Native glass-field control style
+ *
+ * 模糊只放在 ::before 这一层（z-index:-1），控件自身不再持有 backdrop-filter。
+ * 原因见下方「Glass Surfaces」注释：WebKitGTK 在运行时改模糊半径后会把背景模糊
+ * 层重新合成到元素内容之上，控件连同里面的文字会一起变成一块糊掉的方块。
+ */
 .glass-field {
+  background: transparent;
+  border: 1px solid color-mix(in oklch, var(--border) 60%, transparent);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+.glass-field::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  pointer-events: none;
   background: color-mix(
     in oklch,
     var(--field) var(--glass-field-opacity, 80%),
     transparent
   );
   backdrop-filter: blur(calc(var(--glass-blur, 28px) * 0.43)) saturate(1.5);
-  border: 1px solid color-mix(in oklch, var(--border) 60%, transparent);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.06),
-    0 1px 3px rgba(0, 0, 0, 0.06);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+/* <input>/<textarea>/<select> 是替换元素，::before 不会被渲染，模糊层没地方放。
+ * 字段底色本来就有 80%+ 不透明度，这里直接铺底色并去掉 backdrop-filter，
+ * 顺带避免同一个 WebKit 合成 bug 把输入框里的文字糊掉。 */
+:is(input, textarea, select).glass-field {
+  background: color-mix(
+    in oklch,
+    var(--field) var(--glass-field-opacity, 80%),
+    transparent
+  );
+  backdrop-filter: none;
 }
 
 html {
@@ -606,76 +630,144 @@ body::before {
   background: rgba(80, 82, 90, 0.9);
 }
 
-/* Glass Surfaces - Native backdrop-filter (replaces AuraGlass tokens) */
+/* Glass Surfaces - Native backdrop-filter (replaces AuraGlass tokens)
+ *
+ * ⚠️ 模糊（backdrop-filter）一律放在 ::before 上，元素本身只保留透明背景与外阴影。
+ * 这样做是为了绕开 WebKitGTK（Linux）的合成 bug：调节「毛玻璃清晰度」时
+ * --glass-blur 会在运行时改写，WebKit 会把该元素的「背景模糊层」重新合成到
+ * 元素内容之上，于是整张卡片（含文字、滑块等控件）被一块模糊方块盖住。
+ * 把过滤放到没有子内容的伪元素上，内容层级永远在模糊层之上，就不可能被糊掉。
+ *
+ * 配套的 position/z-index 见下方 @layer components —— 必须放低优先级层，
+ * 否则会盖掉组件的 fixed / sticky / absolute 等 Tailwind 工具类。
+ */
 .glass-window {
   background: transparent;
 }
 .glass-surface {
+  background: transparent;
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.08),
+    0 4px 12px rgba(0, 0, 0, 0.04);
+}
+.glass-surface::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  pointer-events: none;
   background: color-mix(
     in oklch,
     var(--surface) var(--glass-surface-opacity, 78%),
     transparent
   );
   backdrop-filter: blur(var(--glass-blur, 28px)) saturate(1.35);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.06),
-    0 1px 3px rgba(0, 0, 0, 0.08),
-    0 4px 12px rgba(0, 0, 0, 0.04);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 .dark .glass-surface {
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.04),
     0 1px 3px rgba(0, 0, 0, 0.2),
     0 4px 12px rgba(0, 0, 0, 0.12);
 }
+.dark .glass-surface::before {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
 .glass-surface-strong {
+  background: transparent;
+  box-shadow:
+    0 2px 6px rgba(0, 0, 0, 0.12),
+    0 4px 12px rgba(0, 0, 0, 0.08);
+}
+.glass-surface-strong::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  pointer-events: none;
   background: color-mix(
     in oklch,
     var(--surface) var(--glass-strong-opacity, 85%),
     transparent
   );
   backdrop-filter: blur(var(--glass-blur, 28px)) saturate(1.35);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.08),
-    0 2px 6px rgba(0, 0, 0, 0.12),
-    0 4px 12px rgba(0, 0, 0, 0.08);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 .glass-control-surface {
+  background: transparent;
+  box-shadow:
+    0 2px 8px rgba(0, 0, 0, 0.14);
+}
+.glass-control-surface::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  pointer-events: none;
   background: color-mix(
     in oklch,
     var(--surface) calc(var(--glass-surface-opacity, 78%) - 25%),
     transparent
   );
   backdrop-filter: blur(var(--glass-blur, 28px)) saturate(1.35);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.12),
-    0 2px 8px rgba(0, 0, 0, 0.14);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
 }
 .account-glass-panel {
-  background: color-mix(in oklch, var(--surface) 48%, transparent);
-  backdrop-filter: blur(28px) saturate(1.35);
+  background: transparent;
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.18),
     0 8px 24px rgba(0, 0, 0, 0.08);
 }
+.account-glass-panel::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  pointer-events: none;
+  background: color-mix(in oklch, var(--surface) 48%, transparent);
+  backdrop-filter: blur(28px) saturate(1.35);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
 .account-glass-inner {
+  background: transparent;
+}
+.account-glass-inner::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  pointer-events: none;
   background: color-mix(in oklch, var(--surface) 30%, transparent);
   backdrop-filter: blur(18px) saturate(1.2);
 }
 .account-glass-row {
+  background: transparent;
+}
+.account-glass-row::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  pointer-events: none;
   background: color-mix(in oklch, var(--surface) 22%, transparent);
   backdrop-filter: blur(12px) saturate(1.15);
 }
 .dark .account-glass-panel {
-  background: color-mix(in oklch, var(--surface) 58%, transparent);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.08),
     0 8px 24px rgba(0, 0, 0, 0.2);
 }
-.dark .account-glass-inner {
+.dark .account-glass-panel::before {
+  background: color-mix(in oklch, var(--surface) 58%, transparent);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+.dark .account-glass-inner::before {
   background: color-mix(in oklch, var(--surface) 40%, transparent);
 }
-.dark .account-glass-row {
+.dark .account-glass-row::before {
   background: color-mix(in oklch, var(--surface) 32%, transparent);
 }
 .dashboard-card-shell {
@@ -686,22 +778,47 @@ body::before {
 .dashboard-card-shell > .h-full > .glass-surface {
   position: relative;
 }
-.dashboard-card-shell > .h-full > .glass-surface::before {
-  display: none;
-}
 .dashboard-card-shell > .h-full > .glass-surface > * {
   position: relative;
   z-index: 1;
 }
 .dark .glass-surface-strong {
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.05),
     0 2px 6px rgba(0, 0, 0, 0.3),
     0 8px 24px rgba(0, 0, 0, 0.2);
+}
+.dark .glass-surface-strong::before {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 .glass-backdrop {
   background: rgba(0, 0, 0, 0.5);
   backdrop-filter: blur(4px);
+}
+
+/* ------------------------------------------------------------------
+ * 毛玻璃模糊层：定位上下文
+ *
+ * 上面各玻璃类的模糊层都是 `::before { position:absolute; z-index:-1 }`，
+ * 需要父级是「定位元素 + 层叠上下文」，否则负层级会漏到祖先层叠上下文里，
+ * 反而被上层背景盖住。
+ *
+ * 这里刻意放进 @layer components：Tailwind 工具类在 utilities 层，
+ * 优先级更高，所以 `fixed` / `sticky` / `absolute` / `z-[210]` 仍然生效
+ * （抽屉、浮层、FAB 等玻璃元素依赖这些工具类定位）。
+ * ------------------------------------------------------------------ */
+@layer components {
+  :is(
+    .glass-field,
+    .glass-surface,
+    .glass-surface-strong,
+    .glass-control-surface,
+    .account-glass-panel,
+    .account-glass-inner,
+    .account-glass-row
+  ) {
+    position: relative;
+    z-index: 0;
+  }
 }
 
 /* ------------------------------------------------------------------

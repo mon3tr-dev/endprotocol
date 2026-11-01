@@ -179,7 +179,7 @@
 | 3 行 | `@custom-variant dark` —— 深色变体以 `.dark` 类为作用域（`&:is(.dark *)`），即**类名切换式深色模式** |
 | 6-96 行 | `@layer base` 主题令牌：`:root`（7-66 行）浅色变量；`.dark`（67-95 行）覆盖为深色变量 |
 | 98-151 行 | `@theme inline` —— 把 CSS 变量桥接为 Tailwind 语义色（`--color-background`、`--color-primary` 等）并派生 radius 刻度 |
-| 154-160 行 | `.glass-field` 原生玻璃输入控件 |
+| 159-190 行 | `.glass-field` 原生玻璃输入控件（底色 + 模糊位于 `::before` 独立层；`input/textarea/select` 因不支持伪元素改为直接铺底色、去掉模糊） |
 | 162-163 行 | `color-scheme` 过渡、移动端点击高亮重置 |
 | 166-171 行 | Tauri 窗口背景变量组 + `body` 背景色（浅/深两套） |
 | 172-186 行 | `.dashboard-background` 固定背景层（背景图 + 三层渐变叠加 + blur） |
@@ -191,7 +191,7 @@
 | 267-283 行 | 页面转场（`.page-transition-enter/slide-up/scale-in`）与列表项级联动画 `.animate-list-item`（8 档 40ms 阶梯延迟） |
 | 285-287 行 | 减少动态效果偏好下关闭系统资源指标切换动画 |
 | 289-292 行 | 滚动条：全局隐藏（width:0），`[data-ovs]:hover` 时才显示悬浮 thumb |
-| 约 700-762 行 | **玻璃拟态工具类**（详见下表） |
+| 约 644-908 行 | **玻璃拟态工具类**（详见下表；底色与 `backdrop-filter` 均在 `::before` 独立层，定位上下文在 `@layer components`） |
 | 377-422 行 | 交互动效工具类：`.interactive-hover`、`.card-hover`、`.button-hover`、`.icon-hover`、`.nav-hover`、`.list-item-hover`、`.input-hover`、`.chip-hover`、`.switch-hover`、`.checkbox-hover`、`.modal-hover`、`.tooltip-hover`、`.dropdown-item-hover`、`.table-row-hover`、`.link-hover` |
 | 424-430 行 | 状态发光阴影：`.shadow-glow-success/danger/warning`（深色模式加强） |
 | 432-463 行 | 技能描述富文本标记：`.ba-tag`、`.ba-at-*` / `.ba-hash-*` / `.ba-tips-*` 系列属性关键字配色（cryst/key/vup/poise/speedup/slow/spellburst 等） |
@@ -208,23 +208,30 @@
 2. `:root` 与 `.dark` 的变量经 `@theme inline`（98-151 行）映射为 Tailwind 的 `bg-background`、`text-foreground`、`bg-surface`、`border-border`、`text-primary` 等工具类，实现全站一键换肤。
 3. 主题色（accent）改写 `--primary*` / `--accent` 变量即可全局生效；多处用 `color-mix(in oklab/oklch, var(--primary) …)` 派生 hover/发光色，因此换色自动跟随。
 
-**玻璃拟态工具类（约 700-762 行）**：
+**玻璃拟态工具类（约 644-908 行）**：
 
 | 类 | 行号 | 用途 |
 | --- | --- | --- |
-| `.glass-window` | 610 | 透明窗口底层 |
-| `.glass-surface` | 613 | 标准玻璃面板（`--glass-surface-opacity` + blur），深色阴影覆盖于 :303 |
-| `.glass-surface-strong` | 631 | 高不透明玻璃（`--glass-strong-opacity`），深色覆盖于 :358 |
-| `.glass-control-surface` | 643 | 控件区玻璃（不透明度再减 25%） |
-| `.glass-field` | 470 | 表单控件玻璃（`--glass-field-opacity`，blur × 0.43） |
-| `.account-glass-panel` / `-inner` / `-row` | 654 / 659 / 663 | 账户页三层玻璃（48%/30%/22% 不透明度），深色覆盖于 :333-342 |
-| `.dashboard-card-shell` | 681 | 仪表盘卡片外壳（透明 + 圆角 10px，抑制内部 ::before 装饰） |
-| `.glass-backdrop` | 702 | 模态遮罩（黑 50% + blur 4px） |
-| `.glass-native` | 721 | **原生磨砂窗口层**（托盘面板）：`backdrop-filter: none`，只用低不透明度 `--surface` 渐变 + 底色压住背景，避免"模糊的模糊"；深色覆盖于 :741。不透明度由设置页「毛玻璃清晰度」（`glass_clarity`）驱动：`applyGlassClarity()` 换算为 `--glass-native-opacity`（38%–92%）与 `--glass-native-base`（12%–38%） |
-| `html[data-window="tray-panel"]` / 其 `body` | 759-762 | 托盘页去掉 body 底色（默认 `rgba(255,255,255,.33)`），让系统 Acrylic 透出 |
-| `.avatar-feather` | 764 | 头像径向羽化 mask |
-| `.context-item-normal` | 771 | 右键菜单项 hover 染色 |
-| `.glass` / `.glass-strong` | 787 / 793 | 兼容占位类（均置为 transparent，深浅色相同） |
+| `.glass-window` | 644 | 透明窗口底层 |
+| `.glass-surface` | 647 / `::before` 653 | 标准玻璃面板（`--glass-surface-opacity` + blur 都写在 `::before` 上），深色阴影覆盖于 :668 |
+| `.glass-surface-strong` | 673 / `::before` 679 | 高不透明玻璃（`--glass-strong-opacity`），深色覆盖于 :781 |
+| `.glass-control-surface` | 694 / `::before` 699 | 控件区玻璃（不透明度再减 25%） |
+| `.glass-field` | 159 / `::before` 164 | 表单控件玻璃（`--glass-field-opacity`，blur × 0.43） |
+| `.account-glass-panel` / `-inner` / `-row` | 714 / 730 / 743（`::before` 随类定义） | 账户页三层玻璃（48%/30%/22% 不透明度），深色覆盖于 :756-766 |
+| `.dashboard-card-shell` | 769 | 仪表盘卡片外壳（透明 + 圆角 10px + 裁切，`> .glass-surface > *` 保持内容在模糊层之上） |
+| `@layer components`：玻璃层定位上下文 | 802 | 给上述玻璃类补 `position: relative; z-index: 0`；**必须在低优先级层**，否则会盖掉 `fixed`/`sticky`/`absolute`/`z-*` 等 Tailwind 工具类 |
+| `.glass-backdrop` | 786 | 模态遮罩（黑 50% + blur 4px） |
+| `.glass-native` | 831 | **原生磨砂窗口层**（托盘面板）：`backdrop-filter: none`，只用低不透明度 `--surface` 渐变 + 底色压住背景，避免"模糊的模糊"；深色覆盖于 :851。不透明度由设置页「毛玻璃清晰度」（`glass_clarity`）驱动：`applyGlassClarity()` 换算为 `--glass-native-opacity`（38%–92%）与 `--glass-native-base`（12%–38%） |
+| `html[data-window="tray-panel"]` / 其 `body` | 869-872 | 托盘页去掉 body 底色（默认 `rgba(255,255,255,.33)`），让系统 Acrylic 透出 |
+| `.avatar-feather` | 874 | 头像径向羽化 mask |
+| `.context-item-normal` | 881 | 右键菜单项 hover 染色 |
+| `.glass` / `.glass-strong` | 897 / 903 | 兼容占位类（均置为 transparent，深浅色相同） |
+
+**为什么模糊都写在 `::before` 上（Windows/Linux 通用）**：
+- 玻璃类（`.glass-surface*` / `.glass-control-surface` / `.glass-field` / `.account-glass-*`）元素本身只保留 `background: transparent` + 外阴影，底色与 `backdrop-filter` 全部移到 `::before { position:absolute; inset:0; z-index:-1; border-radius:inherit; pointer-events:none }`。
+- 起因是 Linux（WebKitGTK）的合成 bug：设置页拖动「毛玻璃清晰度」时 `--glass-blur` 在运行时改写，WebKit 会把该元素的**背景模糊层重新合成到元素内容之上**，整张卡片连同文字、滑块一起变成一块糊掉的方块。把过滤放到没有子内容的伪元素里，内容永远在模糊层之上。
+- 伪元素要落在内容下方，父级必须是「定位元素 + 层叠上下文」，所以 `@layer components` 统一补 `position: relative; z-index: 0`；放低优先级层是为了不覆盖组件的 `fixed`/`sticky`/`absolute` 定位。
+- `<input>/<textarea>/<select>` 是替换元素、不渲染 `::before`，因此 `:is(input, textarea, select).glass-field`（182 行）直接铺底色并删掉 `backdrop-filter`；字段底色本就有 80%+ 不透明度，观感几乎无差。
 
 **其他说明**：`--bg-image` 变量在 `.dashboard-background`（177 行）作为第一层背景图使用，配合 `--bg-image-opacity` 与 `--bg-blur` 实现设置页“背景图片/透明度/磨砂”三项配置；全局 `[class*="text-"]` text-shadow（204 行）用于在浅色背景图上保证文字可读。
 

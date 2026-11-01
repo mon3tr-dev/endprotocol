@@ -65,6 +65,7 @@
 - 放 `src/components/ui/`（**不要**放 `ui/glass/`，该目录只放 barrel `index.ts`），遵循现有组件的 props 风格（受控 `isOpen`/`onOpenChange`、`className` 合并用 `cn`）
 - 如需从 `@/components/ui/glass` 统一引入，在 `ui/glass/index.ts` 里追加一行再导出
 - 复用 `glass/` 的视觉变量，支持深色模式
+- **玻璃模糊只能写在 `::before` 层**：`globals.css` 里 `.glass-surface` / `.glass-surface-strong` / `.glass-control-surface` / `.glass-field` / `.account-glass-*` 的底色与 `backdrop-filter` 都在 `::before`（`position:absolute; inset:0; z-index:-1`）上，元素自身保持 `background: transparent`。原因是 Linux（WebKitGTK）在运行时改写 `--glass-blur`（设置页拖动「毛玻璃清晰度」）后，会把背景模糊层重新合成到元素内容之上，整张卡片连文字一起糊掉；模糊放进没有子内容的伪元素就不会波及内容。新增玻璃类请沿用同一模式，并把类名补进 `globals.css` 末尾 `@layer components` 的定位列表（放低优先级层，才不会盖掉 `fixed`/`sticky`/`absolute`/`z-*` 工具类）
 - 组件清单与 props 见 [ui_components.md](reference/frontend/ui_components.md)
 - 单选/分段语义优先用 `GlassRadioGroup`（`<GlassRadioGroup value=… onValueChange=…>` + `<GlassRadioGroup.Item value=…>`，见 `ui/radio-group.tsx`），不要用 Radix ToggleGroup 冒充单选组（其 `type` 只接受 `single`/`multiple`，传 `horizontal`/`vertical` 会踩类型陷阱）
 
