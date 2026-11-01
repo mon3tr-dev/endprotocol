@@ -112,7 +112,106 @@ cargo check         # Run inside src-tauri/ (existing warnings are expected)
 
 ---
 
-## 6. Documentation Maintenance Rules
+## 6. Building the Linux AppImage (WSL2)
+
+Tauri can only bundle an AppImage on Linux — `pnpm tauri build --bundles appimage` on Windows exits without producing anything, and cross-compiling from Windows is not supported. On a Windows host, build **inside WSL2** (Ubuntu 24.04 on this machine).
+
+### One-time prerequisites (inside WSL)
+
+- Node ≥ 24 and pnpm 10
+- Rust via rustup. `~/.cargo/bin` is **not** on the login-shell PATH, so always `export PATH="$HOME/.cargo/bin:$PATH"` in build scripts, otherwise the Tauri CLI fails with `failed to run 'cargo metadata' command … No such file or directory`.
+- System packages: `libwebkit2gtk-4.1-dev`, `libayatana-appindicator3-dev`, `librsvg2-dev`, `libssl-dev`, `patchelf`, `build-essential`, `pkg-config`, `squashfs-tools` (for `mksquashfs`). All are present on this machine; installing more requires the WSL sudo password.
+- **Build with `CC=gcc-13`.** The default gcc 15 emits `.base64` assembler directives that binutils 2.42 cannot parse, which breaks the `ring` crate:
+
+  ```
+  /tmp/ccXXXX.s:102071: Error: unknown pseudo-op: `.base64'
+  ```
+
+  `CC=gcc-13` fixes it. Downgrading `ring` does **not** — the version is irrelevant.
+
+### Steps
+
+1. Copy the project to the WSL **native** filesystem. Never build over `/mnt/f`: 9p is slow and the Windows `node_modules` contains wrong-platform binaries.
+
+   ```bash
+   rm -rf "$HOME/build/endprotocol" && mkdir -p "$HOME/build/endprotocol"
+   tar -C /mnt/f/endprotocol \
+     --exclude=node_modules --exclude=target --exclude=dist --exclude=dist-linux \
+     --exclude=.git --exclude=.pnpm-store -cf - . | tar -C "$HOME/build/endprotocol" -xf -
+   ```
+
+2. Disable updater artifact signing **in the WSL copy only**. `createUpdaterArtifacts: true` aborts bundling when `TAURI_SIGNING_PRIVATE_KEY` is unset:
+
+   ```bash
+   node -e "const fs=require('fs');const p='src-tauri/tauri.conf.json';const c=JSON.parse(fs.readFileSync(p,'utf8'));c.bundle.createUpdaterArtifacts=false;fs.writeFileSync(p,JSON.stringify(c,null,2)+'\n')"
+   ```
+
+   The checked-in `src-tauri/tauri.conf.json` must stay `true`; this edit only exists so a local unsigned build can finish.
+
+3. Install and build:
+
+   ```bash
+   export PATH="$HOME/.cargo/bin:$PATH"
+   export CC=gcc-13
+   cd "$HOME/build/endprotocol"
+   pnpm install --frozen-lockfile
+   pnpm tauri build --bundles appimage
+   ```
+
+   A clean release build of the Rust backend takes roughly 2–3 minutes on 16 cores.
+
+### If the bundler stops at `failed to run linuxdeploy`
+
+This is the normal outcome in WSL, not a code problem. `linuxdeploy-plugin-appimage` downloads the AppImage runtime from `github.com`, and WSL cannot reach it: the Windows proxy listens on `127.0.0.1:10808` only, which is unreachable from WSL2 in NAT mode. By that point the AppDir is already fully populated (`AppRun`, `.desktop`, icons, `usr/lib` deps, GTK hooks), so finish the last step by hand.
+
+Download both files on the **Windows** side, through the local proxy:
+
+```powershell
+curl.exe -x http://127.0.0.1:10808 -L -o "$env:TEMP\runtime-x86_64" `
+  https://github.com/AppImage/type2-runtime/releases/download/continuous/runtime-x86_64
+curl.exe -x http://127.0.0.1:10808 -L -o "$env:TEMP\appimagetool-x86_64.AppImage" `
+  https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
+```
+
+Then package the existing AppDir inside WSL:
+
+```bash
+cp /mnt/c/Users/<user>/AppData/Local/Temp/runtime-x86_64 /tmp/
+cp /mnt/c/Users/<user>/AppData/Local/Temp/appimagetool-x86_64.AppImage /tmp/
+chmod +x /tmp/appimagetool-x86_64.AppImage
+
+cd "$HOME/build/endprotocol/target/release/bundle/appimage"
+ARCH=x86_64 VERSION=0.1.0 APPIMAGE_EXTRACT_AND_RUN=1 /tmp/appimagetool-x86_64.AppImage \
+  --no-appstream \
+  --runtime-file /tmp/runtime-x86_64 \
+  endprotocol.AppDir \
+  endprotocol_0.1.0_amd64.AppImage
+```
+
+Copy the result back to the repo (the folder is gitignored):
+
+```powershell
+wsl -d Ubuntu-24.04 -- cp ~/build/endprotocol/target/release/bundle/appimage/endprotocol_0.1.0_amd64.AppImage /mnt/f/endprotocol/dist-linux/
+```
+
+### Verifying the artifact
+
+```bash
+./endprotocol_0.1.0_amd64.AppImage --appimage-offset    # prints the embedded runtime size (944632 with the continuous runtime)
+./endprotocol_0.1.0_amd64.AppImage --appimage-extract   # must list usr/bin/endprotocol and endprotocol.desktop
+file endprotocol_0.1.0_amd64.AppImage                   # ELF 64-bit LSB pie executable, x86-64
+```
+
+### Gotchas
+
+- **Unsigned local builds cannot self-update.** Release builds get their updater signature from `TAURI_SIGNING_PRIVATE_KEY` (see `.github/workflows/release.yml`).
+- **glibc baseline.** A WSL Ubuntu 24.04 build targets glibc 2.39 + `webkit2gtk-4.1` and may fail to start on older distros. CI deliberately builds on `ubuntu-22.04` for wider compatibility.
+- **Local version stays `0.1.0`.** CI rewrites `package.json` and `tauri.conf.json` from the git tag; local builds keep the checked-in version.
+- **Never drive this through `wsl … bash -lc '<script>'` from PowerShell.** Quotes get mangled (a script containing `"$PATH"` arrives broken and bash dies on the parentheses in the inherited Windows PATH). Write the snippet to a `.sh` file and run `wsl -d Ubuntu-24.04 -- bash /tmp/script.sh`.
+
+---
+
+## 7. Documentation Maintenance Rules
 
 Outdated documentation becomes a trap. **You must update indexes in the same commit as your code changes.**
 
@@ -141,7 +240,7 @@ code changed + verified + indexes updated, all in one commit-ready state
 
 ---
 
-## 7. Documentation Index Map
+## 8. Documentation Index Map
 
 ```
 docs/
@@ -155,14 +254,14 @@ docs/
 ├── card_development.md             # Card plugin system guide
 ├── card_configuration.md           # Card settings storage & migration
 └── reference/                      # Per-file references (generated by reading the code)
-    ├── ipc_index.md                # 99 commands ↔ definition ↔ frontend callers
+    ├── ipc_index.md                # 134 commands ↔ definition ↔ frontend callers
     ├── frontend/  (18 docs)        # Frontend file references
     └── backend/   (8 docs)         # Backend file references
 ```
 
 ---
 
-## 8. Commit Message Standards
+## 9. Commit Message Standards
 
 Every commit must follow [Conventional Commits](https://www.conventionalcommits.org/) with a **prefix**:
 
@@ -198,17 +297,17 @@ Plain prefixes are valid for cross-area changes:
 
 | Strategy | Example |
 |----------|---------|
-| ✅ **One commit** | code + its required doc-index updates (§6) |
+| ✅ **One commit** | code + its required doc-index updates (§7) |
 | ✅ **Separate commits** | unrelated work (repo meta docs, tooling, formatting) |
 
 ---
 
-## 9. Final Checks Before Commit
+## 10. Final Checks Before Commit
 
 Before pushing:
 
 - [ ] Run verification commands (§5): `npm run build`, `cargo check`
-- [ ] Ensure indexes are updated (§6)
+- [ ] Ensure indexes are updated (§7)
 - [ ] Verify commit has a proper prefix
 - [ ] Avoid mixing unrelated features into one commit
 
@@ -221,5 +320,6 @@ Before pushing:
 💻 Writing code? → Read docs/*.md guides first
 📝 Changing files? → Update reference docs in the same commit
 🚫 Generated folders? → Never touch dist/, target/, node_modules/, src-tauri/gen/
+🐧 Linux AppImage? → WSL2 + CC=gcc-13, see §6
 ✅ Definition of done? → code + verify + docs = one commit
 ```
