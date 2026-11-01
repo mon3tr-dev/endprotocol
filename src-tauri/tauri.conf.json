@@ -45,7 +45,7 @@
       "endpoints": [
         "https://updates.msk-network.cn/stable/latest.json",
         "https://updates.msk-network.cn/preview/latest.json",
-        "https://github.com/soldiereleven/endprotocol/releases/latest/download/latest.json"
+        "https://github.com/mon3tr-dev/endprotocol/releases/latest/download/latest.json"
       ]
     }
   }

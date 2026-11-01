@@ -64,7 +64,7 @@ EndProtocol 把“森空岛数据看板”和“《终末地》游戏启动器�
 
 ### 下载
 
-从 [GitHub Releases](https://github.com/soldiereleven/endprotocol/releases) 下载适用于你平台的安装包：
+从 [GitHub Releases](https://github.com/mon3tr-dev/endprotocol/releases) 下载适用于你平台的安装包：
 
 | 平台 | 格式 |
 | --- | --- |

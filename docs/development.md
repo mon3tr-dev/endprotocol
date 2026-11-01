@@ -22,7 +22,7 @@
 ## 2. 安装与开发
 
 ```bash
-git clone https://github.com/soldiereleven/endprotocol.git
+git clone https://github.com/mon3tr-dev/endprotocol.git
 cd endprotocol
 pnpm install
 ```

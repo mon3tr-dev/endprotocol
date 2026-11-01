@@ -143,7 +143,7 @@
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
-| `siteConfig` | site.ts:5-14 | `as const` 对象：`name: "EndProtocol"`、`description`、`links.github`（soldiereleven/endprotocol）、`links.docs`（heroui.com）、`links.sponsor`（patreon.com/jrgarciadev） |
+| `siteConfig` | site.ts:5-14 | `as const` 对象：`name: "EndProtocol"`、`description`、`links.github`（mon3tr-dev/endprotocol）、`links.docs`（heroui.com）、`links.sponsor`（patreon.com/jrgarciadev） |
 | `SiteConfig` | site.ts:16 | `typeof siteConfig` 派生类型 |
 
 **备注**：`links.docs`/`links.sponsor` 仍是模板默认值（HeroUI / Patreon），疑似未替换。

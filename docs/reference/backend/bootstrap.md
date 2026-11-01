@@ -230,7 +230,7 @@
 | `bundle.windows.nsis.startMenuFolder` | :36 | `ENDPROTOCOL` |
 | `bundle.windows.nsis.languages` | :38 | `["SimpChinese", "English"]` |
 | `plugins.updater.pubkey` | :44 | minisign 公钥（`dW50cnVzdGVkIGNvbW1lbnQ6...` base64） |
-| `plugins.updater.endpoints` | :45-49 | 三个更新源，按序回退：`https://updates.msk-network.cn/stable/latest.json` → `https://updates.msk-network.cn/preview/latest.json` → `https://github.com/soldiereleven/endprotocol/releases/latest/download/latest.json` |
+| `plugins.updater.endpoints` | :45-49 | 三个更新源，按序回退：`https://updates.msk-network.cn/stable/latest.json` → `https://updates.msk-network.cn/preview/latest.json` → `https://github.com/mon3tr-dev/endprotocol/releases/latest/download/latest.json` |
 
 ---
 

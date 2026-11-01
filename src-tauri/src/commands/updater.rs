@@ -21,9 +21,9 @@ fn updater_for_endpoint(app: &tauri::AppHandle, endpoint: &str) -> Result<Update
     const MIRROR_STABLE: &str = "https://updates.msk-network.cn/stable/latest.json";
     const MIRROR_PREVIEW: &str = "https://updates.msk-network.cn/preview/latest.json";
     const GITHUB_LATEST: &str =
-        "https://github.com/soldiereleven/endprotocol/releases/latest/download/latest.json";
+        "https://github.com/mon3tr-dev/endprotocol/releases/latest/download/latest.json";
     const GITHUB_RELEASE_PREFIX: &str =
-        "https://github.com/soldiereleven/endprotocol/releases/download/";
+        "https://github.com/mon3tr-dev/endprotocol/releases/download/";
 
     let is_github_release = endpoint
         .strip_prefix(GITHUB_RELEASE_PREFIX)

@@ -78,7 +78,7 @@ interface ChangelogCacheEntry {
 // Constants
 // ============================================================================
 
-const REPO_OWNER = "soldiereleven";
+const REPO_OWNER = "mon3tr-dev";
 const REPO_NAME = "endprotocol";
 const GITHUB_API_BASE = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}`;
 const MIRROR_BASE = "https://updates.msk-network.cn";

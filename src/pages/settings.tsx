@@ -1385,7 +1385,7 @@ export default function SettingsPage() {
             {/* Links */}
             <div className="flex items-center gap-3">
               <a
-                href="https://github.com/soldiereleven/endprotocol"
+                href="https://github.com/mon3tr-dev/endprotocol"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-1.5 text-xs text-muted hover:text-foreground transition-colors"
@@ -1400,7 +1400,7 @@ export default function SettingsPage() {
                 GitHub
               </a>
               <a
-                href="https://github.com/soldiereleven/endprotocol/blob/main/LICENSE"
+                href="https://github.com/mon3tr-dev/endprotocol/blob/master/LICENSE"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-1.5 text-xs text-muted hover:text-foreground transition-colors"
