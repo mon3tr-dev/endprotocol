@@ -187,7 +187,7 @@ export function TodoDetail({ listId, className, onRequestClose }: TodoDetailProp
           <button
             type="button"
             onClick={onRequestClose}
-            className="w-8 h-8 rounded-lg text-muted hover:text-foreground hover:bg-default-100 transition-colors"
+            className="w-8 h-8 rounded-lg text-muted hover:text-foreground lg-hoverable transition-colors"
             aria-label={t("common.cancel")}
           >
             <MorphIcon icon={X} size={14} aria-hidden />
@@ -218,7 +218,7 @@ export function TodoDetail({ listId, className, onRequestClose }: TodoDetailProp
               onClick={() => setFilter(option.value)}
               className={`px-2.5 py-1 text-xs rounded-full border transition-all cursor-pointer ${
                 filter === option.value
-                  ? "border-primary bg-primary/10 text-primary"
+                  ? "border-primary bg-primary/10 text-primary-text"
                   : "border-separator text-muted hover:border-primary/50"
               }`}
             >
@@ -350,7 +350,7 @@ export function TodoDetail({ listId, className, onRequestClose }: TodoDetailProp
             onClick={() => {
               void undoLastDelete().then(() => setUndoVisible(false));
             }}
-            className="ml-auto text-xs text-primary hover:underline"
+            className="ml-auto text-xs text-primary-text hover:underline"
           >
             {t("card:todo_undo")}
           </button>
@@ -460,7 +460,7 @@ function TodoItemRow({
           onClick={() => void toggleTodoItem(listId, item.id)}
           className={`mt-0.5 w-[18px] h-[18px] rounded-md border flex items-center justify-center shrink-0 transition-all ${
             item.done
-              ? "bg-primary border-primary text-white"
+              ? "bg-primary border-primary text-primary-foreground"
               : "border-default-400 hover:border-primary"
           }`}
           aria-label={item.done ? t("card:todo_undo_done") : t("card:todo_mark_done")}
@@ -521,14 +521,14 @@ function TodoItemRow({
             {item.due && (
               <span
                 className={`text-[10px] px-1.5 py-0.5 rounded-full ${
-                  overdue ? "bg-danger/10 text-danger" : "bg-default-100 text-muted"
+                  overdue ? "bg-danger/10 text-danger-text" : "lg-inset text-muted"
                 }`}
               >
                 {formatDueDate(item.due, locale)}
               </span>
             )}
             {item.tags.map((tag) => (
-              <span key={tag} className="text-[10px] text-primary">
+              <span key={tag} className="text-[10px] text-primary-text">
                 #{tag}
               </span>
             ))}
@@ -559,7 +559,7 @@ function TodoItemRow({
                 {item.due && (
                   <button
                     type="button"
-                    className="text-primary hover:underline"
+                    className="text-primary-text hover:underline"
                     onClick={() => void updateTodoItem(listId, item.id, { due: undefined })}
                   >
                     {t("common.clear")}
@@ -568,7 +568,7 @@ function TodoItemRow({
                 {showPriority && (
                   <button
                     type="button"
-                    className="ml-auto text-primary hover:underline"
+                    className="ml-auto text-primary-text hover:underline"
                     onClick={() => void cyclePriority()}
                   >
                     {t("card:todo_change_priority")}
@@ -598,7 +598,7 @@ function TodoItemRow({
                     </span>
                     <button
                       type="button"
-                      className="text-muted hover:text-danger text-xs"
+                      className="text-muted hover:text-danger-text text-xs"
                       onClick={() =>
                         void updateTodoItem(listId, item.id, {
                           subtasks: item.subtasks.filter((s) => s.id !== sub.id),
@@ -649,7 +649,7 @@ function TodoItemRow({
         <button
           type="button"
           onClick={onDelete}
-          className="opacity-0 group-hover:opacity-100 w-6 h-6 flex items-center justify-center rounded-md text-muted hover:text-danger hover:bg-danger/10 transition-all text-xs shrink-0"
+          className="opacity-0 group-hover:opacity-100 w-6 h-6 flex items-center justify-center rounded-md text-muted hover:text-danger-text hover:bg-danger/10 transition-all text-xs shrink-0"
           aria-label={t("common.delete")}
         >
           <MorphIcon icon={X} size={12} aria-hidden />
@@ -668,7 +668,7 @@ function EmptyState({ onPick }: { onPick: (text: string) => void }) {
   ];
   return (
     <div className="flex flex-col items-center justify-center py-10 text-center gap-2">
-      <MorphIcon icon={Check} size={28} className="text-success" aria-hidden />
+      <MorphIcon icon={Check} size={28} className="text-success-text" aria-hidden />
       <p className="text-sm text-muted">{t("card:todo_empty_title")}</p>
       <p className="text-xs text-muted/70 max-w-xs">{t("card:todo_empty_hint")}</p>
       <div className="flex flex-wrap gap-1.5 justify-center mt-1">
@@ -677,7 +677,7 @@ function EmptyState({ onPick }: { onPick: (text: string) => void }) {
             key={sample}
             type="button"
             onClick={() => onPick(sample)}
-            className="px-2.5 py-1 text-xs rounded-full border border-separator text-muted hover:border-primary hover:text-primary transition-all"
+            className="px-2.5 py-1 text-xs rounded-full border border-separator text-muted hover:border-primary hover:text-primary-text transition-all"
           >
             {sample}
           </button>

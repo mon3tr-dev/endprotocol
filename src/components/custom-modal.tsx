@@ -98,7 +98,7 @@ export const CustomModalHeader: React.FC<ModalHeaderProps> = ({
       {onClose && (
         <button
           onClick={onClose}
-          className="absolute top-1/2 right-3 -translate-y-1/2 p-1.5 rounded-xl bg-default-50 hover:bg-default-100 transition-all duration-200 text-muted hover:text-foreground hover:scale-105 active:scale-95"
+          className="absolute top-1/2 right-3 -translate-y-1/2 p-1.5 rounded-xl bg-default-50 lg-hoverable transition-all duration-200 text-muted hover:text-foreground hover:scale-105 active:scale-95"
           aria-label="Close"
         >
           <CloseIcon size={18} />

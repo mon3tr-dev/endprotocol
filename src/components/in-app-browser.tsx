@@ -546,14 +546,14 @@ export function InAppBrowser() {
        */}
       <div
         ref={toolbarRef}
-        className="h-11 flex items-center gap-1.5 pl-3 pr-2 shrink-0 bg-background/60 backdrop-blur-xl border-b border-white/10"
+        className="lg-regular h-11 flex items-center gap-1.5 pl-3 pr-2 shrink-0 rounded-none border-b border-separator/60"
         data-tauri-drag-region="deep"
       >
         {/* Back */}
         <button
           type="button"
           onClick={handleBack}
-          className="w-7 h-7 flex items-center justify-center rounded-lg text-muted hover:text-foreground hover:bg-white/10 transition-colors cursor-pointer"
+          className="w-7 h-7 flex items-center justify-center rounded-lg text-muted hover:text-foreground lg-hoverable transition-colors cursor-pointer"
           title={t("browser.back", "Back")}
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -565,7 +565,7 @@ export function InAppBrowser() {
         <button
           type="button"
           onClick={handleForward}
-          className="w-7 h-7 flex items-center justify-center rounded-lg text-muted hover:text-foreground hover:bg-white/10 transition-colors cursor-pointer"
+          className="w-7 h-7 flex items-center justify-center rounded-lg text-muted hover:text-foreground lg-hoverable transition-colors cursor-pointer"
           title={t("browser.forward", "Forward")}
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -577,7 +577,7 @@ export function InAppBrowser() {
         <button
           type="button"
           onClick={handleRefresh}
-          className="w-7 h-7 flex items-center justify-center rounded-lg text-muted hover:text-foreground hover:bg-white/10 transition-colors cursor-pointer"
+          className="w-7 h-7 flex items-center justify-center rounded-lg text-muted hover:text-foreground lg-hoverable transition-colors cursor-pointer"
           title={t("browser.refresh", "Refresh")}
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -589,7 +589,7 @@ export function InAppBrowser() {
         <button
           type="button"
           onClick={handleOpenExternal}
-          className="w-7 h-7 flex items-center justify-center rounded-lg text-muted hover:text-foreground hover:bg-white/10 transition-colors cursor-pointer"
+          className="w-7 h-7 flex items-center justify-center rounded-lg text-muted hover:text-foreground lg-hoverable transition-colors cursor-pointer"
           title={t("browser.open_in_browser", "Open in Browser")}
         >
           <ExternalLinkIcon size={14} />
@@ -597,7 +597,7 @@ export function InAppBrowser() {
 
         {/* 地址显示：只读，点击回读真实地址 */}
         <div
-          className="flex-1 flex items-center h-7 px-2.5 rounded-lg bg-white/5 border border-white/10 min-w-0"
+          className="flex-1 flex items-center h-7 px-2.5 rounded-lg lg-inset min-w-0"
           data-tauri-drag-region="false"
         >
           <svg className="w-3 h-3 text-muted shrink-0 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -617,7 +617,7 @@ export function InAppBrowser() {
         <button
           type="button"
           onClick={handleClose}
-          className="w-7 h-7 flex items-center justify-center rounded-lg text-muted hover:text-danger hover:bg-danger/10 transition-colors cursor-pointer mr-1"
+          className="w-7 h-7 flex items-center justify-center rounded-lg text-muted hover:text-danger-text hover:bg-danger/10 transition-colors cursor-pointer mr-1"
           title={t("browser.close", "Close Browser")}
         >
           <CloseIcon size={14} />
@@ -626,14 +626,14 @@ export function InAppBrowser() {
         {/* 窗口控制（接管被覆盖的标题栏） */}
         {isTauri() && (
           <div
-            className="flex items-center rounded-xl overflow-hidden glass-surface border border-separator/60"
+            className="flex items-center rounded-xl overflow-hidden lg-control border border-separator/60"
             data-tauri-drag-region="false"
           >
             <button
               type="button"
               onClick={handleWindowMinimize}
               aria-label={t("browser.minimize", "Minimize")}
-              className="flex h-7 w-8 items-center justify-center rounded-l-xl text-muted transition-all duration-200 hover:bg-white/10 hover:text-foreground hover:scale-105 active:scale-95 cursor-pointer"
+              className="flex h-7 w-8 items-center justify-center rounded-l-xl text-muted transition-all duration-200 lg-hoverable hover:text-foreground hover:scale-105 active:scale-95 cursor-pointer"
             >
               <MinimizeIcon size={14} />
             </button>
@@ -641,7 +641,7 @@ export function InAppBrowser() {
               type="button"
               onClick={handleWindowMaximize}
               aria-label={isMaximized ? t("browser.restore", "Restore") : t("browser.maximize", "Maximize")}
-              className="flex h-7 w-8 items-center justify-center text-muted transition-all duration-200 hover:bg-white/10 hover:text-foreground hover:scale-105 active:scale-95 cursor-pointer"
+              className="flex h-7 w-8 items-center justify-center text-muted transition-all duration-200 lg-hoverable hover:text-foreground hover:scale-105 active:scale-95 cursor-pointer"
             >
               {isMaximized ? <RestoreIcon size={14} /> : <MaximizeIcon size={14} />}
             </button>
@@ -649,7 +649,7 @@ export function InAppBrowser() {
               type="button"
               onClick={handleWindowClose}
               aria-label={t("browser.quit_window", "Close Window")}
-              className="flex h-7 w-8 items-center justify-center rounded-r-xl text-muted transition-all duration-200 hover:bg-danger/20 hover:text-danger hover:scale-105 active:scale-95 cursor-pointer"
+              className="flex h-7 w-8 items-center justify-center rounded-r-xl text-muted transition-all duration-200 hover:bg-danger/20 hover:text-danger-text hover:scale-105 active:scale-95 cursor-pointer"
             >
               <CloseIcon size={14} />
             </button>

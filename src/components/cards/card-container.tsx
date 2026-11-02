@@ -392,7 +392,7 @@ function FreeDragCard({
             aria-label="Loading"
             value={longPressProgress}
             size="sm"
-            className="w-12 h-12 text-primary"
+            className="w-12 h-12 text-primary-text"
           >
             <GlassProgressCircle.Track>
               <GlassProgressCircle.TrackCircle />
@@ -400,7 +400,7 @@ function FreeDragCard({
             </GlassProgressCircle.Track>
           </GlassProgressCircle>
           {/* Progress percentage text */}
-          <div className="absolute inset-0 flex items-center justify-center text-xs font-bold text-primary drop-shadow-md">
+          <div className="absolute inset-0 flex items-center justify-center text-xs font-bold text-primary-text drop-shadow-md">
             {Math.round(longPressProgress)}%
           </div>
         </div>
@@ -408,8 +408,8 @@ function FreeDragCard({
 
       {/* Grid Coordinates Display - Show when dragging */}
       {showGridCoords && (
-        <div className="absolute -top-8 left-0 z-30 px-2 py-1 bg-content1/90 backdrop-blur-sm rounded shadow-lg text-xs font-mono whitespace-nowrap">
-          <span className="text-primary">Row: {card.y ?? 0}</span>
+        <div className="absolute -top-8 left-0 z-30 px-2 py-1 lg-regular rounded shadow-lg text-xs font-mono whitespace-nowrap">
+          <span className="text-primary-text">Row: {card.y ?? 0}</span>
           <span className="mx-2 text-divider">|</span>
           <span className="text-secondary">Col: {card.x ?? 0}</span>
         </div>
@@ -430,7 +430,7 @@ function FreeDragCard({
             // 阻止指针事件传播，避免触发父元素的 onPointerUp
             e.stopPropagation();
           }}
-          className="absolute top-2 right-2 z-20 p-1 bg-content1 rounded-full shadow-md hover:bg-danger/10 text-danger"
+          className="absolute top-2 right-2 z-20 p-1 bg-content1 rounded-full shadow-md hover:bg-danger/10 text-danger-text"
           aria-label="Delete card"
         >
           <svg
@@ -457,8 +457,8 @@ function FreeDragCard({
 
           if (!CardComponent) {
             return (
-              <div className="p-6 glass-surface border border-separator/90">
-                <p className="text-danger text-center">
+              <div className="p-6 lg-material border border-separator/90 rounded-[10px] h-full w-full">
+                <p className="text-danger-text text-center">
                   Unknown card type: {card.type}
                 </p>
               </div>
@@ -877,7 +877,7 @@ export function CardContainer({
   if (cards.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center h-80 text-center px-6">
-        <div className="w-16 h-16 rounded-2xl bg-default-100 flex items-center justify-center mb-4">
+        <div className="w-16 h-16 rounded-2xl lg-inset flex items-center justify-center mb-4">
           <svg
             className="w-8 h-8 text-muted"
             fill="none"
@@ -936,7 +936,7 @@ export function CardContainer({
           >
             <div
               className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-sm font-bold bg-content1/90 px-3 py-2 rounded shadow-lg whitespace-nowrap flex items-center gap-1 ${
-                hasCollision ? "text-danger" : "text-primary"
+                hasCollision ? "text-danger-text" : "text-primary-text"
               }`}
             >
               <MorphIcon icon={MapPin} size={14} />({highlightGrid.x},{" "}
@@ -998,12 +998,13 @@ export function CardContainer({
         </div>
       </div>
 
-      {/* Drag Overlay — portaled to body so backdrop-filter ancestors don't break position:fixed */}
+      {/* Drag Overlay — portaled to body so backdrop-filter ancestors don't break position:fixed（注释保留：该前提在新玻璃体系下依然成立） */}
       {createPortal(
         <DragOverlay dropAnimation={null}>
           {activeCard ? (
             <div
-              className="opacity-80 scale-105 rotate-2"
+              // 拖拽幽灵同样套壳：与画布上卡片一致的底色/圆角/阴影
+              className="dashboard-card-shell opacity-80 scale-105 rotate-2"
               style={{
                 width: (activeCard.w ?? 3) * GRID_SIZE - 2,
                 height: (activeCard.h ?? 2) * GRID_SIZE - 2,

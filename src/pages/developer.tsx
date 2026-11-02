@@ -114,9 +114,9 @@ const LEVEL_BADGE_BG: Record<LogLevel, string> = {
 
 const LEVEL_TEXT: Record<LogLevel, string> = {
   [LogLevel.DEBUG]: "text-secondary",
-  [LogLevel.INFO]: "text-success",
-  [LogLevel.WARN]: "text-warning",
-  [LogLevel.ERROR]: "text-danger",
+  [LogLevel.INFO]: "text-success-text",
+  [LogLevel.WARN]: "text-warning-text",
+  [LogLevel.ERROR]: "text-danger-text",
 };
 
 const LEVEL_BG_SOFT: Record<LogLevel, string> = {
@@ -488,7 +488,7 @@ export default function DeveloperPage() {
 
       <div className="grid grid-cols-1 gap-6">
         {/* Image Cache Settings */}
-        <GlassCard id="developer-cache" className="p-6 glass-surface border border-separator/90 overflow-hidden">
+        <GlassCard id="developer-cache" className="p-6 border border-separator/90 overflow-hidden">
           <h2 className="text-lg font-semibold mb-6 flex items-center gap-2">
             <span className="w-1 h-5 bg-primary rounded-full" />
             {t("settings.cache.title")}
@@ -625,7 +625,7 @@ export default function DeveloperPage() {
 
                 <div className="space-y-2">
                   <button
-                    className="flex items-center gap-2 text-sm font-medium text-foreground hover:text-primary transition-colors"
+                    className="flex items-center gap-2 text-sm font-medium text-foreground hover:text-primary-text transition-colors"
                     onClick={() => setShowCacheTable(!showCacheTable)}
                   >
                     <svg
@@ -651,7 +651,7 @@ export default function DeveloperPage() {
                               <GlassTable.Row key={entry.path}>
                                 <GlassTable.Cell className="font-mono text-xs truncate max-w-[200px]">
                                   <button
-                                    className="hover:text-primary transition-colors truncate block w-full text-left"
+                                    className="hover:text-primary-text transition-colors truncate block w-full text-left"
                                     onClick={() => revealItemInDir(entry.path)}
                                     title={t("settings.cache.open_file_location")}
                                   >
@@ -685,7 +685,7 @@ export default function DeveloperPage() {
         </GlassCard>
 
         {/* 网络请求录制 */}
-        <GlassCard id="developer-capture" className="p-6 glass-surface border border-separator/90 overflow-hidden">
+        <GlassCard id="developer-capture" className="p-6 border border-separator/90 overflow-hidden">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold flex items-center gap-2">
               <span
@@ -697,8 +697,8 @@ export default function DeveloperPage() {
               <span
                 className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${
                   captureStatus?.recording
-                    ? "bg-danger/10 text-danger"
-                    : "bg-default-100 text-muted"
+                    ? "bg-danger/10 text-danger-text"
+                    : "lg-inset text-muted"
                 }`}
               >
                 {captureStatus?.recording
@@ -782,13 +782,13 @@ export default function DeveloperPage() {
           </div>
 
           {captureError && (
-            <p className="text-sm text-danger mb-3 break-all">{captureError}</p>
+            <p className="text-sm text-danger-text mb-3 break-all">{captureError}</p>
           )}
 
           <div className="flex flex-wrap items-center gap-3 mb-4 text-xs text-muted font-mono">
             {captureStatus?.recording && captureStatus.session_id ? (
               <>
-                <span className="text-danger font-semibold">
+                <span className="text-danger-text font-semibold">
                   ● {captureStatus.session_id}
                 </span>
                 <span>
@@ -837,8 +837,8 @@ export default function DeveloperPage() {
                           <span
                             className={
                               session.status === "recording"
-                                ? "text-danger font-semibold"
-                                : "text-success"
+                                ? "text-danger-text font-semibold"
+                                : "text-success-text"
                             }
                           >
                             {session.status === "recording"
@@ -853,19 +853,19 @@ export default function DeveloperPage() {
                         <GlassTable.Cell>
                           <div className="flex items-center gap-3 text-xs">
                             <button
-                              className="text-primary hover:underline"
+                              className="text-primary-text hover:underline"
                               onClick={() => handleViewSession(session.id)}
                             >
                               {zh ? "浏览" : "Browse"}
                             </button>
                             <button
-                              className="text-primary hover:underline"
+                              className="text-primary-text hover:underline"
                               onClick={() => revealItemInDir(session.path)}
                             >
                               {zh ? "目录" : "Folder"}
                             </button>
                             <button
-                              className="text-danger hover:underline"
+                              className="text-danger-text hover:underline"
                               onClick={() => handleDeleteSession(session.id)}
                             >
                               {zh ? "删除" : "Delete"}
@@ -930,10 +930,10 @@ export default function DeveloperPage() {
                               <span
                                 className={
                                   entry.error
-                                    ? "text-danger font-semibold"
+                                    ? "text-danger-text font-semibold"
                                     : (entry.status ?? 0) < 400
-                                      ? "text-success font-semibold"
-                                      : "text-warning font-semibold"
+                                      ? "text-success-text font-semibold"
+                                      : "text-warning-text font-semibold"
                                 }
                               >
                                 {entry.error ? "ERR" : entry.status ?? "—"}
@@ -944,9 +944,9 @@ export default function DeveloperPage() {
                             </GlassTable.Cell>
                             <GlassTable.Cell className="max-w-[320px]">
                               <button
-                                className={`text-left text-xs font-mono truncate block w-full hover:text-primary transition-colors ${
+                                className={`text-left text-xs font-mono truncate block w-full hover:text-primary-text transition-colors ${
                                   selectedEntry?.index === entry.index
-                                    ? "text-primary font-semibold"
+                                    ? "text-primary-text font-semibold"
                                     : "text-foreground/80"
                                 }`}
                                 onClick={() => setSelectedEntry(entry)}
@@ -964,10 +964,10 @@ export default function DeveloperPage() {
               )}
 
               {selectedEntry && (
-                <div className="glass-surface rounded-xl border border-separator/80 p-4 space-y-3">
+                <div className="lg-material rounded-xl border border-separator/80 p-4 space-y-3">
                   <div className="flex items-start justify-between gap-3">
                     <p className="font-mono text-xs break-all text-foreground flex-1">
-                      <span className="font-bold text-primary">{selectedEntry.method}</span>{" "}
+                      <span className="font-bold text-primary-text">{selectedEntry.method}</span>{" "}
                       {selectedEntry.url}
                     </p>
                     <GlassButton
@@ -988,10 +988,10 @@ export default function DeveloperPage() {
                       <span
                         className={
                           selectedEntry.error
-                            ? "text-danger"
+                            ? "text-danger-text"
                             : (selectedEntry.status ?? 0) < 400
-                              ? "text-success"
-                              : "text-warning"
+                              ? "text-success-text"
+                              : "text-warning-text"
                         }
                       >
                         {selectedEntry.error ?? selectedEntry.status ?? "—"}
@@ -1006,7 +1006,7 @@ export default function DeveloperPage() {
                     <p className="text-xs font-semibold text-foreground mb-1">
                       {zh ? "请求头" : "Request Headers"}
                     </p>
-                    <pre className="text-[11px] font-mono text-muted bg-default-100/60 rounded-lg p-2.5 overflow-auto max-h-40 whitespace-pre-wrap break-all">
+                    <pre className="text-[11px] font-mono text-muted lg-inset rounded-lg p-2.5 overflow-auto max-h-40 whitespace-pre-wrap break-all">
                       {selectedEntry.request_headers
                         .map(([key, value]) => `${key}: ${value}`)
                         .join("\n") || "—"}
@@ -1017,7 +1017,7 @@ export default function DeveloperPage() {
                     <p className="text-xs font-semibold text-foreground mb-1">
                       {zh ? "请求体" : "Request Body"}
                     </p>
-                    <pre className="text-[11px] font-mono text-muted bg-default-100/60 rounded-lg p-2.5 overflow-auto max-h-60 whitespace-pre-wrap break-all">
+                    <pre className="text-[11px] font-mono text-muted lg-inset rounded-lg p-2.5 overflow-auto max-h-60 whitespace-pre-wrap break-all">
                       {formatBodyText(selectedEntry.request_body, null) || "—"}
                     </pre>
                   </div>
@@ -1026,7 +1026,7 @@ export default function DeveloperPage() {
                     <p className="text-xs font-semibold text-foreground mb-1">
                       {zh ? "响应头" : "Response Headers"}
                     </p>
-                    <pre className="text-[11px] font-mono text-muted bg-default-100/60 rounded-lg p-2.5 overflow-auto max-h-40 whitespace-pre-wrap break-all">
+                    <pre className="text-[11px] font-mono text-muted lg-inset rounded-lg p-2.5 overflow-auto max-h-40 whitespace-pre-wrap break-all">
                       {(selectedEntry.response_headers ?? [])
                         .map(([key, value]) => `${key}: ${value}`)
                         .join("\n") || "—"}
@@ -1043,7 +1043,7 @@ export default function DeveloperPage() {
                         </span>
                       ) : null}
                     </p>
-                    <pre className="text-[11px] font-mono text-muted bg-default-100/60 rounded-lg p-2.5 overflow-auto max-h-[420px] whitespace-pre-wrap break-all">
+                    <pre className="text-[11px] font-mono text-muted lg-inset rounded-lg p-2.5 overflow-auto max-h-[420px] whitespace-pre-wrap break-all">
                       {formatBodyText(selectedEntry.response_body, selectedEntry.note) || "—"}
                     </pre>
                   </div>
@@ -1054,7 +1054,7 @@ export default function DeveloperPage() {
         </GlassCard>
 
         {/* Log Viewer */}
-        <GlassCard id="developer-logs" className="p-6 glass-surface border border-separator/90 overflow-hidden">
+        <GlassCard id="developer-logs" className="p-6 border border-separator/90 overflow-hidden">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold flex items-center gap-2">
               <span className="w-1 h-5 bg-secondary rounded-full" />
@@ -1082,7 +1082,7 @@ export default function DeveloperPage() {
           </div>
 
           {/* Log level setting */}
-          <div className="flex flex-wrap items-center justify-between gap-3 mb-3 p-3 rounded-xl bg-default-100/40 border border-separator/50">
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-3 p-3 rounded-xl lg-inset border border-separator/50">
             <div className="min-w-0">
               <p className="text-sm font-medium text-foreground">
                 {t("settings.logs.level_setting")}
@@ -1104,7 +1104,7 @@ export default function DeveloperPage() {
           </div>
 
           {/* Source tabs */}
-          <div className="flex gap-1 mb-3 bg-default-100/60 p-1 rounded-xl">
+          <div className="flex gap-1 mb-3 lg-inset p-1 rounded-xl">
             {(["all", "frontend", "backend"] as LogFilter[]).map((f) => {
               const isActive = logSourceFilter === f;
               return (
@@ -1113,7 +1113,7 @@ export default function DeveloperPage() {
                   onClick={() => setLogSourceFilter(f)}
                   className={`flex-1 px-3 py-1.5 text-xs font-medium rounded-lg transition-all duration-200 flex items-center justify-center gap-1 ${
                     isActive
-                      ? "glass-surface text-foreground shadow-sm border border-separator/80"
+                      ? "lg-control text-foreground shadow-sm border border-separator/80"
                       : "text-muted hover:text-foreground"
                   }`}
                 >
@@ -1140,7 +1140,7 @@ export default function DeveloperPage() {
                   className={`px-2.5 py-1 text-xs rounded-lg border transition-all duration-200 font-medium ${
                     isActive && l !== "all"
                       ? `${LEVEL_TEXT[l]} ${LEVEL_BG_SOFT[l]} ${LEVEL_BORDER[l]} bg-background`
-                      : "border-separator/60 text-muted hover:text-foreground hover:bg-default-50"
+                      : "border-separator/60 text-muted hover:text-foreground lg-hoverable-soft"
                   }`}
                 >
                   {l === "all"
@@ -1157,7 +1157,7 @@ export default function DeveloperPage() {
           {/* Log entries */}
           <div
             ref={logContainerRef}
-            className="glass-surface rounded-xl border border-separator/80 overflow-y-auto font-mono text-xs"
+            className="lg-material rounded-xl border border-separator/80 overflow-y-auto font-mono text-xs"
             style={{ maxHeight: "480px" }}
           >
             {filteredLogs.length === 0 ? (
@@ -1186,7 +1186,7 @@ export default function DeveloperPage() {
                         {entry.timestamp}
                       </span>
                       <span
-                        className={`shrink-0 leading-5 font-semibold ${entry.source === "backend" ? "text-secondary" : "text-success"}`}
+                        className={`shrink-0 leading-5 font-semibold ${entry.source === "backend" ? "text-secondary" : "text-success-text"}`}
                       >
                         {entry.source === "backend" ? "Backend" : "Frontend"}
                       </span>

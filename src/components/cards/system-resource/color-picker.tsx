@@ -57,7 +57,7 @@ export function SystemResourceColorPicker({
         className={`relative flex w-7 h-7 items-center justify-center overflow-hidden rounded-full border border-separator/80 cursor-pointer transition-transform hover:scale-110 focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-primary ${
           !isPresetColor
             ? "ring-2 ring-offset-2 ring-offset-background"
-            : "bg-default-100"
+            : "lg-inset"
         }`}
         style={
           !isPresetColor

@@ -16,13 +16,12 @@ import ScreenColorPicker from "@/components/screen-color-picker";
 import { getConfig, setConfig } from "@/utils/configService";
 import { isWindowsPlatform } from "@/utils/platform";
 import {
-  DEFAULT_GLASS_CLARITY,
   DEFAULT_THEME_COLOR,
   PRESET_COLORS,
-  applyGlassClarity,
   applyThemeColor,
   applyThemeMode,
   getAllColors,
+  pickForegroundOn,
   type ThemeColor,
   type ThemeMode,
 } from "@/utils/theme";
@@ -192,7 +191,9 @@ function generateColorScale(hex: string): ThemeColor["colors"] {
     700: darker(34),
     800: darker(26),
     900: darker(18),
-    foreground: "#ffffff",
+    // 前景色随底色亮度自动选黑/白：用户在取色器里挑 #00FFBC 这种高亮色时，
+    // 写死白色前景只剩 1.2:1，主按钮与徽章上的文字会读不出来。
+    foreground: pickForegroundOn(hex),
   };
 }
 
@@ -239,7 +240,6 @@ export function AppearanceSettings() {
   const DEFAULT_BG_IMAGE_OPACITY = 0.5;
   const [bgBlur, setBgBlur] = useState(16);
   const DEFAULT_BG_BLUR = 16;
-  const [glassClarity, setGlassClarity] = useState(DEFAULT_GLASS_CLARITY);
   const bgFileInputRef = useRef<HTMLInputElement>(null);
   const [bgImagePreview, setBgImagePreview] = useState<string | null>(null);
 
@@ -339,7 +339,6 @@ export function AppearanceSettings() {
         savedBgPath,
         savedBgOpacity,
         savedBgBlur,
-        savedGlassClarity,
       ] = await Promise.all([
         getConfig<ThemeMode>("theme_mode"),
         getConfig<string>("theme_color"),
@@ -347,7 +346,6 @@ export function AppearanceSettings() {
         getConfig<string>("bg_image_path"),
         getConfig<number>("bg_image_opacity"),
         getConfig<number>("bg_blur"),
-        getConfig<number>("glass_clarity"),
       ]);
       setThemeMode(savedMode ?? "system");
       setThemeColor(savedColor ?? DEFAULT_THEME_COLOR);
@@ -363,9 +361,6 @@ export function AppearanceSettings() {
       const bgBlurVal = savedBgBlur ?? DEFAULT_BG_BLUR;
       setBgBlur(bgBlurVal);
       document.documentElement.style.setProperty("--bg-blur", `${bgBlurVal}px`);
-      const glassClarityVal = savedGlassClarity ?? DEFAULT_GLASS_CLARITY;
-      setGlassClarity(glassClarityVal);
-      applyGlassClarity(glassClarityVal);
       if (bgPath) {
         try {
           const bytes = await invoke<number[]>("read_image_file", {
@@ -445,15 +440,19 @@ export function AppearanceSettings() {
   const handleModeChange = async (mode: ThemeMode) => {
     setThemeMode(mode);
     await setConfig("theme_mode", mode);
-    dispatchThemeChange();
     emit("theme-changed", mode);
 
+    // 顺序很关键：必须先 applyThemeMode（写入 / 移除 .dark 类），再广播
+    // themeChange。反过来派发的话，订阅者（图表等）在旧主题的 class 下
+    // 取色、拿到的是上一个主题的颜色，之后没有任何事件再让它们重算——
+    // 深色主题下坐标轴文字会停在浅色主题的 #474750 上。
     const rootEl = document.getElementById("root");
     if (rootEl) {
       rootEl.style.transition = "opacity 0.16s ease";
       rootEl.style.opacity = "0";
       setTimeout(() => {
         applyThemeModeLocal(mode);
+        dispatchThemeChange();
         // 恢复透明度：不依赖 rAF（透明窗口合成时可能不触发），用普通定时器兜底
         setTimeout(() => {
           rootEl.style.opacity = "1";
@@ -462,6 +461,7 @@ export function AppearanceSettings() {
       }, 170);
     } else {
       applyThemeModeLocal(mode);
+      dispatchThemeChange();
     }
   };
 
@@ -565,22 +565,6 @@ export function AppearanceSettings() {
       `${DEFAULT_BG_BLUR}px`,
     );
     await setConfig("bg_blur", DEFAULT_BG_BLUR);
-  }, []);
-
-  const handleGlassClarityChange = useCallback(async (value: number) => {
-    const clamped = Math.max(0, Math.min(100, value));
-    setGlassClarity(clamped);
-    applyGlassClarity(clamped);
-    // 广播给其他窗口（托盘面板等），让它们实时跟随清晰度变化
-    emit("theme-changed", themeModeRef.current);
-    await setConfig("glass_clarity", clamped);
-  }, []);
-
-  const handleGlassClarityReset = useCallback(async () => {
-    setGlassClarity(DEFAULT_GLASS_CLARITY);
-    applyGlassClarity(DEFAULT_GLASS_CLARITY);
-    emit("theme-changed", themeModeRef.current);
-    await setConfig("glass_clarity", DEFAULT_GLASS_CLARITY);
   }, []);
 
   const handleSaveCustom = async () => {
@@ -728,7 +712,7 @@ export function AppearanceSettings() {
             {t("settings.appearance.theme_mode_desc")}
           </p>
         </div>
-        <div className="flex gap-1 p-1 rounded-xl bg-default-100/60 ring-1 ring-default-200/50">
+        <div className="flex gap-1 p-1 rounded-xl lg-inset ring-1 ring-default-200/50">
           {modeOptions.map((opt) => (
             <button
               key={opt.value}
@@ -736,7 +720,7 @@ export function AppearanceSettings() {
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-200 cursor-pointer ${
                 themeMode === opt.value
                   ? "bg-background text-foreground shadow-sm"
-                  : "text-muted hover:text-foreground hover:bg-default-200/50"
+                  : "text-muted hover:text-foreground lg-hoverable"
               }`}
             >
               {opt.icon}
@@ -837,7 +821,7 @@ export function AppearanceSettings() {
               <div className="relative" ref={triggerRef}>
                 <button
                   onClick={() => openPicker("add")}
-                  className="w-10 h-10 rounded-full border-2 border-dashed border-default-300 hover:border-primary/60 flex items-center justify-center transition-all duration-200 cursor-pointer hover:scale-105 text-muted hover:text-primary"
+                  className="w-10 h-10 rounded-full border-2 border-dashed border-default-300 hover:border-primary/60 flex items-center justify-center transition-all duration-200 cursor-pointer hover:scale-105 text-muted hover:text-primary-text"
                   title="Add custom color"
                 >
                   <MorphIcon icon={Plus} size={20} strokeWidth={2} />
@@ -852,7 +836,7 @@ export function AppearanceSettings() {
                       />
                       <div
                         ref={pickerRef}
-                        className="fixed p-4 rounded-2xl glass-surface-strong shadow-2xl animate-scale-in z-[9999] w-64"
+                        className="lg-regular fixed p-4 rounded-2xl animate-scale-in z-[9999] w-64"
                         style={{
                           top: pickerPos?.top ?? -9999,
                           left: pickerPos?.left ?? -9999,
@@ -961,7 +945,7 @@ export function AppearanceSettings() {
                             className="w-10 h-10 shrink-0 rounded-xl ring-1 ring-separator shadow-inner"
                             style={{ backgroundColor: pickerHex }}
                           />
-                          <div className="flex items-center gap-1 glass-field flex-1 min-w-0 h-9 px-3 rounded-xl">
+                          <div className="flex items-center gap-1 lg-field flex-1 min-w-0 h-9 px-3 rounded-xl">
                             <span className="text-muted/70 font-mono text-sm shrink-0">
                               #
                             </span>
@@ -1020,7 +1004,7 @@ export function AppearanceSettings() {
                               type="button"
                               onClick={handlePickFromScreen}
                               title="Pick color from screen"
-                              className="w-10 h-10 shrink-0 flex items-center justify-center glass-field rounded-xl text-muted hover:text-foreground transition-colors cursor-pointer"
+                              className="w-10 h-10 shrink-0 flex items-center justify-center lg-field rounded-xl text-muted hover:text-foreground transition-colors cursor-pointer"
                             >
                               <MorphIcon
                                 icon={Pipette}
@@ -1042,7 +1026,7 @@ export function AppearanceSettings() {
                           ).map(([ch, label]) => (
                             <div
                               key={ch}
-                              className="flex items-center gap-1 glass-field flex-1 min-w-0 h-9 px-3 rounded-xl"
+                              className="flex items-center gap-1 lg-field flex-1 min-w-0 h-9 px-3 rounded-xl"
                             >
                               <span className="text-muted/60 font-mono text-sm shrink-0">
                                 {label}
@@ -1071,14 +1055,14 @@ export function AppearanceSettings() {
                           type="text"
                           value={pickerLabel}
                           onChange={(e) => setPickerLabel(e.target.value)}
-                          className="glass-field w-full min-w-0 h-9 px-3 rounded-xl text-sm text-foreground placeholder:text-muted/70 mb-3 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-primary/40"
+                          className="lg-field w-full min-w-0 h-9 px-3 rounded-xl text-sm text-foreground placeholder:text-muted/70 mb-3 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-primary/40"
                           placeholder="Color name (optional)"
                         />
 
                         <div className="flex gap-2">
                           <button
                             onClick={closePicker}
-                            className="flex-1 h-9 px-3 rounded-xl glass-field text-sm text-muted hover:text-foreground transition-colors cursor-pointer"
+                            className="flex-1 h-9 px-3 rounded-xl lg-field text-sm text-muted hover:text-foreground transition-colors cursor-pointer"
                           >
                             Cancel
                           </button>
@@ -1111,7 +1095,7 @@ export function AppearanceSettings() {
                 }}
               />
               <div
-                className="fixed z-[9999] glass-surface-strong rounded-xl shadow-2xl p-1 w-36 animate-scale-in"
+                className="lg-regular fixed z-[9999] rounded-xl p-1 w-36 animate-scale-in"
                 style={{
                   top: Math.min(ctxMenu.y, window.innerHeight - 96),
                   left: Math.min(ctxMenu.x, window.innerWidth - 152),
@@ -1122,7 +1106,7 @@ export function AppearanceSettings() {
                     setCtxMenu(null);
                     openPicker("edit", ctxMenu.color);
                   }}
-                  className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-foreground hover:bg-default-100 transition-colors cursor-pointer"
+                  className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-foreground lg-hoverable transition-colors cursor-pointer"
                 >
                   <MorphIcon
                     icon={Pencil}
@@ -1134,7 +1118,7 @@ export function AppearanceSettings() {
                 </button>
                 <button
                   onClick={() => handleDeleteCustom(ctxMenu.color.name)}
-                  className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-danger hover:bg-danger/10 transition-colors cursor-pointer"
+                  className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-danger-text hover:bg-danger/10 transition-colors cursor-pointer"
                 >
                   <MorphIcon icon={Trash2} size={16} strokeWidth={1.8} />
                   {t("common.delete")}
@@ -1269,40 +1253,6 @@ export function AppearanceSettings() {
             </span>
           </button>
         )}
-      </div>
-
-      <SettingsDivider />
-
-      <div>
-        <div className="mb-3">
-          <p className="font-medium text-foreground">
-            {t("settings.appearance.glass_clarity")}
-          </p>
-          <p className="text-sm text-muted mt-0.5">
-            {t("settings.appearance.glass_clarity_desc")}
-          </p>
-        </div>
-        <div className="flex items-center gap-4">
-          <Slider
-            min={0}
-            max={100}
-            step={1}
-            value={[glassClarity]}
-            onValueChange={([value]) => handleGlassClarityChange(value)}
-            aria-label={t("settings.appearance.glass_clarity")}
-            className="flex-1"
-          />
-          <span className="w-12 text-right text-sm font-mono text-foreground tabular-nums">
-            {glassClarity}%
-          </span>
-          <button
-            onClick={handleGlassClarityReset}
-            disabled={glassClarity === DEFAULT_GLASS_CLARITY}
-            className="px-3 py-1.5 text-xs font-medium rounded-lg border border-separator text-muted hover:text-foreground hover:border-foreground/50 transition-all duration-200 cursor-pointer disabled:opacity-40 disabled:pointer-events-none"
-          >
-            {t("common.reset")}
-          </button>
-        </div>
       </div>
     </div>
   );

@@ -208,7 +208,7 @@ export default function TodoPage() {
 
       <div className="flex flex-col lg:flex-row gap-4 min-h-[70vh]">
         {/* 左侧：列表 */}
-        <GlassCard className="lg:w-72 shrink-0 glass-surface border border-separator/90 p-3 flex flex-col gap-2 lg:max-h-[78vh]">
+        <GlassCard className="lg:w-72 shrink-0  border border-separator/90 p-3 flex flex-col gap-2 lg:max-h-[78vh]">
           <GlassInput
             size="sm"
             value={search}
@@ -262,11 +262,11 @@ export default function TodoPage() {
                         className={`group flex items-center gap-2 px-2 py-2 rounded-xl cursor-pointer transition-all ${
                           active
                             ? "bg-primary/10 border border-primary/40"
-                            : "hover:bg-default-100/60 border border-transparent"
+                            : "lg-hoverable border border-transparent"
                         }`}
                         onClick={() => setSearchParams({ list: list.id })}
                       >
-                        <span className="flex shrink-0 text-primary">
+                        <span className="flex shrink-0 text-primary-text">
                           <TodoIcon icon={list.icon} size={16} />
                         </span>
                         <div className="flex-1 min-w-0">
@@ -276,7 +276,7 @@ export default function TodoPage() {
                           <div className="text-[10px] text-muted">
                             {done}/{list.items.length}
                             {overdue > 0 && (
-                              <span className="text-danger"> · {overdue} {i18n.language === "zh" ? "逾期" : "overdue"}</span>
+                              <span className="text-danger-text"> · {overdue} {i18n.language === "zh" ? "逾期" : "overdue"}</span>
                             )}
                           </div>
                         </div>
@@ -305,7 +305,7 @@ export default function TodoPage() {
                           </button>
                           <button
                             type="button"
-                            className="w-5 h-5 rounded text-muted hover:text-danger text-[10px]"
+                            className="w-5 h-5 rounded text-muted hover:text-danger-text text-[10px]"
                             title={t("common.delete")}
                             onClick={(e) => {
                               e.stopPropagation();
@@ -333,7 +333,7 @@ export default function TodoPage() {
         </GlassCard>
 
         {/* 右侧：详情 */}
-        <GlassCard className="flex-1 min-w-0 glass-surface border border-separator/90 p-4 flex flex-col lg:max-h-[78vh]">
+        <GlassCard className="flex-1 min-w-0  border border-separator/90 p-4 flex flex-col lg:max-h-[78vh]">
           {activeList ? (
             <TodoDetail listId={activeList.id} className="h-full" />
           ) : (
@@ -378,7 +378,7 @@ export default function TodoPage() {
                         : "border-separator hover:border-primary/50"
                     }`}
                   >
-                    <TodoIcon icon={tpl.icon} size={18} className="shrink-0 text-primary" />
+                    <TodoIcon icon={tpl.icon} size={18} className="shrink-0 text-primary-text" />
                     <span className="text-sm truncate">
                       {t(`card:${tpl.labelKey}`)}
                     </span>

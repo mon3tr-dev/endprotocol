@@ -313,8 +313,6 @@
       "bg_image_remove": "移除",
       "bg_image_opacity": "图片透明度",
       "bg_blur": "背景磨砂强度",
-      "glass_clarity": "毛玻璃清晰度",
-      "glass_clarity_desc": "调高清晰度会减少模糊并提高面板的不透明度",
       "bg_image_none": "未设置背景图片"
     },
     "system_resource": {

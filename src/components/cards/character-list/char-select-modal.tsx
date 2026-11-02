@@ -1488,7 +1488,7 @@ export function CharSelectModal({
                       isIndeterminate
                       size="lg"
                       aria-label="Loading wiki"
-                      className="text-primary"
+                      className="text-primary-text"
                     >
                       <GlassProgressCircle.Track>
                         <GlassProgressCircle.TrackCircle />
@@ -3047,7 +3047,7 @@ export function CharSelectModal({
                                 e.stopPropagation();
                                 handleRemoveFromSlot(slotIndex);
                               }}
-                              className="w-5 h-5 rounded-full bg-default-200 hover:bg-danger/20 hover:text-danger flex items-center justify-center shrink-0 transition-colors"
+                              className="w-5 h-5 rounded-full bg-default-200 hover:bg-danger/20 hover:text-danger-text flex items-center justify-center shrink-0 transition-colors"
                               title={t("common.remove") || "Remove"}
                             >
                               <svg

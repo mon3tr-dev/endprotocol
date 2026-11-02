@@ -138,7 +138,7 @@ export function AddCardModal({
                   ? t("common.hide_filters") || "Hide Filters"
                   : t("common.show_filters") || "Filters"}
                 {selectedTagIds.size > 0 && (
-                  <span className="ml-0.5 px-1.5 py-0.5 text-[10px] rounded-full bg-primary text-white">
+                  <span className="ml-0.5 px-1.5 py-0.5 text-[10px] rounded-full bg-primary text-primary-foreground">
                     {selectedTagIds.size}
                   </span>
                 )}
@@ -155,8 +155,8 @@ export function AddCardModal({
                         onClick={() => toggleTag(tag.id)}
                         className={`px-2.5 py-1 text-xs rounded-full border transition-all duration-150 cursor-pointer hover:scale-105 active:scale-95 ${
                           isActive
-                            ? "bg-primary text-white border-primary"
-                            : "bg-default-50 text-muted border-separator hover:border-primary hover:text-primary"
+                            ? "bg-primary text-primary-foreground border-primary"
+                            : "bg-default-50 text-muted border-separator hover:border-primary hover:text-primary-text"
                         }`}
                       >
                         {getTagLabel(tag)}
@@ -189,7 +189,7 @@ export function AddCardModal({
                   }`}
                 >
                   <div className="flex items-center gap-3">
-                    <CardIcon iconKey={card.icon} size={28} className="text-primary shrink-0" />
+                    <CardIcon iconKey={card.icon} size={28} className="text-primary-text shrink-0" />
                     <div className="flex-1 min-w-0">
                       <h3 className="font-semibold">
                         {card.name[i18n.language] || card.name.en}
@@ -202,7 +202,7 @@ export function AddCardModal({
                           {card.tags.map((tag) => (
                             <span
                               key={tag.id}
-                              className="px-1.5 py-0.5 text-[10px] rounded bg-default-100 text-muted"
+                              className="px-1.5 py-0.5 text-[10px] rounded lg-inset text-muted"
                             >
                               {getTagLabel(tag)}
                             </span>

@@ -185,8 +185,8 @@ export default function SpaceshipCard({
 
   if (isLoading) {
     return (
-      <GlassCard className="p-6 glass-surface border border-separator/90 h-full w-full flex items-center justify-center">
-        <GlassProgressCircle isIndeterminate size="md" aria-label="Loading" className="text-primary">
+      <GlassCard className="p-6  border border-separator/90 h-full w-full flex items-center justify-center">
+        <GlassProgressCircle isIndeterminate size="md" aria-label="Loading" className="text-primary-text">
           <GlassProgressCircle.Track>
             <GlassProgressCircle.TrackCircle />
             <GlassProgressCircle.FillCircle />
@@ -198,7 +198,7 @@ export default function SpaceshipCard({
 
   if (!sortedRooms.length) {
     return (
-      <GlassCard className="p-6 glass-surface border border-separator/90 h-full w-full flex items-center justify-center">
+      <GlassCard className="p-6  border border-separator/90 h-full w-full flex items-center justify-center">
         <p className="text-muted text-center text-sm">{t("card:spaceship_empty")}</p>
       </GlassCard>
     );
@@ -206,7 +206,7 @@ export default function SpaceshipCard({
 
   return (
     <>
-      <GlassCard className="p-2.5 glass-surface border border-separator/90 h-full w-full select-none rounded-[10px] overflow-hidden flex flex-col">
+      <GlassCard className="p-2.5  border border-separator/90 h-full w-full select-none rounded-[10px] overflow-hidden flex flex-col">
         <div className="flex items-center justify-between gap-2 min-w-0 mb-1.5">
           <div className="flex items-center gap-2 min-w-0">
             <AccountAvatar
@@ -232,7 +232,7 @@ export default function SpaceshipCard({
             onClick={openAccountSelect}
             title={t("card:spaceship_switch_account")}
             aria-label={t("card:spaceship_switch_account")}
-            className="shrink-0 w-5 h-5 flex items-center justify-center rounded-md text-muted hover:text-foreground hover:bg-default-100 transition-colors"
+            className="shrink-0 w-5 h-5 flex items-center justify-center rounded-md text-muted hover:text-foreground lg-hoverable transition-colors"
           >
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="1.5">
               <path strokeLinecap="round" strokeLinejoin="round" d="M16 3h5v5M4 20L21 3M21 16v5h-5M15 15l6 6M4 4l5 5" />
@@ -247,7 +247,7 @@ export default function SpaceshipCard({
             return (
               <div
                 key={`${room.type}-${idx}`}
-                className="rounded-lg bg-default-50/40 border border-separator/60 px-2 py-1.5 cursor-pointer transition-all hover:border-primary/50 hover:bg-default-50/70"
+                className="rounded-lg bg-default-50/40 border border-separator/60 px-2 py-1.5 cursor-pointer transition-all hover:border-primary/50 lg-hoverable-soft/70"
                 onClick={() => {
                   if (isEditMode) return;
                   setDetailRoomIndex(idx);
@@ -272,7 +272,7 @@ export default function SpaceshipCard({
                         <div
                           key={`${c.charId}-${ci}`}
                           title={`${c.name || t("card:spaceship_unknown_char")} · ${t("card:spaceship_mood")} ${c.moodPct}%`}
-                          className={`w-7 h-7 rounded-full border-2 ${getMoodRingClass(c.moodPct)} overflow-hidden bg-default-100`}
+                          className={`w-7 h-7 rounded-full border-2 ${getMoodRingClass(c.moodPct)} overflow-hidden lg-inset`}
                         >
                           {c.avatar ? (
                             <Img
@@ -335,7 +335,7 @@ export default function SpaceshipCard({
                 >
                   <div className="flex items-center gap-2.5">
                     <div
-                      className={`w-9 h-9 rounded-full border-2 ${getMoodRingClass(c.moodPct)} overflow-hidden bg-default-100 shrink-0`}
+                      className={`w-9 h-9 rounded-full border-2 ${getMoodRingClass(c.moodPct)} overflow-hidden lg-inset shrink-0`}
                     >
                       {c.avatar ? (
                         <Img
@@ -366,7 +366,7 @@ export default function SpaceshipCard({
                         {t("card:spaceship_mood")}
                       </span>
                       <div className="flex-1 min-w-0">
-                        <div className="h-1 rounded-full bg-default-100 overflow-hidden">
+                        <div className="h-1 rounded-full lg-inset overflow-hidden">
                           <div
                             className={`h-full rounded-full transition-all duration-500 ${
                               c.moodPct >= 50
@@ -388,7 +388,7 @@ export default function SpaceshipCard({
                         {t("card:spaceship_trust")}
                       </span>
                       <div className="flex-1 min-w-0">
-                        <div className="h-1 rounded-full bg-default-100 overflow-hidden">
+                        <div className="h-1 rounded-full lg-inset overflow-hidden">
                           <div
                             className="h-full rounded-full bg-gradient-to-r from-primary/70 to-primary transition-all duration-500"
                             style={{ width: `${Math.min(100, (c.trustPct / 200) * 100)}%` }}
@@ -430,7 +430,7 @@ export default function SpaceshipCard({
               accounts.map((account) => (
                 <div
                   key={account.id}
-                  className="flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-all hover:bg-default-100 border border-separator hover:border-primary/50"
+                  className="flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-all lg-hoverable border border-separator hover:border-primary/50"
                   onClick={() => handleRoleConfirm(account.id)}
                 >
                   <AccountAvatar
@@ -447,7 +447,7 @@ export default function SpaceshipCard({
                     </div>
                   </div>
                   {effectiveRoleId === account.id && (
-                    <div className="text-primary text-xs font-medium">
+                    <div className="text-primary-text text-xs font-medium">
                       {t("card:spaceship_current")}
                     </div>
                   )}

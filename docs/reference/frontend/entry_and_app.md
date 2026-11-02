@@ -1,4 +1,4 @@
-# 前端入口与应用骨架 — 文件功能参考
+﻿# 前端入口与应用骨架 — 文件功能参考
 
 > 逐文件精读源码生成。行号基于当前工作区版本，仅用于快速定位。
 
@@ -15,7 +15,7 @@
 | `applyWindowEffectsSupport()` | main.tsx:58 | 在 `setStartupPhase(12)` 之后、读配置之前把 `<html data-window-effects="native\|fallback">` 与 `<html data-window-radius="native\|self">` 写定：Windows/macOS 走系统 Acrylic/Vibrancy 与系统圆角，Linux（WebKitGTK）拿不到系统效果，`globals.css` 据此给 `body` 铺不透明底色、并把窗口用 `clip-path` 裁圆（见 [types_locales_styles.md](types_locales_styles.md)） |
 | `armStartupTimeout()` | main.tsx:53 | 配置初始化前启动 45 秒启动看门狗，覆盖 IPC/配置读取永久挂起、React 未挂载的卡死场景 |
 | `syncSilentLaunchConfig` | main.tsx:54 | 完整前端启动时将既有 localStorage 的游戏目录/渠道迁移到 `ConfigService` |
-| 配置读取 + 主题应用 | main.tsx:57-75 | 并行读 `app.language`/`theme_mode`/`theme_color`/`theme_custom_colors`/`glass_clarity` 与 `loadBackgroundSettings()`/`loadAccountAvailability()`/`initLogSettings()`；`resolveThemeColor` 解析色板后依次 `applyThemeColor`、`applyThemeMode`、`applyGlassClarity`（渲染前应用，避免闪白） |
+| 配置读取 + 主题应用 | main.tsx:57-75 | 并行读 `app.language`/`theme_mode`/`theme_color`/`theme_custom_colors` 与 `loadBackgroundSettings()`/`loadAccountAvailability()`/`initLogSettings()`；`resolveThemeColor` 解析色板后依次 `applyThemeColor`、`applyThemeMode`、`applyGlassClarity`（渲染前应用，避免闪白） |
 | `ReactDOM.createRoot(...).render(...)` | main.tsx:80-88 | `StrictMode > BrowserRouter > Provider > App`，挂载到 `#root` |
 | `beginStartupTracking(...)` | main.tsx:89-92 | React 挂载后开始跟踪首屏请求 |
 | 托盘数据刷新 | main.tsx:106-115 | 读 `tray_user_role_id` → `refreshTrayUserData(roleId)`（`@/utils/trayService`），本文件不再直接 `invoke` |
@@ -23,7 +23,7 @@
 
 **备注**：
 - 主题逻辑已迁移：本文件原先自定义的 `ThemeMode`/`ThemeColor`/`PRESET_COLORS`/`findColors`/`applyThemeColor`/`applyThemeMode` 全部移到 `@/utils/theme`（见 [utils_services_a.md](utils_services_a.md)），`main.tsx` 只负责读配置并调用这些函数。
-- 初始化读取的配置键：`app.language`、`theme_mode`、`theme_color`、`theme_custom_colors`、`glass_clarity`，并 `loadBackgroundSettings()` 与 `loadAccountAvailability()`（渲染前恢复上一轮的账户不可用状态，让首屏即显示正确状态）；语言未保存时按 `navigator.language` 以 `zh` 开头判定中/英（main.tsx:66）；主题色默认 indigo、主题模式默认 `system`、玻璃清晰度默认 55（均由 `@/utils/theme` 的默认常量兜底）。
+- 初始化读取的配置键：`app.language`、`theme_mode`、`theme_color`、`theme_custom_colors`，并 `loadBackgroundSettings()` 与 `loadAccountAvailability()`（渲染前恢复上一轮的账户不可用状态，让首屏即显示正确状态）；语言未保存时按 `navigator.language` 以 `zh` 开头判定中/英（main.tsx:66）；主题色默认 indigo、主题模式默认 `system`、玻璃清晰度默认 55（均由 `@/utils/theme` 的默认常量兜底）。
 - `initLogSettings()` 在渲染前读取 `developer_mode` 与 `log_level`，未开启开发者模式时把前后端日志级别都限制为 INFO 及以上，并注册 `developerModeChange` 监听，后续切换立即生效。
 - 前端启动时另外同步 localStorage 键 `launcher_install_path`、`launcher_channel` 至同名 app config 键，供之后的 `--silent --launch-game` 使用；同步失败经 logger 明确记录。
 - 渲染结构：`StrictMode > BrowserRouter > Provider > App`，挂载到 `#root`（main.tsx:80-88）。
@@ -124,7 +124,7 @@
 **备注**：
 - 双入口区分：根目录 `src/tray-panel.tsx` 是 HTML 入口（tray-panel.html 引用，vite.config.ts:40 定义 rollup input `tray-panel`，Tauri 窗口 label `tray-panel`，见 `src-tauri/src/lib.rs::create_full_windows`）；`src/components/tray-panel.tsx` 是被渲染的组件本体。
 - Tauri 事件：`listen("theme-changed", ...)`，主题切换由主窗口侧 emit，托盘面板只订阅。
-- 配置键：`app.language`、`theme_mode`、`theme_color`、`theme_custom_colors`、`glass_clarity`。本文件不渲染路由、不挂 Provider。
+- 配置键：`app.language`、`theme_mode`、`theme_color`、`theme_custom_colors`。本文件不渲染路由、不挂 Provider。
 - 主题逻辑已抽到 `@/utils/theme`，与 `main.tsx` / `appearance-settings.tsx` / `theme-switch.tsx` 共用同一份预设色板与应用函数，避免各入口重复实现导致托盘窗口拿不到自定义主题色。
 - 入口 HTML `tray-panel.html` 的 `<html>` 带 `data-window="tray-panel"`，`globals.css` 据此去掉 `body` 默认底色，让窗口的系统 Acrylic 透出来。
 

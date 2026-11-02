@@ -155,30 +155,33 @@
 - 缓存策略：无缓存，每次操作都全量读标签数组再整体写回（整对象覆盖式保存）。
 
 ## `src/utils/theme.ts`
-**职责**：主题系统的单一数据源——预设色板、浅/深色模式、主题色（含用户自定义色）与玻璃清晰度的应用函数。主窗口 `main.tsx`、设置页 `appearance-settings.tsx`、侧栏 `theme-switch.tsx` 与托盘面板入口 `tray-panel.tsx` 共用本模块，避免各入口重复实现（此前托盘窗口因此拿不到自定义主题色）。
-**导出**：常量 `DEFAULT_THEME_COLOR`、`DEFAULT_GLASS_CLARITY`、`PRESET_COLORS`；类型 `ThemeMode`、`ThemeColor`、`AppliedTheme`；函数 `isSystemDark`、`getAllColors`、`findColorByName`、`resolveThemeColor`、`applyThemeColor`、`applyThemeMode`、`applyGlassClarity`、`loadTheme`。
+**职责**：主题系统的单一数据源——预设色板、浅/深色模式与主题色（含用户自定义色）的应用函数。主窗口 `main.tsx`、设置页 `appearance-settings.tsx`、侧栏 `theme-switch.tsx` 与托盘面板入口 `tray-panel.tsx` 共用本模块，避免各入口重复实现（此前托盘窗口因此拿不到自定义主题色）。
+**导出**：常量 `DEFAULT_THEME_COLOR`、`PRESET_COLORS`；类型 `ThemeMode`、`ThemeColor`、`AppliedTheme`；函数 `isSystemDark`、`getAllColors`、`findColorByName`、`resolveThemeColor`、`pickForegroundOn`、`applyPrimaryTextColor`、`applyThemeColor`、`applyThemeMode`、`loadTheme`。
 **主要依赖**：`@/utils/configService` 的 `getConfig`。
+
+> ⚠️ Liquid Glass 重构移除：`DEFAULT_GLASS_CLARITY` 与 `applyGlassClarity()`（旧「毛玻璃清晰度」0–100 → `--glass-blur` 等运行时变量）已删除，`loadTheme()` 不再读写 `glass_clarity` 配置键。新体系的模糊半径是 `globals.css` 的静态 `--lg-*` 令牌。
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
 | `ThemeMode`（type） | theme.ts:11 | `"light" \| "dark" \| "system"` |
 | `ThemeColor`（interface） | theme.ts:13 | `name`、`label` 与 `colors`（`50`–`900` + `foreground`），供预设与自定义色共用 |
-| `DEFAULT_THEME_COLOR` | theme.ts:32 | `"indigo"`，预设首项 |
-| `DEFAULT_GLASS_CLARITY` | theme.ts:35 | `55`（约 28px 模糊），与设置页滑块默认值一致 |
-| `PRESET_COLORS` | theme.ts:37 | 6 套预设色板：indigo / blue / emerald / rose / amber / slate |
-| `isSystemDark()` | theme.ts:143 | `prefers-color-scheme: dark` |
-| `getAllColors(customColors?)` | theme.ts:148 | 预设 + 自定义色板 |
-| `findColorByName(name, customColors?)` | theme.ts:153 | 按名称查找，未命中返回 `undefined` |
-| `resolveThemeColor(name, customColors?)` | theme.ts:164 | 自定义 → 预设 → 首项的兜底链，保证永远有可用色板（自定义色被删除后配置可能残留旧名称） |
-| `applyThemeColor(colors)` | theme.ts:172 | 把 `--primary-50`…`--primary-900`、`--primary`、`--primary-foreground` 写入 `<html>` 内联样式 |
-| `applyThemeMode(mode)` | theme.ts:189 | 给 `<html>` 切换 `dark` 类（`globals.css` 的 `@custom-variant dark` 依赖它） |
-| `applyGlassClarity(clarity)` | theme.ts:195 | 0–100 清晰度 → `--glass-blur`、`--glass-surface-opacity`、`--glass-strong-opacity`、`--glass-field-opacity`；并额外算出托盘浮层用的 `--glass-native-opacity`（38%–92%）与 `--glass-native-base`（12%–38%），使托盘透明度随设置联动 |
-| `loadTheme()` | theme.ts:218 | 并行读 `theme_mode`/`theme_color`/`theme_custom_colors`/`glass_clarity`，依次应用三者并返回 `{ mode, colorName }`；托盘面板入口靠它一次到位 |
+| `DEFAULT_THEME_COLOR` | theme.ts:31 | `"indigo"`，预设首项 |
+| `PRESET_COLORS` | theme.ts:35 | 6 套预设色板：indigo / blue / emerald / rose / amber / slate |
+| `isSystemDark()` | theme.ts:141 | `prefers-color-scheme: dark` |
+| `getAllColors(customColors?)` | theme.ts:146 | 预设 + 自定义色板 |
+| `findColorByName(name, customColors?)` | theme.ts:151 | 按名称查找，未命中返回 `undefined` |
+| `resolveThemeColor(name, customColors?)` | theme.ts:162 | 自定义 → 预设 → 首项的兜底链，保证永远有可用色板（自定义色被删除后配置可能残留旧名称） |
+| `applyThemeColor(colors)` | theme.ts:277 | 把 `--primary-50`…`--primary-900`、`--primary` 写入 `<html>` 内联样式；`--primary-foreground` **不再照抄配色表**，改由 `pickForegroundOn(#色调)` 按亮度自动选黑/白；末尾调用 `applyPrimaryTextColor` 同步算出 `--primary-text` |
+| `applyThemeMode(mode)` | theme.ts:305 | 给 `<html>` 切换 `dark` 类（`globals.css` 的 `@custom-variant dark` 依赖它），并在切完后重算 `--primary-text`（达标方向取决于底色深浅） |
+| `pickForegroundOn(hex, fallback?)` | theme.ts:252 | 按 WCAG 相对亮度取黑/白中对比度更高的那个。用户自定义高亮主题色（`#00FFBC`）配白字只有 1.2:1，必须自动选 |
+| `applyPrimaryTextColor(primary)` | theme.ts:267 | 计算并写入 `--primary-text`：浅色主题混黑、深色主题混白，逐步逼近直到与底色对比度 ≥4.5:1，只调明度不换色相。`--primary-text` 供 `text-primary-text`（文字）使用，`--primary` 仍供背景/边框 |
+| `loadTheme()` | theme.ts:322 | 并行读 `theme_mode`/`theme_color`/`theme_custom_colors`，依次应用并返回 `{ mode, colorName }`；托盘面板入口靠它一次到位 |
 
 **备注**：
 - 封装的 invoke 命令：**本文件不直接 invoke**；配置读取经 `configService.getConfig` → `get_config`。**本文件只读不写**，写入仍由 `appearance-settings.tsx` / `theme-switch.tsx` 调 `setConfig` 完成。
-- 配置键（只读）：`theme_mode`、`theme_color`、`theme_custom_colors`、`glass_clarity`。
-- 与 `appearance-settings.tsx` 的关系：该文件的 `PRESET_COLORS`、`applyThemeColor`、`applyGlassClarity`、`DEFAULT_GLASS_CLARITY`、`DEFAULT_THEME_COLOR`、`getAllColors`、`findColorByName` 均已改为从本模块导入（并保留同名 re-export 兼容旧引用）；只有取色器专用的 `hexToHsl`/`hslToHex`/`hexToRgb`/`rgbToHex`/`hexToHsv`/`hsvToHex`/`generateColorScale` 仍留在设置页。
+- 配置键（只读）：`theme_mode`、`theme_color`、`theme_custom_colors`。
+- 与 `appearance-settings.tsx` 的关系：该文件的 `PRESET_COLORS`、`applyThemeColor`、`DEFAULT_THEME_COLOR`、`getAllColors`、`findColorByName`、`pickForegroundOn` 均从本模块导入；只有取色器专用的 `hexToHsl`/`hslToHex`/`hexToRgb`/`rgbToHex`/`hexToHsv`/`hsvToHex`/`generateColorScale` 仍留在设置页（`generateColorScale` 的 `foreground` 字段改调 `pickForegroundOn(hex)`，自定义高亮色不会再配白字）。
+- **顺序约束**：切换主题（`appearance-settings.tsx` 的 `handleModeChange`、`theme-switch.tsx` 的 `toggleTheme`）必须先 `applyThemeMode` 再 `dispatchEvent("themeChange")`。反过来广播的话，订阅者（各 ECharts 组件）会在旧 `.dark` 状态下取 `--muted`/`--separator` 颜色，之后没有任何事件再让它们重算，深色主题下坐标轴文字会停在浅色值上。
 
 ## `src/utils/backgroundSettings.ts`
 **职责**：读取全局背景图设置（路径、透明度、模糊度），把背景图片字节读成 Blob URL 并同步写入 CSS 变量 `--bg-image` / `--bg-image-opacity` / `--bg-blur`。

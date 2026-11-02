@@ -29,7 +29,7 @@ export function DashboardFAB({
           <button
             type="button"
             onClick={onAddCard}
-            className="glass-surface-strong flex min-w-[160px] items-center justify-center gap-2 rounded-2xl border border-primary/50 px-4 h-11 text-sm font-medium text-primary shadow-lg transition-all duration-200 cursor-pointer hover:border-primary/90 hover:brightness-110 hover:scale-105 active:scale-95"
+            className="lg-regular flex min-w-[160px] items-center justify-center gap-2 rounded-2xl border border-primary/50 px-4 h-11 text-sm font-medium text-primary-text [transition:transform_var(--lg-dur-fast)_var(--lg-ease-spring),box-shadow_var(--lg-dur-fast)_var(--lg-ease-standard),filter_var(--lg-dur-fast)_var(--lg-ease-standard)] cursor-pointer hover:brightness-110 hover:scale-105 active:scale-95"
           >
             <MorphIcon icon={Plus} size={20} />
             {t("dashboard.add_card_button") || "Add Card"}
@@ -38,7 +38,7 @@ export function DashboardFAB({
           <button
             type="button"
             onClick={onToggleEdit}
-            className="glass-surface-strong flex min-w-[160px] items-center justify-center gap-2 rounded-2xl border border-separator/70 px-4 h-11 text-sm font-medium text-foreground shadow-lg transition-all duration-200 cursor-pointer hover:border-primary/50 hover:text-primary hover:scale-105 active:scale-95"
+            className="lg-regular flex min-w-[160px] items-center justify-center gap-2 rounded-2xl border border-separator/70 px-4 h-11 text-sm font-medium text-foreground [transition:transform_var(--lg-dur-fast)_var(--lg-ease-spring),box-shadow_var(--lg-dur-fast)_var(--lg-ease-standard)] cursor-pointer hover:text-primary-text hover:scale-105 active:scale-95"
           >
             <MorphIcon
               icon={isEditMode ? Check : Pencil}
@@ -56,7 +56,7 @@ export function DashboardFAB({
         type="button"
         onClick={() => setIsExpanded((v) => !v)}
         aria-label="FAB toggle"
-        className={`glass-surface-strong flex h-14 w-14 items-center justify-center rounded-full border border-primary/50 text-primary shadow-xl transition-all duration-300 cursor-pointer hover:border-primary/90 hover:brightness-110 hover:scale-110 active:scale-90 ${
+        className={`lg-regular flex h-14 w-14 items-center justify-center rounded-full border border-primary/50 text-primary-text [transition:transform_var(--lg-dur-base)_var(--lg-ease-spring),box-shadow_var(--lg-dur-base)_var(--lg-ease-standard)] cursor-pointer hover:brightness-110 hover:scale-110 active:scale-90 ${
           isExpanded ? "rotate-90" : "rotate-0"
         }`}
       >

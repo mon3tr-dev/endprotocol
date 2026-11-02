@@ -410,7 +410,7 @@ export default function GachaPityChart({
         backgroundColor: "transparent",
         borderColor: "transparent",
         borderWidth: 0,
-        className: "glass-surface-strong rounded-xl shadow-xl",
+        className: "lg-regular rounded-xl",
         extraCssText: "border:1px solid var(--separator);border-radius:12px;",
         padding: [8, 12],
         textStyle: { color: "var(--foreground)", fontSize: 12 },
@@ -619,7 +619,7 @@ export default function GachaPityChart({
 
   if (sections.length === 0) {
     return (
-      <GlassCard className="p-6 glass-surface border border-separator/90">
+      <GlassCard className="p-6  border border-separator/90">
         <ChartHeader isZh={isZh} sixCount={0} poolOptions={poolOptions} poolFilter={poolFilter} onPoolChange={setPoolFilter} />
         <p className="text-sm text-muted py-8 text-center">
           {poolFilter
@@ -635,7 +635,7 @@ export default function GachaPityChart({
   }
 
   return (
-    <GlassCard className="p-6 glass-surface border border-separator/90">
+    <GlassCard className="p-6  border border-separator/90">
       <ChartHeader isZh={isZh} sixCount={sixCount} poolOptions={poolOptions} poolFilter={poolFilter} onPoolChange={setPoolFilter} />
       <div className="overflow-x-auto pb-3">
         <div

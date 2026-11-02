@@ -157,8 +157,8 @@ export default function AccountInfoCard({
 
   if (isLoading) {
     return (
-      <GlassCard className="p-6 glass-surface border border-separator/90 h-full w-full flex items-center justify-center">
-        <GlassProgressCircle isIndeterminate size="md" aria-label="Loading" className="text-primary">
+      <GlassCard className="p-6  border border-separator/90 h-full w-full flex items-center justify-center">
+        <GlassProgressCircle isIndeterminate size="md" aria-label="Loading" className="text-primary-text">
           <GlassProgressCircle.Track>
             <GlassProgressCircle.TrackCircle />
             <GlassProgressCircle.FillCircle />
@@ -170,7 +170,7 @@ export default function AccountInfoCard({
 
   if (!base) {
     return (
-      <GlassCard className="p-6 glass-surface border border-separator/90 h-full w-full flex items-center justify-center">
+      <GlassCard className="p-6  border border-separator/90 h-full w-full flex items-center justify-center">
         <p className="text-muted text-center text-sm">{t("card:no_data")}</p>
       </GlassCard>
     );
@@ -186,7 +186,7 @@ export default function AccountInfoCard({
   return (
     <>
       <GlassCard
-        className="p-2.5 glass-surface border border-separator/90 h-full w-full select-none rounded-[10px] overflow-hidden flex flex-col"
+        className="p-2.5  border border-separator/90 h-full w-full select-none rounded-[10px] overflow-hidden flex flex-col"
       >
         <div className="flex items-start gap-2.5">
           <AccountAvatar
@@ -206,7 +206,7 @@ export default function AccountInfoCard({
                 onClick={openAccountSelect}
                 title={t("card:account_info_switch_account")}
                 aria-label={t("card:account_info_switch_account")}
-                className="shrink-0 w-5 h-5 flex items-center justify-center rounded-md text-muted hover:text-foreground hover:bg-default-100 transition-colors"
+                className="shrink-0 w-5 h-5 flex items-center justify-center rounded-md text-muted hover:text-foreground lg-hoverable transition-colors"
               >
                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="1.5">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M16 3h5v5M4 20L21 3M21 16v5h-5M15 15l6 6M4 4l5 5" />
@@ -226,11 +226,11 @@ export default function AccountInfoCard({
               type="button"
               onClick={handleCopyUid}
               title={t("card:account_info_copy")}
-              className="shrink-0 w-6 h-6 flex items-center justify-center rounded-md text-muted hover:text-foreground hover:bg-default-100 transition-colors"
+              className="shrink-0 w-6 h-6 flex items-center justify-center rounded-md text-muted hover:text-foreground lg-hoverable transition-colors"
               aria-label={t("card:account_info_copy")}
             >
               {copied ? (
-                <svg className="w-3.5 h-3.5 text-success" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
+                <svg className="w-3.5 h-3.5 text-success-text" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                 </svg>
               ) : (
@@ -259,7 +259,7 @@ export default function AccountInfoCard({
               <span className="text-[11px] text-muted">
                 {t("card:account_info_level")}
               </span>
-              <span className="text-[11px] font-medium text-primary">
+              <span className="text-[11px] font-medium text-primary-text">
                 LEVEL {base.level}
               </span>
             </div>
@@ -296,7 +296,7 @@ export default function AccountInfoCard({
               accounts.map((account) => (
                 <div
                   key={account.id}
-                  className="flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-all hover:bg-default-100 border border-separator hover:border-primary/50"
+                  className="flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-all lg-hoverable border border-separator hover:border-primary/50"
                   onClick={() => handleRoleConfirm(account.id)}
                 >
                   <AccountAvatar
@@ -313,7 +313,7 @@ export default function AccountInfoCard({
                     </div>
                   </div>
                   {effectiveRoleId === account.id && (
-                    <div className="text-primary text-xs font-medium">
+                    <div className="text-primary-text text-xs font-medium">
                       {t("card:current") || "Current"}
                     </div>
                   )}

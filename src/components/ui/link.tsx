@@ -6,8 +6,9 @@ function Link({ className, children, ...rest }: GlassLinkProps) {
   return (
     <a
       className={cn(
-        "inline-flex items-center text-foreground transition-all duration-200",
-        "hover:text-primary hover:-translate-y-0.5",
+        "inline-flex items-center text-foreground",
+        "[transition:transform_var(--lg-dur-fast)_var(--lg-ease-standard),color_var(--lg-dur-fast)_var(--lg-ease-standard)]",
+        "hover:text-primary-text hover:-translate-y-px",
         "active:translate-y-0",
         className,
       )}

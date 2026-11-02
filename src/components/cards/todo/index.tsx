@@ -134,7 +134,7 @@ export default function TodoCard({ cardId, settings }: BaseCardProps) {
   if (!list) {
     return (
       <>
-        <div className="glass-surface border border-separator/90 h-full w-full rounded-[10px] flex flex-col items-center justify-center gap-2 p-3 text-center">
+        <div className="lg-material border border-separator/90 h-full w-full rounded-[10px] flex flex-col items-center justify-center gap-2 p-3 text-center">
           <TodoIcon icon="file" size={28} className="text-muted" />
           <span className="text-xs text-muted">{t("card:todo_no_list")}</span>
           <GlassButton
@@ -165,9 +165,9 @@ export default function TodoCard({ cardId, settings }: BaseCardProps) {
 
   return (
     <>
-      <div className="glass-surface border border-separator/90 h-full w-full select-none rounded-[10px] overflow-hidden flex flex-col">
+      <div className="lg-material border border-separator/90 h-full w-full select-none rounded-[10px] overflow-hidden flex flex-col">
         <div className="flex items-center gap-2 px-2.5 pt-2.5 pb-1.5 shrink-0">
-          <TodoIcon icon={list.icon} size={18} className="shrink-0 text-primary" />
+          <TodoIcon icon={list.icon} size={18} className="shrink-0 text-primary-text" />
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-1.5">
               <span className="text-sm font-semibold truncate">
@@ -197,7 +197,7 @@ export default function TodoCard({ cardId, settings }: BaseCardProps) {
           <button
             type="button"
             onClick={() => setIsEditOpen(true)}
-            className="shrink-0 w-6 h-6 flex items-center justify-center rounded-md text-muted hover:text-foreground hover:bg-default-100 transition-colors"
+            className="shrink-0 w-6 h-6 flex items-center justify-center rounded-md text-muted hover:text-foreground lg-hoverable transition-colors"
             aria-label={t("card:todo_edit_modal")}
             title={t("card:todo_edit_modal")}
           >
@@ -223,7 +223,7 @@ export default function TodoCard({ cardId, settings }: BaseCardProps) {
                   onClick={() => void toggleTodoItem(list.id, item.id)}
                   className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-all ${
                     item.done
-                      ? "bg-primary border-primary text-white"
+                      ? "bg-primary border-primary text-primary-foreground"
                       : "border-default-400 hover:border-primary"
                   }`}
                   aria-label={item.done ? t("card:todo_undo_done") : t("card:todo_mark_done")}
@@ -245,7 +245,7 @@ export default function TodoCard({ cardId, settings }: BaseCardProps) {
                 {item.due && (
                   <span
                     className={`text-[9px] shrink-0 ${
-                      isOverdue(item) ? "text-danger" : "text-muted"
+                      isOverdue(item) ? "text-danger-text" : "text-muted"
                     }`}
                   >
                     {formatDueDate(item.due, i18n.language)}
@@ -256,7 +256,7 @@ export default function TodoCard({ cardId, settings }: BaseCardProps) {
                   onClick={() => {
                     void deleteTodoItem(list.id, item.id).then(flashUndo);
                   }}
-                  className="opacity-0 group-hover:opacity-100 text-muted hover:text-danger text-[10px] shrink-0"
+                  className="opacity-0 group-hover:opacity-100 text-muted hover:text-danger-text text-[10px] shrink-0"
                   aria-label={t("common.delete")}
                 >
                   <MorphIcon icon={X} size={12} aria-hidden />
@@ -283,7 +283,7 @@ export default function TodoCard({ cardId, settings }: BaseCardProps) {
             <button
               type="button"
               onClick={() => navigate(`/todo?list=${list.id}`)}
-              className="text-[10px] text-primary hover:underline"
+              className="text-[10px] text-primary-text hover:underline"
             >
               {t("card:todo_open_page")}
             </button>
@@ -291,7 +291,7 @@ export default function TodoCard({ cardId, settings }: BaseCardProps) {
               <button
                 type="button"
                 onClick={() => void undoLastDelete().then(() => setUndoVisible(false))}
-                className="text-[10px] text-primary hover:underline"
+                className="text-[10px] text-primary-text hover:underline"
               >
                 {t("card:todo_undo")}
               </button>

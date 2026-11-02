@@ -1,4 +1,4 @@
-# 干员列表卡片（character-list）— 文件功能参考
+﻿# 干员列表卡片（character-list）— 文件功能参考
 
 > 逐文件精读源码生成。行号基于当前工作区版本，仅用于快速定位。
 
@@ -237,10 +237,9 @@
 
 **备注**：无代码、无 invoke/listen。同目录另有 `en.json`（774 B），结构一致。
 
-### 与 `src/pages/char-select.tsx` 的关系
-- `src/pages/char-select.tsx`（2561 行）也导出一个 `CharSelectModal`（346 行），开头的常量、`CharSelectModalProps`（54 行）与本目录版本高度同源，属于早期/平行副本。
-- 但 `src/App.tsx` 只注册了 `dashboard / settings / developer / account / characters / medals / attendance / gacha-records` 等页面，**没有任何路由或 import 引用 `pages/char-select`**；全仓 grep `CharSelectModal` 的消费方只有 `character-list/index.tsx:398` 与 `pages/characters.tsx:625`，两者都指向 `@/components/cards/character-list/char-select-modal`。
-- 结论：**`src/components/cards/character-list/char-select-modal.tsx` 是实际生效的实现**；`src/pages/char-select.tsx` 是未被引用的死代码（其尾部与本文件同样以拖拽 ghost + `</CustomModal>` 结束，可视为未同步的旧快照）。
+### 与 `src/pages/char-select.tsx` 的关系（历史）
+- `src/pages/char-select.tsx` 曾是本 modal 的早期/平行副本（2561 行，未被任何路由或 import 引用）。
+- 该死代码文件已随 Liquid Glass 重构物理删除；本文件是唯一实际生效的实现。
 
 ## 附：invoke / listen 汇总（本目录全部）
 | 类型 | 名称 | 文件:行 |

@@ -209,8 +209,8 @@ export default function AccountProgressCard({
 
   if (isLoading) {
     return (
-      <GlassCard className="p-6 glass-surface border border-separator/90 h-full w-full flex items-center justify-center">
-        <GlassProgressCircle isIndeterminate size="md" aria-label="Loading" className="text-primary">
+      <GlassCard className="p-6  border border-separator/90 h-full w-full flex items-center justify-center">
+        <GlassProgressCircle isIndeterminate size="md" aria-label="Loading" className="text-primary-text">
           <GlassProgressCircle.Track>
             <GlassProgressCircle.TrackCircle />
             <GlassProgressCircle.FillCircle />
@@ -222,7 +222,7 @@ export default function AccountProgressCard({
 
   return (
     <>
-      <GlassCard className="p-2.5 glass-surface border border-separator/90 h-full w-full select-none rounded-[10px] overflow-hidden flex flex-col">
+      <GlassCard className="p-2.5  border border-separator/90 h-full w-full select-none rounded-[10px] overflow-hidden flex flex-col">
         <div className="flex items-center justify-between gap-2 min-w-0 mb-2">
           <div className="flex items-center gap-2 min-w-0">
             <AccountAvatar
@@ -240,7 +240,7 @@ export default function AccountProgressCard({
             onClick={openAccountSelect}
             title={t("card:account_progress_switch_account")}
             aria-label={t("card:account_progress_switch_account")}
-            className="shrink-0 w-5 h-5 flex items-center justify-center rounded-md text-muted hover:text-foreground hover:bg-default-100 transition-colors"
+            className="shrink-0 w-5 h-5 flex items-center justify-center rounded-md text-muted hover:text-foreground lg-hoverable transition-colors"
           >
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="1.5">
               <path strokeLinecap="round" strokeLinejoin="round" d="M16 3h5v5M4 20L21 3M21 16v5h-5M15 15l6 6M4 4l5 5" />
@@ -280,7 +280,7 @@ export default function AccountProgressCard({
                   value={Math.min(100, Math.max(0, Math.round(s.percent * 100)))}
                   className="flex-1 min-w-0"
                 >
-                  <GlassMeter.Track className="bg-default-100">
+                  <GlassMeter.Track className="lg-inset">
                     <GlassMeter.Fill className="bg-gradient-to-r from-primary/70 to-primary" />
                   </GlassMeter.Track>
                 </GlassMeter>
@@ -316,7 +316,7 @@ export default function AccountProgressCard({
               accounts.map((account) => (
                 <div
                   key={account.id}
-                  className="flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-all hover:bg-default-100 border border-separator hover:border-primary/50"
+                  className="flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-all lg-hoverable border border-separator hover:border-primary/50"
                   onClick={() => handleRoleConfirm(account.id)}
                 >
                   <AccountAvatar
@@ -333,7 +333,7 @@ export default function AccountProgressCard({
                     </div>
                   </div>
                   {effectiveRoleId === account.id && (
-                    <div className="text-primary text-xs font-medium">
+                    <div className="text-primary-text text-xs font-medium">
                       {t("card:current") || "Current"}
                     </div>
                   )}

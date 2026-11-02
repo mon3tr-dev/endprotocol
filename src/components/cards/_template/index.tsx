@@ -68,8 +68,8 @@ export default function TemplateCard({
   // 加载状态
   if (isLoading) {
     return (
-      <GlassCard className="p-6 glass-surface border border-separator/90 h-full w-full flex items-center justify-center">
-        <GlassProgressCircle isIndeterminate size="md" aria-label="Loading" className="text-primary">
+      <GlassCard className="p-6  border border-separator/90 h-full w-full flex items-center justify-center">
+        <GlassProgressCircle isIndeterminate size="md" aria-label="Loading" className="text-primary-text">
           <GlassProgressCircle.Track>
             <GlassProgressCircle.TrackCircle />
             <GlassProgressCircle.FillCircle />
@@ -82,8 +82,8 @@ export default function TemplateCard({
   // 错误状态
   if (error) {
     return (
-      <GlassCard className="p-6 glass-surface border border-separator/90">
-        <p className="text-danger text-center">
+      <GlassCard className="p-6  border border-separator/90">
+        <p className="text-danger-text text-center">
           {t("common.load_error") || "加载失败"}
         </p>
       </GlassCard>
@@ -92,7 +92,7 @@ export default function TemplateCard({
 
   // 正常渲染
   return (
-    <GlassCard className="p-6 glass-surface border border-separator/90 h-full w-full">
+    <GlassCard className="p-6  border border-separator/90 h-full w-full">
       <div className="space-y-4">
         <h3 className="font-semibold text-foreground text-base">
           {t("template_card.title") || "Template Card"}

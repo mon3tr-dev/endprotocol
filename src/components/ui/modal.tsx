@@ -3,7 +3,13 @@ import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils";
 
 /* ======================================================
- * GlassModal — Solid-background modal (replaces glass)
+ * GlassModal — Liquid Glass 模态（功能层 regular + clear 遮罩）
+ *
+ * HIG 依据：模态属于功能层，用 regular 变体（模糊 + 提亮保证正文
+ * 可读）；遮罩用 clear 语义的轻模糊 + 35% 暗化，让内容隐约可感而不
+ * 抢焦点。出入场：Dialog 位移 + 淡入 + 阴影扩散同步渐进
+ * （--lg-dur-slow 280ms / --lg-ease-emphasized）。
+ *
  * Usage (compound API, same as before):
  * <GlassModal isOpen onOpenChange>
  *   <GlassModal.Backdrop isDismissable className="z-[100]">
@@ -79,7 +85,9 @@ function Backdrop({ isDismissable = true, className, children }: ModalBackdropPr
   return (
     <div
       className={cn(
-        "fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in",
+        // lg-scrim：35% 暗化 + 8px 轻模糊（clear 语义），渐入渐出对称
+        "lg-scrim fixed inset-0 z-[100] flex items-center justify-center",
+        "[animation:lg-fade-in_var(--lg-dur-slow)_var(--lg-ease-emphasized)]",
         className,
       )}
       onMouseDown={(e) => {
@@ -118,7 +126,9 @@ function Dialog({ className, children }: { className?: string; children?: React.
       role="dialog"
       aria-modal="true"
       className={cn(
-        "animate-scale-in rounded-2xl bg-surface border border-separator shadow-xl",
+        // lg-float-in：translateY(24px)+scale(.96) → 1，阴影同步扩散；
+        // 玻璃模糊经 ::before 淡入，无「先硬边后补模糊」的割裂感
+        "lg-float-in lg-regular rounded-2xl border border-separator/60",
         className,
       )}
     >
@@ -158,9 +168,10 @@ function CloseTrigger({ className }: { className?: string }) {
       aria-label="Close"
       onClick={close}
       className={cn(
-        "flex h-8 w-8 items-center justify-center rounded-xl border border-separator/70 bg-surface text-muted",
-        "transition-all duration-200 hover:border-primary/50 hover:text-foreground",
-        "hover:scale-110 active:scale-90",
+        "lg-control flex h-8 w-8 items-center justify-center rounded-xl text-muted",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50",
+        "[transition:transform_var(--lg-dur-fast)_var(--lg-ease-spring),color_var(--lg-dur-fast)_var(--lg-ease-standard)]",
+        "hover:text-foreground hover:-translate-y-px active:scale-90",
         className,
       )}
     >
@@ -195,7 +206,7 @@ export { GlassModal, GlassModalWithSub as GlassModalCompound };
 export type { ModalProps as GlassModalProps };
 
 /* ======================================================
- * GlassAlertDialog — Alert/confirm dialog (solid bg)
+ * GlassAlertDialog — Alert/confirm dialog（同一玻璃语言）
  * ====================================================== */
 
 interface AlertDialogProps {
@@ -235,7 +246,8 @@ function AlertDialogBackdrop({ className, children }: { className?: string; chil
   return (
     <div
       className={cn(
-        "fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in",
+        "lg-scrim fixed inset-0 z-[100] flex items-center justify-center p-4",
+        "[animation:lg-fade-in_var(--lg-dur-slow)_var(--lg-ease-emphasized)]",
         className,
       )}
     >
@@ -254,7 +266,7 @@ function AlertDialogDialog({ className, children }: { className?: string; childr
       role="alertdialog"
       aria-modal="true"
       className={cn(
-        "animate-scale-in rounded-2xl bg-surface border border-separator p-5 shadow-xl",
+        "lg-float-in lg-regular rounded-2xl border border-separator/60 p-5",
         className,
       )}
     >
@@ -267,7 +279,8 @@ const ICON_TONES: Record<string, string> = {
   success: "bg-success text-white",
   warning: "bg-warning text-white",
   danger: "bg-danger text-white",
-  info: "bg-primary text-white",
+  // primary 是用户可自定义的主题色，前景取 --primary-foreground（按亮度自动选）
+  info: "bg-primary text-primary-foreground",
   default: "bg-default-400 text-white",
 };
 
@@ -306,9 +319,9 @@ function AlertDialogCloseTrigger({ className }: { className?: string }) {
       aria-label="Close"
       onClick={close}
       className={cn(
-        "absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-xl border border-separator/70 bg-surface text-muted",
-        "transition-all duration-200 hover:border-primary/50 hover:text-foreground",
-        "hover:scale-110 active:scale-90",
+        "lg-control absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-xl text-muted",
+        "[transition:transform_var(--lg-dur-fast)_var(--lg-ease-spring),color_var(--lg-dur-fast)_var(--lg-ease-standard)]",
+        "hover:text-foreground hover:-translate-y-px active:scale-90",
         className,
       )}
     >

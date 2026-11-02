@@ -1,4 +1,4 @@
-# 设置页与开发者页 — 文件功能参考
+﻿# 设置页与开发者页 — 文件功能参考
 
 > 逐行精读源码生成。行号基于当前工作区版本，仅用于快速定位。
 
@@ -83,12 +83,12 @@
 | 更新源 | 配置键 `update_source`（由 `updateService.getSource/setSource` 读写；state `updateSource`） | 双卡片单选按钮（github / mirror） | `github` | state 74；读 141；写 282-298、314-326；UI 996-1066；警告框 1530-1601 |
 | 代理设置（整卡委托） | 子组件 `NetworkSettings`：配置键 `proxy_config`（经 `proxyService` 的 `get_proxy_settings` / `save_proxy_settings` / `clear_proxy_settings` 读写），本文件不读写 | 子组件 `NetworkSettings`（开关 + 协议单选组 + 字段表单 + 系统代理读取 + 连通性测试） | `{enabled:false,type:"http",host:"",port:8080}` | 677-704（渲染 703） |
 | 游戏启动设置（整卡委托） | 子组件内：`@/stores/launcherMode`（zustand）与 `localStorage` 键（如 `CANCEL_BEHAVIOR_KEY`、`VERIFY_THREADS_KEY`），本文件不读写 | 子组件 `GameLaunchSettings` | 见子组件 | 706-738（渲染 736） |
-| 外观设置（整卡委托） | 子组件内配置键：`theme_mode`、`theme_color`、`theme_custom_colors`、`bg_image_path`、`bg_image_opacity`、`bg_blur`、`glass_clarity` | 子组件 `AppearanceSettings` | 见子组件 | 741-761（渲染 760） |
+| 外观设置（整卡委托） | 子组件内配置键：`theme_mode`、`theme_color`、`theme_custom_colors`、`bg_image_path`、`bg_image_opacity`、`bg_blur` | 子组件 `AppearanceSettings` | 见子组件 | 741-761（渲染 760） |
 
 **备注**：
 - **invoke 命令名（本文件直接调用）**：无。托盘相关的 `set_tray_user` / `update_tray_user_data` 已随数据组装逻辑迁到 `@/utils/trayService`（见 [utils_services_a.md](utils_services_a.md) 的 `trayService` 一节）。
 - **invoke 命令名（经服务间接触发）**：`set_tray_user`、`update_tray_user_data`、`query_role_data`（`setTrayUser`→`refreshTrayUserData`→`roleDataService.queryData`）、`is_lazy_load_enabled` / `set_lazy_load_enabled`（roleDetailService）、`fetch_url`（updateService 内部拉取更新元数据）；代理相关命令全部由 `NetworkSettings` 经 `proxyService` 触发（见 `components_settings_panels.md`）。
-- **配置键**：`refresh_on_account_switch`、`wiki_detail_preload`、`close_action`、`tray_user_role_id`、`developer_mode`（本文件直接读写）；`update_channel`、`update_source`（经 updateService 间接读写）；委托组件另用 `proxy_config`、`app.language`、`theme_mode`、`theme_color`、`theme_custom_colors`、`bg_image_path`、`bg_image_opacity`、`bg_blur`、`glass_clarity`。
+- **配置键**：`refresh_on_account_switch`、`wiki_detail_preload`、`close_action`、`tray_user_role_id`、`developer_mode`（本文件直接读写）；`update_channel`、`update_source`（经 updateService 间接读写）；委托组件另用 `proxy_config`、`app.language`、`theme_mode`、`theme_color`、`theme_custom_colors`、`bg_image_path`、`bg_image_opacity`、`bg_blur`。
 - **i18n key 前缀**：`settings.title`、`common.managePreferences`、`settings.general.*`（含 `language`、`close_action*`、`tray_user*`、`title`）、`settings.network.*`（`title`/`desc`，网络卡标题）、`settings.game_launch.title`、`settings.appearance.title`、`settings.system_resource.title`、`settings.todo.title`、`settings.developer.*`（`title`/`enable`/`enable_desc`/`warning_*`）、`settings.update_channel.*`、`settings.update_source.*`、`settings.update.*`（`app_version`/`tauri_version`/`platform`/`latest_version`/`release_date`/`license*`/`open_source_credits`/`special_thanks`/`xel_launcher_desc`/`better_endfield_desc`）。
 - **窗口事件**：`openUpdateDialog`（监听，settings.tsx:331）、`developerModeChange`（派发两次，settings.tsx:216、:226，detail 为 `{enabled:boolean}`；`@/utils/logSettings` 监听后同步前后端日志级别，关闭时回到 INFO）。
 - **DOM 锚点 id**：`settings-general`、`settings-language`、`settings-refresh-on-switch`、`settings-lazy-load`、`settings-wiki-detail-preload`、`settings-close-action`、`settings-tray-user`、`settings-network`、`settings-game-launch`、`settings-appearance`、`settings-system-resource`、`settings-todo`、`settings-developer`、`settings-about`。

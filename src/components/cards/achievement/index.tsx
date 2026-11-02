@@ -254,8 +254,8 @@ export default function AchievementCard({
 
   if (isLoading) {
     return (
-      <GlassCard className="p-6 glass-surface border border-separator/70 h-full w-full flex items-center justify-center">
-        <GlassProgressCircle isIndeterminate size="md" aria-label="Loading" className="text-primary">
+      <GlassCard className="p-6 border border-separator/70 h-full w-full flex items-center justify-center">
+        <GlassProgressCircle isIndeterminate size="md" aria-label="Loading" className="text-primary-text">
           <GlassProgressCircle.Track>
             <GlassProgressCircle.TrackCircle />
             <GlassProgressCircle.FillCircle />
@@ -267,7 +267,7 @@ export default function AchievementCard({
 
   if (!charDetail?.achieve?.achieveMedals) {
     return (
-      <GlassCard className="p-6 glass-surface border border-separator/70 h-full w-full flex items-center justify-center">
+      <GlassCard className="p-6 border border-separator/70 h-full w-full flex items-center justify-center">
         <p className="text-muted text-center text-sm">{t("card:no_data")}</p>
       </GlassCard>
     );
@@ -278,7 +278,7 @@ export default function AchievementCard({
   return (
     <>
       <GlassCard
-        className="px-[3px] py-0 glass-surface border border-separator/70 h-full w-full select-none cursor-pointer hover:shadow-md transition-all rounded-[10px] overflow-hidden"
+        className="px-[3px] py-0 border border-separator/70 h-full w-full select-none cursor-pointer hover:shadow-md transition-all rounded-[10px] overflow-hidden"
         isPressable
         onPress={() => !isEditMode && setIsModalOpen(true)}
       >
@@ -316,10 +316,10 @@ export default function AchievementCard({
               accounts.map((account) => (
                 <div
                   key={account.id}
-                  className="flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-all hover:bg-white/5 glass-surface border border-separator/70 hover:border-primary/50"
+                  className="flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-all lg-hoverable-soft lg-material-row border border-separator/70 hover:border-primary/50"
                   onClick={() => handleRoleConfirm(account.id)}
                 >
-                   <div className="w-10 h-10 rounded-lg overflow-hidden shrink-0 glass-field">
+                   <div className="w-10 h-10 rounded-lg overflow-hidden shrink-0 lg-field">
                     {account.avatar ? (
                       <Img
                         src={account.avatar}

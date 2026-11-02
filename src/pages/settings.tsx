@@ -364,12 +364,12 @@ export default function SettingsPage() {
         {/* General Settings */}
         <GlassCard
           id="settings-general"
-          className="p-6 glass-surface border border-separator/90"
+          className="p-6 lg-material border border-separator/90"
         >
           <h2 className="text-lg font-semibold mb-6 flex items-center gap-3">
             <div className="w-8 h-8 rounded-xl bg-primary/10 flex items-center justify-center ring-1 ring-primary/20">
               <svg
-                className="w-4 h-4 text-primary"
+                className="w-4 h-4 text-primary-text"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -491,7 +491,7 @@ export default function SettingsPage() {
                     createPortal(
                       <div
                         ref={langDropdownMenuRef}
-                        className="fixed z-[9999] overflow-y-auto rounded-xl border border-separator/60 bg-background glass-surface-strong shadow-xl animate-scale-in"
+                        className="lg-regular fixed z-[9999] overflow-y-auto rounded-xl border border-separator/60 animate-scale-in"
                         style={{
                           top: langDropdownPos.top,
                           left: langDropdownPos.left,
@@ -503,13 +503,13 @@ export default function SettingsPage() {
                           {languages.map((lang) => (
                             <button
                               key={lang.key}
-                              className="w-full px-4 py-2.5 text-left hover:bg-default-100 transition-colors flex items-center justify-between"
+                              className="w-full px-4 py-2.5 text-left lg-hoverable transition-colors flex items-center justify-between"
                               onClick={() => handleLanguageChange(lang.key)}
                             >
                               <span className="text-sm">{lang.label}</span>
                               {i18n.language === lang.key && (
                                 <svg
-                                  className="w-4 h-4 text-primary"
+                                  className="w-4 h-4 text-primary-text"
                                   fill="currentColor"
                                   viewBox="0 0 20 20"
                                 >
@@ -654,8 +654,8 @@ export default function SettingsPage() {
                         key={opt.value}
                         className={`px-3 py-1.5 rounded-lg text-sm border transition-all ${
                           closeAction === opt.value
-                            ? "border-primary/50 bg-primary/10 text-primary font-medium"
-                            : "border-separator/40 text-muted hover:bg-default-100/50"
+                            ? "border-primary/50 bg-primary/10 text-primary-text font-medium"
+                            : "border-separator/40 text-muted lg-hoverable"
                         }`}
                         onClick={() => handleCloseActionChange(opt.value)}
                       >
@@ -697,12 +697,12 @@ export default function SettingsPage() {
         {/* Network Settings */}
         <GlassCard
           id="settings-network"
-          className="p-6 glass-surface border border-separator/90"
+          className="p-6 lg-material border border-separator/90"
         >
           <h2 className="text-lg font-semibold mb-6 flex items-center gap-3">
             <div className="w-8 h-8 rounded-xl bg-primary/10 flex items-center justify-center ring-1 ring-primary/20">
               <svg
-                className="w-4 h-4 text-primary"
+                className="w-4 h-4 text-primary-text"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -727,12 +727,12 @@ export default function SettingsPage() {
         {supportsLauncher && (
           <GlassCard
             id="settings-game-launch"
-            className="p-6 glass-surface border border-separator/90"
+            className="p-6 lg-material border border-separator/90"
           >
             <h2 className="text-lg font-semibold mb-6 flex items-center gap-3">
               <div className="w-8 h-8 rounded-xl bg-primary/10 flex items-center justify-center ring-1 ring-primary/20">
                 <svg
-                  className="w-4 h-4 text-primary"
+                  className="w-4 h-4 text-primary-text"
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -761,12 +761,12 @@ export default function SettingsPage() {
         {/* Appearance Settings */}
         <GlassCard
           id="settings-appearance"
-          className="p-6 glass-surface border border-separator/90"
+          className="p-6 lg-material border border-separator/90"
         >
           <h2 className="text-lg font-semibold mb-6 flex items-center gap-3">
             <div className="w-8 h-8 rounded-xl bg-primary/10 flex items-center justify-center ring-1 ring-primary/20">
               <svg
-                className="w-4 h-4 text-primary"
+                className="w-4 h-4 text-primary-text"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -783,12 +783,12 @@ export default function SettingsPage() {
         {/* System Resource Card Defaults */}
         <GlassCard
           id="settings-system-resource"
-          className="p-6 glass-surface border border-separator/90"
+          className="p-6 lg-material border border-separator/90"
         >
           <h2 className="text-lg font-semibold mb-6 flex items-center gap-3">
             <div className="w-8 h-8 rounded-xl bg-primary/10 flex items-center justify-center ring-1 ring-primary/20">
               <svg
-                className="w-4 h-4 text-primary"
+                className="w-4 h-4 text-primary-text"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -806,12 +806,12 @@ export default function SettingsPage() {
         {/* To-Do Card Defaults */}
         <GlassCard
           id="settings-todo"
-          className="p-6 glass-surface border border-separator/90"
+          className="p-6 lg-material border border-separator/90"
         >
           <h2 className="text-lg font-semibold mb-6 flex items-center gap-3">
             <div className="w-8 h-8 rounded-xl bg-primary/10 flex items-center justify-center ring-1 ring-primary/20">
               <svg
-                className="w-4 h-4 text-primary"
+                className="w-4 h-4 text-primary-text"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -829,7 +829,7 @@ export default function SettingsPage() {
         {/* Developer Mode */}
         <GlassCard
           id="settings-developer"
-          className="p-6 glass-surface border border-separator/90"
+          className="p-6 lg-material border border-separator/90"
         >
           {isConfigLoading ? (
             <div className="space-y-6">
@@ -846,7 +846,7 @@ export default function SettingsPage() {
               <h2 className="text-lg font-semibold mb-6 flex items-center gap-3">
                 <div className="w-8 h-8 rounded-xl bg-primary/10 flex items-center justify-center ring-1 ring-primary/20">
                   <svg
-                    className="w-4 h-4 text-primary"
+                    className="w-4 h-4 text-primary-text"
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
@@ -885,12 +885,12 @@ export default function SettingsPage() {
         {/* Updates & About */}
         <GlassCard
           id="settings-about"
-          className="p-6 glass-surface border border-separator/90"
+          className="p-6 lg-material border border-separator/90"
         >
           <h2 className="text-lg font-semibold mb-6 flex items-center gap-3">
             <div className="w-8 h-8 rounded-xl bg-primary/10 flex items-center justify-center ring-1 ring-primary/20">
               <svg
-                className="w-4 h-4 text-primary"
+                className="w-4 h-4 text-primary-text"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -922,11 +922,11 @@ export default function SettingsPage() {
                 </p>
                 <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                   {remoteVersion.hasUpdate ? (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-danger/15 text-danger border border-danger/20">
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-danger/15 text-danger-text border border-danger/20">
                       {i18n.language === "zh" ? "有新版本" : "Update Available"}
                     </span>
                   ) : (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-success/15 text-success border border-success/20">
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-success/15 text-success-text border border-success/20">
                       {i18n.language === "zh" ? "已是最新" : "Up to Date"}
                     </span>
                   )}
@@ -949,10 +949,10 @@ export default function SettingsPage() {
               </p>
               <div className="flex gap-2">
                 <button
-                  className={`glass-surface flex-1 p-3 rounded-xl border transition-all text-left ${
+                  className={`lg-material flex-1 p-3 rounded-xl border transition-all text-left ${
                     updateChannel === "stable"
                       ? "border-primary/50 bg-primary/5"
-                      : "border-separator/40 hover:bg-default-100/50"
+                      : "border-separator/40 lg-hoverable"
                   }`}
                   onClick={() => handleChannelChange("stable")}
                 >
@@ -979,10 +979,10 @@ export default function SettingsPage() {
                   </div>
                 </button>
                 <button
-                  className={`glass-surface flex-1 p-3 rounded-xl border transition-all text-left ${
+                  className={`lg-material flex-1 p-3 rounded-xl border transition-all text-left ${
                     updateChannel === "preview"
                       ? "border-primary/50 bg-primary/5"
-                      : "border-separator/40 hover:bg-default-100/50"
+                      : "border-separator/40 lg-hoverable"
                   }`}
                   onClick={() => handleChannelChange("preview")}
                 >
@@ -1023,10 +1023,10 @@ export default function SettingsPage() {
               </p>
               <div className="flex gap-2">
                 <button
-                  className={`glass-surface flex-1 p-3 rounded-xl border transition-all text-left ${
+                  className={`lg-material flex-1 p-3 rounded-xl border transition-all text-left ${
                     updateSource === "github"
                       ? "border-primary/50 bg-primary/5"
-                      : "border-separator/40 hover:bg-default-100/50"
+                      : "border-separator/40 lg-hoverable"
                   }`}
                   onClick={() => handleSourceChange("github")}
                 >
@@ -1053,10 +1053,10 @@ export default function SettingsPage() {
                   </div>
                 </button>
                 <button
-                  className={`glass-surface flex-1 p-3 rounded-xl border transition-all text-left ${
+                  className={`lg-material flex-1 p-3 rounded-xl border transition-all text-left ${
                     updateSource === "mirror"
                       ? "border-primary/50 bg-primary/5"
-                      : "border-separator/40 hover:bg-default-100/50"
+                      : "border-separator/40 lg-hoverable"
                   }`}
                   onClick={() => handleSourceChange("mirror")}
                 >
@@ -1089,7 +1089,7 @@ export default function SettingsPage() {
 
             {/* Version Info */}
             <div className="grid grid-cols-2 gap-3">
-              <div className="p-3 rounded-xl glass-surface border border-separator/40">
+              <div className="p-3 rounded-xl lg-material border border-separator/40">
                 <p className="text-[11px] text-muted uppercase tracking-wider mb-1">
                   {t("settings.update.app_version")}
                 </p>
@@ -1097,7 +1097,7 @@ export default function SettingsPage() {
                   {appVersion || "..."}
                 </p>
               </div>
-              <div className="p-3 rounded-xl glass-surface border border-separator/40">
+              <div className="p-3 rounded-xl lg-material border border-separator/40">
                 <p className="text-[11px] text-muted uppercase tracking-wider mb-1">
                   {t("settings.update.tauri_version")}
                 </p>
@@ -1105,7 +1105,7 @@ export default function SettingsPage() {
                   {tauriVersion || "..."}
                 </p>
               </div>
-              <div className="p-3 rounded-xl glass-surface border border-separator/40">
+              <div className="p-3 rounded-xl lg-material border border-separator/40">
                 <p className="text-[11px] text-muted uppercase tracking-wider mb-1">
                   {t("settings.update.platform")}
                 </p>
@@ -1113,7 +1113,7 @@ export default function SettingsPage() {
                   {platformInfo}
                 </p>
               </div>
-              <div className="p-3 rounded-xl glass-surface border border-separator/40">
+              <div className="p-3 rounded-xl lg-material border border-separator/40">
                 <p className="text-[11px] text-muted uppercase tracking-wider mb-1">
                   {t("settings.update.latest_version")}
                 </p>
@@ -1347,7 +1347,7 @@ export default function SettingsPage() {
                       href={lib.url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-[11px] text-primary hover:text-primary/80 hover:underline shrink-0"
+                      className="text-[11px] text-primary-text hover:text-primary-text hover:underline shrink-0"
                     >
                       {lib.url.replace(/^https?:\/\//, "").replace(/\/$/, "")}
                     </a>
@@ -1385,7 +1385,7 @@ export default function SettingsPage() {
                         href={proj.url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-[11px] text-primary hover:text-primary/80 hover:underline shrink-0"
+                        className="text-[11px] text-primary-text hover:text-primary-text hover:underline shrink-0"
                       >
                         {proj.url
                           .replace(/^https?:\/\//, "")

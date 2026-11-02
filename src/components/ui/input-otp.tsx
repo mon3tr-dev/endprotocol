@@ -75,7 +75,8 @@ function OTPSlot({
   return (
     <span
       className={cn(
-        "flex h-11 w-9 items-center justify-center rounded-lg border border-separator bg-field",
+        // OTP 槽位：功能层字段材质（88% 实底，无模糊）
+        "lg-field flex h-11 w-9 items-center justify-center rounded-lg bg-field",
         "text-base font-semibold text-foreground",
         isInvalid && "border-danger",
         className,

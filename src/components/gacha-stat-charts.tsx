@@ -143,7 +143,18 @@ function useCumulativeSix(intervals: GachaSixStarInterval[]) {
   }, [intervals]);
 }
 
+/**
+ * 稀有度配色：浅色/深色主题各一套。
+ * 金色 #ffd700 在白卡上只有 1.4:1，画在饼图/图例里同样读不清，
+ * 因此浅色档用同色相的深色版本（对比度见注释），深色档保留亮色。
+ */
 const RARITY_COLORS: Record<number, string> = {
+  6: "#ef4444",
+  5: "#a16207",
+  4: "#6d28d9",
+  3: "#94a3b8",
+};
+const RARITY_COLORS_DARK: Record<number, string> = {
   6: "#ef4444",
   5: "#ffd700",
   4: "#a855f7",
@@ -176,9 +187,24 @@ export default function GachaStatCharts({
   const histRef = useRef<HTMLDivElement>(null);
   const cumRef = useRef<HTMLDivElement>(null);
 
-  const primary = cssVar("--primary", "#6366f1");
-  const muted = cssVar("--muted", "#71717a");
-  const separator = cssVar("--separator", "#e4e4e7");
+  // 主题切换时父组件不会重渲染（只有 useEchart 内部重建实例），
+  // 因此这里必须自己订阅 themeChange，否则文字色会停留在旧主题的取值上
+  // ——深色主题下坐标轴字用浅色底算出的 #4a4a52，几乎看不见。
+  const [themeTick, setThemeTick] = useState(0);
+  useEffect(() => {
+    const handler = () => setThemeTick((t) => t + 1);
+    window.addEventListener("themeChange", handler);
+    return () => window.removeEventListener("themeChange", handler);
+  }, []);
+
+  const primary = useMemo(() => cssVar("--primary", "#6366f1"), [themeTick]);
+  const muted = useMemo(() => cssVar("--muted", "#71717a"), [themeTick]);
+  const separator = useMemo(() => cssVar("--separator", "#e4e4e7"), [themeTick]);
+  // 稀有度取色同样依赖主题（浅色档/深色档两套），一并跟随 themeTick 重算
+  const rarityPalette = useMemo(() => {
+    const isDark = document.documentElement.classList.contains("dark");
+    return isDark ? RARITY_COLORS_DARK : RARITY_COLORS;
+  }, [themeTick]);
   const lineColors = [primary, "#14b8a6", "#f97316", "#ec4899", "#0ea5e9", "#a855f7", "#84cc16"];
   const poolsById = useMemo(() => {
     const grouped = new Map<string, GachaSixStarInterval[]>();
@@ -207,12 +233,12 @@ export default function GachaStatCharts({
 
   useEffect(() => {
     const pieOption: EChartsOption = {
-      color: starDist.series.map(([r]) => RARITY_COLORS[r] ?? RARITY_COLORS[3]),
+      color: starDist.series.map(([r]) => rarityPalette[r] ?? rarityPalette[3]),
       tooltip: {
         trigger: "item",
         backgroundColor: "transparent",
         borderColor: "transparent",
-        className: "glass-surface-strong rounded-xl shadow-xl",
+        className: "lg-regular rounded-xl",
         extraCssText: "border:1px solid var(--separator);border-radius:12px;",
         padding: [8, 12],
         textStyle: { color: "var(--foreground)", fontSize: 12 },
@@ -253,7 +279,7 @@ export default function GachaStatCharts({
       ],
     };
     pie.setOption(pieOption);
-  }, [pie, starDist]);
+  }, [pie, starDist, rarityPalette]);
 
   useEffect(() => {
     const expLabel = `${isZh ? "期望" : "Expected"} ${expectation}${isZh ? " 抽" : ""}`;
@@ -265,7 +291,7 @@ export default function GachaStatCharts({
         trigger: "item",
         backgroundColor: "transparent",
         borderColor: "transparent",
-        className: "glass-surface-strong rounded-xl shadow-xl",
+        className: "lg-regular rounded-xl",
         extraCssText: "border:1px solid var(--separator);border-radius:12px;",
         padding: [8, 12],
         textStyle: { color: "var(--foreground)", fontSize: 12 },
@@ -336,7 +362,7 @@ export default function GachaStatCharts({
         trigger: "axis",
         backgroundColor: "transparent",
         borderColor: "transparent",
-        className: "glass-surface-strong rounded-xl shadow-xl",
+        className: "lg-regular rounded-xl",
         extraCssText: "border:1px solid var(--separator);border-radius:12px;",
         padding: [8, 12],
         textStyle: { color: "var(--foreground)", fontSize: 12 },
@@ -397,13 +423,13 @@ export default function GachaStatCharts({
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-      <GlassCard className="p-4 glass-surface border border-separator/90">
+      <GlassCard className="p-4  border border-separator/90">
         <h3 className="text-sm font-semibold text-muted mb-2">
           {isZh ? "星级分布" : "Rarity Distribution"}
         </h3>
         <div ref={pieRef} style={{ height: 220 }} />
       </GlassCard>
-      <GlassCard className="p-4 glass-surface border border-separator/90">
+      <GlassCard className="p-4  border border-separator/90">
         <h3 className="text-sm font-semibold text-muted mb-2">
           {isZh ? `各卡池六星间隔（期望 ${expectation} 抽）` : `6★ Intervals by Pool (expected ${expectation})`}
         </h3>
@@ -427,7 +453,7 @@ export default function GachaStatCharts({
           )}
         </div>
       </GlassCard>
-      <GlassCard className="p-4 glass-surface border border-separator/90">
+      <GlassCard className="p-4  border border-separator/90">
         <h3 className="text-sm font-semibold text-muted mb-2">
           {isZh ? "六星累计（按间隔）" : "Cumulative 6★ (by interval)"}
         </h3>

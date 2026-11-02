@@ -580,7 +580,7 @@ export function NetworkSettings() {
                 <div className="overflow-hidden">
                   {pacUrl && (
                     <div className="space-y-6">
-                      <p className="rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning">
+                      <p className="rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning-text">
                         {t("settings.general.proxy_pac_notice")}
                         <span className="mt-1 block break-all font-mono text-[11px] text-muted">
                           {pacUrl}
@@ -628,10 +628,10 @@ export function NetworkSettings() {
                   <span
                     className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium ${
                       notice.tone === "success"
-                        ? "bg-success/10 text-success"
+                        ? "bg-success/10 text-success-text"
                         : notice.tone === "danger"
-                          ? "bg-danger/10 text-danger"
-                          : "bg-default-100 text-muted"
+                          ? "bg-danger/10 text-danger-text"
+                          : "lg-inset text-muted"
                     }`}
                   >
                     {notice.tone === "success" && <CheckIcon size={14} />}

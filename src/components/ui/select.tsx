@@ -66,10 +66,10 @@ function GlassSelect({
         type="button"
         onClick={handleToggle}
         className={cn(
-          "flex items-center gap-2 h-9 pl-3 pr-2.5 rounded-xl border border-separator bg-surface text-sm cursor-pointer transition-all duration-200",
-          "hover:scale-105 hover:border-primary/50",
-          "active:scale-95",
-          open && "border-primary/50",
+          "lg-field flex items-center gap-2 h-9 pl-3 pr-2.5 rounded-xl text-sm cursor-pointer",
+          "[transition:transform_var(--lg-dur-fast)_var(--lg-ease-spring),box-shadow_var(--lg-dur-fast)_var(--lg-ease-standard)]",
+          "hover:-translate-y-px active:translate-y-0",
+          open && "ring-2 ring-primary/40",
         )}
       >
         <span className={cn("truncate", current ? "text-foreground" : "text-muted")}>
@@ -77,7 +77,11 @@ function GlassSelect({
         </span>
         <ChevronDownIcon
           size={12}
-          className={cn("shrink-0 text-muted transition-transform", open && "rotate-180")}
+          className={cn(
+            "shrink-0 text-muted",
+            "[transition:transform_var(--lg-dur-fast)_var(--lg-ease-standard)]",
+            open && "rotate-180",
+          )}
         />
       </button>
       {open &&
@@ -85,7 +89,8 @@ function GlassSelect({
           <div
             ref={menuRef}
             className={cn(
-              "fixed z-[9999] min-w-[150px] rounded-xl border border-separator/70 glass-surface-strong shadow-xl overflow-y-auto overflow-x-hidden animate-scale-in",
+              "lg-regular fixed z-[9999] min-w-[150px] rounded-xl border border-separator/60 overflow-y-auto overflow-x-hidden",
+              "animate-scale-in",
             )}
             style={{
               top: pos.top,
@@ -106,11 +111,12 @@ function GlassSelect({
                     setOpen(false);
                   }}
                   className={cn(
-                    "w-full text-left px-3 py-2 text-sm truncate transition-colors cursor-pointer",
+                    "w-full text-left px-3 py-2 text-sm truncate cursor-pointer",
+                    "[transition:background-color_var(--lg-dur-fast)_var(--lg-ease-standard)]",
                     active
                       ? highlightSelected
-                        ? "bg-primary/10 text-primary font-semibold"
-                        : "bg-primary/10 text-primary"
+                        ? "bg-primary/10 text-primary-text font-semibold"
+                        : "bg-primary/10 text-primary-text"
                       : "text-foreground hover:bg-foreground/5",
                   )}
                 >

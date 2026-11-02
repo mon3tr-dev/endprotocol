@@ -74,7 +74,7 @@ export function TabSelector({
 
         {filteredTabs.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 text-center">
-            <div className="w-16 h-16 rounded-2xl bg-default-100 flex items-center justify-center mb-4">
+            <div className="w-16 h-16 rounded-2xl lg-inset flex items-center justify-center mb-4">
               <SearchIcon className="w-8 h-8 text-muted" />
             </div>
             <p className="text-lg font-medium text-foreground mb-2">
@@ -106,7 +106,7 @@ export function TabSelector({
               return (
                 <div
                   key={tab.id}
-                  className="group relative glass-surface border border-separator/90 rounded-xl p-5 hover:border-primary/50 hover:shadow-md hover:scale-[1.02] hover:-translate-y-0.5 transition-all duration-200 cursor-pointer active:scale-[0.98] active:translate-y-0"
+                  className="group relative lg-material border border-separator/90 rounded-xl p-5 [transition:transform_var(--lg-dur-fast)_var(--lg-ease-standard),box-shadow_var(--lg-dur-fast)_var(--lg-ease-standard),border-color_var(--lg-dur-fast)_var(--lg-ease-standard)] hover:border-primary/50 hover:shadow-md hover:-translate-y-0.5 cursor-pointer active:translate-y-0 active:scale-[0.99]"
                   onClick={() => onSelectTab(tab.id)}
                   onContextMenu={(e) => {
                     e.preventDefault();
@@ -115,7 +115,7 @@ export function TabSelector({
                   }}
                 >
                   <div className="flex items-start gap-4">
-                    <div className="p-3 rounded-xl bg-primary/10 text-primary flex-shrink-0">
+                    <div className="p-3 rounded-xl bg-primary/10 text-primary-text flex-shrink-0">
                       <Icon size={24} />
                     </div>
                     <div className="flex-1 min-w-0">
@@ -149,7 +149,7 @@ export function TabSelector({
                         e.stopPropagation();
                         onEditTab(tab);
                       }}
-                      className="p-1.5 rounded-lg hover:bg-default-100 text-muted hover:text-foreground transition-all duration-150 hover:scale-110 active:scale-90"
+                      className="p-1.5 rounded-lg lg-hoverable text-muted hover:text-foreground transition-all duration-150 hover:scale-110 active:scale-90"
                     >
                       <EditIcon size={16} />
                     </button>
@@ -159,7 +159,7 @@ export function TabSelector({
                         e.stopPropagation();
                         onDeleteTab(tab.id);
                       }}
-                      className="p-1.5 rounded-lg hover:bg-danger/10 text-danger transition-all duration-150 hover:scale-110 active:scale-90"
+                      className="p-1.5 rounded-lg hover:bg-danger/10 text-danger-text transition-all duration-150 hover:scale-110 active:scale-90"
                     >
                       <TrashIcon size={16} />
                     </button>

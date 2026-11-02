@@ -78,7 +78,7 @@ export default function AttendancePage() {
 
       {isLoading ? (
         <div className="flex items-center justify-center py-24">
-          <GlassProgressCircle isIndeterminate size="lg" aria-label="Loading" className="text-primary">
+          <GlassProgressCircle isIndeterminate size="lg" aria-label="Loading" className="text-primary-text">
             <GlassProgressCircle.Track>
               <GlassProgressCircle.TrackCircle />
               <GlassProgressCircle.FillCircle />
@@ -86,19 +86,19 @@ export default function AttendancePage() {
           </GlassProgressCircle>
         </div>
       ) : error ? (
-        <GlassCard className="p-16 glass-surface border border-separator/90">
+        <GlassCard className="p-16  border border-separator/90">
           <div className="text-center text-muted">
             <p>{error}</p>
           </div>
         </GlassCard>
       ) : !attendanceData ? (
-        <GlassCard className="p-16 glass-surface border border-separator/90">
+        <GlassCard className="p-16  border border-separator/90">
           <div className="text-center text-muted">
             <p>{t("card:attendance_no_account")}</p>
           </div>
         </GlassCard>
       ) : (
-        <GlassCard className="p-6 glass-surface border border-separator/90">
+        <GlassCard className="p-6  border border-separator/90">
           <AttendanceRewards attendanceData={attendanceData} />
         </GlassCard>
       )}

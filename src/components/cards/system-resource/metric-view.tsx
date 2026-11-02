@@ -250,7 +250,7 @@ export function historyStats(history?: number[]): MetricHistoryStats {
 }
 
 function toneClass(tone: ResolvedMetric["tone"]): string {
-  if (tone === "critical") return "text-danger";
-  if (tone === "warn") return "text-warning";
+  if (tone === "critical") return "text-danger-text";
+  if (tone === "warn") return "text-warning-text";
   return "text-foreground";
 }

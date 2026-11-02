@@ -126,7 +126,7 @@ function GameRoleRow({
   const { i18n } = useTranslation();
 
   return (
-    <div className="account-glass-row flex min-w-0 items-center gap-3 rounded-lg border border-separator/60 p-2.5">
+    <div className="lg-material-row flex min-w-0 items-center gap-3 rounded-lg border border-separator/60 p-2.5">
       <div className="h-10 w-10 shrink-0 overflow-hidden rounded-md border border-separator/50 bg-content2/30">
         {role.avatarUrl ? (
           <Img
@@ -151,7 +151,7 @@ function GameRoleRow({
       <div className="flex shrink-0 items-center gap-2">
         {isBound &&
           (isActive ? (
-            <span className="rounded-full bg-success/15 px-2 py-1 text-[10px] font-semibold text-success">
+            <span className="rounded-full bg-success/15 px-2 py-1 text-[10px] font-semibold text-success-text">
               {i18n.language === "zh" ? "当前" : "ACTIVE"}
             </span>
           ) : (
@@ -216,7 +216,7 @@ function SklandProfileDetails({
     }
     return (
       <div className="space-y-3 py-8 text-center">
-        <p className="text-sm text-danger">
+        <p className="text-sm text-danger-text">
           {t("settings.account.skland_profile_failed")}
         </p>
         {errorMessage && (
@@ -319,7 +319,7 @@ function SklandProfileDetails({
               </span>
             )}
             {userInfo.isCreator && (
-              <span className="text-primary">
+              <span className="text-primary-text">
                 {t("settings.account.skland_creator")}
               </span>
             )}
@@ -350,7 +350,7 @@ function SklandProfileDetails({
               return (
                 <div
                   key={game.gameId}
-                  className="account-glass-row flex items-center gap-3 rounded-lg border border-separator/60 p-2.5"
+                  className="lg-material-row flex items-center gap-3 rounded-lg border border-separator/60 p-2.5"
                 >
                   <div className="h-9 w-9 shrink-0 overflow-hidden rounded-md border border-separator/50 bg-content2/30">
                     {iconUrl ? (
@@ -2099,7 +2099,7 @@ export default function AccountPage() {
         {[...Array(skeletonCount)].map((_, index) => (
           <GlassCard
             key={index}
-            className="p-4 glass-surface border border-separator/90"
+            className="p-4 lg-material border border-separator/90"
             style={{ height: `${CARD_HEIGHT}px` }}
           >
             <div className="flex items-center gap-4 h-full">
@@ -2154,7 +2154,7 @@ export default function AccountPage() {
             variant="ghost"
             onPress={refreshData}
             isDisabled={isRefreshing}
-            className="glass-surface border border-separator/70"
+            className="lg-material border border-separator/70"
           >
             {isRefreshing
               ? t("settings.account.refreshing")
@@ -2185,19 +2185,19 @@ export default function AccountPage() {
         </div>
 
         {isLoading ? (
-          <GlassCard className="account-glass-panel p-5">
+          <GlassCard className="lg-material p-5">
             <div className="flex items-center gap-3 text-sm text-muted">
               <GlassSpinner color="primary" size="sm" />
               {t("settings.account.loading")}
             </div>
           </GlassCard>
         ) : sklandAccounts.length === 0 ? (
-          <GlassCard className="account-glass-panel p-6 space-y-3">
+          <GlassCard className="lg-material p-6 space-y-3">
             {accountAvailability ? (
               <>
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="min-w-0 flex-1 space-y-1">
-                    <p className="text-sm font-semibold text-danger">
+                    <p className="text-sm font-semibold text-danger-text">
                       {t("settings.account.account_unavailable_title")}
                     </p>
                     <p className="text-xs leading-relaxed text-foreground/75">
@@ -2268,7 +2268,7 @@ export default function AccountPage() {
               return (
                 <article
                   key={sklandAccount.userId}
-                  className={`account-glass-panel overflow-hidden rounded-xl border shadow-sm ${
+                  className={`lg-material overflow-hidden rounded-xl border shadow-sm ${
                     unavailable
                       ? "border-danger/40"
                       : "border-separator/70"
@@ -2278,7 +2278,7 @@ export default function AccountPage() {
                     <div className="border-b border-danger/25 bg-danger/5 px-4 py-3">
                       <div className="flex flex-wrap items-start justify-between gap-3">
                         <div className="min-w-0 flex-1 space-y-1">
-                          <p className="text-sm font-semibold text-danger">
+                          <p className="text-sm font-semibold text-danger-text">
                             {t("settings.account.account_unavailable_title")}
                           </p>
                           <p className="text-xs leading-relaxed text-foreground/75">
@@ -2304,7 +2304,7 @@ export default function AccountPage() {
                       </div>
                     </div>
                   )}
-                  <div className="flex w-full items-center gap-2 p-4 transition-colors hover:bg-white/10">
+                  <div className="flex w-full items-center gap-2 p-4 transition-colors lg-hoverable">
                     <button
                       type="button"
                       aria-expanded={isExpanded}
@@ -2313,7 +2313,7 @@ export default function AccountPage() {
                       }
                       className="flex min-w-0 flex-1 items-center gap-3 text-left"
                     >
-                      <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-primary/30 bg-primary/10 text-sm font-semibold text-primary">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-primary/30 bg-primary/10 text-sm font-semibold text-primary-text">
                         {accountAvatar ? (
                           <Img
                             src={accountAvatar}
@@ -2346,7 +2346,7 @@ export default function AccountPage() {
                       }
                       aria-label={t("settings.account.skland_profile")}
                       title={t("settings.account.skland_profile")}
-                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-separator/60 text-muted transition-colors hover:bg-white/10 hover:text-foreground active:scale-95"
+                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-separator/60 text-muted transition-colors lg-hoverable hover:text-foreground active:scale-95"
                     >
                       <InfoIcon size={16} />
                     </button>
@@ -2358,7 +2358,7 @@ export default function AccountPage() {
                       }
                       aria-label={t("settings.account.manage_game_roles")}
                       title={t("settings.account.manage_game_roles")}
-                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted transition-colors hover:bg-white/10 hover:text-foreground"
+                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted transition-colors lg-hoverable hover:text-foreground"
                     >
                       <ChevronDownIcon
                         size={18}
@@ -2371,7 +2371,7 @@ export default function AccountPage() {
                   <div
                     aria-hidden={!isExpanded}
                     inert={!isExpanded}
-                    className={`account-glass-inner grid overflow-hidden transition-[grid-template-rows,opacity] duration-300 ease-out ${
+                    className={`lg-material-sub grid overflow-hidden transition-[grid-template-rows,opacity] duration-300 ease-out ${
                       isExpanded
                         ? "grid-rows-[1fr] border-t border-separator/60 opacity-100"
                         : "grid-rows-[0fr] border-t-0 opacity-0"
@@ -2389,7 +2389,7 @@ export default function AccountPage() {
                             {t("settings.account.loading_game_roles")}
                           </div>
                         ) : roleLoadErrors[sklandAccount.userId] ? (
-                          <p className="py-5 text-center text-sm text-danger">
+                          <p className="py-5 text-center text-sm text-danger-text">
                             {roleLoadErrors[sklandAccount.userId]}
                           </p>
                         ) : roleSet ? (
@@ -2552,7 +2552,7 @@ export default function AccountPage() {
             </div>
           ) : accounts.length === 0 ? (
             <GlassCard
-              className="p-12 glass-surface border border-separator/90"
+              className="p-12 lg-material border border-separator/90"
               style={{ minHeight: `${CONTAINER_HEIGHT}px` }}
             >
               <div className="text-center">
@@ -2674,7 +2674,7 @@ export default function AccountPage() {
                               )}
 
                               {/* Avatar */}
-                              <div className="w-10 h-10 rounded-lg flex items-center justify-center text-base font-bold text-primary flex-shrink-0 overflow-hidden">
+                              <div className="w-10 h-10 rounded-lg flex items-center justify-center text-base font-bold text-primary-text flex-shrink-0 overflow-hidden">
                                 {account.avatar ? (
                                   <Img
                                     src={account.avatar}
@@ -2742,7 +2742,7 @@ export default function AccountPage() {
                                 size="sm"
                                 variant="outline"
                                 onPress={() => handleLogout(account)}
-                                className="text-danger border-danger hover:bg-danger-50 !h-7 !px-2 text-xs"
+                                className="text-danger-text border-danger hover:bg-danger-50 !h-7 !px-2 text-xs"
                               >
                                 {t("settings.account.logout")}
                               </GlassButton>
@@ -2844,19 +2844,19 @@ export default function AccountPage() {
               {/* 凭证失效警告 - 只显示红色警告框 */}
               {selectedAccount.syncStatus === "HYTOKEN_EXPIRED" ? (
                 <div className="text-center py-8 border-2 border-danger rounded-lg bg-danger/10 dark:bg-danger/20">
-                  <p className="text-5xl font-black text-danger tracking-wider mb-4">
+                  <p className="text-5xl font-black text-danger-text tracking-wider mb-4">
                     EXPIRED
                   </p>
                   <div className="space-y-2 text-left px-4">
                     <div>
                       <p className="text-xs italic text-muted mb-1">Hytoken:</p>
-                      <p className="text-xs font-mono text-danger break-all">
+                      <p className="text-xs font-mono text-danger-text break-all">
                         {selectedAccount.token || "N/A"}
                       </p>
                     </div>
                     <div>
                       <p className="text-xs italic text-muted mb-1">Cred:</p>
-                      <p className="text-xs font-mono text-danger break-all">
+                      <p className="text-xs font-mono text-danger-text break-all">
                         {selectedAccount.cred || "N/A"}
                       </p>
                     </div>
@@ -2872,7 +2872,7 @@ export default function AccountPage() {
                 </div>
               ) : selectedAccount.syncStatus === "FAILED" ? (
                 <div className="text-center py-8 border-2 border-warning rounded-lg bg-warning/10 dark:bg-warning/20">
-                  <p className="text-5xl font-black text-warning tracking-wider mb-4">
+                  <p className="text-5xl font-black text-warning-text tracking-wider mb-4">
                     SYNC FAILED
                   </p>
                   <div className="text-left px-4 mt-2">
@@ -2888,7 +2888,7 @@ export default function AccountPage() {
                     variant="secondary"
                     onPress={() => retrySyncAccount(selectedAccount.id)}
                     isDisabled={isRefreshing}
-                    className="mt-4 text-warning"
+                    className="mt-4 text-warning-text"
                   >
                     {isRefreshing ? (
                       <>
@@ -2906,7 +2906,7 @@ export default function AccountPage() {
                 /* 正常账户信息 */
                 <>
                   <div className="flex items-center gap-4">
-                    <div className="w-16 h-16 rounded-lg flex items-center justify-center text-2xl font-bold text-primary overflow-hidden">
+                    <div className="w-16 h-16 rounded-lg flex items-center justify-center text-2xl font-bold text-primary-text overflow-hidden">
                       {selectedAccount.avatar ? (
                         <Img
                           src={selectedAccount.avatar}
@@ -3014,7 +3014,7 @@ export default function AccountPage() {
             </label>
 
             {!keepDeviceAuth && (
-              <p className="text-xs text-danger">
+              <p className="text-xs text-danger-text">
                 {t("settings.account.logout_delete_device_warn")}
               </p>
             )}
@@ -3115,7 +3115,7 @@ export default function AccountPage() {
               <p className="text-sm text-muted">
                 {t("settings.account.confirm_skland_binding_desc")}
               </p>
-              <div className="rounded-lg border border-separator p-4">
+              <div className="lg-material-sub rounded-lg border border-separator p-4">
                 <div className="flex items-center gap-3">
                   {/* 用刚拿到的 cred/token 拉取头像与昵称（后端未缓存该账户） */}
                   <div className="h-14 w-14 shrink-0 overflow-hidden rounded-full border border-separator/60 bg-content2/30">
@@ -3150,7 +3150,7 @@ export default function AccountPage() {
                 </div>
               </div>
               {loginError && (
-                <p className="text-sm text-danger" role="alert">
+                <p className="text-sm text-danger-text" role="alert">
                   {loginError}
                 </p>
               )}
@@ -3218,12 +3218,12 @@ export default function AccountPage() {
                                       .charAt(0)
                                       .toUpperCase();
                                     parent.className =
-                                      "w-16 h-16 rounded-lg flex items-center justify-center text-lg font-bold text-primary";
+                                      "w-16 h-16 rounded-lg flex items-center justify-center text-lg font-bold text-primary-text";
                                   }
                                 }}
                               />
                             ) : (
-                              <div className="w-16 h-16 rounded-lg flex items-center justify-center text-lg font-bold text-primary">
+                              <div className="w-16 h-16 rounded-lg flex items-center justify-center text-lg font-bold text-primary-text">
                                 {role.nickname.charAt(0).toUpperCase()}
                               </div>
                             )}
@@ -3297,11 +3297,11 @@ export default function AccountPage() {
                 {/* 密码登录 */}
                 <button
                   onClick={() => setLoginMethod("phone")}
-                  className="glass-surface flex flex-col items-center gap-3 p-6 rounded-xl border-2 border-separator hover:border-primary hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-all cursor-pointer group"
+                  className="lg-material flex flex-col items-center gap-3 p-6 rounded-xl border-2 border-separator hover:border-primary hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-all cursor-pointer group"
                 >
                   <div className="w-16 h-16 rounded-full bg-primary-100 dark:bg-primary-900 flex items-center justify-center group-hover:scale-110 transition-transform">
                     <svg
-                      className="w-8 h-8 text-primary"
+                      className="w-8 h-8 text-primary-text"
                       fill="none"
                       stroke="currentColor"
                       viewBox="0 0 24 24"
@@ -3322,11 +3322,11 @@ export default function AccountPage() {
                 {/* 验证码登录 */}
                 <button
                   onClick={() => setLoginMethod("sms")}
-                  className="glass-surface flex flex-col items-center gap-3 p-6 rounded-xl border-2 border-separator hover:border-primary hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-all cursor-pointer group"
+                  className="lg-material flex flex-col items-center gap-3 p-6 rounded-xl border-2 border-separator hover:border-primary hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-all cursor-pointer group"
                 >
                   <div className="w-16 h-16 rounded-full bg-primary-100 dark:bg-primary-900 flex items-center justify-center group-hover:scale-110 transition-transform">
                     <svg
-                      className="w-8 h-8 text-primary"
+                      className="w-8 h-8 text-primary-text"
                       fill="none"
                       stroke="currentColor"
                       viewBox="0 0 24 24"
@@ -3347,11 +3347,11 @@ export default function AccountPage() {
                 {/* 扫码登录 */}
                 <button
                   onClick={() => setLoginMethod("qrcode")}
-                  className="glass-surface flex flex-col items-center gap-3 p-6 rounded-xl border-2 border-separator hover:border-primary hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-all cursor-pointer group"
+                  className="lg-material flex flex-col items-center gap-3 p-6 rounded-xl border-2 border-separator hover:border-primary hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-all cursor-pointer group"
                 >
                   <div className="w-16 h-16 rounded-full bg-primary-100 dark:bg-primary-900 flex items-center justify-center group-hover:scale-110 transition-transform">
                     <svg
-                      className="w-8 h-8 text-primary"
+                      className="w-8 h-8 text-primary-text"
                       fill="none"
                       stroke="currentColor"
                       viewBox="0 0 24 24"
@@ -3457,10 +3457,10 @@ export default function AccountPage() {
                         placeholder={t("settings.account.enter_phone")}
                         maxLength={11}
                         disabled={isLoggingIn || isSendingCode}
-                        className="w-full px-4 py-2.5 bg-default-100 border border-separator rounded-lg text-foreground placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all"
+                        className="w-full px-4 py-2.5 lg-inset border border-separator rounded-lg text-foreground placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all"
                       />
                       {phoneError && (
-                        <p className="text-xs text-danger">{phoneError}</p>
+                        <p className="text-xs text-danger-text">{phoneError}</p>
                       )}
                       {reloginTarget?.phone && (
                         <p className="text-xs text-muted">
@@ -3518,10 +3518,10 @@ export default function AccountPage() {
                             handleLogin();
                           }
                         }}
-                        className="w-full px-4 py-2.5 bg-default-100 border border-separator rounded-lg text-foreground placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all"
+                        className="w-full px-4 py-2.5 lg-inset border border-separator rounded-lg text-foreground placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all"
                       />
                       {phoneError && (
-                        <p className="text-xs text-danger">{phoneError}</p>
+                        <p className="text-xs text-danger-text">{phoneError}</p>
                       )}
                       {reloginTarget?.phone && (
                         <p className="text-xs text-muted">
@@ -3546,7 +3546,7 @@ export default function AccountPage() {
                           handleLogin();
                         }
                       }}
-                      className="w-full px-4 py-2.5 bg-default-100 border border-separator rounded-lg text-foreground placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all"
+                      className="w-full px-4 py-2.5 lg-inset border border-separator rounded-lg text-foreground placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all"
                     />
                   </div>
                 </>
@@ -3623,10 +3623,10 @@ export default function AccountPage() {
                             handleSendCodeAndShowOtp();
                           }
                         }}
-                        className="w-full px-4 py-2.5 bg-default-100 border border-separator rounded-lg text-foreground placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all"
+                        className="w-full px-4 py-2.5 lg-inset border border-separator rounded-lg text-foreground placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all"
                       />
                       {phoneError && (
-                        <p className="text-xs text-danger">{phoneError}</p>
+                        <p className="text-xs text-danger-text">{phoneError}</p>
                       )}
                       {reloginTarget?.phone && (
                         <p className="text-xs text-muted">
@@ -3823,7 +3823,7 @@ export default function AccountPage() {
                 <div className="flex flex-col items-center gap-4 py-8">
                   <div className="w-24 h-24 rounded-full bg-primary-100 dark:bg-primary-900 flex items-center justify-center">
                     <svg
-                      className="w-12 h-12 text-primary"
+                      className="w-12 h-12 text-primary-text"
                       fill="none"
                       stroke="currentColor"
                       viewBox="0 0 24 24"
@@ -3863,7 +3863,7 @@ export default function AccountPage() {
                       <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-white/80 rounded-xl">
                         <div className="w-12 h-12 rounded-full bg-success/10 flex items-center justify-center">
                           <svg
-                            className="w-6 h-6 text-success"
+                            className="w-6 h-6 text-success-text"
                             fill="none"
                             stroke="currentColor"
                             viewBox="0 0 24 24"

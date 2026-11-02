@@ -70,7 +70,7 @@ export function SystemResourceAddModal({
                             size: { w: preset.w, h: preset.h },
                           })
                         }
-                        className="px-3 py-1.5 text-xs rounded-full border border-separator text-foreground/90 hover:border-primary hover:text-primary transition-all cursor-pointer hover:scale-105 active:scale-95"
+                        className="px-3 py-1.5 text-xs rounded-full border border-separator text-foreground/90 hover:border-primary hover:text-primary-text transition-all cursor-pointer hover:scale-105 active:scale-95"
                       >
                         {t(`card:${METRIC_CATALOG[id].labelKey}`)}
                       </button>

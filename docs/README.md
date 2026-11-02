@@ -109,7 +109,6 @@
 | [reference/frontend/entry_and_app.md](reference/frontend/entry_and_app.md) | `main.tsx`、`App.tsx`（路由表）、`provider.tsx`、`i18n.ts`、`tray-panel.tsx`、`stores/`、`hooks/`、`lib/`、`config/site.ts`、`cards/startup-service.ts` |
 | [reference/frontend/pages_core.md](reference/frontend/pages_core.md) | `layouts/*`、`pages/dashboard.tsx`、`attendance.tsx`、`medals.tsx`、`domain.tsx`（区域信息独立页面）、`spaceship.tsx`（帝江号独立页面） |
 | [reference/frontend/pages_account.md](reference/frontend/pages_account.md) | `pages/account.tsx`（约 3600 行） |
-| [reference/frontend/pages_char_select.md](reference/frontend/pages_char_select.md) | `pages/char-select.tsx`（约 2560 行，**未被路由引用的死代码副本**） |
 | [reference/frontend/pages_settings_developer.md](reference/frontend/pages_settings_developer.md) | `pages/settings.tsx`（设置项清单）、`pages/developer.tsx` |
 | [reference/frontend/pages_game_data.md](reference/frontend/pages_game_data.md) | `pages/characters.tsx`、`gacha-records.tsx` |
 | [reference/frontend/components_dialogs.md](reference/frontend/components_dialogs.md) | 15 个弹窗与交互组件（标题栏、模态框、标签页、取色器、分页、游戏右侧社媒栏…） |
@@ -117,7 +116,7 @@
 | [reference/frontend/components_game_action_panel.md](reference/frontend/components_game_action_panel.md) | `game-action-panel.tsx`（约 2400 行） |
 | [reference/frontend/components_sidebar_charts.md](reference/frontend/components_sidebar_charts.md) | `dashboard-sidebar.tsx`（约 1700 行）、两个抽卡图表组件 |
 | [reference/frontend/cards_core.md](reference/frontend/cards_core.md) | 卡片 `registry/`、`base/`、`card-container.tsx`、右键菜单、`_template/` |
-| [reference/frontend/cards_character_list.md](reference/frontend/cards_character_list.md) | `character-list/`（含 3300 行的 `char-select-modal.tsx`） |
+| [reference/frontend/cards_character_list.md](reference/frontend/cards_character_list.md) | `character-list/`（含约 3300 行的 `char-select-modal.tsx`，**冻结件**：Liquid Glass 重构中内部未动） |
 | [reference/frontend/cards_account_achievement.md](reference/frontend/cards_account_achievement.md) | `account-info/`、`account-progress/`、`achievement/` |
 | [reference/frontend/cards_attendance_domain_spaceship.md](reference/frontend/cards_attendance_domain_spaceship.md) | `attendance/`、`domain-info/`、`spaceship/` |
 | [reference/frontend/cards_system_todo.md](reference/frontend/cards_system_todo.md) | `system-resource/`、`todo/` 两类新卡片（含 `todoStore`、相关 types/utils/设置分区/`pages/todo.tsx`） |

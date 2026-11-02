@@ -53,11 +53,12 @@ export const SimplePagination: React.FC<SimplePaginationProps> = ({
 
   const itemClass = (active: boolean) =>
     cn(
-      "glass-surface flex h-8 min-w-8 items-center justify-center rounded-xl border px-2 text-xs transition-all duration-200",
-      "cursor-pointer select-none hover:border-primary/50 hover:text-primary",
+      "lg-control flex h-8 min-w-8 items-center justify-center rounded-xl border px-2 text-xs",
+      "[transition:transform_var(--lg-dur-fast)_var(--lg-ease-spring),border-color_var(--lg-dur-fast)_var(--lg-ease-standard),color_var(--lg-dur-fast)_var(--lg-ease-standard)]",
+      "cursor-pointer select-none hover:border-primary/50 hover:text-primary-text",
       "hover:scale-110 active:scale-90",
       active
-        ? "border-primary bg-primary/15 text-primary font-semibold"
+        ? "border-primary bg-primary/15 text-primary-text font-semibold"
         : "border-separator/70 text-foreground",
     );
 
@@ -109,7 +110,7 @@ export const SimplePagination: React.FC<SimplePaginationProps> = ({
             }
             e.currentTarget.value = "";
           }}
-          className="glass-field h-8 w-14 rounded-xl border border-separator/70 px-1.5 text-center text-xs text-foreground placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-primary/40"
+          className="lg-field h-8 w-14 rounded-xl px-1.5 text-center text-xs text-foreground placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-primary/40"
         />
       </div>
       {showControls && (

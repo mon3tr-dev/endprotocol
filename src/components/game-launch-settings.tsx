@@ -192,8 +192,8 @@ export function GameLaunchSettingsFields() {
                 type="button"
                 className={`px-3 py-1.5 rounded-lg text-sm border transition-all cursor-pointer whitespace-nowrap ${
                   cancelBehavior === opt.value
-                    ? "border-primary/50 bg-primary/10 text-primary font-medium"
-                    : "border-separator/40 text-muted hover:bg-default-100/50"
+                    ? "border-primary/50 bg-primary/10 text-primary-text font-medium"
+                    : "border-separator/40 text-muted lg-hoverable"
                 }`}
                 onClick={() => handleCancelChange(opt.value)}
               >
@@ -338,8 +338,8 @@ export function GameLaunchSettingsFields() {
                 type="button"
                 className={`px-3 py-1.5 rounded-lg text-sm border transition-all cursor-pointer whitespace-nowrap ${
                   bgMediaMode === opt.value
-                    ? "border-primary/50 bg-primary/10 text-primary font-medium"
-                    : "border-separator/40 text-muted hover:bg-default-100/50"
+                    ? "border-primary/50 bg-primary/10 text-primary-text font-medium"
+                    : "border-separator/40 text-muted lg-hoverable"
                 }`}
                 onClick={() => handleBgMediaChange(opt.value)}
               >
@@ -510,7 +510,7 @@ export function QuickLaunchModal({ onClose }: { onClose: () => void }) {
     <GlassModal isOpen onOpenChange={(open) => !open && onClose()}>
       <GlassModal.Backdrop isDismissable className="z-[300] backdrop-blur-md">
         <GlassModal.Container size="lg">
-          <GlassModal.Dialog className="glass-surface-strong border border-separator/70 shadow-2xl">
+          <GlassModal.Dialog className="border border-separator/60 shadow-2xl">
             <GlassModal.Header>
               <div className="flex items-center justify-between px-5 py-4 border-b border-separator/50">
                 <GlassModal.Heading className="text-sm">
@@ -554,7 +554,7 @@ export function QuickLaunchModal({ onClose }: { onClose: () => void }) {
                         <p className={sectionTitle}>
                           {t("settings.game_launch.launch_command")}
                         </p>
-                        <div className="flex items-center gap-2 rounded-lg border border-separator/40 bg-default-100/30 p-2.5">
+                        <div className="flex items-center gap-2 rounded-lg border border-separator/40 lg-inset p-2.5">
                           <code className="min-w-0 flex-1 truncate text-xs text-foreground">
                             {launchCommand || t("settings.game_launch.command_loading")}
                           </code>
@@ -564,7 +564,7 @@ export function QuickLaunchModal({ onClose }: { onClose: () => void }) {
                             disabled={!launchCommand}
                             aria-label={t("settings.game_launch.copy_command")}
                             title={t("settings.game_launch.copy_command")}
-                            className="shrink-0 rounded-md border border-separator/40 p-1.5 text-muted transition-colors hover:bg-default-100/60 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+                            className="shrink-0 rounded-md border border-separator/40 p-1.5 text-muted transition-colors lg-hoverable hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
                           >
                             <MorphIcon
                               icon={copied ? Check : Copy}
@@ -661,7 +661,7 @@ function IconPreview({ path }: { path: string }) {
   }, [path]);
 
   return (
-    <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-separator/50 bg-default-100/40">
+    <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-separator/50 lg-inset">
       {url ? (
         <img src={url} alt="" className="h-full w-full object-contain" />
       ) : (
@@ -818,7 +818,7 @@ export function SteamShortcutModal({ onClose }: { onClose: () => void }) {
     <GlassModal isOpen onOpenChange={(open) => !open && onClose()}>
       <GlassModal.Backdrop isDismissable className="z-[320] backdrop-blur-md">
         <GlassModal.Container size="md">
-          <GlassModal.Dialog className="flex max-h-[calc(100vh-3rem)] flex-col overflow-hidden glass-surface-strong border border-separator/70 shadow-2xl">
+          <GlassModal.Dialog className="flex max-h-[calc(100vh-3rem)] flex-col overflow-hidden border border-separator/60 shadow-2xl">
             <GlassModal.Header className="shrink-0">
               <div className="flex items-center justify-between px-5 py-4 border-b border-separator/50">
                 <GlassModal.Heading className="text-sm">
@@ -881,7 +881,7 @@ export function SteamShortcutModal({ onClose }: { onClose: () => void }) {
                   </div>
                 </div>
 
-                <div className="flex items-center justify-between gap-4 rounded-xl border border-separator/40 px-3 py-2.5">
+                <div className="lg-material-sub flex items-center justify-between gap-4 rounded-xl border border-separator/40 px-3 py-2.5">
                   <div className="min-w-0">
                     <p className="text-sm font-medium text-foreground">
                       {t("settings.game_launch.dx11")}
@@ -909,7 +909,7 @@ export function SteamShortcutModal({ onClose }: { onClose: () => void }) {
                   <p className="text-sm font-medium text-foreground">
                     {t("settings.game_launch.steam_overlay_title")}
                   </p>
-                  <p className="text-xs text-warning">
+                  <p className="text-xs text-warning-text">
                     {isElevated
                       ? t("settings.game_launch.steam_overlay_hint_elevated")
                       : t("settings.game_launch.steam_overlay_hint")}

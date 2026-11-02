@@ -62,16 +62,17 @@ export const ThemeSwitch: FC<ThemeSwitchProps> = ({ className }) => {
 
     setThemeMode(nextMode);
     await setConfig("theme_mode", nextMode);
-    window.dispatchEvent(new CustomEvent("themeChange"));
     emit("theme-changed", nextMode);
 
-    // 淡出 → 应用 → 淡入（与设置页一致的时序）
+    // 先 applyThemeMode 再广播 themeChange：订阅者（图表等）需要在新的
+    // .dark 状态下取色，否则拿到的是上一个主题的颜色且不会再重算。
     const rootEl = document.getElementById("root");
     if (rootEl) {
       rootEl.style.transition = "opacity 0.16s ease";
       rootEl.style.opacity = "0";
       setTimeout(() => {
         applyThemeMode(nextMode);
+        window.dispatchEvent(new CustomEvent("themeChange"));
         setTimeout(() => {
           rootEl.style.opacity = "1";
           rootEl.style.transition = "";
@@ -79,6 +80,7 @@ export const ThemeSwitch: FC<ThemeSwitchProps> = ({ className }) => {
       }, 170);
     } else {
       applyThemeMode(nextMode);
+      window.dispatchEvent(new CustomEvent("themeChange"));
     }
   }, [themeMode]);
 
@@ -91,7 +93,7 @@ export const ThemeSwitch: FC<ThemeSwitchProps> = ({ className }) => {
     <button
       ref={btnRef}
       aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
-      className={`glass-surface p-1.5 rounded-full transition-all duration-200 hover:scale-105 active:scale-90 cursor-pointer border-none ${className || ""}`}
+      className={`lg-control p-1.5 rounded-full transition-all duration-200 hover:scale-105 active:scale-90 cursor-pointer border-none ${className || ""}`}
       onClick={toggleTheme}
     >
       <MorphIcon icon={isDark ? Moon : Sun} size={20} spring="snappy" />

@@ -28,8 +28,11 @@ function GlassSwitch({
       disabled={off}
       className={cn(
         "group inline-flex items-center gap-2 select-none cursor-pointer",
-        "transition-transform duration-200 hover:scale-105 active:scale-95",
+        // 弹性反馈只作用于 transform（fast 档 spring）
+        "[transition:transform_var(--lg-dur-fast)_var(--lg-ease-spring)]",
+        "hover:scale-105 active:scale-95",
         "disabled:opacity-50 disabled:pointer-events-none",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50",
         className,
       )}
       {...rest}
@@ -49,9 +52,10 @@ function Control({
   return (
     <span
       className={cn(
+        // 轨道：功能层控件底（lg-control），选中态经背景色瞬时切换
         "relative inline-flex h-6 w-11 shrink-0 items-center rounded-full",
-        "border border-white/20 bg-default-200/80 shadow-[inset_0_1px_1px_rgba(255,255,255,0.22)]",
-        "transition-colors duration-200 group-data-[state=checked]:border-primary/50 group-data-[state=checked]:bg-primary",
+        "lg-control lg-hairline border",
+        "transition-colors duration-[var(--lg-dur-fast)] group-data-[state=checked]:border-primary/50 group-data-[state=checked]:bg-primary",
         className,
       )}
     >
@@ -64,7 +68,11 @@ function Thumb({ className }: { className?: string }) {
   return (
     <span
       className={cn(
-        "pointer-events-none block h-5 w-5 translate-x-0.5 rounded-full bg-white shadow-[0_1px_3px_rgba(0,0,0,0.22),inset_0_1px_0_rgba(255,255,255,0.75)] transition-transform duration-200 group-data-[state=checked]:translate-x-[22px]",
+        // 滑块：transform 位移 + spring，玻璃高光走顶部内发光
+        "pointer-events-none block h-5 w-5 translate-x-0.5 rounded-full bg-white",
+        "shadow-[0_1px_3px_rgba(0,0,0,0.22),inset_0_1px_0_rgba(255,255,255,0.75)]",
+        "[transition:transform_var(--lg-dur-fast)_var(--lg-ease-spring)]",
+        "group-data-[state=checked]:translate-x-[22px]",
         className,
       )}
     />
@@ -81,7 +89,10 @@ const SwitchThumb = React.forwardRef<
   <SwitchPrimitive.Thumb
     ref={ref}
     className={cn(
-      "pointer-events-none block h-5 w-5 translate-x-0.5 rounded-full bg-white shadow-[0_1px_3px_rgba(0,0,0,0.22),inset_0_1px_0_rgba(255,255,255,0.75)] transition-transform data-[state=checked]:translate-x-[22px]",
+      "pointer-events-none block h-5 w-5 translate-x-0.5 rounded-full bg-white",
+      "shadow-[0_1px_3px_rgba(0,0,0,0.22),inset_0_1px_0_rgba(255,255,255,0.75)]",
+      "[transition:transform_var(--lg-dur-fast)_var(--lg-ease-spring)]",
+      "data-[state=checked]:translate-x-[22px]",
       className,
     )}
     {...props}
@@ -97,7 +108,9 @@ const Switch = React.forwardRef<
   <SwitchPrimitive.Root
     ref={ref}
     className={cn(
-      "peer inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full border border-white/20 bg-default-200/80 shadow-[inset_0_1px_1px_rgba(255,255,255,0.22)] transition-colors data-[state=checked]:border-primary/50 data-[state=checked]:bg-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 disabled:cursor-not-allowed disabled:opacity-50",
+      "peer inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full lg-control lg-hairline border",
+      "transition-colors data-[state=checked]:border-primary/50 data-[state=checked]:bg-primary",
+      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 disabled:cursor-not-allowed disabled:opacity-50",
       className,
     )}
     {...props}

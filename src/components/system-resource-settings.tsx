@@ -194,7 +194,7 @@ export function SystemResourceSettings() {
                 onClick={() => toggleTemplate(id)}
                 className={`px-2.5 py-1 text-xs rounded-full border transition-all cursor-pointer ${
                   active
-                    ? "border-primary bg-primary/10 text-primary"
+                    ? "border-primary bg-primary/10 text-primary-text"
                     : "border-separator text-muted hover:border-primary/50"
                 }`}
               >

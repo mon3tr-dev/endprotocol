@@ -20,16 +20,22 @@ export interface GlassButtonProps
 }
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center font-medium select-none whitespace-nowrap transition-all duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 disabled:opacity-50 disabled:pointer-events-none hover:scale-105 active:scale-95",
+  "lg-control inline-flex items-center justify-center font-medium select-none whitespace-nowrap cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 disabled:opacity-50 disabled:pointer-events-none " +
+    // Liquid Glass 交互反馈：亮度/高光经 inset 高光与阴影过渡体现，
+    // 不做生硬边框变色；位移只用 transform（fast 档 + spring）。
+    "[transition:transform_var(--lg-dur-fast)_var(--lg-ease-spring),box-shadow_var(--lg-dur-fast)_var(--lg-ease-standard)] hover:-translate-y-px hover:shadow-[0_4px_14px_rgba(0,0,0,0.14)] active:translate-y-0 active:scale-[0.97]",
   {
     variants: {
       variant: {
-        primary: "bg-primary text-primary-foreground hover:bg-primary/90",
-        secondary: "bg-secondary text-secondary-foreground hover:bg-secondary/80",
-        tertiary: "bg-transparent text-foreground/85 hover:text-foreground",
-        outline: "border border-border bg-transparent hover:bg-foreground/5",
-        ghost: "bg-transparent hover:bg-foreground/5",
-        danger: "bg-danger text-danger-foreground hover:bg-danger/90",
+        // 强调色只用于交互焦点与关键状态（HIG：玻璃上克制用色）
+        primary:
+          "bg-primary text-primary-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.28)] hover:bg-primary/90",
+        secondary: "text-foreground hover:brightness-105 active:brightness-95",
+        tertiary: "bg-transparent text-foreground/85 hover:text-foreground before:hidden shadow-none",
+        outline: "lg-field border bg-transparent hover:brightness-105",
+        ghost: "bg-transparent text-foreground/85 hover:text-foreground before:hidden shadow-none",
+        danger:
+          "bg-danger text-danger-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.22)] hover:bg-danger/90",
       },
       size: {
         sm: "h-8 px-3 text-xs gap-1.5 rounded-xl",

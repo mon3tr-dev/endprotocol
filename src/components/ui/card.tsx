@@ -6,6 +6,11 @@ export interface GlassCardProps extends React.HTMLAttributes<HTMLDivElement> {
   shadow?: "none" | "sm" | "md" | "lg";
 }
 
+/**
+ * GlassCard — 内容层标准材质（Apple HIG：Liquid Glass 不用于内容层）。
+ * 卡片/列表/分区容器是「内容」而非「悬浮控件」，因此不使用实时模糊，
+ * 改用高不透明度的 .lg-material 纯色材质，靠边框与阴影建立层次。
+ */
 function GlassCard({
   isPressable = false,
   onPress,
@@ -20,11 +25,11 @@ function GlassCard({
         type="button"
         onClick={onPress}
         className={cn(
-          "glass-surface rounded-xl border border-separator overflow-hidden text-left w-full",
-          "transition-all duration-200 cursor-pointer",
+          "lg-material rounded-xl border border-separator overflow-hidden text-left w-full",
+          // 反馈：轻微上浮 + 阴影加深（transform/box-shadow 合成友好）
+          "[transition:transform_var(--lg-dur-fast)_var(--lg-ease-standard),box-shadow_var(--lg-dur-fast)_var(--lg-ease-standard)] cursor-pointer",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50",
-          "hover:scale-[1.02] hover:-translate-y-0.5 active:scale-[0.98] active:translate-y-0",
-          "hover:shadow-lg",
+          "hover:-translate-y-0.5 hover:shadow-lg active:translate-y-0 active:scale-[0.99]",
           shadow === "sm" && "shadow-sm",
           shadow === "md" && "shadow-md",
           shadow === "lg" && "shadow-lg",
@@ -39,10 +44,9 @@ function GlassCard({
   return (
     <div
       className={cn(
-        "glass-surface rounded-xl border border-separator overflow-hidden",
-        "transition-all duration-200",
-        "hover:scale-[1.02] hover:-translate-y-0.5",
-        "hover:shadow-lg",
+        "lg-material rounded-xl border border-separator overflow-hidden",
+        "[transition:transform_var(--lg-dur-fast)_var(--lg-ease-standard),box-shadow_var(--lg-dur-fast)_var(--lg-ease-standard)]",
+        "hover:-translate-y-0.5 hover:shadow-lg",
         shadow === "sm" && "shadow-sm",
         shadow === "md" && "shadow-md",
         shadow === "lg" && "shadow-lg",
@@ -63,7 +67,7 @@ function Card({ shadow = "none", className, children, ...rest }: CardProps) {
   return (
     <div
       className={cn(
-        "glass-surface rounded-xl border border-separator",
+        "lg-material rounded-xl border border-separator",
         shadow === "sm" && "shadow-sm",
         shadow === "md" && "shadow-md",
         shadow === "lg" && "shadow-lg",

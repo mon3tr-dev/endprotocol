@@ -14,12 +14,13 @@ const Slider = React.forwardRef<
     )}
     {...props}
   >
-    <SliderPrimitive.Track className="relative h-2 w-full grow overflow-hidden rounded-full border border-white/15 bg-default-200/75 shadow-[inset_0_1px_1px_rgba(255,255,255,0.16)]">
+    {/* 轨道：功能层控件底；填充与拖动反馈均为 paint 级轻量过渡 */}
+    <SliderPrimitive.Track className="lg-control lg-hairline relative h-2 w-full grow overflow-hidden rounded-full border">
       <SliderPrimitive.Range className="absolute h-full bg-primary shadow-[0_0_10px_color-mix(in_srgb,var(--primary)_35%,transparent)]" />
     </SliderPrimitive.Track>
     <SliderPrimitive.Thumb
       aria-label={props["aria-label"]}
-      className="block h-5 w-5 rounded-full border border-white/40 bg-surface shadow-[0_1px_3px_rgba(0,0,0,0.22),inset_0_1px_0_rgba(255,255,255,0.75)] transition-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 hover:scale-110 disabled:pointer-events-none disabled:opacity-50"
+      className="lg-thumb block h-5 w-5 rounded-full border bg-surface shadow-[0_1px_3px_rgba(0,0,0,0.22),inset_0_1px_0_rgba(255,255,255,0.75)] [transition:transform_var(--lg-dur-fast)_var(--lg-ease-spring)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 hover:scale-110 disabled:pointer-events-none disabled:opacity-50"
     />
   </SliderPrimitive.Root>
 ));

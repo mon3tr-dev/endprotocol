@@ -33,8 +33,8 @@ export const ROOM_META: Record<number, { key: string; icon: string }> = {
 
 export const TRUST_TEXT_CLASS: Record<TrustLevelKey, string> = {
   friendly: "text-muted",
-  close: "text-primary",
-  trust: "text-warning",
+  close: "text-primary-text",
+  trust: "text-warning-text",
 };
 
 export function clamp(v: number, min: number, max: number): number {
@@ -78,9 +78,9 @@ export function getMoodRingClass(pct: number): string {
 }
 
 export function getMoodTextClass(pct: number): string {
-  if (pct >= 50) return "text-success";
-  if (pct >= 25) return "text-warning";
-  return "text-danger";
+  if (pct >= 50) return "text-success-text";
+  if (pct >= 25) return "text-warning-text";
+  return "text-danger-text";
 }
 
 export function getMoodBarClass(pct: number): string {

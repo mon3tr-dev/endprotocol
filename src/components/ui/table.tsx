@@ -53,7 +53,17 @@ function Body({ className, children }: GlassTableProps) {
 }
 
 function Row({ className, children }: GlassTableProps) {
-  return <tr className={cn("transition-all duration-150 hover:bg-default-50/50 hover:scale-[1.005]", className)}>{children}</tr>;
+  return (
+    <tr
+      className={cn(
+        // 行 hover 用纯色轻染（paint 级），不位移不模糊
+        "[transition:background-color_var(--lg-dur-fast)_var(--lg-ease-standard)] lg-hoverable-soft/60",
+        className,
+      )}
+    >
+      {children}
+    </tr>
+  );
 }
 
 function Cell({ className, children }: GlassTableProps) {

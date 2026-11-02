@@ -326,12 +326,12 @@ export default function CharacterListCard({
 
   if (isLoading) {
     return (
-      <GlassCard className="p-6 glass-surface border border-separator/90 h-full w-full flex items-center justify-center">
+      <GlassCard className="p-6  border border-separator/90 h-full w-full flex items-center justify-center">
         <GlassProgressCircle
           isIndeterminate
           size="md"
           aria-label="Loading"
-          className="text-primary"
+          className="text-primary-text"
         >
           <GlassProgressCircle.Track>
             <GlassProgressCircle.TrackCircle />
@@ -344,7 +344,7 @@ export default function CharacterListCard({
 
   if (!processedCharDetail) {
     return (
-      <GlassCard className="p-6 glass-surface border border-separator/90">
+      <GlassCard className="p-6  border border-separator/90">
         <p className="text-muted text-center">{t("card:no_data")}</p>
       </GlassCard>
     );
@@ -353,7 +353,7 @@ export default function CharacterListCard({
   return (
     <>
       <GlassCard
-        className="p-0 glass-surface border border-separator/90 h-full w-full select-none cursor-pointer hover:shadow-md transition-shadow rounded-[10px] overflow-hidden"
+        className="p-0  border border-separator/90 h-full w-full select-none cursor-pointer hover:shadow-md transition-shadow rounded-[10px] overflow-hidden"
         isPressable
         onPress={() => !isEditMode && setIsModalOpen(true)}
       >
@@ -368,7 +368,7 @@ export default function CharacterListCard({
           }).map((_, index) => (
             <div
               key={`empty-${index}`}
-              className="h-full flex flex-col items-center justify-center cursor-pointer hover:bg-default-50/60 first:rounded-l-[10px] last:rounded-r-[10px]"
+              className="h-full flex flex-col items-center justify-center cursor-pointer lg-hoverable-soft/60 first:rounded-l-[10px] last:rounded-r-[10px]"
               onClick={(e) => {
                 e.stopPropagation();
                 !isEditMode && setIsModalOpen(true);
@@ -445,7 +445,7 @@ export default function CharacterListCard({
               availableAccounts.map((account) => (
                 <div
                   key={account.id}
-                  className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-all hover:bg-default-100 border ${
+                  className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-all lg-hoverable border ${
                     effectiveRoleId === account.id
                       ? "border-primary bg-primary/10"
                       : "border-separator hover:border-primary/50"
@@ -475,7 +475,7 @@ export default function CharacterListCard({
                     </div>
                   </div>
                   {effectiveRoleId === account.id && (
-                    <div className="text-primary text-xs font-medium">
+                    <div className="text-primary-text text-xs font-medium">
                       {t("card:current") || "Current"}
                     </div>
                   )}

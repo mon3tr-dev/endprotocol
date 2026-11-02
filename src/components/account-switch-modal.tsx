@@ -157,7 +157,7 @@ export default function AccountSwitchModal({
                           {account.nickname}
                         </p>
                         {isSelected && (
-                          <span className="px-2 py-0.5 text-[10px] font-bold text-success bg-success/10 rounded">
+                          <span className="px-2 py-0.5 text-[10px] font-bold text-success-text bg-success/10 rounded">
                             ACTIVE
                           </span>
                         )}

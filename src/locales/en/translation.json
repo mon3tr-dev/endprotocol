@@ -313,8 +313,6 @@
       "bg_image_remove": "Remove",
       "bg_image_opacity": "Image Opacity",
       "bg_blur": "Background Blur",
-      "glass_clarity": "Glass Clarity",
-      "glass_clarity_desc": "Higher clarity reduces blur and makes glass surfaces more opaque",
       "bg_image_none": "No background image set"
     },
     "system_resource": {

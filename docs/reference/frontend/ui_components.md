@@ -531,8 +531,8 @@
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
-| `ToggleGroup` | toggle-group.tsx:5 | forwardRef 直通 `ToggleGroupPrimitive.Root`（`type="single"/"multiple"`、`value`、`onValueChange` 等 Radix 原生 props）；外层胶囊容器样式 |
-| `ToggleGroupItem` | toggle-group.tsx:21 | forwardRef 直通 `Item`；`data-[state=on]` 时主色底/字；首尾自动圆角（:28） |
+| `ToggleGroup` | toggle-group.tsx:13 | forwardRef 直通 `ToggleGroupPrimitive.Root`（`type="single"/"multiple"`、`value`、`onValueChange` 等 Radix 原生 props）；**只做布局、不铺底色**——轨道材质由调用点给出（标题栏用 `.titlebar-mode-toggle`，其余用 `.lg-control` / `.lg-inset`），避免分段控件比旁边浮层更实 |
+| `ToggleGroupItem` | toggle-group.tsx:30 | forwardRef 直通 `Item`；选中态不再铺 `bg-primary/20` 实色（选中指示由外部拨杆/胶囊承担），hover 走 `.lg-hoverable`；首尾自动圆角 |
 
 ## `src/components/ui/tooltip.tsx`
 **职责**：纯 CSS 悬浮提示（group-hover 触发，绝对定位在触发元素上方），两套同构实现。

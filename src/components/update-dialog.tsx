@@ -116,7 +116,7 @@ export function UpdateDialog({ isOpen, onOpenChange }: UpdateDialogProps) {
         <div className="py-4 text-center">
           <div className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-warning/10 border border-warning/20">
             <svg
-              className="w-4 h-4 text-warning"
+              className="w-4 h-4 text-warning-text"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -128,7 +128,7 @@ export function UpdateDialog({ isOpen, onOpenChange }: UpdateDialogProps) {
                 d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
               />
             </svg>
-            <span className="text-sm text-warning">
+            <span className="text-sm text-warning-text">
               {t("settings.update.changelog_failed")}
             </span>
           </div>
@@ -184,11 +184,11 @@ export function UpdateDialog({ isOpen, onOpenChange }: UpdateDialogProps) {
     if (isChecking && !result) {
       return (
         <div className="space-y-3">
-          <div className="flex items-center justify-between p-3 rounded-xl glass-surface border border-separator/40">
+          <div className="flex items-center justify-between p-3 rounded-xl lg-material-sub border border-separator/40">
             <GlassSkeleton className="w-16 h-3 rounded-lg" />
             <GlassSkeleton className="w-20 h-4 rounded-lg" />
           </div>
-          <div className="flex items-center justify-between p-3 rounded-xl glass-surface border border-separator/40">
+          <div className="flex items-center justify-between p-3 rounded-xl lg-material-sub border border-separator/40">
             <GlassSkeleton className="w-16 h-3 rounded-lg" />
             <GlassSkeleton className="w-20 h-4 rounded-lg" />
           </div>
@@ -211,7 +211,7 @@ export function UpdateDialog({ isOpen, onOpenChange }: UpdateDialogProps) {
     return (
       <div className="space-y-3">
         <div className="grid grid-cols-2 gap-3">
-          <div className="flex items-center justify-between p-3 rounded-xl glass-surface border border-separator/40">
+          <div className="flex items-center justify-between p-3 rounded-xl lg-material-sub border border-separator/40">
             <span className="text-xs text-muted">
               {t("settings.update.current_version")}
             </span>
@@ -219,11 +219,11 @@ export function UpdateDialog({ isOpen, onOpenChange }: UpdateDialogProps) {
               v{result.update.currentVersion}
             </span>
           </div>
-          <div className="flex items-center justify-between p-3 rounded-xl glass-surface border border-primary/20">
+          <div className="flex items-center justify-between p-3 rounded-xl lg-material-sub border border-primary/20">
             <span className="text-xs text-muted">
               {t("settings.update.latest_version")}
             </span>
-            <span className="text-sm font-semibold text-primary">
+            <span className="text-sm font-semibold text-primary-text">
               v{result.update.newVersion}
             </span>
           </div>
@@ -259,13 +259,13 @@ export function UpdateDialog({ isOpen, onOpenChange }: UpdateDialogProps) {
     }}>
       <GlassModal.Backdrop variant="blur" className="z-[100]">
         <GlassModal.Container size="xl" placement="center" scroll="outside">
-          <GlassModal.Dialog className="glass-surface-strong border border-separator/90 p-0">
+          <GlassModal.Dialog className="border border-separator/60 p-0">
             <GlassModal.Header className="relative px-8 pt-5 pb-3">
               <GlassModal.CloseTrigger className="absolute right-3 top-3" />
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center ring-1 ring-primary/20">
                   <svg
-                    className="w-5 h-5 text-primary"
+                    className="w-5 h-5 text-primary-text"
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
@@ -304,7 +304,7 @@ export function UpdateDialog({ isOpen, onOpenChange }: UpdateDialogProps) {
               {/* Download Progress */}
               {isDownloading && (
                 <div className="flex items-center gap-3 py-2">
-                  <svg width="20" height="20" viewBox="0 0 20 20" className="animate-spin text-primary shrink-0">
+                  <svg width="20" height="20" viewBox="0 0 20 20" className="animate-spin text-primary-text shrink-0">
                     <circle cx="10" cy="10" r="7.5" fill="none" stroke="currentColor" strokeWidth="2" strokeDasharray="36" strokeDashoffset="10" strokeLinecap="round" />
                   </svg>
                   <span className="text-sm text-muted">

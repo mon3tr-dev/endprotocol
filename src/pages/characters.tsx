@@ -115,7 +115,7 @@ function FloatSelect({
         type="button"
         onClick={handleToggle}
         className={`flex items-center gap-1 h-8 pl-2 pr-1.5 rounded-xl border text-[11px] transition-all duration-200 cursor-pointer
-          ${open ? "border-primary bg-primary/5" : "border-separator/60 bg-background hover:border-primary/40 hover:bg-default-50"}`}
+          ${open ? "border-primary bg-primary/5" : "border-separator/60 bg-background hover:border-primary/40 lg-hoverable-soft"}`}
       >
         <span className="text-muted whitespace-nowrap">{label}</span>
         <span
@@ -142,7 +142,7 @@ function FloatSelect({
         createPortal(
           <div
             ref={dropdownRef}
-            className="fixed z-[999] min-w-[120px] max-h-64 overflow-y-auto rounded-xl border border-separator/60 bg-background glass-surface-strong shadow-xl animate-scale-in"
+            className="lg-regular fixed z-[999] min-w-[120px] max-h-64 overflow-y-auto rounded-xl border border-separator/60  shadow-xl animate-scale-in"
             style={{
               top: dropdownPos.top,
               left: dropdownPos.left,
@@ -161,7 +161,7 @@ function FloatSelect({
                     setOpen(false);
                   }}
                   className={`w-full text-left px-3 py-2 text-xs whitespace-nowrap transition-colors cursor-pointer first:rounded-t-xl last:rounded-b-xl
-                  ${active ? "bg-primary/10 text-primary font-semibold" : "text-foreground hover:bg-default-50"}`}
+                  ${active ? "bg-primary/10 text-primary-text font-semibold" : "text-foreground lg-hoverable-soft"}`}
                 >
                   {opt.tone ? (
                     <span className={rarityToneClass[opt.tone]}>
@@ -202,7 +202,7 @@ function OperatorCard({
 
   return (
     <div
-      className="group relative aspect-[3/4] rounded-xl overflow-hidden border border-separator/60 glass-surface cursor-pointer transition-all duration-300 hover:border-primary/40 hover:shadow-lg hover:-translate-y-0.5"
+      className="group relative aspect-[3/4] rounded-xl overflow-hidden border border-separator/60 lg-material cursor-pointer transition-all duration-300 hover:border-primary/40 hover:shadow-lg hover:-translate-y-0.5"
       onClick={onClick}
     >
       <Img
@@ -473,7 +473,7 @@ export default function CharactersPage() {
             isIndeterminate
             size="lg"
             aria-label="Loading"
-            className="text-primary"
+            className="text-primary-text"
           >
             <GlassProgressCircle.Track>
               <GlassProgressCircle.TrackCircle />
@@ -482,7 +482,7 @@ export default function CharactersPage() {
           </GlassProgressCircle>
         </div>
       ) : !charDetail || charDetail.chars.length === 0 ? (
-        <GlassCard className="p-16 glass-surface border border-separator/90">
+        <GlassCard className="p-16  border border-separator/90">
           <div className="text-center">
             <svg
               className="w-16 h-16 mx-auto mb-4 opacity-30 text-muted"
@@ -504,7 +504,7 @@ export default function CharactersPage() {
         </GlassCard>
       ) : (
         <>
-          <div className="flex flex-nowrap items-center gap-1.5 glass-surface p-2 rounded-xl border border-separator/90">
+          <div className="flex flex-nowrap items-center gap-1.5 lg-material p-2 rounded-xl border border-separator/90">
             <FloatSelect
               label={t("filters.profession")}
               value={filters.profession}

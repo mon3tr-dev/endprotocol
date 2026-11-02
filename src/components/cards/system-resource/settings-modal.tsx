@@ -283,7 +283,7 @@ export function SystemResourceSettingsModal({
                         }
                         className={`px-2.5 py-1 text-xs rounded-full border transition-all cursor-pointer ${
                           active
-                            ? "border-primary bg-primary/10 text-primary"
+                            ? "border-primary bg-primary/10 text-primary-text"
                             : "border-separator text-muted hover:border-primary/50"
                         }`}
                       >
@@ -447,7 +447,7 @@ export function SystemResourceSettingsModal({
                       key={id}
                       type="button"
                       onClick={() => addMetric(id)}
-                      className="px-2.5 py-1 text-xs rounded-full border border-separator text-muted hover:border-primary hover:text-primary transition-all cursor-pointer hover:scale-105 active:scale-95"
+                      className="px-2.5 py-1 text-xs rounded-full border border-separator text-muted hover:border-primary hover:text-primary-text transition-all cursor-pointer hover:scale-105 active:scale-95"
                     >
                       + {t(`card:${METRIC_CATALOG[id].labelKey}`)}
                     </button>
@@ -565,7 +565,7 @@ function IconBtn({
       type="button"
       onClick={onClick}
       aria-label={label}
-      className="w-6 h-6 flex items-center justify-center rounded-md text-muted hover:text-foreground hover:bg-default-100 transition-colors text-xs"
+      className="w-6 h-6 flex items-center justify-center rounded-md text-muted hover:text-foreground lg-hoverable transition-colors text-xs"
     >
       {children}
     </button>

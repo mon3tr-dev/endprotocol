@@ -33,9 +33,13 @@ export function AppInfoDrawer({ isOpen, onClose }: AppInfoDrawerProps) {
   if (!isOpen) return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-[200] animate-fade-in" onClick={handleBackdropClick} style={{ pointerEvents: "auto" }}>
+    <div
+      className="fixed inset-0 z-[200] [animation:lg-fade-in_var(--lg-dur-base)_var(--lg-ease-emphasized)] bg-black/25"
+      onClick={handleBackdropClick}
+      style={{ pointerEvents: "auto" }}
+    >
       <div
-        className="fixed inset-y-0 right-0 z-[210] w-[380px] max-w-[85vw] glass-surface-strong border-l border-separator/70 animate-slide-in-right flex flex-col rounded-l-2xl"
+        className="lg-regular lg-float-in fixed inset-y-0 right-0 z-[210] w-[380px] max-w-[85vw] border-l border-separator/60 flex flex-col rounded-l-2xl"
         style={{ pointerEvents: "auto" }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -44,7 +48,7 @@ export function AppInfoDrawer({ isOpen, onClose }: AppInfoDrawerProps) {
             <button
               type="button"
               onClick={markAllRead}
-              className="text-[11px] text-muted hover:text-foreground transition-colors px-2 py-1 rounded-lg hover:bg-default-100/50"
+              className="text-[11px] text-muted hover:text-foreground transition-colors px-2 py-1 rounded-lg lg-hoverable"
             >
               {t("messages.mark_all_read", { defaultValue: "Mark all read" })}
             </button>

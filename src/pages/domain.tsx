@@ -162,7 +162,7 @@ export default function DomainPage() {
       {/* 页头 */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
         <div className="flex items-center gap-3 min-w-0">
-          <CardIcon iconKey="map" size={28} className="text-primary shrink-0" />
+          <CardIcon iconKey="map" size={28} className="text-primary-text shrink-0" />
           <div className="min-w-0">
             <h1 className="text-2xl lg:text-3xl font-bold text-foreground tracking-tight">
               {t("sidebar.domain")}
@@ -180,7 +180,7 @@ export default function DomainPage() {
               isDisabled={accounts.length === 0}
               onPress={() => setShowRoleMenu((v) => !v)}
               endContent={<ChevronDownIcon size={14} />}
-              className="glass-surface border border-separator/70 max-w-48"
+              className="lg-material border border-separator/70 max-w-48"
             >
               <span className="truncate">
                 {currentAccount?.nickname || t("domain_page.switch_account")}
@@ -188,7 +188,7 @@ export default function DomainPage() {
             </GlassButton>
 
             {showRoleMenu && (
-              <div className="absolute right-0 top-full mt-2 z-50 w-64 glass-surface-strong rounded-xl border border-separator/70 shadow-xl overflow-hidden">
+              <div className="lg-regular absolute right-0 top-full mt-2 z-50 w-64 rounded-xl border border-separator/60 overflow-hidden">
                 <div className="max-h-72 overflow-y-auto">
                   {accounts.map((acc) => {
                     const isSelected = acc.id === roleId;
@@ -200,10 +200,10 @@ export default function DomainPage() {
                         className={clsx(
                           "w-full flex items-center gap-3 px-3 py-2.5 text-left transition-all duration-150",
                           "hover:translate-x-1 active:translate-x-0.5",
-                          isSelected ? "bg-primary/15" : "hover:bg-default-100",
+                          isSelected ? "bg-primary/15" : "lg-hoverable",
                         )}
                       >
-                        <div className="w-8 h-8 rounded-lg overflow-hidden shrink-0 bg-default-100 flex items-center justify-center">
+                        <div className="w-8 h-8 rounded-lg overflow-hidden shrink-0 lg-inset flex items-center justify-center">
                           {acc.avatar ? (
                             <Img
                               src={acc.avatar}
@@ -226,7 +226,7 @@ export default function DomainPage() {
                           </p>
                         </div>
                         {isSelected && (
-                          <CheckIcon size={14} className="text-primary shrink-0" />
+                          <CheckIcon size={14} className="text-primary-text shrink-0" />
                         )}
                       </button>
                     );
@@ -243,7 +243,7 @@ export default function DomainPage() {
               size="sm"
               onPress={handleRefresh}
               isDisabled={isRefreshing}
-              className="text-muted hover:text-foreground hover:bg-default-100 rounded-xl"
+              className="text-muted hover:text-foreground lg-hoverable rounded-xl"
               aria-label={t("common.refresh")}
             >
               <RefreshIcon size={20} className={isRefreshing ? "animate-spin" : ""} />
@@ -259,7 +259,7 @@ export default function DomainPage() {
             isIndeterminate
             size="lg"
             aria-label="Loading"
-            className="text-primary"
+            className="text-primary-text"
           >
             <GlassProgressCircle.Track>
               <GlassProgressCircle.TrackCircle />
@@ -268,7 +268,7 @@ export default function DomainPage() {
           </GlassProgressCircle>
         </div>
       ) : !effectiveDomain ? (
-        <GlassCard className="p-16 glass-surface border border-separator/90">
+        <GlassCard className="p-16 border border-separator/90">
           <div className="text-center text-muted">
             <p className="text-sm">{t("domain_page.empty")}</p>
           </div>
@@ -277,7 +277,7 @@ export default function DomainPage() {
         <div className="space-y-5">
           {/* 区域切换（标题下方居中，毛玻璃胶囊） */}
           {domains.length > 1 && (
-            <div className="w-full max-w-2xl mx-auto rounded-full p-1.5 flex gap-1.5 glass-surface border border-separator/70">
+            <div className="w-full max-w-2xl mx-auto rounded-full p-1.5 flex gap-1.5 lg-control border border-separator/70">
               {domains.map((d) => {
                 const active = d.domainId === effectiveDomain.domainId;
                 return (
@@ -290,8 +290,8 @@ export default function DomainPage() {
                       "flex items-center justify-center gap-2 min-w-0",
                       "hover:scale-105 active:scale-95",
                       active
-                        ? "glass-surface-strong border border-primary/50 text-primary"
-                        : "border border-transparent text-foreground/70 hover:text-foreground hover:bg-default-100",
+                        ? "lg-control border border-primary/50 text-primary-text"
+                        : "border border-transparent text-foreground/70 hover:text-foreground lg-hoverable",
                     )}
                   >
                     <span className="truncate max-w-[60%]">
@@ -307,7 +307,7 @@ export default function DomainPage() {
           )}
 
           {/* 概览 */}
-          <GlassCard className="p-4 lg:p-5 glass-surface border border-separator/90">
+          <GlassCard className="p-4 lg:p-5 border border-separator/90">
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
               {/* 区域名称 */}
               <div className="col-span-2 lg:col-span-1 min-w-0 flex flex-col justify-center">
@@ -338,7 +338,7 @@ export default function DomainPage() {
                     </span>
                   </p>
                 </div>
-                <div className="h-1.5 rounded-full bg-default-100 overflow-hidden">
+                <div className="h-1.5 rounded-full lg-inset overflow-hidden">
                   <div
                     className="h-full rounded-full bg-gradient-to-r from-success/70 to-success transition-all duration-500"
                     style={{
@@ -364,7 +364,7 @@ export default function DomainPage() {
               </span>
             </div>
             {settlements.length === 0 ? (
-              <GlassCard className="p-10 glass-surface border border-separator/90">
+              <GlassCard className="p-10 border border-separator/90">
                 <p className="text-center text-sm text-muted">
                   {t("domain_page.empty")}
                 </p>
@@ -377,7 +377,7 @@ export default function DomainPage() {
                   return (
                     <GlassCard
                       key={s.id}
-                      className="p-3.5 glass-surface border border-separator/80 min-w-0"
+                      className="p-3.5 border border-separator/80 min-w-0"
                     >
                       {/* 标题行：头像 + 名称 + 等级 */}
                       <div className="flex items-center gap-2.5 min-w-0">
@@ -398,7 +398,7 @@ export default function DomainPage() {
                               {s.name ?? "--"}
                             </p>
                             {s.isFinalMaxLevel && (
-                              <span className="shrink-0 text-[10px] font-semibold text-success">
+                              <span className="shrink-0 text-[10px] font-semibold text-success-text">
                                 MAX
                               </span>
                             )}
@@ -416,7 +416,7 @@ export default function DomainPage() {
                           <span className="text-[11px] text-muted shrink-0 w-16 truncate">
                             {moneyName}
                           </span>
-                          <div className="flex-1 min-w-0 h-1.5 rounded-full bg-default-100 overflow-hidden">
+                          <div className="flex-1 min-w-0 h-1.5 rounded-full lg-inset overflow-hidden">
                             <div
                               className="h-full rounded-full bg-gradient-to-r from-success/70 to-success transition-all duration-500"
                               style={{ width: `${moneyPct}%` }}
@@ -435,7 +435,7 @@ export default function DomainPage() {
                             <span className="text-[11px] text-muted shrink-0 w-16">
                               {t("card:domain_info_settlement_exp")}
                             </span>
-                            <div className="flex-1 min-w-0 h-1.5 rounded-full bg-default-100 overflow-hidden">
+                            <div className="flex-1 min-w-0 h-1.5 rounded-full lg-inset overflow-hidden">
                               <div
                                 className="h-full rounded-full bg-gradient-to-r from-primary/70 to-primary transition-all duration-500"
                                 style={{ width: `${expPct}%` }}

@@ -341,8 +341,8 @@ export default function AttendanceCard({
 
   if (!settingsLoaded) {
     return (
-      <GlassCard className="p-3 glass-surface border border-separator/90 h-full w-full flex items-center justify-center">
-        <GlassProgressCircle isIndeterminate size="sm" aria-label={t("a11y.loading")} className="text-primary">
+      <GlassCard className="p-3  border border-separator/90 h-full w-full flex items-center justify-center">
+        <GlassProgressCircle isIndeterminate size="sm" aria-label={t("a11y.loading")} className="text-primary-text">
           <GlassProgressCircle.Track>
             <GlassProgressCircle.TrackCircle />
             <GlassProgressCircle.FillCircle />
@@ -398,7 +398,7 @@ export default function AttendanceCard({
 
   return (
     <>
-      <GlassCard className="p-0 glass-surface border border-separator/90 h-full w-full select-none rounded-[10px] overflow-hidden flex flex-col">
+      <GlassCard className="p-0  border border-separator/90 h-full w-full select-none rounded-[10px] overflow-hidden flex flex-col">
         <div
           className="flex h-full p-2.5 gap-2.5 cursor-pointer"
           onClick={openRewardsModal}
@@ -415,7 +415,7 @@ export default function AttendanceCard({
               </div>
             ) : attendanceState === "error" && signPhase === "idle" ? (
               <div className="flex flex-col items-center gap-1.5">
-                <svg className="w-5 h-5 text-danger opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                <svg className="w-5 h-5 text-danger-text opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
                 </svg>
                 <GlassButton size="sm" variant="secondary" className="text-[9px] !h-5 !min-w-0 !px-1.5" onPress={fetchAttendance}>
@@ -439,7 +439,7 @@ export default function AttendanceCard({
                     strokeWidth={3}
                     strokeLinecap="round"
                     strokeDasharray={`${2 * Math.PI * 22 * 0.25} ${2 * Math.PI * 22 * 0.75}`}
-                    className="text-warning"
+                    className="text-warning-text"
                     style={{
                       transformOrigin: "26px 26px",
                       transform: "rotate(-90deg)",
@@ -453,7 +453,7 @@ export default function AttendanceCard({
                 className="flex flex-col items-center cursor-pointer hover:opacity-70 transition-opacity"
                 onClick={(e) => { e.stopPropagation(); handleSignIn(); }}
               >
-                <svg className="w-9 h-9 text-warning" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
+                <svg className="w-9 h-9 text-warning-text" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />
                 </svg>
               </div>
@@ -467,7 +467,7 @@ export default function AttendanceCard({
                       strokeLinecap="round"
                       strokeDasharray={`${CIRCUMFERENCE * 0.25} ${CIRCUMFERENCE * 0.75}`}
                       strokeDashoffset="0"
-                      className="text-warning"
+                      className="text-warning-text"
                       style={{
                         transformOrigin: "26px 26px",
                         transform: "rotate(-90deg)",
@@ -481,7 +481,7 @@ export default function AttendanceCard({
                       <circle
                         {...circleProps}
                         stroke="currentColor"
-                        className="text-success"
+                        className="text-success-text"
                         style={{
                           animation: "attendance-ring-in 0.35s ease-out forwards",
                           transformOrigin: "26px 26px",
@@ -496,7 +496,7 @@ export default function AttendanceCard({
                         strokeWidth="4"
                         strokeLinecap="round"
                         strokeLinejoin="round"
-                        className="text-success"
+                        className="text-success-text"
                         style={{
                           animation: "attendance-check-in 0.35s ease-out 0.25s forwards",
                           strokeDasharray: "20",
@@ -535,7 +535,7 @@ export default function AttendanceCard({
                   <p className="text-[9px] text-muted truncate">
                     {resolveServerLabel(selectedAccount.server, lang)}
                     {settings.selectedRoleId && autoSignEnabled && (
-                      <span className="ml-1 text-[8px] text-success">●</span>
+                      <span className="ml-1 text-[8px] text-success-text">●</span>
                     )}
                   </p>
                 </div>

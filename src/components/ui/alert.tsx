@@ -23,13 +23,15 @@ const dotTone: Record<GlassAlertStatus, string> = {
   danger: "bg-danger shadow-glow-danger",
 };
 
+/**
+ * Alert — 功能层 regular（toast/常驻提示是悬浮控件）。
+ */
 function Alert({ status = "default", className, children, ...rest }: GlassAlertProps) {
   return (
     <div
       role="alert"
       className={cn(
-        "flex items-start gap-2.5 rounded-xl border p-3.5",
-        "bg-background/80 backdrop-blur-sm",
+        "lg-regular flex items-start gap-2.5 rounded-xl border p-3.5",
         borderTone[status],
         className,
       )}

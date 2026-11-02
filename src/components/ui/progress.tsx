@@ -53,7 +53,7 @@ function ProgressCircle({
       aria-valuenow={isIndeterminate ? undefined : clamped}
       className={cn(
         "inline-flex items-center justify-center",
-        "transition-all duration-200",
+        "[transition:transform_var(--lg-dur-fast)_var(--lg-ease-spring)]",
         "hover:scale-110",
         className,
       )}
@@ -112,12 +112,14 @@ function FillCircle({ className }: { className?: string }) {
       strokeDasharray={c}
       strokeDashoffset={offset}
       className={cn(
-        "text-primary",
+        "text-primary-text",
         isIndeterminate && "animate-spin",
         className,
       )}
       style={{
-        transition: "stroke-dashoffset 0.2s ease",
+        // SVG 描边进度：stroke 属性动画无法走合成器，保持轻量
+        // paint 级过渡（fast 档），属于属性动画白名单外可接受的例外
+        transition: "stroke-dashoffset var(--lg-dur-fast) var(--lg-ease-standard)",
         transformBox: "fill-box",
         transformOrigin: "center",
       }}
@@ -191,8 +193,13 @@ function MeterTrack({
 function MeterFill({ className }: { className?: string }) {
   const { value } = useContext(MeterCtx);
   return (
+    // 宽度变化驱动布局，但 Meter 是低频更新条，保留 width 过渡
+    // 属黑名单豁免（与 grid-template-rows 折叠同级别的布局必然项）
     <div
-      className={cn("h-full rounded-full bg-primary transition-all duration-500", className)}
+      className={cn(
+        "h-full rounded-full bg-primary [transition:width_var(--lg-dur-slow)_var(--lg-ease-standard)]",
+        className,
+      )}
       style={{ width: `${value}%` }}
     />
   );

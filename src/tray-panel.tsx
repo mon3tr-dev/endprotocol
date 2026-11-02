@@ -8,8 +8,6 @@ import { setInitialLanguage } from "./i18n";
 import logger from "./utils/logger";
 import { applyWindowEffectsSupport } from "./utils/platform";
 import {
-  DEFAULT_GLASS_CLARITY,
-  applyGlassClarity,
   applyThemeColor,
   applyThemeMode,
   resolveThemeColor,
@@ -59,12 +57,10 @@ async function initTheme() {
     applyThemeMode("system");
   }
 
-  // 主窗口切换主题时广播 theme-changed，这里同步模式 + 主题色 + 清晰度
+  // 主窗口切换主题时广播 theme-changed，这里同步模式 + 主题色
   void listen<ThemeMode>("theme-changed", async (event) => {
     applyThemeMode(event.payload);
     await refreshThemeColor();
-    const clarity = await getConfig<number>("glass_clarity");
-    applyGlassClarity(clarity ?? DEFAULT_GLASS_CLARITY);
   });
 }
 

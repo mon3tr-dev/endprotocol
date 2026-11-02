@@ -12,7 +12,8 @@ export interface GlassChipProps
 }
 
 const badgeVariants = cva(
-  "inline-flex items-center gap-1 whitespace-nowrap font-medium rounded-full transition-all duration-200",
+  // Chip：小面积纯色标签，不做模糊（小元素模糊无收益，HIG 克制原则）
+  "inline-flex items-center gap-1 whitespace-nowrap font-medium rounded-full [transition:transform_var(--lg-dur-fast)_var(--lg-ease-spring)]",
   {
     variants: {
       variant: {
@@ -43,17 +44,17 @@ const badgeVariants = cva(
 );
 
 const softTone: Record<GlassChipTone, string> = {
-  default: "bg-default-100 text-default-700",
-  primary: "bg-primary/10 text-primary",
-  success: "bg-success/10 text-success",
+  default: "lg-inset text-default-700",
+  primary: "bg-primary/10 text-primary-text",
+  success: "bg-success/10 text-success-text",
   warning: "bg-warning/10 text-warning-dark",
-  danger: "bg-danger/10 text-danger",
+  danger: "bg-danger/10 text-danger-text",
   accent: "bg-accent/10 text-accent",
 };
 
 const solidTone: Record<GlassChipTone, string> = {
   default: "bg-default-500 text-white",
-  primary: "bg-primary text-white",
+  primary: "bg-primary text-primary-foreground",
   success: "bg-success text-success-foreground",
   warning: "bg-warning text-warning-foreground",
   danger: "bg-danger text-white",
@@ -62,10 +63,10 @@ const solidTone: Record<GlassChipTone, string> = {
 
 const outlineTone: Record<GlassChipTone, string> = {
   default: "border border-separator text-foreground",
-  primary: "border border-primary/50 text-primary",
-  success: "border border-success/50 text-success",
+  primary: "border border-primary/50 text-primary-text",
+  success: "border border-success/50 text-success-text",
   warning: "border border-warning/50 text-warning-dark",
-  danger: "border border-danger/50 text-danger",
+  danger: "border border-danger/50 text-danger-text",
   accent: "border border-accent/50 text-accent",
 };
 

@@ -88,7 +88,7 @@ export function AttendanceSettingsModal({
       <CustomModalBody>
         {loading ? (
           <div className="flex items-center justify-center py-8">
-            <GlassProgressCircle isIndeterminate size="md" aria-label="Loading" className="text-primary">
+            <GlassProgressCircle isIndeterminate size="md" aria-label="Loading" className="text-primary-text">
               <GlassProgressCircle.Track>
                 <GlassProgressCircle.TrackCircle />
                 <GlassProgressCircle.FillCircle />
@@ -134,7 +134,7 @@ export function AttendanceSettingsModal({
                       className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-all border-2 ${
                         isSelected
                           ? "border-primary bg-primary-50 dark:bg-primary-900/40 shadow-sm"
-                          : "border-separator hover:border-primary/50 hover:bg-default-50"
+                          : "border-separator hover:border-primary/50 lg-hoverable-soft"
                       }`}
                       onClick={() => setLocalSelectedRoleId(acc.id)}
                     >
@@ -157,7 +157,7 @@ export function AttendanceSettingsModal({
                             {acc.nickname}
                           </span>
                           {isSelected && (
-                            <svg className="w-4 h-4 text-primary shrink-0" fill="currentColor" viewBox="0 0 24 24">
+                            <svg className="w-4 h-4 text-primary-text shrink-0" fill="currentColor" viewBox="0 0 24 24">
                               <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
                             </svg>
                           )}

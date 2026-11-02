@@ -1,4 +1,4 @@
-# 设置面板与系统集成组件 — 文件功能参考
+﻿# 设置面板与系统集成组件 — 文件功能参考
 
 > 逐文件精读源码生成。行号基于当前工作区版本，仅用于快速定位。
 
@@ -47,7 +47,7 @@
 - **「不再提示」的作用域**：当前为组件内状态，页面刷新后重置（如需永久记忆应改为写入配置键）。
 
 ## `src/components/appearance-settings.tsx`
-**职责**：外观设置面板，集中管理主题模式（浅色/深色/跟随系统）、主题色（预设 + 自定义色阶）、窗口背景图（选择/删除/透明度/模糊）与毛玻璃清晰度，并实时写入 CSS 变量与持久化配置。主题色板与应用函数已抽到 `@/utils/theme`（与 `main.tsx`、`theme-switch.tsx`、`tray-panel.tsx` 共用），本文件只保留取色器专用的色彩空间转换。
+**职责**：外观设置面板，集中管理主题模式（浅色/深色/跟随系统）、主题色（预设 + 自定义色阶）与窗口背景图（选择/删除/透明度/模糊），并实时写入 CSS 变量与持久化配置。主题色板与应用函数已抽到 `@/utils/theme`（与 `main.tsx`、`theme-switch.tsx`、`tray-panel.tsx` 共用），本文件只保留取色器专用的色彩空间转换。
 **导出**：`AppearanceSettings`；并 re-export `getAllColors`、`findColorByName`（来自 `@/utils/theme`，兼容旧引用，仓库内仍无调用方）。未导出：`hexToHsl`/`hslToHex`/`hexToRgb`/`rgbToHex`/`hexToHsv`/`hsvToHex`、`useDragArea`、`generateColorScale`、`applyThemeModeLocal`（`applyThemeMode` 的本地别名）、`dispatchThemeChange`。
 **主要依赖**：`react`（含 `createPortal`）、`react-i18next`、`@tauri-apps/api/core`（`isTauri`/`invoke`）、`@tauri-apps/api/event`（`emit`）、`@/components/ui/settings-row`（`SettingsDivider`）、`@/components/ui/slider`（`Slider`）、`@/components/screen-color-picker`（`ScreenColorPicker`）、`@/utils/configService`（`getConfig`/`setConfig`）、`@/utils/theme`（`DEFAULT_GLASS_CLARITY`、`DEFAULT_THEME_COLOR`、`PRESET_COLORS`、`applyGlassClarity`、`applyThemeColor`、`applyThemeMode`、`getAllColors` 及类型 `ThemeColor`/`ThemeMode`）、`@/utils/platform`（`isWindowsPlatform`）、`morphicons/react`（`MorphIcon`）、`lucide`（`Sun`/`Moon`/`Monitor`/`Check`/`Plus`/`Pencil`/`Trash2`/`Pipette`/`ImagePlus`/`X`）。
 
@@ -85,7 +85,6 @@
 - 710-738 行：主题模式分段按钮 UI。
 - 740-1146 行：主题色区块——预设色行、自定义色行与右键菜单入口、新增按钮、取色器 portal（SV 面板、色相条、预览 + Hex 输入、屏幕取色按钮、RGB 输入、名称输入、取消/保存按钮）、自定义色右键菜单 portal、`ScreenColorPicker` portal。
 - 1148-1263 行：背景图区块——隐藏 file input、预览与移除按钮、不透明度滑杆、模糊滑杆、无图时的虚线选择按钮。
-- 1265-1297 行：毛玻璃清晰度滑杆 + 重置按钮。
 - 1306-1310 行：文件末尾的 `applyThemeModeLocal` 别名与 `dispatchThemeChange`。
 
 **设置项/能力清单**：
@@ -104,15 +103,14 @@
 | 背景图移除 | `bg_image_path`（置 null） | 预览图右上角 X | 668-678，按钮 1333-1342 |
 | 背景图不透明度（0-1） | `bg_image_opacity` | `Slider` + 重置按钮 | 680-697，UI 1345-1371 |
 | 背景图模糊（0-40px） | `bg_blur` | `Slider` + 重置按钮 | 699-713，UI 1373-1399 |
-| 毛玻璃清晰度（0-100） | `glass_clarity` | `Slider` + 重置按钮；改动会 `emit("theme-changed")` 让托盘浮层实时跟随 | 570-585，UI 1288-1303 |
 
 **备注**：
 - `invoke` 命令：`read_image_file`（516，参数 `{ path }`）、`save_background_image`（650，参数 `{ data }`，返回保存路径）、`delete_background_image`（670）。
 - Tauri `emit` 事件：`theme-changed`（567、594）。
 - window 事件：监听 `themeChange`（550）、派发 `themeChange`（593，由 1459-1461 的 `dispatchThemeChange` 封装；另在 616、741、761、776 调用）；另有原生 `resize`/`scroll`/`mousedown`/`matchMedia` 监听。本文件**没有** `listen(...)`。
-- 配置键（经 `@/utils/configService`）：`theme_mode`、`theme_color`、`theme_custom_colors`、`bg_image_path`、`bg_image_opacity`、`bg_blur`、`glass_clarity`。
-- 写入的 CSS 变量：`--glass-blur`、`--glass-surface-opacity`、`--glass-strong-opacity`、`--glass-field-opacity`、`--primary-50`…`--primary-900`、`--primary`、`--primary-foreground`、`--bg-image-opacity`、`--bg-blur`、`--bg-image`。
-- 默认值常量：背景图透明度 0.5（383）、背景模糊 16（385）、玻璃清晰度 55（386）、默认取色 `#6366f1`（356/791）、自定义色命名前缀 `custom-${Date.now()}`（748）。
+- 配置键（经 `@/utils/configService`）：`theme_mode`、`theme_color`、`theme_custom_colors`、`bg_image_path`、`bg_image_opacity`、`bg_blur`。（旧 `glass_clarity` 已随 Liquid Glass 重构移除）
+- 写入的 CSS 变量：`--primary-50`…`--primary-900`、`--primary`、`--primary-foreground`、`--bg-image-opacity`、`--bg-blur`、`--bg-image`。（旧 `--glass-blur` 等四个玻璃变量已随重构移除）
+- 默认值常量：背景图透明度 0.5、背景模糊 16、默认取色 `#6366f1`、自定义色命名前缀 `custom-${Date.now()}`。（旧「玻璃清晰度 55」常量已删除）
 
 ## `src/components/language-switch.tsx`
 **职责**：顶栏语言切换下拉（English/中文），带搜索、旗帜图标与选中校验，切换后写入持久化配置。
@@ -275,7 +273,7 @@
 - 无 `emit`、无配置键；文案全部走 i18n 命名空间 `tray.*`（`tray.title`/`stamina`/`daily_activity`/`weekly`/`battle_pass`/`level`/`full`/`recover_in`/`next_refill`/`no_user`/`no_user_hint`/`show_window`/`quit`），已不再硬编码中文。
 - 主题色 / 玻璃清晰度由入口 `src/tray-panel.tsx` 统一注入（见 [entry_and_app.md](entry_and_app.md)），组件内只用语义化 token（`bg-primary`、`bg-default-100` 等），因此会跟随用户的自定义主题色。
 - **透明策略**：窗口本身启用系统级 Acrylic（`lib.rs::create_full_windows` 的 `.effect(Effect::Acrylic)`），桌面磨砂由系统负责；面板根节点用 `.glass-native`（`backdrop-filter: none`），只压一层 `--surface` 渐变做可读性补偿，避免「模糊的模糊」把文字糊掉。窗口不设 `.shadow(true)`，否则透明边缘会出现灰色底板；托盘页 `html[data-window="tray-panel"]` 同时去掉 `body` 默认的 `rgba(255,255,255,.33)` 底色。
-- **透明度跟随设置**：不写死数值，由设置页「毛玻璃清晰度」（配置键 `glass_clarity`）驱动。`applyGlassClarity()` 同时产出 `--glass-native-opacity`（38%–92%）与 `--glass-native-base`（12%–38%）；清晰度调低→更透，调高→更实。面板每次获得焦点时调一次 `loadTheme()` 重读，因此改完设置再弹出即生效；设置页拖动清晰度滑块还会 `emit("theme-changed")`，面板开着时也能实时跟随。
+- **透明度**：托盘面板的 `.lg-native` 渐变不透明度已固化为静态 CSS 值（Liquid Glass 重构移除了旧的 `glass_clarity` 运行时链路）。面板每次获得焦点时调一次 `loadTheme()` 重读主题（模式 + 主题色），因此改完设置再弹出即生效；主窗口切换主题仍会 `emit("theme-changed")`，面板开着时实时跟随。
 - 面板尺寸须与 `src-tauri/src/lib.rs::create_full_windows` 的 `inner_size(288, 376)` 保持一致；`tray.rs` 的 `PANEL_WIDTH`/`PANEL_HEIGHT` 仅作为取不到真实窗口尺寸时的定位回退。
 
 ## `src/components/update-dialog.tsx`

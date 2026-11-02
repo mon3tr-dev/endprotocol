@@ -32,7 +32,7 @@ export function AttendanceRewards({
             )}
           </>
         ) : (
-          <div className="w-full h-full flex items-center justify-center bg-default-100 rounded">
+          <div className="w-full h-full flex items-center justify-center lg-inset rounded">
             <span className="text-[10px] text-muted">--</span>
           </div>
         )}

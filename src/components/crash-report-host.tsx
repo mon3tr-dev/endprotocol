@@ -66,7 +66,7 @@ export function CrashDetails({ report }: CrashDetailsProps) {
   return (
     <div className="space-y-4">
       <div className="flex items-start gap-3">
-        <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-danger/10 text-danger">
+        <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-danger/10 text-danger-text">
           <MorphIcon icon={AlertTriangle} size={20} />
         </div>
         <div className="min-w-0 flex-1">
@@ -123,7 +123,7 @@ export function CrashDetails({ report }: CrashDetailsProps) {
       </div>
 
       {technicalDetails && (
-        <details className="rounded-xl border border-separator/70 bg-default-100/30">
+        <details className="rounded-xl border border-separator/70 lg-inset">
           <summary className="cursor-pointer select-none px-3 py-2 text-xs font-medium text-muted transition-colors hover:text-foreground">
             {t("crash.show_details")}
           </summary>
@@ -308,7 +308,7 @@ export function CrashReportHost() {
     >
       <GlassModal.Backdrop isDismissable={!report.fatal} className="z-[150]">
         <GlassModal.Container size="lg" placement="center" scroll="outside">
-          <GlassModal.Dialog className="glass-surface-strong border border-separator/90 p-0">
+          <GlassModal.Dialog className="border border-separator/60 p-0">
             <GlassModal.Header className="px-6 pt-5 pb-2">
               <GlassModal.Heading>{report.title}</GlassModal.Heading>
             </GlassModal.Header>

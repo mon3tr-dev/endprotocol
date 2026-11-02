@@ -387,7 +387,7 @@ export default function DashboardPage() {
   if (isLoading && view === "loading") {
     return (
       <div className="flex items-center justify-center py-24">
-        <GlassProgressCircle isIndeterminate size="lg" aria-label="Loading" className="text-primary">
+        <GlassProgressCircle isIndeterminate size="lg" aria-label="Loading" className="text-primary-text">
           <GlassProgressCircle.Track>
             <GlassProgressCircle.TrackCircle />
             <GlassProgressCircle.FillCircle />
@@ -436,7 +436,7 @@ export default function DashboardPage() {
               size="sm"
               onPress={handleBackToSelector}
               aria-label="Back"
-              className="rounded-xl hover:bg-default-100"
+              className="rounded-xl lg-hoverable"
             >
               <ChevronLeftIcon size={20} />
             </GlassButton>
@@ -446,7 +446,7 @@ export default function DashboardPage() {
           </GlassTooltip>
           <div>
             <div className="flex items-center gap-2">
-              {IconComponent && <IconComponent size={24} className="text-primary" />}
+              {IconComponent && <IconComponent size={24} className="text-primary-text" />}
               <h1 className="text-2xl lg:text-3xl font-bold text-foreground tracking-tight">
                 {activeTab?.name ?? t("nav.dashboard")}
               </h1>
@@ -465,7 +465,7 @@ export default function DashboardPage() {
               size="sm"
               onPress={handleRefresh}
               isDisabled={isRefreshing}
-              className="text-muted hover:text-foreground hover:bg-default-100 rounded-xl"
+              className="text-muted hover:text-foreground lg-hoverable rounded-xl"
               aria-label={t("common.refresh") || "Refresh"}
             >
               <RefreshIcon size={20} className={isRefreshing ? "animate-spin" : ""} />
@@ -479,7 +479,7 @@ export default function DashboardPage() {
 
       {isRefreshing ? (
         <div className="flex flex-col items-center justify-center py-24 space-y-5">
-          <GlassProgressCircle isIndeterminate size="lg" aria-label="Loading" className="text-primary">
+          <GlassProgressCircle isIndeterminate size="lg" aria-label="Loading" className="text-primary-text">
             <GlassProgressCircle.Track>
               <GlassProgressCircle.TrackCircle />
               <GlassProgressCircle.FillCircle />
@@ -563,7 +563,7 @@ export default function DashboardPage() {
                     className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-all border ${
                       isSelected
                         ? "border-primary/70 bg-primary/10"
-                        : "border-separator hover:border-primary/50 hover:bg-default-100"
+                        : "border-separator hover:border-primary/50 lg-hoverable"
                     }`}
                   >
                     <div className="w-10 h-10 rounded-lg overflow-hidden shrink-0">
@@ -588,7 +588,7 @@ export default function DashboardPage() {
                       </div>
                     </div>
                     {isSelected && (
-                      <svg className="w-5 h-5 text-primary shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2.5">
+                      <svg className="w-5 h-5 text-primary-text shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2.5">
                         <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                       </svg>
                     )}

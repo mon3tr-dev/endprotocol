@@ -203,7 +203,7 @@ export default function SpaceshipPage() {
       {/* 页头 */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
         <div className="flex items-center gap-3 min-w-0">
-          <CardIcon iconKey="satellite" size={28} className="text-primary shrink-0" />
+          <CardIcon iconKey="satellite" size={28} className="text-primary-text shrink-0" />
           <div className="min-w-0">
             <h1 className="text-2xl lg:text-3xl font-bold text-foreground tracking-tight">
               {t("card:spaceship_title")}
@@ -221,7 +221,7 @@ export default function SpaceshipPage() {
               isDisabled={accounts.length === 0}
               onPress={() => setShowRoleMenu((v) => !v)}
               endContent={<ChevronDownIcon size={14} />}
-              className="glass-surface border border-separator/70 max-w-48"
+              className="border border-separator/70 max-w-48"
             >
               <span className="truncate">
                 {currentAccount?.nickname || t("spaceship_page.switch_account")}
@@ -229,7 +229,7 @@ export default function SpaceshipPage() {
             </GlassButton>
 
             {showRoleMenu && (
-              <div className="absolute right-0 top-full mt-2 z-50 w-64 glass-surface-strong rounded-xl border border-separator/70 shadow-xl overflow-hidden">
+              <div className="lg-regular absolute right-0 top-full mt-2 z-50 w-64 rounded-xl border border-separator/70 shadow-xl overflow-hidden">
                 <div className="max-h-72 overflow-y-auto">
                   {accounts.map((acc) => {
                     const isSelected = acc.id === roleId;
@@ -241,10 +241,10 @@ export default function SpaceshipPage() {
                         className={clsx(
                           "w-full flex items-center gap-3 px-3 py-2.5 text-left transition-all duration-150",
                           "hover:translate-x-1 active:translate-x-0.5",
-                          isSelected ? "bg-primary/15" : "hover:bg-default-100",
+                          isSelected ? "bg-primary/15" : "lg-hoverable",
                         )}
                       >
-                        <div className="w-8 h-8 rounded-lg overflow-hidden shrink-0 bg-default-100 flex items-center justify-center">
+                        <div className="w-8 h-8 rounded-lg overflow-hidden shrink-0 lg-inset flex items-center justify-center">
                           {acc.avatar ? (
                             <Img
                               src={acc.avatar}
@@ -267,7 +267,7 @@ export default function SpaceshipPage() {
                           </p>
                         </div>
                         {isSelected && (
-                          <CheckIcon size={14} className="text-primary shrink-0" />
+                          <CheckIcon size={14} className="text-primary-text shrink-0" />
                         )}
                       </button>
                     );
@@ -284,7 +284,7 @@ export default function SpaceshipPage() {
               size="sm"
               onPress={handleRefresh}
               isDisabled={isRefreshing}
-              className="text-muted hover:text-foreground hover:bg-default-100 rounded-xl"
+              className="text-muted hover:text-foreground lg-hoverable rounded-xl"
               aria-label={t("common.refresh")}
             >
               <RefreshIcon size={20} className={isRefreshing ? "animate-spin" : ""} />
@@ -300,7 +300,7 @@ export default function SpaceshipPage() {
             isIndeterminate
             size="lg"
             aria-label="Loading"
-            className="text-primary"
+            className="text-primary-text"
           >
             <GlassProgressCircle.Track>
               <GlassProgressCircle.TrackCircle />
@@ -309,7 +309,7 @@ export default function SpaceshipPage() {
           </GlassProgressCircle>
         </div>
       ) : roomsWithChars.length === 0 ? (
-        <GlassCard className="p-16 glass-surface border border-separator/90">
+        <GlassCard className="p-16  border border-separator/90">
           <div className="text-center text-muted">
             <p className="text-sm">{t("card:spaceship_empty")}</p>
           </div>
@@ -317,7 +317,7 @@ export default function SpaceshipPage() {
       ) : (
         <div className="space-y-5">
           {/* 概览 */}
-          <GlassCard className="p-4 lg:p-5 glass-surface border border-separator/90">
+          <GlassCard className="p-4 lg:p-5  border border-separator/90">
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
               <div className="min-w-0 flex flex-col justify-center">
                 <p className="text-xs text-muted mb-1">
@@ -346,7 +346,7 @@ export default function SpaceshipPage() {
                       key={`${room.type}-${idx}`}
                       type="button"
                       onClick={() => setDetailRoomIndex(idx)}
-                      className="flex items-center gap-1.5 rounded-full glass-surface border border-separator/70 px-2.5 py-1 text-xs hover:border-primary/50 transition-colors"
+                      className="flex items-center gap-1.5 rounded-full lg-material-row border border-separator/70 px-2.5 py-1 text-xs hover:border-primary/50 transition-colors"
                     >
                       <CardIcon iconKey={meta?.icon ?? "help"} size={13} />
                       <span className="text-foreground truncate max-w-[110px]">
@@ -373,12 +373,12 @@ export default function SpaceshipPage() {
               {roomsWithChars.map(({ room, meta, chars }, idx) => (
                 <GlassCard
                   key={`${room.type}-${idx}`}
-                  className="p-4 glass-surface border border-separator/80 min-w-0"
+                  className="p-4  border border-separator/80 min-w-0"
                 >
                   {/* 舱室标题 */}
                   <div className="flex items-center gap-2.5 min-w-0">
                     <span
-                      className="shrink-0 w-9 h-9 rounded-lg glass-surface border border-separator/60 flex items-center justify-center text-primary"
+                      className="shrink-0 w-9 h-9 rounded-lg  border border-separator/60 flex items-center justify-center text-primary-text"
                       aria-hidden
                     >
                       <CardIcon iconKey={meta?.icon ?? "help"} size={18} />
@@ -411,7 +411,7 @@ export default function SpaceshipPage() {
                           className="flex items-center gap-3 min-w-0 rounded-lg bg-default-50/40 border border-separator/50 px-2.5 py-2"
                         >
                           <div
-                            className={`w-11 h-11 rounded-full border-2 ${getMoodRingClass(c.moodPct)} overflow-hidden bg-default-100 shrink-0`}
+                            className={`w-11 h-11 rounded-full border-2 ${getMoodRingClass(c.moodPct)} overflow-hidden lg-inset shrink-0`}
                           >
                             {c.avatar ? (
                               <Img
@@ -448,7 +448,7 @@ export default function SpaceshipPage() {
                               <span className="text-[10px] text-muted shrink-0">
                                 {t("card:spaceship_mood")}
                               </span>
-                              <div className="flex-1 min-w-0 h-1.5 rounded-full bg-default-100 overflow-hidden">
+                              <div className="flex-1 min-w-0 h-1.5 rounded-full lg-inset overflow-hidden">
                                 <div
                                   className={`h-full rounded-full transition-all duration-500 ${getMoodBarClass(c.moodPct)}`}
                                   style={{ width: `${c.moodPct}%` }}
@@ -468,7 +468,7 @@ export default function SpaceshipPage() {
                               <span className="text-[10px] text-muted shrink-0">
                                 {t("card:spaceship_trust")}
                               </span>
-                              <div className="flex-1 min-w-0 h-1.5 rounded-full bg-default-100 overflow-hidden">
+                              <div className="flex-1 min-w-0 h-1.5 rounded-full lg-inset overflow-hidden">
                                 <div
                                   className="h-full rounded-full bg-gradient-to-r from-primary/70 to-primary transition-all duration-500"
                                   style={{
@@ -525,7 +525,7 @@ export default function SpaceshipPage() {
                 >
                   <div className="flex items-center gap-2.5">
                     <div
-                      className={`w-9 h-9 rounded-full border-2 ${getMoodRingClass(c.moodPct)} overflow-hidden bg-default-100 shrink-0`}
+                      className={`w-9 h-9 rounded-full border-2 ${getMoodRingClass(c.moodPct)} overflow-hidden lg-inset shrink-0`}
                     >
                       {c.avatar ? (
                         <Img

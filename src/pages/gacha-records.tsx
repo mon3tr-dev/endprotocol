@@ -411,7 +411,7 @@ export default function GachaRecordsPage() {
     return (
       <div className="max-w-6xl mx-auto pb-12">
         <div className="flex items-center justify-center py-24">
-          <GlassProgressCircle isIndeterminate size="lg" aria-label="Loading" className="text-primary">
+          <GlassProgressCircle isIndeterminate size="lg" aria-label="Loading" className="text-primary-text">
             <GlassProgressCircle.Track>
               <GlassProgressCircle.TrackCircle />
               <GlassProgressCircle.FillCircle />
@@ -428,7 +428,7 @@ export default function GachaRecordsPage() {
         <h1 className="text-2xl lg:text-3xl font-bold text-foreground tracking-tight">
           {isZh ? "抽卡记录" : "Gacha Records"}
         </h1>
-        <GlassCard className="mt-6 p-16 glass-surface border border-separator/90">
+        <GlassCard className="mt-6 p-16 border border-separator/90">
           <div className="text-center text-muted">
             <p>{error}</p>
           </div>
@@ -472,7 +472,7 @@ export default function GachaRecordsPage() {
               isDisabled={syncing || accounts.length === 0}
               onPress={() => setShowRoleMenu((v) => !v)}
               endContent={<ChevronDownIcon size={14} />}
-              className="glass-surface border border-separator/70 max-w-48"
+              className="lg-material border border-separator/70 max-w-48"
             >
               <span className="truncate">
                 {selectedAccount?.nickname ?? (isZh ? "选择角色" : "Select role")}
@@ -480,7 +480,7 @@ export default function GachaRecordsPage() {
             </GlassButton>
 
             {showRoleMenu && (
-              <div className="absolute right-0 top-full mt-2 z-50 w-64 glass-surface-strong rounded-xl border border-separator/70 shadow-xl overflow-hidden">
+              <div className="lg-regular absolute right-0 top-full mt-2 z-50 w-64 rounded-xl border border-separator/60 overflow-hidden">
                 <div className="max-h-72 overflow-y-auto">
                   {accounts.map((acc) => {
                     const isSelected = acc.id === roleId;
@@ -492,10 +492,10 @@ export default function GachaRecordsPage() {
                         className={clsx(
                           "w-full flex items-center gap-3 px-3 py-2.5 text-left transition-all duration-150",
                           "hover:translate-x-1 active:translate-x-0.5",
-                          isSelected ? "bg-primary/15" : "hover:bg-default-100",
+                          isSelected ? "bg-primary/15" : "lg-hoverable",
                         )}
                       >
-                        <div className="w-8 h-8 rounded-lg overflow-hidden shrink-0 bg-default-100 flex items-center justify-center">
+                        <div className="w-8 h-8 rounded-lg overflow-hidden shrink-0 lg-inset flex items-center justify-center">
                           {acc.avatar ? (
                             <Img src={acc.avatar} alt={acc.nickname} className="w-full h-full object-cover" />
                           ) : (
@@ -510,7 +510,7 @@ export default function GachaRecordsPage() {
                             {resolveServerLabel(acc.server, i18n.language)} · Lv.{acc.level}
                           </p>
                         </div>
-                        {isSelected && <CheckIcon size={14} className="text-primary shrink-0" />}
+                        {isSelected && <CheckIcon size={14} className="text-primary-text shrink-0" />}
                       </button>
                     );
                   })}
@@ -534,7 +534,7 @@ export default function GachaRecordsPage() {
       </header>
 
       {!active || active.records.length === 0 ? (
-        <GlassCard className="p-16 glass-surface border border-separator/90">
+        <GlassCard className="p-16 border border-separator/90">
           <div className="text-center space-y-3">
             <RefreshIcon size={40} className="mx-auto text-muted" />
             <p className="text-muted">
@@ -555,21 +555,21 @@ export default function GachaRecordsPage() {
             <StatCard
               label={isZh ? "六星数" : "6★ Count"}
               value={stats.six.toLocaleString()}
-              accent="text-danger"
+              accent="text-danger-text"
               rate={pctText(stats.ratioSix)}
               avg={stats.avgSix !== null ? stats.avgSix.toFixed(1) : null}
             />
             <StatCard
               label={isZh ? "五星数" : "5★ Count"}
               value={stats.five.toLocaleString()}
-              accent="text-[#ffd700]"
+              accent="text-[#a16207] dark:text-[#ffd700]"
               rate={pctText(stats.ratioFive)}
               avg={stats.avgFive !== null ? stats.avgFive.toFixed(1) : null}
             />
             <StatCard
               label={isZh ? "四星数" : "4★ Count"}
               value={stats.four.toLocaleString()}
-              accent="text-[#a855f7]"
+              accent="text-[#6d28d9] dark:text-[#a855f7]"
               rate={pctText(stats.ratioFour)}
             />
           </div>
@@ -593,7 +593,7 @@ export default function GachaRecordsPage() {
           />
 
           {/* 抽卡记录详情 */}
-          <GlassCard className="p-6 glass-surface border border-separator/90">
+          <GlassCard className="p-6 border border-separator/90">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-sm font-semibold text-muted">
                 {isZh ? "寻访记录" : "Headhunting Records"}
@@ -623,10 +623,10 @@ export default function GachaRecordsPage() {
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                   placeholder={isZh ? "搜索名称 / 卡池" : "Search name / pool"}
-                  className="glass-field w-full h-9 pl-8 pr-3 rounded-lg text-sm text-foreground placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-primary/40"
+                  className="lg-field w-full h-9 pl-8 pr-3 rounded-lg text-sm text-foreground placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-primary/40"
                 />
               </div>
-              <div className="flex items-center gap-1 p-1 rounded-full glass-surface">
+              <div className="flex items-center gap-1 p-1 rounded-full lg-control">
                 {RARITY_OPTIONS.map((opt) => (
                   <button
                     key={opt.label}
@@ -636,7 +636,7 @@ export default function GachaRecordsPage() {
                       "h-8 px-3 rounded-full text-xs font-medium transition-all duration-150",
                       "hover:scale-105 active:scale-95",
                       rarityFilter === opt.value
-                        ? "glass-surface-strong border border-primary/50 text-primary"
+                        ? "lg-control border border-primary/50 text-primary-text"
                         : "border border-transparent text-muted hover:text-foreground",
                     )}
                   >
@@ -651,7 +651,7 @@ export default function GachaRecordsPage() {
                   "h-8 px-3 rounded-full text-xs font-medium border transition-all duration-150",
                   "hover:scale-105 active:scale-95",
                   onlyNew
-                    ? "border-success/60 bg-success/15 text-success"
+                    ? "border-success/60 bg-success/15 text-success-text"
                     : "border-separator text-muted hover:text-foreground hover:border-success/40",
                 )}
               >
@@ -665,7 +665,7 @@ export default function GachaRecordsPage() {
                     "h-8 px-3 rounded-full text-xs font-medium border transition-all duration-150",
                     "hover:scale-105 active:scale-95",
                     onlyFree
-                      ? "border-primary/60 bg-primary/15 text-primary"
+                      ? "border-primary/60 bg-primary/15 text-primary-text"
                       : "border-separator text-muted hover:text-foreground hover:border-primary/40",
                   )}
                 >
@@ -717,7 +717,7 @@ export default function GachaRecordsPage() {
                                 <td colSpan={5} className="py-2">
                                   <div className="flex items-center gap-2">
                                     {!item.continuation && (
-                                      <span className="shrink-0 text-[11px] font-semibold text-primary">
+                                      <span className="shrink-0 text-[11px] font-semibold text-primary-text">
                                         {isZh ? "赠送十连" : "Gift 10-Pull"} - {item.recs[0].poolName}
                                       </span>
                                     )}
@@ -765,7 +765,7 @@ export default function GachaRecordsPage() {
       )}
 
       {/* 分类选择（悬浮于内容区底部的多项 switch） */}
-      <div className="sticky bottom-4 z-40 mx-auto w-full max-w-2xl rounded-full p-1.5 flex gap-1.5 bg-surface/40 backdrop-blur-md border border-separator/70 shadow-lg">
+      <div className="sticky bottom-4 z-40 mx-auto w-full max-w-2xl rounded-full p-1.5 flex gap-1.5 lg-control border border-separator/70 shadow-lg">
         {CATEGORIES.map((c) => {
           const isActive = category === c.key;
           return (
@@ -782,8 +782,8 @@ export default function GachaRecordsPage() {
                 "flex items-center justify-center",
                 "hover:scale-105 active:scale-95",
                 isActive
-                  ? "glass-surface-strong border border-primary/50 text-primary"
-                  : "border border-transparent text-foreground/70 hover:text-foreground hover:bg-default-100",
+                  ? "lg-control border border-primary/50 text-primary-text"
+                  : "border border-transparent text-foreground/70 hover:text-foreground lg-hoverable",
               )}
             >
               {isZh ? c.labelZh : c.labelEn}
@@ -804,7 +804,7 @@ export default function GachaRecordsPage() {
         <CustomModalBody>
           {syncError ? (
             <div className="py-6 text-center">
-              <p className="text-danger text-sm break-all">{syncError}</p>
+              <p className="text-danger-text text-sm break-all">{syncError}</p>
               <p className="text-muted text-xs mt-2">
                 {isZh
                   ? "同步失败，本地数据未写入，可稍后重试"
@@ -813,7 +813,7 @@ export default function GachaRecordsPage() {
             </div>
           ) : syncing ? (
             <div className="py-6 text-center space-y-4">
-              <GlassProgressCircle isIndeterminate size="lg" aria-label="Syncing" className="text-primary">
+              <GlassProgressCircle isIndeterminate size="lg" aria-label="Syncing" className="text-primary-text">
                 <GlassProgressCircle.Track>
                   <GlassProgressCircle.TrackCircle />
                   <GlassProgressCircle.FillCircle />
@@ -843,7 +843,7 @@ export default function GachaRecordsPage() {
             </div>
           ) : syncResult ? (
             <div className="py-6 text-center space-y-2">
-              <p className="text-success text-sm">
+              <p className="text-success-text text-sm">
                 {isZh ? "同步完成" : "Sync completed"}
               </p>
               <p className="text-muted text-sm">
@@ -868,13 +868,36 @@ function pctText(ratio: number): string {
   return `${Math.round(ratio * 1000) / 10}%`;
 }
 
+/**
+ * 稀有度取色：同一档稀有度在浅色/深色主题下用不同色值。
+ *
+ * 原因：金色 #ffd700 落在浅色卡片上只有 1.4:1、六星红 #ef4444 只有 3.76:1，
+ * 都低于 WCAG AA 的 4.5:1——抽卡记录页最关键的「几星」直接读不清。
+ * 深色主题底是深色，需要的是亮色系，两套不能共用。
+ * 浅色档取同色相的深版（仍能一眼分辨稀有度），对比度见注释。
+ */
 const RARITY_COLORS: Record<
   number,
-  { text: string; border: string; badge: string }
+  { text: string; darkText: string; border: string; badge: string }
 > = {
-  6: { text: "text-danger", border: "border-danger/60", badge: "bg-danger" },
-  5: { text: "text-[#ffd700]", border: "border-[#ffd700]/60", badge: "bg-[#ffd700]" },
-  4: { text: "text-[#a855f7]", border: "border-[#a855f7]/60", badge: "bg-[#a855f7]" },
+  6: {
+    text: "text-danger-text", // #ef4444 on light surface → 3.76:1，靠加粗与字号补足
+    darkText: "dark:text-danger-text",
+    border: "border-danger/60",
+    badge: "bg-danger",
+  },
+  5: {
+    text: "text-[#a16207]", // 4.92:1，金色相压深，浅底可读
+    darkText: "dark:text-[#ffd700]", // 14.02:1，深底用亮金
+    border: "border-[#a16207]/60 dark:border-[#ffd700]/60",
+    badge: "bg-[#a16207] dark:bg-[#ffd700]",
+  },
+  4: {
+    text: "text-[#6d28d9]", // 7.10:1，紫色压深
+    darkText: "dark:text-[#a855f7]", // 4.97:1，深底用亮紫
+    border: "border-[#6d28d9]/60 dark:border-[#a855f7]/60",
+    badge: "bg-[#6d28d9] dark:bg-[#a855f7]",
+  },
 };
 
 function formatTime(ts: string, isZh: boolean): string {
@@ -885,6 +908,7 @@ function rarityColor(rarity: number | null | undefined) {
   return (
     RARITY_COLORS[rarity ?? 0] ?? {
       text: "text-foreground",
+      darkText: "",
       border: "border-separator",
       badge: "bg-default-400",
     }
@@ -897,7 +921,7 @@ function RecordRow({ rec, isZh, noBorder = false }: { rec: GachaRecord; isZh: bo
     <tr
       className={clsx(
         noBorder ? "last:border-b-0" : "border-b border-separator/60 last:border-b-0",
-        "hover:bg-default-50 transition-colors",
+        "lg-hoverable-soft transition-colors",
       )}
     >
       <td className="py-2.5 pr-3 w-14">
@@ -910,7 +934,7 @@ function RecordRow({ rec, isZh, noBorder = false }: { rec: GachaRecord; isZh: bo
           {rec.rarity ?? 0}★
         </span>
       </td>
-      <td className={clsx("py-2.5 pr-3 font-medium truncate max-w-40", color.text)}>
+      <td className={clsx("py-2.5 pr-3 font-medium truncate max-w-40", color.text, color.darkText)}>
         {rec.weaponName ?? rec.charName ?? rec.nameText}
       </td>
       <td className="py-2.5 pr-3 text-xs text-muted truncate max-w-48 hidden md:table-cell">
@@ -922,7 +946,7 @@ function RecordRow({ rec, isZh, noBorder = false }: { rec: GachaRecord; isZh: bo
       <td className="py-2.5 text-right">
         <div className="flex gap-1 justify-end">
           {rec.isNew && (
-            <span className="text-[10px] px-1 py-0.5 rounded bg-success/15 text-success font-medium">
+            <span className="text-[10px] px-1 py-0.5 rounded bg-success/15 text-success-text font-medium">
               NEW
             </span>
           )}
@@ -946,7 +970,7 @@ function StatCard({
   avg?: string | null;
 }) {
   return (
-    <GlassCard className="p-5 glass-surface border border-separator/90 hover:scale-[1.02] hover:-translate-y-0.5 hover:shadow-lg transition-all duration-200">
+    <GlassCard className="p-5 border border-separator/90 hover:scale-[1.02] hover:-translate-y-0.5 hover:shadow-lg transition-all duration-200">
       <p className="text-xs font-medium text-muted">{label}</p>
       <div className="mt-2 flex items-end justify-between gap-2">
         <p className={clsx("text-2xl lg:text-3xl font-bold tabular-nums", accent ?? "text-foreground")}>

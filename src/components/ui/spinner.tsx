@@ -9,7 +9,7 @@ export interface GlassSpinnerProps {
 const colorMap = {
   current: "text-current",
   default: "text-default-400",
-  primary: "text-primary",
+  primary: "text-primary-text",
 };
 
 function Spinner({
@@ -20,7 +20,7 @@ function Spinner({
   const px = typeof size === "number" ? size : size === "sm" ? 16 : size === "md" ? 24 : 32;
   return (
     <svg
-      className={cn("animate-spin", colorMap[color], className)}
+      className={cn("lg-spin animate-spin", colorMap[color], className)}
       width={px}
       height={px}
       viewBox="0 0 24 24"

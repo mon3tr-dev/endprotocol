@@ -37,7 +37,7 @@ export function AccountAvatar({
   return (
     <div
       className={clsx(
-        "relative flex-shrink-0 rounded-lg flex items-center justify-center font-bold text-primary overflow-hidden",
+        "relative flex-shrink-0 rounded-lg flex items-center justify-center font-bold text-primary-text overflow-hidden",
         SIZE_CLASS[size],
         className,
       )}

@@ -83,8 +83,9 @@ function DecrementButton({
       disabled={disabled}
       onClick={() => onChange(value - 1)}
       className={cn(
-        "flex h-9 w-9 items-center justify-center rounded-xl border border-separator bg-surface text-foreground",
-        "transition-all duration-200 hover:border-primary/50 hover:text-primary hover:scale-110 active:scale-90 disabled:opacity-40 disabled:pointer-events-none",
+        "lg-control flex h-9 w-9 items-center justify-center rounded-xl text-foreground",
+        "[transition:transform_var(--lg-dur-fast)_var(--lg-ease-spring),color_var(--lg-dur-fast)_var(--lg-ease-standard)]",
+        "hover:text-primary-text hover:scale-110 active:scale-90 disabled:opacity-40 disabled:pointer-events-none",
         className,
       )}
     >
@@ -119,8 +120,9 @@ function IncrementButton({
       disabled={disabled}
       onClick={() => onChange(value + 1)}
       className={cn(
-        "flex h-9 w-9 items-center justify-center rounded-xl border border-separator bg-surface text-foreground",
-        "transition-all duration-200 hover:border-primary/50 hover:text-primary hover:scale-110 active:scale-90 disabled:opacity-40 disabled:pointer-events-none",
+        "lg-control flex h-9 w-9 items-center justify-center rounded-xl text-foreground",
+        "[transition:transform_var(--lg-dur-fast)_var(--lg-ease-spring),color_var(--lg-dur-fast)_var(--lg-ease-standard)]",
+        "hover:text-primary-text hover:scale-110 active:scale-90 disabled:opacity-40 disabled:pointer-events-none",
         className,
       )}
     >

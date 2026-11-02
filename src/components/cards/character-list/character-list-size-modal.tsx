@@ -36,7 +36,7 @@ function ModePreview({ count }: { count: number }) {
           className="flex-1 rounded border border-primary/40 bg-primary-50 dark:bg-primary-900/30 flex items-center justify-center"
         >
           <svg
-            className="w-4 h-4 text-primary"
+            className="w-4 h-4 text-primary-text"
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
@@ -116,7 +116,7 @@ export function CharacterListSizeModal({
                 className={`p-4 rounded-lg cursor-pointer transition-all border-2 ${
                   isSelected
                     ? "border-primary bg-primary-50 dark:bg-primary-900/40 shadow-md"
-                    : "border-separator hover:border-primary/50 hover:bg-default-50"
+                    : "border-separator hover:border-primary/50 lg-hoverable-soft"
                 }`}
                 onClick={() => setSelectedMode(opt.mode)}
               >

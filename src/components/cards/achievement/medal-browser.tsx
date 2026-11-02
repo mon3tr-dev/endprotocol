@@ -166,7 +166,7 @@ export function MedalBrowser({
   return (
     <>
       <div className="flex gap-2 h-full overflow-hidden p-0.5">
-        <div className="w-44 shrink-0 flex flex-col px-2 rounded-xl border border-separator/70 glass-surface overflow-x-hidden">
+        <div className="w-44 shrink-0 flex flex-col px-2 rounded-xl border border-separator/70 lg-material overflow-x-hidden">
           <div className="relative mb-2 shrink-0">
             <div className="relative p-1.5">
               <input
@@ -174,7 +174,7 @@ export function MedalBrowser({
                 value={globalQuery}
                 onChange={(e) => setGlobalQuery(e.target.value)}
                 placeholder={t("card:ach_search")}
-                className="w-full px-2 py-1.5 pl-2 pr-6 rounded-lg glass-field border border-separator/70 text-xs text-foreground placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all duration-200 hover:border-primary/50"
+                className="w-full px-2 py-1.5 pl-2 pr-6 rounded-lg lg-field border border-separator/70 text-xs text-foreground placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all duration-200 hover:border-primary/50"
               />
               {globalQuery && (
                 <button
@@ -188,14 +188,14 @@ export function MedalBrowser({
               )}
             </div>
             {globalQuery.trim() && (
-              <div className="absolute left-1.5 right-1.5 top-full z-20 max-h-72 overflow-y-auto rounded-lg border border-separator/70 glass-surface-strong shadow-xl">
+              <div className="absolute left-1.5 right-1.5 top-full z-20 max-h-72 overflow-y-auto rounded-lg border border-separator/70 lg-regular shadow-xl">
                 {globalResults.length > 0 ? (
                   globalResults.slice(0, 50).map((medal) => (
                     <button
                       key={medal.achievementData.id}
                       type="button"
                       onClick={() => handleLocate(medal)}
-                      className="w-full text-left px-3 py-1.5 rounded-md text-xs truncate text-foreground hover:bg-white/5 transition-all duration-150 hover:translate-x-1"
+                      className="w-full text-left px-3 py-1.5 rounded-md text-xs truncate text-foreground lg-hoverable-soft transition-all duration-150 hover:translate-x-1"
                       title={medal.achievementData.name}
                     >
                       {medal.achievementData.name}
@@ -216,8 +216,8 @@ export function MedalBrowser({
                 type="button"
                 className={`w-full text-left px-4 py-2 rounded-lg text-sm transition-all duration-200 ${
                   activeCategory === cat.key
-                    ? "glass-surface border border-separator text-foreground font-medium hover:scale-[1.02] active:scale-[0.98]"
-                    : "text-foreground hover:bg-white/5 border border-transparent hover:scale-[1.02] active:scale-[0.98]"
+                    ? "lg-control border border-separator text-foreground font-medium hover:scale-[1.02] active:scale-[0.98]"
+                    : "text-foreground lg-hoverable-soft border border-transparent hover:scale-[1.02] active:scale-[0.98]"
                 }`}
                 onClick={() => setActiveCategory(cat.key)}
               >
@@ -228,7 +228,7 @@ export function MedalBrowser({
         </div>
 
         <div className="flex-1 flex flex-col min-w-0">
-          <div className="flex items-center gap-2 mb-3 shrink-0 flex-wrap border border-separator/50 rounded-lg p-2 glass-surface">
+          <div className="flex items-center gap-2 mb-3 shrink-0 flex-wrap border border-separator/50 rounded-lg p-2 lg-material">
             <span className="text-xs text-muted mr-1">
               {t("card:ach_level")}:
             </span>
@@ -239,7 +239,7 @@ export function MedalBrowser({
                 className={`text-xs px-2.5 py-1 rounded-full border transition-all duration-200 font-medium ${
                   levelFilter === lv
                     ? "border border-separator text-foreground shadow-sm hover:scale-110 active:scale-95"
-                    : "border border-separator/50 text-muted hover:border-foreground/50 hover:text-foreground hover:bg-white/5 hover:scale-110 active:scale-95"
+                    : "border border-separator/50 text-muted hover:border-foreground/50 hover:text-foreground lg-hoverable-soft hover:scale-110 active:scale-95"
                 }`}
                 onClick={() => setLevelFilter(lv)}
               >
@@ -256,7 +256,7 @@ export function MedalBrowser({
                 className={`text-xs px-2.5 py-1 rounded-full border transition-all duration-200 font-medium ${
                   platedFilter === opt
                     ? "border border-separator text-foreground shadow-sm hover:scale-110 active:scale-95"
-                    : "border border-separator/50 text-muted hover:border-foreground/50 hover:text-foreground hover:bg-white/5 hover:scale-110 active:scale-95"
+                    : "border border-separator/50 text-muted hover:border-foreground/50 hover:text-foreground lg-hoverable-soft hover:scale-110 active:scale-95"
                 }`}
                 onClick={() => setPlatedFilter(opt)}
               >
@@ -277,7 +277,7 @@ export function MedalBrowser({
                 className={`text-xs px-2.5 py-1 rounded-full border transition-all duration-200 font-medium ${
                   sortBy === opt
                     ? "border border-separator text-foreground shadow-sm hover:scale-110 active:scale-95"
-                    : "border border-separator/50 text-muted hover:border-foreground/50 hover:text-foreground hover:bg-white/5 hover:scale-110 active:scale-95"
+                    : "border border-separator/50 text-muted hover:border-foreground/50 hover:text-foreground lg-hoverable-soft hover:scale-110 active:scale-95"
                 }`}
                 onClick={() => setSortBy(opt)}
               >
@@ -288,7 +288,7 @@ export function MedalBrowser({
 
           <div
             ref={medalListRef}
-            className="flex-1 overflow-y-auto space-y-1 min-h-[420px] pb-16 border border-separator/50 rounded-lg p-2 glass-surface"
+            className="flex-1 overflow-y-auto space-y-1 min-h-[420px] pb-16 border border-separator/50 rounded-lg p-2 lg-material"
           >
             {filteredMedals.length === 0 ? (
               <div className="text-center text-muted py-12">
@@ -303,12 +303,12 @@ export function MedalBrowser({
                   <div
                     key={id}
                     data-medal-id={id}
-                    className={`flex items-center gap-3 p-2 rounded-lg border glass-surface transition-all duration-200 ${
+                    className={`flex items-center gap-3 p-2 rounded-lg border lg-material-row transition-all duration-200 ${
                       selectable ? "cursor-pointer" : ""
                     } ${
                       isSelected
                         ? "border-primary/50 bg-primary/10"
-                        : "border-transparent hover:bg-white/5 hover:scale-[1.01] active:scale-[0.99]"
+                        : "border-transparent lg-hoverable-soft hover:scale-[1.01] active:scale-[0.99]"
                     }`}
                     onClick={() => selectable && onToggle?.(id)}
                   >
@@ -347,7 +347,7 @@ export function MedalBrowser({
                       <div
                         className={`w-5 h-5 rounded shrink-0 flex items-center justify-center transition-colors ${
                           isSelected
-                            ? "bg-primary text-white"
+                            ? "bg-primary text-primary-foreground"
                             : "border-2 border-default-300"
                         }`}
                       >

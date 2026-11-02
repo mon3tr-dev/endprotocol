@@ -178,12 +178,12 @@ export function GameSidebarRail({ items }: GameSidebarRailProps) {
             expanded ? "" : "pointer-events-none"
           }`}
         >
-          {/* 常驻条本体：贴右边缘、只圆左侧两角 */}
+          {/* 常驻条本体：贴右边缘、只圆左侧两角（悬浮于游戏壁纸 → clear 变体） */}
           <div
-            className={`flex flex-col items-center overflow-hidden rounded-l-2xl border border-r-0 shadow-2xl backdrop-blur-md transition-[padding,background-color] duration-300 ease-out ${
+            className={`flex flex-col items-center overflow-hidden rounded-l-2xl border border-r-0 transition-[padding,background-color] duration-300 ease-out ${
               expanded
-                ? "border-white/10 bg-black/55 p-1.5"
-                : "border-white/10 bg-black/45 p-1"
+                ? "lg-media-chip lg-hairline p-1.5"
+                : "lg-media-chip lg-hairline p-1"
             }`}
           >
             {/* 图标列：grid-template-rows 0fr → 1fr 做高度动画，opacity 同步换内容 */}
@@ -223,8 +223,8 @@ export function GameSidebarRail({ items }: GameSidebarRailProps) {
                       }}
                       className={`flex shrink-0 items-center justify-center rounded-xl transition-[width,height,color,background-color] duration-300 ease-out ${cell} ${
                         canOpen
-                          ? "cursor-pointer text-white/75 hover:bg-white/10 hover:text-white"
-                          : "cursor-default text-white/55 hover:bg-white/10"
+                          ? "cursor-pointer text-white/75 lg-hoverable hover:text-white"
+                          : "cursor-default text-white/55 lg-hoverable"
                       }`}
                     >
                       {item.media === "CS" ? (
@@ -261,7 +261,7 @@ export function GameSidebarRail({ items }: GameSidebarRailProps) {
               aria-expanded={expanded}
               onMouseEnter={() => setHoveredIndex(-1)}
               onClick={() => (expandedRef.current ? collapse() : expand())}
-              className="pointer-events-auto flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-xl text-white/80 transition-colors duration-200 hover:bg-white/10 hover:text-white"
+              className="pointer-events-auto flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-xl text-white/80 transition-colors duration-200 lg-hoverable hover:text-white"
             >
               <MorphIcon icon={Share2} size={15} aria-hidden />
             </button>
@@ -281,7 +281,7 @@ export function GameSidebarRail({ items }: GameSidebarRailProps) {
             className="pointer-events-none fixed z-30 animate-fade-in"
             style={{ right: flyout.right, bottom: flyout.bottom }}
           >
-            <div className="flex w-max max-w-[260px] flex-col items-center gap-1.5 rounded-xl border border-white/10 bg-black/70 p-3 shadow-2xl backdrop-blur-xl">
+            <div className="lg-media-chip lg-hairline flex w-max max-w-[260px] flex-col items-center gap-1.5 rounded-xl p-3">
               {hoveredItem.qr_url ? (
                 <img
                   src={hoveredItem.qr_url}

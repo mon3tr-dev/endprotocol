@@ -130,7 +130,7 @@ export function TodoListSettingsModal({
       <CustomModalBody>
         <div className="space-y-4">
           <div className="flex items-center gap-3">
-            <span className="flex w-9 h-9 shrink-0 items-center justify-center text-primary">
+            <span className="flex w-9 h-9 shrink-0 items-center justify-center text-primary-text">
               <TodoIcon icon={icon} size={24} />
             </span>
             <GlassInput
@@ -232,7 +232,7 @@ export function TodoListSettingsModal({
                   }
                   setIsCustomColorOpen((open) => !open);
                 }}
-                className="flex h-9 w-9 items-center justify-center rounded-full border-2 border-dashed border-default-300 text-muted transition-all hover:scale-105 hover:border-primary/60 hover:text-primary"
+                className="flex h-9 w-9 items-center justify-center rounded-full border-2 border-dashed border-default-300 text-muted transition-all hover:scale-105 hover:border-primary/60 hover:text-primary-text"
                 aria-label={t("card:todo_color_custom")}
                 aria-expanded={isCustomColorOpen}
                 title={t("card:todo_color_custom")}
@@ -241,7 +241,7 @@ export function TodoListSettingsModal({
               </button>
             </div>
             {isCustomColorOpen && (
-              <div className="mt-3 max-w-sm rounded-2xl border border-separator/80 glass-surface-strong p-4 shadow-xl">
+              <div className="mt-3 max-w-sm rounded-2xl border border-separator/80 lg-regular p-4 shadow-xl">
                 <p className="mb-3 text-sm font-medium text-foreground">
                   {t("card:todo_color_custom")}
                 </p>
@@ -264,7 +264,7 @@ export function TodoListSettingsModal({
                       className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
                     />
                   </label>
-                  <div className="flex h-9 min-w-0 flex-1 items-center gap-1 rounded-xl glass-field px-3">
+                  <div className="flex h-9 min-w-0 flex-1 items-center gap-1 rounded-xl lg-field px-3">
                     <span className="shrink-0 font-mono text-sm text-muted/70">
                       #
                     </span>
@@ -301,7 +301,7 @@ export function TodoListSettingsModal({
                   {hexToRgb(customColorDraft).map((value, channel) => (
                     <label
                       key={channel}
-                      className="flex h-9 min-w-0 flex-1 items-center gap-1 rounded-xl glass-field px-2"
+                      className="flex h-9 min-w-0 flex-1 items-center gap-1 rounded-xl lg-field px-2"
                     >
                       <span className="shrink-0 font-mono text-xs text-muted/60">
                         {(["R", "G", "B"] as const)[channel]}

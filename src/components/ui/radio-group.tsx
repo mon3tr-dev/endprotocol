@@ -121,7 +121,7 @@ function GlassRadioGroupRoot({
       aria-orientation={orientation}
       onKeyDown={handleKeyDown}
       className={cn(
-        "inline-flex w-fit max-w-full items-center gap-1 rounded-xl border border-separator/60 bg-default-100/50 p-1",
+        "lg-control inline-flex w-fit max-w-full items-center gap-1 rounded-xl border border-separator/60 p-1",
         orientation === "vertical" && "flex-col items-stretch",
         className,
       )}
@@ -163,11 +163,12 @@ function GlassRadioGroupItem({
         if (!checked) ctx.onValueChange?.(value);
       }}
       className={cn(
-        "inline-flex h-8 select-none items-center justify-center gap-1.5 rounded-lg px-3 text-sm font-medium transition-all duration-200",
+        "inline-flex h-8 select-none items-center justify-center gap-1.5 rounded-lg px-3 text-sm font-medium",
+        "[transition:transform_var(--lg-dur-fast)_var(--lg-ease-spring),background-color_var(--lg-dur-fast)_var(--lg-ease-standard),color_var(--lg-dur-fast)_var(--lg-ease-standard)]",
         "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50",
         checked
-          ? "bg-primary/15 text-primary shadow-[inset_0_0_0_1px_rgba(99,102,241,0.35)]"
-          : "text-muted hover:bg-default-200/40 hover:text-foreground",
+          ? "bg-primary/15 text-primary-text shadow-[inset_0_0_0_1px_rgba(99,102,241,0.35)]"
+          : "text-muted lg-hoverable hover:text-foreground",
         disabled && "pointer-events-none opacity-50",
         className,
       )}

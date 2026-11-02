@@ -43,9 +43,12 @@ const GlassInput = forwardRef<HTMLInputElement, GlassInputProps>(
           onValueChange?.(e.target.value);
         }}
         className={cn(
-          "w-full min-w-0 rounded-xl border border-separator bg-field px-3 text-foreground placeholder:text-muted/70",
-          "transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-primary/40",
-          "hover:border-primary/50 hover:shadow-sm",
+          // lg-field：替换元素直接铺 88% 实底（::before 不渲染），
+          // focus 反馈用 ring 而非边框变色
+          "lg-field w-full min-w-0 rounded-xl px-3 text-foreground placeholder:text-muted/70",
+          "[transition:box-shadow_var(--lg-dur-fast)_var(--lg-ease-standard)]",
+          "focus:outline-none focus:ring-2 focus:ring-primary/40",
+          "hover:brightness-[1.03]",
           "disabled:opacity-50 disabled:pointer-events-none",
           isInvalid && "border-danger",
           sizeClass,
@@ -85,9 +88,10 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
         ref={ref}
         type={type}
         className={cn(
-          "flex h-9 w-full rounded-xl border border-separator bg-field px-3 py-1 text-sm text-foreground",
+          "lg-field flex h-9 w-full rounded-xl px-3 py-1 text-sm text-foreground",
           "placeholder:text-muted/70",
-          "transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-primary/40",
+          "[transition:box-shadow_var(--lg-dur-fast)_var(--lg-ease-standard)]",
+          "focus:outline-none focus:ring-2 focus:ring-primary/40",
           "disabled:cursor-not-allowed disabled:opacity-50",
           className,
         )}

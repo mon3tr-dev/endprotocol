@@ -127,8 +127,8 @@ export function TabEditorModal({
                     onClick={() => setSelectedIcon(iconKey)}
                     className={`flex flex-col items-center gap-1 p-2 rounded-xl border-2 transition-all ${
                       isSelected
-                        ? "border-primary bg-primary/20 text-primary shadow-[0_0_14px_hsl(var(--heroui-primary)/0.45)] ring-2 ring-primary/50 scale-105 font-semibold"
-                        : "border-separator hover:border-default-400 text-muted hover:text-foreground hover:bg-default-50"
+                        ? "border-primary bg-primary/20 text-primary-text shadow-[0_0_14px_hsl(var(--heroui-primary)/0.45)] ring-2 ring-primary/50 scale-105 font-semibold"
+                        : "border-separator hover:border-default-400 text-muted hover:text-foreground lg-hoverable-soft"
                     }`}
                   >
                     <Icon size={22} />
@@ -174,7 +174,7 @@ export function TabEditorModal({
                       <button
                         type="button"
                         onClick={() => handleRemoveTag(tag)}
-                        className="ml-0.5 hover:text-danger transition-colors"
+                        className="ml-0.5 hover:text-danger-text transition-colors"
                       >
                         <MorphIcon icon={X} size={12} />
                       </button>
@@ -194,7 +194,7 @@ export function TabEditorModal({
                 ? "此标签页中的所有卡片将默认使用该角色的数据"
                 : "All cards in this tab will use this role's data by default"}
             </p>
-            <div className="flex flex-col gap-1.5 max-h-48 overflow-y-auto p-2 border border-separator rounded-lg">
+            <div className="flex flex-col gap-1.5 max-h-48 overflow-y-auto p-2 lg-material-sub border border-separator rounded-lg">
               {accounts.map((acc) => {
                 const isSelected = defaultRoleId === acc.id;
                 return (
@@ -205,7 +205,7 @@ export function TabEditorModal({
                     className={`flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer transition-all border-2 w-full text-left ${
                       isSelected
                         ? "border-primary bg-primary-50 dark:bg-primary-900/40 shadow-sm"
-                        : "border-separator hover:border-primary/50 hover:bg-default-50"
+                        : "border-separator hover:border-primary/50 lg-hoverable-soft"
                     }`}
                   >
                     <AccountAvatar
@@ -218,7 +218,7 @@ export function TabEditorModal({
                       <span className="text-xs text-muted ml-1.5">Lv.{acc.level}</span>
                     </div>
                     {isSelected && (
-                      <MorphIcon icon={Check} size={16} className="text-primary shrink-0" />
+                      <MorphIcon icon={Check} size={16} className="text-primary-text shrink-0" />
                     )}
                   </button>
                 );

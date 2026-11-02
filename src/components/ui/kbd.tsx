@@ -20,7 +20,8 @@ function Kbd({ className, children, ...rest }: GlassKbdProps) {
   return (
     <kbd
       className={cn(
-        "inline-flex items-center gap-0.5 rounded-md border border-separator bg-default-50/80 px-1.5 py-0.5",
+        // 小元素不做模糊（无视觉收益），纯色轻底 + 1px 边
+        "inline-flex items-center gap-0.5 rounded-md border border-separator lg-inset px-1.5 py-0.5",
         "font-sans text-[10px] font-medium text-muted",
         className,
       )}

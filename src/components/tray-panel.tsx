@@ -63,11 +63,11 @@ function MetricRow({
   const filled = percent >= 100;
 
   return (
-    <div className="rounded-xl px-2.5 py-1.5 transition-colors duration-200 hover:bg-default-100/60">
+    <div className="rounded-xl px-2.5 py-1.5 transition-colors duration-200 lg-hoverable">
       <div className="flex items-center gap-2">
         <span
           className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-lg transition-colors duration-200 ${
-            filled ? "bg-success/15 text-success" : "bg-primary/15 text-primary"
+            filled ? "bg-success/15 text-success-text" : "bg-primary/15 text-primary-text"
           }`}
         >
           <MorphIcon icon={Icon} size={13} />
@@ -117,7 +117,7 @@ function Avatar({
 
   return (
     <div
-      className={`relative flex items-center justify-center overflow-hidden rounded-lg bg-primary/15 text-xs font-bold text-primary ${className ?? ""}`}
+      className={`relative flex items-center justify-center overflow-hidden rounded-lg bg-primary/15 text-xs font-bold text-primary-text ${className ?? ""}`}
     >
       {showImage ? (
         <Img
@@ -262,7 +262,7 @@ export function TrayPanel() {
   };
 
   return (
-    <div className="flex h-full w-full select-none flex-col overflow-hidden rounded-[10px] glass-native text-foreground animate-scale-in">
+    <div className="flex h-full w-full select-none flex-col overflow-hidden rounded-[10px] lg-native text-foreground animate-scale-in">
       {/* 顶部品牌区 — 与标题栏一致：主题色圆点 + 全大写字距标题 */}
       <header className="flex shrink-0 items-center justify-between gap-2 px-3 pb-2 pt-2.5">
         <div className="flex min-w-0 items-center gap-1.5">
@@ -275,7 +275,7 @@ export function TrayPanel() {
           </span>
         </div>
         {hasUser && accountLevel > 0 && (
-          <span className="shrink-0 rounded-full bg-default-100/80 px-1.5 py-0.5 text-[9px] font-medium text-muted">
+          <span className="shrink-0 rounded-full lg-inset px-1.5 py-0.5 text-[9px] font-medium text-muted">
             {t("tray.level")} {accountLevel}
           </span>
         )}
@@ -285,7 +285,7 @@ export function TrayPanel() {
       {hasUser ? (
         <>
           <div className="shrink-0 px-3 pb-2">
-            <div className="flex items-center gap-2.5 rounded-xl bg-default-100/50 p-2">
+            <div className="flex items-center gap-2.5 rounded-xl lg-inset p-2">
               <Avatar
                 src={userInfo.avatar ?? ""}
                 alt={nickname}
@@ -348,7 +348,7 @@ export function TrayPanel() {
         </>
       ) : (
         <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 px-6 text-center">
-          <span className="flex h-10 w-10 items-center justify-center rounded-full bg-default-100/70 text-muted">
+          <span className="flex h-10 w-10 items-center justify-center rounded-full lg-inset text-muted">
             <MorphIcon icon={CircleUserRound} size={20} />
           </span>
           <p className="text-[11px] font-medium text-foreground">
@@ -365,7 +365,7 @@ export function TrayPanel() {
         <button
           type="button"
           onClick={handleShowMain}
-          className="flex w-full cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1.5 text-[11px] font-medium text-foreground/85 transition-all duration-200 hover:bg-primary/10 hover:text-primary active:scale-[0.98]"
+          className="flex w-full cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1.5 text-[11px] font-medium text-foreground/85 transition-all duration-200 hover:bg-primary/10 hover:text-primary-text active:scale-[0.98]"
         >
           <MorphIcon icon={ArrowUpRight} size={13} />
           <span className="flex-1 text-left">{t("tray.show_window")}</span>
@@ -373,7 +373,7 @@ export function TrayPanel() {
         <button
           type="button"
           onClick={handleQuit}
-          className="flex w-full cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1.5 text-[11px] font-medium text-danger/80 transition-all duration-200 hover:bg-danger/10 hover:text-danger active:scale-[0.98]"
+          className="flex w-full cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1.5 text-[11px] font-medium text-danger/80 transition-all duration-200 hover:bg-danger/10 hover:text-danger-text active:scale-[0.98]"
         >
           <MorphIcon icon={Power} size={13} />
           <span className="flex-1 text-left">{t("tray.quit")}</span>

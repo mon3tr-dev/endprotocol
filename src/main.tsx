@@ -28,8 +28,6 @@ import { installCrashHandlers } from "@/utils/crashReporting";
 import { loadAccountAvailability } from "@/utils/accountAvailability";
 import { applyWindowEffectsSupport } from "@/utils/platform";
 import {
-  DEFAULT_GLASS_CLARITY,
-  applyGlassClarity,
   applyThemeColor,
   applyThemeMode,
   resolveThemeColor,
@@ -66,11 +64,10 @@ Promise.all([
   getConfig<ThemeMode>("theme_mode"),
   getConfig<string>("theme_color"),
   getConfig<ThemeColor[]>("theme_custom_colors"),
-  getConfig<number>("glass_clarity"),
   loadBackgroundSettings(),
   loadAccountAvailability(),
   initLogSettings(),
-]).then(([savedLang, savedMode, savedColor, savedCustom, savedClarity]) => {
+]).then(([savedLang, savedMode, savedColor, savedCustom]) => {
   const lng = savedLang || (navigator.language.startsWith("zh") ? "zh" : "en");
   setInitialLanguage(lng);
   setStartupPhase(30, i18n.t("startup.loadingData"));
@@ -79,7 +76,6 @@ Promise.all([
   const colors = resolveThemeColor(savedColor, savedCustom ?? []).colors;
   applyThemeColor(colors);
   applyThemeMode(savedMode ?? "system");
-  applyGlassClarity(savedClarity ?? DEFAULT_GLASS_CLARITY);
 
   initOverlayScrollbar();
 

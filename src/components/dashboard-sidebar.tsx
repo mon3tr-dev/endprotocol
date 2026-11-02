@@ -980,7 +980,7 @@ export const Sidebar = ({
       regex.test(part) ? (
         <mark
           key={index}
-          className="bg-primary/20 text-primary font-semibold px-0.5 rounded"
+          className="bg-primary/20 text-primary-text font-semibold px-0.5 rounded"
         >
           {part}
         </mark>
@@ -1031,7 +1031,7 @@ export const Sidebar = ({
           {isLoadingAccount || isManualRefreshing ? (
             <div
               className={clsx(
-                "glass-surface flex items-center rounded-xl transition-all duration-300 ease-out",
+                "lg-control flex items-center rounded-xl transition-all duration-300 ease-out",
                 collapsed ? "p-[5px]" : "gap-3 p-2",
               )}
             >
@@ -1060,9 +1060,9 @@ export const Sidebar = ({
               }
               title={collapsed ? selectedAccount.nickname : undefined}
               className={clsx(
-                "glass-surface flex items-center rounded-xl transition-all duration-300 ease-out group",
+                "lg-control flex items-center rounded-xl transition-all duration-300 ease-out group",
                 collapsed
-                  ? "p-[5px] cursor-pointer hover:bg-default-100"
+                  ? "p-[5px] cursor-pointer lg-hoverable"
                   : "gap-3 p-2",
               )}
             >
@@ -1122,13 +1122,13 @@ export const Sidebar = ({
                   : undefined
               }
               className={clsx(
-                "glass-surface flex items-center rounded-xl border border-danger/40 transition-all duration-300 ease-out hover:border-danger/60",
+                "lg-control flex items-center rounded-xl border border-danger/40 transition-all duration-300 ease-out hover:border-danger/60",
                 collapsed ? "p-[5px]" : "gap-3 p-2.5",
               )}
             >
               <div
                 className={clsx(
-                  "rounded-lg flex items-center justify-center transition-all duration-300 ease-in-out text-danger",
+                  "rounded-lg flex items-center justify-center transition-all duration-300 ease-in-out text-danger-text",
                   collapsed ? "w-8 h-8" : "w-10 h-10",
                 )}
               >
@@ -1147,7 +1147,7 @@ export const Sidebar = ({
                     : "max-w-full max-h-12 flex-1 opacity-100",
                 )}
               >
-                <p className="text-sm font-medium text-danger">
+                <p className="text-sm font-medium text-danger-text">
                   {i18n.t("settings.account.account_unavailable_title")}
                 </p>
                 <p className="text-xs text-muted/60">
@@ -1165,7 +1165,7 @@ export const Sidebar = ({
                   : undefined
               }
               className={clsx(
-                "glass-surface flex items-center rounded-xl border border-dashed border-separator/60 transition-all duration-300 ease-out",
+                "lg-control flex items-center rounded-xl border border-dashed border-separator/60 transition-all duration-300 ease-out",
                 collapsed ? "p-[5px]" : "gap-3 p-2.5",
               )}
             >
@@ -1209,7 +1209,7 @@ export const Sidebar = ({
         {false && (
           <div className="px-4 py-4" ref={searchRef}>
             <div className="relative">
-              <div className="bg-default-100 hover:bg-default-200 transition-colors rounded-lg h-9 flex items-center px-3 gap-2">
+              <div className="lg-inset hover:bg-default-200 transition-colors rounded-lg h-9 flex items-center px-3 gap-2">
                 <SearchIcon className="text-base text-muted pointer-events-none flex-shrink-0" />
                 <input
                   ref={inputRef}
@@ -1288,7 +1288,7 @@ export const Sidebar = ({
                 createPortal(
                   <div
                     ref={searchMenuRef}
-                    className="fixed z-[9999] bg-background glass-surface-strong border-2 border-separator/80 rounded-lg shadow-2xl max-h-[400px] overflow-y-auto animate-scale-in"
+                    className="lg-regular fixed z-[9999] border border-separator/60 rounded-lg max-h-[400px] overflow-y-auto animate-scale-in"
                     style={{
                       top: searchMenuPos.top + 8,
                       left: searchMenuPos.left,
@@ -1322,7 +1322,7 @@ export const Sidebar = ({
                           ),
                         ).map(([category, items]) => (
                           <div key={category}>
-                            <div className="px-3 py-2 text-xs font-semibold text-muted uppercase tracking-wider bg-default-100 border-b border-separator">
+                            <div className="px-3 py-2 text-xs font-semibold text-muted uppercase tracking-wider lg-inset border-b border-separator">
                               {category}
                             </div>
                             {items.map((result) => {
@@ -1337,7 +1337,7 @@ export const Sidebar = ({
                                   className={`w-full px-3 py-2.5 flex items-start gap-3 transition-colors text-left border-b border-separator last:border-b-0 ${
                                     isSelected
                                       ? "bg-primary/20"
-                                      : "hover:bg-default-50"
+                                      : "lg-hoverable-soft"
                                   }`}
                                   onClick={() => handleSelectResult(result)}
                                   onMouseEnter={() =>
@@ -1355,7 +1355,7 @@ export const Sidebar = ({
                                       {/* Show language badge if matched in other language */}
                                       {result.matchedLang &&
                                         result.matchedLang !== "current" && (
-                                          <span className="px-1.5 py-0.5 text-[10px] font-semibold rounded bg-warning/20 text-warning border border-warning/30 flex-shrink-0">
+                                          <span className="px-1.5 py-0.5 text-[10px] font-semibold rounded bg-warning/20 text-warning-text border border-warning/30 flex-shrink-0">
                                             {result.matchedLang === "en"
                                               ? "EN"
                                               : "中文"}
@@ -1375,7 +1375,7 @@ export const Sidebar = ({
                                       result.matchedLang !== "current" &&
                                       result.matchedText && (
                                         <p className="text-xs mt-1 px-2 py-1 bg-warning/10 border border-warning/20 rounded">
-                                          <span className="text-warning font-medium mr-1">
+                                          <span className="text-warning-text font-medium mr-1">
                                             {i18n.language === "zh"
                                               ? "匹配:"
                                               : "Match:"}
@@ -1455,7 +1455,7 @@ export const Sidebar = ({
                             : "gap-1 pl-3 pr-8 py-2.5",
                           draggingNav === "dashboard" ? "opacity-60" : "",
                           location.pathname === "/"
-                            ? "glass-surface-strong text-foreground"
+                            ? "lg-control text-foreground"
                             : "text-foreground hover:text-foreground",
                         )}
                       >
@@ -1594,7 +1594,7 @@ export const Sidebar = ({
                                             ? "opacity-60"
                                             : "",
                                           isTabActive
-                                            ? "glass-surface-strong text-foreground font-medium"
+                                            ? "lg-control text-foreground font-medium"
                                             : "text-muted hover:text-foreground",
                                         )}
                                       >
@@ -1659,7 +1659,7 @@ export const Sidebar = ({
                             : "gap-3 pl-3 pr-8 py-2.5",
                           draggingNav === "characters" ? "opacity-60" : "",
                           location.pathname === "/characters"
-                            ? "glass-surface-strong text-foreground"
+                            ? "lg-control text-foreground"
                             : "text-foreground hover:text-foreground",
                         )}
                       >
@@ -1716,7 +1716,7 @@ export const Sidebar = ({
                             : "gap-3 pl-3 pr-8 py-2.5",
                           draggingNav === "medals" ? "opacity-60" : "",
                           location.pathname === "/medals"
-                            ? "glass-surface-strong text-foreground"
+                            ? "lg-control text-foreground"
                             : "text-foreground hover:text-foreground",
                         )}
                       >
@@ -1775,7 +1775,7 @@ export const Sidebar = ({
                             : "gap-3 pl-3 pr-8 py-2.5",
                           draggingNav === "attendance" ? "opacity-60" : "",
                           location.pathname === "/attendance"
-                            ? "glass-surface-strong text-foreground"
+                            ? "lg-control text-foreground"
                             : "text-foreground hover:text-foreground",
                         )}
                       >
@@ -1832,7 +1832,7 @@ export const Sidebar = ({
                             : "gap-3 pl-3 pr-8 py-2.5",
                           draggingNav === "gacha" ? "opacity-60" : "",
                           location.pathname === "/gacha"
-                            ? "glass-surface-strong text-foreground"
+                            ? "lg-control text-foreground"
                             : "text-foreground hover:text-foreground",
                         )}
                       >
@@ -1889,7 +1889,7 @@ export const Sidebar = ({
                             : "gap-3 pl-3 pr-8 py-2.5",
                           draggingNav === "todo" ? "opacity-60" : "",
                           location.pathname === "/todo"
-                            ? "glass-surface-strong text-foreground"
+                            ? "lg-control text-foreground"
                             : "text-foreground hover:text-foreground",
                         )}
                       >
@@ -1946,7 +1946,7 @@ export const Sidebar = ({
                             : "gap-3 pl-3 pr-8 py-2.5",
                           draggingNav === "domain" ? "opacity-60" : "",
                           location.pathname === "/domain"
-                            ? "glass-surface-strong text-foreground"
+                            ? "lg-control text-foreground"
                             : "text-foreground hover:text-foreground",
                         )}
                       >
@@ -2005,7 +2005,7 @@ export const Sidebar = ({
                             : "gap-3 pl-3 pr-8 py-2.5",
                           draggingNav === "spaceship" ? "opacity-60" : "",
                           location.pathname === "/spaceship"
-                            ? "glass-surface-strong text-foreground"
+                            ? "lg-control text-foreground"
                             : "text-foreground hover:text-foreground",
                         )}
                       >
@@ -2134,7 +2134,7 @@ export const Sidebar = ({
                       ? "justify-center px-0 py-2.5 gap-0"
                       : "gap-3 px-3 py-2.5",
                     isActive
-                      ? "glass-surface-strong text-foreground"
+                      ? "lg-control text-foreground"
                       : "text-foreground hover:text-foreground",
                   )}
                 >
@@ -2174,7 +2174,7 @@ export const Sidebar = ({
                   href={siteConfig.links.github}
                   rel="noopener noreferrer"
                   target="_blank"
-                  className="glass-surface p-2 rounded-full transition-all duration-200 hover:scale-105 active:scale-95"
+                  className="lg-control p-2 rounded-full transition-all duration-200 hover:scale-105 active:scale-95"
                 >
                   <GithubIcon className="text-muted w-4 h-4 hover:text-foreground transition-colors" />
                 </a>
@@ -2198,7 +2198,7 @@ export const Sidebar = ({
                 aria-label={
                   collapsed ? "Expand sidebar" : "Collapse sidebar"
                 }
-                className="glass-surface p-2 rounded-full transition-all duration-200 hover:scale-105 active:scale-95 text-muted hover:text-foreground"
+                className="lg-control p-2 rounded-full transition-all duration-200 hover:scale-105 active:scale-95 text-muted hover:text-foreground"
               >
                 {collapsed ? (
                   <ChevronRightIcon size={16} />

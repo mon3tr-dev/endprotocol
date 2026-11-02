@@ -264,7 +264,7 @@ export default function SystemResourceCard({
 
   if (!cardSettings) {
     return (
-      <GlassCard className="p-4 glass-surface border border-separator/90 h-full w-full flex items-center justify-center">
+      <GlassCard className="p-4  border border-separator/90 h-full w-full flex items-center justify-center">
         <span className="text-xs text-muted animate-pulse-soft">
           {t("card:system_resource_loading")}
         </span>
@@ -278,7 +278,7 @@ export default function SystemResourceCard({
 
   return (
     <>
-      <GlassCard className="glass-surface border border-separator/90 h-full w-full select-none rounded-[10px] overflow-hidden flex flex-col">
+      <GlassCard className="border border-separator/90 h-full w-full select-none rounded-[10px] overflow-hidden flex flex-col">
         {cardSettings.showTitleBar && (
           <div className="flex items-center justify-between gap-2 px-3 pt-2.5 pb-1 shrink-0">
             <div className="flex items-center gap-1.5 min-w-0">
@@ -294,7 +294,7 @@ export default function SystemResourceCard({
             <button
               type="button"
               onClick={() => setIsSettingsOpen(true)}
-              className="shrink-0 w-6 h-6 flex items-center justify-center rounded-md text-muted hover:text-foreground hover:bg-default-100 transition-colors"
+              className="shrink-0 w-6 h-6 flex items-center justify-center rounded-md text-muted hover:text-foreground lg-hoverable transition-colors"
               aria-label={t("card:system_resource_settings")}
               title={t("card:system_resource_settings")}
             >
@@ -413,7 +413,7 @@ function NavButton({
       type="button"
       onClick={onClick}
       aria-label={label}
-      className="w-5 h-5 flex items-center justify-center rounded-md text-muted hover:text-foreground hover:bg-default-100 transition-colors text-sm leading-none"
+      className="w-5 h-5 flex items-center justify-center rounded-md text-muted hover:text-foreground lg-hoverable transition-colors text-sm leading-none"
     >
       {children}
     </button>

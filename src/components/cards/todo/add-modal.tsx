@@ -46,7 +46,7 @@ export function TodoAddModal({ isOpen, onClose, onConfirm }: TodoAddModalProps) 
                     className="p-3 cursor-pointer border-2 border-transparent hover:border-primary/50 transition-all"
                   >
                     <div className="flex items-center gap-2.5 min-w-0">
-                      <span className="flex shrink-0 text-primary">
+                      <span className="flex shrink-0 text-primary-text">
                         <TodoIcon icon={list.icon} size={20} />
                       </span>
                       <div className="min-w-0">
@@ -81,7 +81,7 @@ export function TodoAddModal({ isOpen, onClose, onConfirm }: TodoAddModalProps) 
                   className="p-3 cursor-pointer border-2 border-transparent hover:border-primary/50 transition-all"
                 >
                   <div className="flex items-center gap-2.5">
-                    <span className="flex shrink-0 text-primary">
+                    <span className="flex shrink-0 text-primary-text">
                       <TodoIcon icon={tpl.icon} size={20} />
                     </span>
                     <div className="min-w-0">

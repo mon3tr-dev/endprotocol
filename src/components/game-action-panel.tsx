@@ -71,11 +71,16 @@ const STORAGE_KEY_CHANNEL = "launcher_channel";
 const STORAGE_KEY_SKIP_STOP_CONFIRM = "launcher_skip_stop_confirm";
 const STORAGE_KEY_CANCEL_BEHAVIOR = "launcher_cancel_behavior"; // "ask" | "keep" | "delete"
 
-/** 游戏操作面板统一按钮风格（与预下载按钮一致） */
+/** 游戏操作面板统一按钮风格（与预下载按钮一致）
+ *
+ * 底色改走 `.lg-media-chip`（globals.css 里定义）：它和标题栏、侧栏、
+ * 卡片共用同一套 tint × 密度 × 主题色染色，只是额外按 --lg-scrim-alpha
+ * 压暗以适配视频/壁纸背景。此前这里写死 bg-black/40，是全应用里唯一
+ * 一处无论 theme 深浅都保持纯黑四成的玻璃，也是"深浅不一"最明显的一处。 */
 const PILL_BASE =
-  "inline-flex items-center h-11 rounded-full whitespace-nowrap backdrop-blur-md border border-white/10 bg-black/40 shadow-lg transition-all duration-200 shrink-0";
+  "lg-media-chip inline-flex items-center h-11 rounded-full whitespace-nowrap lg-hairline border shadow-lg transition-all duration-200 shrink-0";
 const PILL_INTERACTIVE =
-  "cursor-pointer hover:bg-black/55 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed";
+  "lg-media-chip-interactive cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed";
 const PILL_TEXT = "text-xs font-medium text-white/80";
 
 /** 剩余时间秒数 → `m:ss` / `h:mm:ss` */
@@ -95,7 +100,7 @@ function ButtonProgressRing({ progress }: { progress: number }) {
   return (
     <svg
       aria-hidden="true"
-      className="absolute inset-0 z-20 h-full w-full pointer-events-none text-primary"
+      className="absolute inset-0 z-20 h-full w-full pointer-events-none text-primary-text"
       viewBox="0 0 100 100"
       preserveAspectRatio="none"
     >
@@ -140,7 +145,7 @@ function ProgressFlyout({
 }) {
   return createPortal(
     <div
-      className="fixed z-[200] w-64 rounded-xl glass-surface-strong border border-separator/70 shadow-2xl px-4 py-3 pointer-events-none"
+      className="fixed z-[200] lg-regular w-64 rounded-xl border border-separator/70 shadow-2xl px-4 py-3 pointer-events-none"
       style={{
         left: pos.x,
         top: pos.y,
@@ -1832,7 +1837,7 @@ export function GameActionPanel() {
             }}
             disabled={!statusReady || (preloading && hasUpdate)}
             className={`${PILL_BASE} ${PILL_INTERACTIVE} relative min-w-[120px] px-5 gap-2.5 text-sm font-semibold text-white overflow-hidden active:scale-95 justify-center ${
-              gameRunning || switching ? "!border-danger/60 !text-danger" : ""
+              gameRunning || switching ? "!border-danger/60 !text-danger-text" : ""
             }`}
           >
             {/* Cancellation / stop warning overlay */}
@@ -2206,7 +2211,7 @@ export function GameActionPanel() {
             <div
               ref={menuFlyoutRef}
               data-flyout-menu
-              className="fixed z-[200] w-52 rounded-xl glass-surface-strong border border-separator/70 shadow-2xl animate-fade-in"
+              className="fixed z-[200] lg-regular w-52 rounded-xl border border-separator/70 shadow-2xl animate-fade-in"
               style={{
                 left: menuFlyoutPos.x,
                 top: menuFlyoutPos.y,
@@ -2219,7 +2224,7 @@ export function GameActionPanel() {
                   setMenuFlyoutPos(null);
                   setSettingsOpen(true);
                 }}
-                className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-foreground/80 hover:bg-white/10 hover:text-foreground transition-colors cursor-pointer"
+                className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-foreground/80 lg-hoverable hover:text-foreground transition-colors cursor-pointer"
               >
                 <svg
                   className="w-4 h-4 text-foreground/50"
@@ -2250,7 +2255,7 @@ export function GameActionPanel() {
                   setMenuFlyoutPos(null);
                   setQuickLaunchOpen(true);
                 }}
-                className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-foreground/80 hover:bg-white/10 hover:text-foreground transition-colors cursor-pointer"
+                className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-foreground/80 lg-hoverable hover:text-foreground transition-colors cursor-pointer"
               >
                 <svg
                   className="w-4 h-4 text-foreground/50"
@@ -2277,7 +2282,7 @@ export function GameActionPanel() {
                   setConfirmCheckbox(false);
                 }}
                 disabled={busyWithDownload}
-                className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-foreground/80 hover:bg-white/10 hover:text-foreground transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-foreground/80 lg-hoverable hover:text-foreground transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <svg
                   className="w-4 h-4 text-foreground/50"
@@ -2303,7 +2308,7 @@ export function GameActionPanel() {
                   handleQuickVerify();
                 }}
                 disabled={busyWithDownload}
-                className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-foreground/80 hover:bg-white/10 hover:text-foreground transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-foreground/80 lg-hoverable hover:text-foreground transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <svg
                   className="w-4 h-4 text-foreground/50"
@@ -2330,7 +2335,7 @@ export function GameActionPanel() {
                   setConfirmCheckbox(false);
                 }}
                 disabled={busyWithDownload || !installPath || !hasTempFiles}
-                className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-foreground/80 hover:bg-white/10 hover:text-foreground transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-foreground/80 lg-hoverable hover:text-foreground transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <svg
                   className="w-4 h-4 text-foreground/50"
@@ -2355,7 +2360,7 @@ export function GameActionPanel() {
                   setMenuFlyoutPos(null);
                   handleLocate();
                 }}
-                className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-foreground/80 hover:bg-white/10 hover:text-foreground transition-colors cursor-pointer border-t border-separator/50"
+                className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-foreground/80 lg-hoverable hover:text-foreground transition-colors cursor-pointer border-t border-separator/50"
               >
                 <svg
                   className="w-4 h-4 text-foreground/50"
@@ -2576,10 +2581,10 @@ export function GameActionPanel() {
                         type="button"
                         onClick={() => handleChannelSelected(ch)}
                         disabled={scanning}
-                        className="flex items-center gap-3 p-3 rounded-lg glass-surface border border-separator/50 hover:border-primary/50 hover:bg-primary/10 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="flex items-center gap-3 p-3 rounded-lg lg-material-row border border-separator/50 hover:border-primary/50 hover:bg-primary/10 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center shrink-0">
-                          <span className="text-sm font-bold text-primary">
+                          <span className="text-sm font-bold text-primary-text">
                             {ch === "official"
                               ? "官"
                               : ch === "bilibili"
@@ -2865,8 +2870,8 @@ export function GameActionPanel() {
                         disabled={ch === detectedChannel}
                         className={`flex items-center gap-3 p-3 rounded-lg border transition-all cursor-pointer disabled:cursor-not-allowed ${
                           ch === detectedChannel
-                            ? "glass-surface border-primary/50 bg-primary/10 opacity-60"
-                            : "glass-surface border-separator/50 hover:border-primary/50 hover:bg-primary/10"
+                            ? "lg-material-row border-primary/50 bg-primary/10 opacity-60"
+                            : "lg-material-row border border-separator/50 hover:border-primary/50 hover:bg-primary/10"
                         }`}
                       >
                         <div
@@ -2876,7 +2881,7 @@ export function GameActionPanel() {
                               : "bg-primary/20"
                           }`}
                         >
-                          <span className="text-sm font-bold text-primary">
+                          <span className="text-sm font-bold text-primary-text">
                             {ch === "official"
                               ? "官"
                               : ch === "bilibili"
@@ -2891,7 +2896,7 @@ export function GameActionPanel() {
                             {CHANNEL_LABELS[ch]?.[lang] || ch}
                           </span>
                           {ch === detectedChannel && (
-                            <span className="text-[11px] text-primary/70">
+                            <span className="text-[11px] text-primary-text">
                               {t("launcher.current_channel")}
                             </span>
                           )}
@@ -3005,13 +3010,13 @@ function GameSettingsModal({
                       type="text"
                       value={path}
                       onChange={(e) => setPath(e.target.value)}
-                      className="flex-1 h-9 px-3 rounded-lg glass-field border border-separator text-sm text-foreground outline-none placeholder:text-muted"
+                      className="flex-1 h-9 px-3 rounded-lg lg-field border border-separator text-sm text-foreground outline-none placeholder:text-muted"
                       placeholder="C:\Games\Endfield"
                     />
                     <button
                       type="button"
                       onClick={handleBrowse}
-                      className="h-9 px-3 rounded-lg glass-surface border border-primary/30 text-xs font-medium text-primary hover:bg-primary/20 transition-colors cursor-pointer shrink-0 whitespace-nowrap"
+                      className="h-9 px-3 rounded-lg lg-control border border-primary/30 text-xs font-medium text-primary-text hover:bg-primary/20 transition-colors cursor-pointer shrink-0 whitespace-nowrap"
                     >
                       {t("launcher.browse")}
                     </button>
@@ -3028,14 +3033,14 @@ function GameSettingsModal({
                 <button
                   type="button"
                   onClick={onClose}
-                  className="h-8 px-4 rounded-lg text-xs font-medium text-muted hover:text-foreground hover:bg-white/10 transition-colors cursor-pointer"
+                  className="h-8 px-4 rounded-lg text-xs font-medium text-muted hover:text-foreground lg-hoverable transition-colors cursor-pointer"
                 >
                   {t("launcher.cancel")}
                 </button>
                 <button
                   type="button"
                   onClick={() => onSave(path)}
-                  className="h-8 px-4 rounded-lg text-xs font-medium text-white bg-primary hover:bg-primary/90 transition-colors cursor-pointer"
+                  className="h-8 px-4 rounded-lg text-xs font-medium text-primary-foreground bg-primary hover:bg-primary/90 transition-colors cursor-pointer"
                 >
                   OK
                 </button>

@@ -58,7 +58,7 @@ export default function MedalsPage() {
 
       {isLoading ? (
         <div className="flex items-center justify-center py-24">
-          <GlassProgressCircle isIndeterminate size="lg" aria-label="Loading" className="text-primary">
+          <GlassProgressCircle isIndeterminate size="lg" aria-label="Loading" className="text-primary-text">
             <GlassProgressCircle.Track>
               <GlassProgressCircle.TrackCircle />
               <GlassProgressCircle.FillCircle />
@@ -66,7 +66,7 @@ export default function MedalsPage() {
           </GlassProgressCircle>
         </div>
       ) : medals.length === 0 ? (
-        <GlassCard className="p-16 glass-surface border border-separator/90">
+        <GlassCard className="p-16  border border-separator/90">
           <div className="text-center text-muted">
             <p>{t("card:ach_no_medals")}</p>
           </div>

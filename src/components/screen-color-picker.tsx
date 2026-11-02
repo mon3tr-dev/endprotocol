@@ -267,7 +267,7 @@ export default function ScreenColorPicker({ onPick, onCancel }: ScreenColorPicke
       />
 
       <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-[10001] pointer-events-none">
-        <div className="glass-surface-strong rounded-xl px-4 py-2.5 text-sm text-foreground shadow-2xl flex items-center gap-3">
+        <div className="lg-regular rounded-xl px-4 py-2.5 text-sm text-foreground flex items-center gap-3">
           <div
             className="w-9 h-9 shrink-0 rounded-lg ring-1 ring-black/25 shadow-inner"
             style={{ backgroundColor: hoverColor?.hex ?? "#ffffff" }}

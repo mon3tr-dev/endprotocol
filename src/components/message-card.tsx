@@ -8,17 +8,17 @@ type VisualType = "info" | "warn" | "urgent";
 
 const TYPE_STYLES: Record<VisualType, { icon: string; card: string; cardRead: string }> = {
   info: {
-    icon: "bg-info/15 text-info",
+    icon: "bg-info/15 text-info-text",
     card: "border-info/15 bg-info/5",
     cardRead: "border-info/10 bg-info/[0.02]",
   },
   warn: {
-    icon: "bg-warning/15 text-warning",
+    icon: "bg-warning/15 text-warning-text",
     card: "border-warning/15 bg-warning/5",
     cardRead: "border-warning/10 bg-warning/[0.02]",
   },
   urgent: {
-    icon: "bg-danger/15 text-danger",
+    icon: "bg-danger/15 text-danger-text",
     card: "border-danger/15 bg-danger/5",
     cardRead: "border-danger/10 bg-danger/[0.02]",
   },
@@ -113,7 +113,7 @@ export function MessageCard({
         {compact && msg.body && (
           <button
             type="button"
-            className="mt-1 text-[10px] text-info hover:text-info/80"
+            className="mt-1 text-[10px] text-info-text hover:text-info/80"
             onClick={(e) => {
               e.stopPropagation();
               setBodyExpanded((expanded) => !expanded);
@@ -126,10 +126,10 @@ export function MessageCard({
         )}
         {typeof msg.progress === "number" && msg.progress === -1 && (
           <div className="mt-1.5 flex items-center gap-2">
-            <svg width="16" height="16" viewBox="0 0 16 16" className="animate-spin text-primary">
+            <svg width="16" height="16" viewBox="0 0 16 16" className="animate-spin text-primary-text">
               <circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" strokeWidth="2" strokeDasharray="28" strokeDashoffset="8" strokeLinecap="round" />
             </svg>
-            <span className="text-[10px] text-primary">{t("messages.working")}</span>
+            <span className="text-[10px] text-primary-text">{t("messages.working")}</span>
           </div>
         )}
         {typeof msg.progress === "number" && msg.progress >= 0 && (
@@ -140,7 +140,7 @@ export function MessageCard({
                 style={{ width: `${Math.min(100, Math.max(0, msg.progress))}%` }}
               />
             </div>
-            <p className="text-[10px] text-primary mt-0.5">{Math.round(msg.progress)}%</p>
+            <p className="text-[10px] text-primary-text mt-0.5">{Math.round(msg.progress)}%</p>
           </div>
         )}
         <p className="text-[10px] text-muted/60 mt-1">{timeAgo(msg.timestamp, t)}</p>

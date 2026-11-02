@@ -28,7 +28,8 @@ export function SectionCard({
     <GlassCard
       id={id}
       className={clsx(
-        "glass-surface border border-separator/90 overflow-hidden transition-all duration-200",
+        "border border-separator/90 overflow-hidden",
+        "[transition:box-shadow_var(--lg-dur-fast)_var(--lg-ease-standard),transform_var(--lg-dur-fast)_var(--lg-ease-standard)]",
         "hover:shadow-md hover:scale-[1.01]",
         className,
       )}

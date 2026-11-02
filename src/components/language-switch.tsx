@@ -130,7 +130,7 @@ export const LanguageSwitch = ({ compact = false }: LanguageSwitchProps) => {
           type="button"
           onClick={handleToggle}
           aria-label="Switch language"
-          className={`glass-surface h-9 rounded-full flex items-center transition-all duration-300 ease-in-out hover:scale-105 active:scale-95 text-foreground ${compact ? "px-2 gap-0" : "px-3 gap-2"}`}
+          className={`lg-control h-9 rounded-full flex items-center transition-all duration-300 ease-in-out hover:scale-105 active:scale-95 text-foreground ${compact ? "px-2 gap-0" : "px-3 gap-2"}`}
         >
           {selectedLang.flag}
           <span
@@ -151,7 +151,7 @@ export const LanguageSwitch = ({ compact = false }: LanguageSwitchProps) => {
       {isOpen && createPortal(
         <div
           ref={menuRef}
-          className="fixed z-[9999] w-[220px] bg-background glass-surface-strong border border-separator/80 rounded-lg shadow-xl overflow-hidden animate-scale-in"
+          className="lg-regular fixed z-[9999] w-[220px] border border-separator/60 rounded-lg overflow-hidden animate-scale-in"
           style={{ top: dropdownPos.top, left: dropdownPos.left }}
           onClick={(e) => e.stopPropagation()}
         >
@@ -167,7 +167,7 @@ export const LanguageSwitch = ({ compact = false }: LanguageSwitchProps) => {
             {filteredLanguages.map((lang) => (
               <button
                 key={lang.key}
-                className="w-full px-3 py-2 flex items-center gap-3 transition-all duration-150 hover:bg-default-100 hover:translate-x-1 active:translate-x-0.5"
+                className="w-full px-3 py-2 flex items-center gap-3 transition-all duration-150 lg-hoverable hover:translate-x-1 active:translate-x-0.5"
                 onClick={() => handleLanguageChange(lang.key)}
               >
                 <div className="flex-shrink-0">{lang.flag}</div>
@@ -178,7 +178,7 @@ export const LanguageSwitch = ({ compact = false }: LanguageSwitchProps) => {
                   </span>
                 </div>
                 {i18n.language === lang.key && (
-                  <MorphIcon icon={Check} size={16} className="text-success" />
+                  <MorphIcon icon={Check} size={16} className="text-success-text" />
                 )}
               </button>
             ))}

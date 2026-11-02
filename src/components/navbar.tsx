@@ -20,7 +20,7 @@ export const Navbar = () => {
   const { t } = useTranslation();
 
   const searchInput = (
-    <div className="glass-field flex h-9 w-56 items-center gap-2 rounded-xl px-3 transition-all duration-200 focus-within:ring-2 focus-within:ring-primary/40">
+    <div className="lg-field flex h-9 w-56 items-center gap-2 rounded-xl px-3 [transition:box-shadow_var(--lg-dur-fast)_var(--lg-ease-standard)] focus-within:ring-2 focus-within:ring-primary/40">
       <SearchIcon className="text-base text-muted pointer-events-none flex-shrink-0" />
       <input
         type="search"
@@ -35,7 +35,7 @@ export const Navbar = () => {
   );
 
   return (
-    <nav className="sticky top-0 z-40 w-full border-b border-separator glass-surface">
+    <nav className="lg-regular sticky top-0 z-40 w-full border-b border-separator/60">
       <header className="mx-auto flex h-16 max-w-[1280px] items-center justify-end gap-4 px-6">
         <div className="flex items-center gap-2">
           <GlassLink
@@ -55,7 +55,7 @@ export const Navbar = () => {
               variant="tertiary"
               onPress={() => window.open(siteConfig.links.sponsor, "_blank")}
             >
-              <HeartIcon className="text-danger" />
+              <HeartIcon className="text-danger-text" />
               {t('common.sponsor')}
             </GlassButton>
           </div>

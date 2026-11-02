@@ -513,13 +513,13 @@ export function AchievementModal({
       {view === "main" ? (
         <CustomModalBody>
           <div className="flex flex-col items-center gap-4 py-4" ref={modalBodyRef}>
-            <div className="flex items-center gap-1 self-end p-1 rounded-full border border-separator/70 glass-surface">
+            <div className="flex items-center gap-1 self-end p-1 rounded-full border border-separator/70 lg-control">
               <button
                 type="button"
                 className={`text-xs px-3 py-1 rounded-full transition-all font-medium ${
                   !localUseDisplayList
-                    ? "bg-primary/15 text-primary border border-primary/30 shadow-sm"
-                    : "text-muted hover:text-foreground hover:bg-white/5 border border-transparent"
+                    ? "bg-primary/15 text-primary-text border border-primary/30 shadow-sm"
+                    : "text-muted hover:text-foreground lg-hoverable-soft border border-transparent"
                 }`}
                 onClick={() => localUseDisplayList && handleToggle()}
               >
@@ -529,8 +529,8 @@ export function AchievementModal({
                 type="button"
                 className={`text-xs px-3 py-1 rounded-full transition-all font-medium ${
                   localUseDisplayList
-                    ? "bg-primary/15 text-primary border border-primary/30 shadow-sm"
-                    : "text-muted hover:text-foreground hover:bg-white/5 border border-transparent"
+                    ? "bg-primary/15 text-primary-text border border-primary/30 shadow-sm"
+                    : "text-muted hover:text-foreground lg-hoverable-soft border border-transparent"
                 }`}
                 onClick={() => !localUseDisplayList && handleToggle()}
               >
@@ -556,8 +556,8 @@ export function AchievementModal({
                         type="button"
                         className={`text-xs px-2 py-0.5 rounded-full border transition-all font-medium ${
                           stripSortBy === opt
-                            ? "bg-primary/15 text-primary border-primary/50 shadow-sm"
-                            : "border-separator/50 text-muted hover:border-foreground/50 hover:text-foreground hover:bg-white/5"
+                            ? "bg-primary/15 text-primary-text border-primary/50 shadow-sm"
+                            : "border-separator/50 text-muted hover:border-foreground/50 hover:text-foreground lg-hoverable-soft"
                         }`}
                         onClick={() => setStripSortBy(opt)}
                       >
@@ -578,7 +578,7 @@ export function AchievementModal({
 
                 <div
                   data-drop-target="strip"
-                  className={`w-full overflow-x-auto scrollbar-hide min-h-[92px] flex items-center rounded-lg transition-all glass-surface border border-separator/70 ${dragOverTarget?.type === "strip" ? "bg-primary/10 ring-2 ring-primary ring-offset-1" : ""}`}
+                  className={`w-full overflow-x-auto scrollbar-hide min-h-[92px] flex items-center rounded-lg transition-all lg-material border border-separator/70 ${dragOverTarget?.type === "strip" ? "bg-primary/10 ring-2 ring-primary ring-offset-1" : ""}`}
                 >
                   {stripMedals.length > 0 ? (
                     <div className="flex items-center gap-2 justify-start px-2 pb-1">
