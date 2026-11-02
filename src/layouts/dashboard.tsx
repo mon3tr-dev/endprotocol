@@ -258,6 +258,13 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
           )}
         </div>
 
+        {/*
+         * 渐变磨砂：游戏模式背景是视频，磨砂层必须限制在标题栏那条窄带内
+         * （整屏 backdrop-filter 会跟着视频每帧重算）。
+         * 放在背景之上、内容层之下，只增强标题栏那段的背景模糊。
+         */}
+        <div className="frost-main frost-titlebar-only" aria-hidden="true" />
+
         <CustomTitlebar />
 
         {/* Background mode switch — floats in near the top center */}
@@ -279,7 +286,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
           {/* Bottom: banner/announcements (left) + game action (right) */}
           <div className="flex items-end justify-between gap-4">
             {/* Banner + announcements box */}
-            <div className="flex items-stretch h-40 max-w-2xl flex-1 min-w-0 rounded-xl bg-black/40 backdrop-blur-md border border-white/10 overflow-hidden shadow-2xl">
+            <div className="lg-media-chip lg-hairline flex items-stretch h-40 max-w-2xl flex-1 min-w-0 rounded-xl overflow-hidden">
               {/* Banner — left side, 4px margin top/left/bottom, auto width by aspect ratio */}
               {banners.length > 0 && (
                 <div
@@ -399,7 +406,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                     {filteredAnnouncements.slice(0, 6).map((item, i) => (
                       <div
                         key={i}
-                        className="flex items-center justify-between py-1.5 px-1 rounded-lg hover:bg-white/5 transition-colors cursor-pointer"
+                        className="flex items-center justify-between py-1.5 px-1 rounded-lg lg-hoverable-soft transition-colors cursor-pointer"
                         onClick={() => {
                           if (item.jump_url) openInAppBrowser(item.jump_url);
                         }}
@@ -433,8 +440,24 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
 
   // ========== DATA MODE ==========
   return (
-    <div className="relative flex flex-col h-screen glass-window">
+    <div className="relative flex flex-col h-screen">
       <div className="dashboard-background" aria-hidden="true" />
+      {/*
+       * 渐变磨砂层：单个全屏覆盖层，遮罩用纵向（标题栏）+ 横向（侧边栏）
+       * 两层渐变取并集，合成连通的 L 形强区——两块磨砂连成一片，
+       * 左上角没有断裂。backdrop-filter 只采样它下方已绘制的内容，
+       * 因此页面内容不受影响；mask 只控制这层自身的合成强度，不产生底色。
+       */}
+      <div
+        className="frost-main frost-with-sidebar"
+        style={
+          {
+            "--frost-sidebar-w": sidebarCollapsed ? "64px" : "288px",
+          } as React.CSSProperties
+        }
+        aria-hidden="true"
+      />
+      <div className="dashboard-veil" aria-hidden="true" />
 
       <CustomTitlebar />
 
@@ -442,7 +465,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
         {/* Desktop Sidebar */}
         <div
           className={clsx(
-            "hidden lg:flex shrink-0 overflow-hidden transition-[width] duration-300 ease-out will-change-[width]",
+            "relative hidden lg:flex shrink-0 overflow-hidden transition-[width] duration-300 ease-out will-change-[width]",
             sidebarCollapsed ? "w-[64px]" : "w-72",
           )}
         >
@@ -456,12 +479,25 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
         {mobileOpen && (
           <>
             <div
-              className="lg:hidden fixed inset-0 z-40 bg-foreground/50 backdrop-blur-sm animate-fade-in"
+              className="lg-scrim lg:hidden fixed inset-0 z-40 [animation:lg-fade-in_var(--lg-dur-base)_var(--lg-ease-emphasized)]"
               onClick={() => setMobileOpen(false)}
               aria-label="Close sidebar"
               role="button"
             />
-            <div className="lg:hidden fixed inset-y-0 left-0 z-50 w-72 glass-surface-strong border-r border-separator/70 animate-slide-in-left">
+            <div className="lg:hidden fixed inset-y-0 left-0 z-50 w-72 border-r border-separator/60 animate-slide-in-left">
+              {/*
+               * 抽屉自身的磨砂：fixed 定位，不能复用桌面端那条全屏覆盖层。
+               * 这里只需要侧边栏的横向遮罩（抽屉从顶部到底，不经过标题栏段）。
+               */}
+              <div
+                className="frost-main frost-drawer"
+                style={
+                  {
+                    "--frost-sidebar-w": "288px",
+                  } as React.CSSProperties
+                }
+                aria-hidden="true"
+              />
               <Sidebar onNavigate={() => setMobileOpen(false)} />
             </div>
           </>
@@ -488,7 +524,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
       <button
         type="button"
         onClick={() => setMobileOpen(true)}
-        className="lg:hidden fixed bottom-6 right-6 z-30 p-3.5 rounded-full bg-primary text-primary-foreground shadow-lg hover:shadow-xl hover:scale-105 active:scale-95 transition-all duration-200"
+        className="lg:hidden fixed bottom-6 right-6 z-30 p-3.5 rounded-full bg-primary text-primary-foreground shadow-lg [transition:transform_var(--lg-dur-fast)_var(--lg-ease-spring)] hover:scale-105 active:scale-95"
         aria-label="Open menu"
       >
         <svg
@@ -592,7 +628,7 @@ function GameBackgroundSwitch({
       <div
         role="group"
         aria-label={t("settings.game_launch.bg_media")}
-        className="relative flex items-center rounded-full border border-white/15 bg-black/45 p-1 shadow-2xl backdrop-blur-md"
+        className="lg-media-chip lg-hairline relative flex items-center rounded-full p-1"
       >
         <span
           aria-hidden="true"

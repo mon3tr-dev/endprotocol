@@ -46,8 +46,9 @@
     - 281-422 行：Banner 轮播 + 公告玻璃盒——翻页时离场图（292-304 行，绝对定位）向反方向推走（`.animate-banner-push-out-left/right`），入场图（306-328 行，`z-[1]`）从对应方向推入（`.animate-banner-push-in-right/left`）；点击 `jump_url` 走 `openInAppBrowser`，`onError` 隐藏图片；图片悬停时 `group-hover:scale-[1.08]` + `transition-transform duration-300` 缩放。悬停显示左右箭头（330-356 行，环形取模翻页）；底部圆点指示器（358-372 行）。公告区分类 Tab（376-396 行，`setAnnouncementTab`）+ 列表（398-415 行，`slice(0, 6)` 只显示 6 条，点击条目 `openInAppBrowser(item.jump_url)`）；无分类时显示 “No announcements”（417-421 行）。
 - 433-509 行：**DATA MODE 分支**（默认业务界面）：
   - 435-436 行：`dashboard-background` 背景层；439 行：`CustomTitlebar`。
+  - 渐变磨砂层：`.frost-main frost-with-sidebar` 全屏覆盖层（`--frost-sidebar-w` 按折叠状态写入 `288px`/`64px`），纵向遮罩对应标题栏、横向遮罩对应侧边栏，两者取并集形成连通的 L 形强区；游戏模式下换成 `.frost-main frost-titlebar-only`（仅标题栏窄带，避免整屏 backdrop-filter 跟视频逐帧重算）。放在背景层之上、veil 之下、内容层之下。
   - 441-453 行：桌面端侧边栏——外层 `div` 宽度在 `w-72` 与 `w-[64px]` 间以 `transition-[width] duration-300 ease-out` 平滑过渡（`overflow-hidden` 裁剪），向 `<Sidebar collapsed={sidebarCollapsed} onToggleCollapsed={toggleSidebarCollapsed} />` 传入折叠状态与切换回调。
-  - 455-468 行：移动端抽屉（`mobileOpen` 为真时渲染遮罩 + `Sidebar onNavigate={关闭}`）。
+  - 455-468 行：移动端抽屉（`mobileOpen` 为真时渲染遮罩 + `Sidebar onNavigate={关闭}`）；抽屉内另挂 `.frost-main frost-drawer`（fixed 定位、仅横向遮罩）。
   - 470-484 行：`<main>` 滚动容器，内部 `div` 以 `location.pathname` 为 key 强制路由切换时重挂载，其中 `<Suspense>` 包裹 `{children}`，懒加载页面 chunk 未就绪时以居中的 `GlassSpinner` 作为兜底（布局外壳保持挂载）。
   - 487-507 行：移动端右下角浮动菜单按钮（`lg:hidden`），点击 `setMobileOpen(true)`。
 - 512-635 行：背景模式切换器实现——触发区常量（512-514）、选项表 `BG_MODE_OPTIONS`（516-531）、`GameBackgroundSwitch`（537-635）：固定定位在 `top-12`（标题栏下方）居中，隐藏态 `-translate-y-2 scale-95 opacity-0 pointer-events-none`，显示态复位（`transition-all duration-300 ease-out` 浮出动画）；胶囊容器内为滑动主色指示块 + 两个图标按钮（`h-8 w-9`，`MorphIcon size=16`），激活图标使用 `text-primary-foreground`。

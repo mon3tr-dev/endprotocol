@@ -216,7 +216,7 @@ export const CustomTitlebar = () => {
                 if (value) setLauncherMode(value as LauncherViewMode);
               }}
               aria-label={`${t("launcher.mode_data")} / ${t("launcher.mode_game")}`}
-              className={`titlebar-mode-toggle ml-2 relative grid h-7 w-[104px] grid-cols-2 overflow-hidden rounded-full border-white/20 bg-default-100/55 p-0.5 shadow-[inset_0_1px_1px_rgba(255,255,255,0.2)] ${viewMode === "game" ? "is-game" : ""}`}
+              className={`titlebar-mode-toggle ml-2 relative grid h-7 w-[104px] grid-cols-2 overflow-hidden rounded-full p-0.5 ${viewMode === "game" ? "is-game" : ""}`}
               data-tauri-drag-region="false"
             >
               <ToggleGroupItem
@@ -239,7 +239,7 @@ export const CustomTitlebar = () => {
             type="button"
             onClick={() => setInfoOpen(true)}
             aria-label="Messages"
-            className="relative flex h-7 w-7 items-center justify-center rounded-lg text-muted transition-all duration-200 hover:bg-white/10 hover:text-foreground hover:scale-110 active:scale-90 cursor-pointer mr-2"
+            className="relative flex h-7 w-7 items-center justify-center rounded-lg text-muted [transition:transform_var(--lg-dur-fast)_var(--lg-ease-spring),background-color_var(--lg-dur-fast)_var(--lg-ease-standard),color_var(--lg-dur-fast)_var(--lg-ease-standard)] lg-hoverable hover:text-foreground active:scale-90 cursor-pointer mr-2"
             data-tauri-drag-region="false"
           >
             <BellIcon size={14} />
@@ -255,7 +255,7 @@ export const CustomTitlebar = () => {
           {newMessage && flyoutOpen &&
             createPortal(
               <div
-                className="fixed right-12 top-10 z-[10005] w-[340px] max-w-[calc(100vw-2rem)] rounded-xl glass-surface-strong p-1 shadow-xl animate-fade-in"
+                className="lg-regular lg-float-in fixed right-12 top-10 z-[10005] w-[340px] max-w-[calc(100vw-2rem)] rounded-xl p-1"
                 data-tauri-drag-region="false"
               >
                 <MessageCard
@@ -271,18 +271,14 @@ export const CustomTitlebar = () => {
             )}
 
           <div
-            className={`flex items-center rounded-xl overflow-hidden ${
-              viewMode === "game"
-                ? "bg-black/40 backdrop-blur-md border border-white/10"
-                : "glass-surface border border-separator/60"
-            }`}
+            className="flex items-center rounded-xl overflow-hidden lg-regular border border-separator/60"
             data-tauri-drag-region="false"
           >
             <button
               type="button"
               onClick={handleMinimize}
               aria-label="Minimize"
-              className="flex h-7 w-8 items-center justify-center rounded-l-xl text-muted transition-all duration-200 hover:bg-white/10 hover:text-foreground hover:scale-105 active:scale-95 cursor-pointer"
+              className="flex h-7 w-8 items-center justify-center rounded-l-xl text-muted [transition:transform_var(--lg-dur-fast)_var(--lg-ease-spring),background-color_var(--lg-dur-fast)_var(--lg-ease-standard),color_var(--lg-dur-fast)_var(--lg-ease-standard)] lg-hoverable hover:text-foreground active:scale-95 cursor-pointer"
             >
               <MinimizeIcon size={14} />
             </button>
@@ -291,7 +287,7 @@ export const CustomTitlebar = () => {
               type="button"
               onClick={handleMaximize}
               aria-label={isMaximized ? "Restore" : "Maximize"}
-              className="flex h-7 w-8 items-center justify-center text-muted transition-all duration-200 hover:bg-white/10 hover:text-foreground hover:scale-105 active:scale-95 cursor-pointer"
+              className="flex h-7 w-8 items-center justify-center text-muted [transition:transform_var(--lg-dur-fast)_var(--lg-ease-spring),background-color_var(--lg-dur-fast)_var(--lg-ease-standard),color_var(--lg-dur-fast)_var(--lg-ease-standard)] lg-hoverable hover:text-foreground active:scale-95 cursor-pointer"
             >
               {isMaximized ? (
                 <RestoreIcon size={14} />
@@ -304,7 +300,7 @@ export const CustomTitlebar = () => {
               type="button"
               onClick={handleClose}
               aria-label="Close"
-              className="flex h-7 w-8 items-center justify-center rounded-r-xl text-muted transition-all duration-200 hover:bg-danger/20 hover:text-danger hover:scale-105 active:scale-95 cursor-pointer"
+              className="flex h-7 w-8 items-center justify-center rounded-r-xl text-muted [transition:transform_var(--lg-dur-fast)_var(--lg-ease-spring),background-color_var(--lg-dur-fast)_var(--lg-ease-standard),color_var(--lg-dur-fast)_var(--lg-ease-standard)] hover:bg-danger/20 hover:text-danger-text active:scale-95 cursor-pointer"
             >
               <CloseIcon size={14} />
             </button>

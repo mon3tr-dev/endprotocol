@@ -137,7 +137,7 @@
 | `settings.*` | 设置页总命名空间，`settings.title` :94 | :93 |
 | `settings.general.*` | 通用设置：语言、主题（light/dark/system）、关闭窗口行为、托盘显示用户 | :95 |
 | `settings.game_launch.*` | 游戏启动：取消下载行为、DX11 启动、校验线程数、游戏界面背景（视频/图片）、静默启动命令与启动选项 | :110 |
-| `settings.appearance.*` | 外观：主题模式、主题色、窗口背景透明度/背景图/磨砂/毛玻璃清晰度 | :119 |
+| `settings.appearance.*` | 外观：主题模式、主题色、窗口背景透明度/背景图/磨砂（旧「毛玻璃清晰度」已随 Liquid Glass 重构移除） | :119 |
 | `settings.system_resource.*` | 系统资源卡片全局默认值（刷新/单位/显示/精度/布局/阈值/曲线/主题色/默认模板） | :145 |
 | `settings.todo.*` | To-Do 卡片全局默认值（排序/隐藏已完成/优先级/截止时间/颜色/图标） | :170 |
 | `settings.developer.*` | 开发者模式开关与确认警告 | :139 |
@@ -169,7 +169,9 @@
 - 同样存在 `settings.update` 的 `latest_version` / `release_date` 重复键（:177/:187、:179/:188），与 zh 完全一致。
 
 ## `src/styles/globals.css`
-**职责**：全局样式与设计令牌（Tailwind CSS v4 + CSS 变量体系）。定义浅/深色主题变量、`@theme` 映射、玻璃拟态（glassmorphism）工具类、交互动效与游戏内技能文本标记样式。共 519 行。
+**职责**：全局样式与设计令牌（Tailwind CSS v4 + CSS 变量体系）。定义浅/深色主题变量、`@theme` 映射、**Liquid Glass 设计体系**（`lg-*` 类族，替代旧 glassmorphism 工具类）、统一动效令牌与游戏内技能文本标记样式。
+
+> ⚠️ **Liquid Glass 重构（本节替换旧「玻璃拟态工具类」描述）**：旧 `glass-surface/glass-surface-strong/glass-field/glass-window/glass-backdrop/glass-control-surface/account-glass-*` 与 `--glass-blur` 等运行时可调变量已整体移除，改为 Apple HIG Liquid Glass 分层体系。唯一保留的旧类名是 `glass-surface` / `glass-surface-strong` 的**冻结件兼容别名**（映射到 `.lg-regular`），仅供冻结的 `char-select-modal.tsx` 使用，业务代码禁止再引用。
 
 **内部结构**：
 
@@ -185,7 +187,9 @@
 | 234-236 行 | `html[data-window-effects="fallback"] body` —— 无原生窗口磨砂的平台（Linux / WebKitGTK、开发态浏览器）改用不透明的 `--background`，让 `.dashboard-background` 的主题渐变像 Windows 一样渲染出来；属性由 `@/utils/platform` 的 `applyWindowEffectsSupport()` 在首屏前写入 |
 | 238-261 行（规则在 258-261） | `html[data-window-radius="self"]` —— 无边框窗口的圆角兜底：仅 Linux（WebKitGTK）生效（Windows 交 DWM、macOS 交系统），用 `clip-path: inset(0 round 12px)` 挂在根元素上，而不是 `overflow:hidden`，因为后者裁不住 `fixed` 后代 |
 | 262-297 行 | `.dashboard-background` 固定背景层（背景图 + 三层渐变叠加 + blur） |
-| 187-206 行 | 对比度自适应文本（`.adaptive-contrast-text`、弱化文字色强制改用 `--foreground`、全局 `text-shadow`） |
+| 约 730-755 行 | `.dashboard-veil` 壁纸压暗层：`fixed` 铺满、`background: var(--background)`、`opacity: var(--bg-veil-opacity)`。壁纸是任意图片且透明度可拉到 1、模糊可拉到 0，只靠薄玻璃挡不住，必须由这一层把整体亮度压下来，正文对比度才可控。浅色主题 0.45（白纱）、深色主题 0.68（深纱），由 `.dark` 覆盖。层级：`.dashboard-background`（壁纸）→ `.frost-main`（磨砂）→ `.dashboard-veil`（压暗）→ 内容层（z-10） |
+| 约 760 行 | `.titlebar-shell`（`z-index: 10`）——标题栏必须叠在 veil 之上；底色已由 `.lg-sheet` 实底改为渐变磨砂（见 `.frost-main`） |
+| 约 762-790 行 | 文字对比度兜底：`.adaptive-contrast-text` 取 `--foreground`；`:is([class~="text-muted"], [class*="text-muted/"], text-gray-400/500/600)` 统一改为 `--muted`（**不再一律涂成 `--foreground`**，否则标题与次要信息同色、层级全丢）；`text-foreground/50`、`/60` 抬到 `--foreground`。**全局 `[class*="text-"]` 双向 text-shadow 已移除**（黑 55% + 白 65% 双层阴影会把中文小字号笔画染成灰边，形成「重影糊字」） |
 | 206-224 行 | `.titlebar-mode-toggle` 标题栏模式切换胶囊动画（`.is-game` 右移） |
 | 226-227 行 | `::selection` 选区配色 |
 | 229-255 行 | 动画 keyframes 与 `.animate-*` 工具类（含系统资源指标切换的 `.animate-resource-page`） |
@@ -201,42 +205,59 @@
 **关键变量（`:root`，7-66 行）**：
 - 色阶：`--default-50…900`、`--primary-50…900`、`--danger-50`
 - 语义色：`--primary`、`--accent`、`--success`、`--info`、`--warning`、`--warning-dark`、`--danger` 及各自 `-foreground`
+- **文字专用色**（当同一颜色既要当背景/边框又要当文字时，文字走这一套，保证 ≥4.5:1）：
+  - `--primary-text`：由 `applyPrimaryTextColor()`（`src/utils/theme.ts`）按当前底色动态计算并写入内联样式，浅色主题混黑、深色主题混白，只调明度不换色相。默认值 `#4f46e5`。**`text-primary` → Tailwind `text-primary-text`**（由 `@theme inline` 的 `--color-primary-text` 映射）
+  - `--success-text` / `--warning-text` / `--danger-text` / `--info-text`：浅色主题取压深版（`#15803d` / `#b45309` / `#b91c1c` / `#1d4ed8`），深色主题回退原状态色（原色在 `#18181b` 上已 ≥4.71:1）。对应工具类 `text-success-text` / `text-warning-text` / `text-danger-text` / `text-info-text`
+  - 原状态色（`text-success` 等）在浅色底上只有 2.2 / 2.1 / 3.6 / 3.4 : 1，**禁止再用于文字**，只留给背景、边框、图标描边
 - 表面：`--background`、`--foreground`、`--surface`、`--overlay`、`--field`、`--content1/2/3`、`--muted`、`--separator`、`--border`、`--ring`、`--radius`
 - HeroUI 桥接：`--heroui-primary`、`--heroui-primary-300`、`--heroui-foreground`、`--heroui-danger`、`--heroui-success`、`--heroui-warning`、`--heroui-default-400`（59-65 行，均指向上述变量）
-- **玻璃参数（166 行）**：`--bg-opacity`(0.33)、`--bg-image`、`--bg-image-opacity`(0.5)、`--bg-blur`(16px)、`--glass-blur`(28px)、`--glass-surface-opacity`(78%)、`--glass-strong-opacity`(85%)、`--glass-field-opacity`(80%)。这些值由设置页的“背景透明度/磨砂/毛玻璃清晰度”滑杆在运行时改写。
-- **`--bg-opacity` 的适用范围**：`body` 的 `rgba(255,255,255,.33)` / `rgba(10,12,16,.33)` 只在有原生窗口磨砂的平台（Windows Acrylic、macOS Vibrancy）成立——系统层在窗口背后提供模糊背衬，半透明主体才观感正常。Linux（WebKitGTK）拿不到任何系统级效果，同一份半透明底色会让整窗透出桌面、主题渐变只渲染一半，观感等同「纯透明」；因此 `html[data-window-effects="fallback"]` 下 `body` 改为不透明 `--background`。
+- **玻璃参数（173-250 行 `:root`）**：`--bg-opacity`(0.33)、`--bg-image`、`--bg-image-opacity`(0.5)、`--bg-blur`(16px) 属于背景层（设置页滑杆运行时改写）；玻璃材质自身的参数集中在 §①②③④⑤⑥ 六组令牌（`--lg-blur`/`--lg-saturate`/`--lg-density`/`--lg-fill-*`/`--lg-edge*`/`--lg-media-*`），**全部静态且只此一处**，禁止在组件或运行时另写第二份（旧 `--glass-blur`、`glass_clarity` 链路已整体移除）。- **`--bg-opacity` 的适用范围**：`body` 的 `rgba(255,255,255,.33)` / `rgba(10,12,16,.33)` 只在有原生窗口磨砂的平台（Windows Acrylic、macOS Vibrancy）成立——系统层在窗口背后提供模糊背衬，半透明主体才观感正常。Linux（WebKitGTK）拿不到任何系统级效果，同一份半透明底色会让整窗透出桌面、主题渐变只渲染一半，观感等同「纯透明」；因此 `html[data-window-effects="fallback"]` 下 `body` 改为不透明 `--background`。
 
 **主题切换 / 深色模式实现**：
 1. 深色由 `@custom-variant dark`（:3）定义，JS 在 `<html>` 上挂 `.dark` 类（而非 `prefers-media-query`）驱动；`.dark` 块（67-95 行）覆盖颜色变量，`color-scheme` 由 light 翻转为 dark。
 2. `:root` 与 `.dark` 的变量经 `@theme inline`（98-151 行）映射为 Tailwind 的 `bg-background`、`text-foreground`、`bg-surface`、`border-border`、`text-primary` 等工具类，实现全站一键换肤。
 3. 主题色（accent）改写 `--primary*` / `--accent` 变量即可全局生效；多处用 `color-mix(in oklab/oklch, var(--primary) …)` 派生 hover/发光色，因此换色自动跟随。
 
-**玻璃拟态工具类（约 644-908 行）**：
+**Liquid Glass 体系（约 173-807 行）**：
 
-| 类 | 行号 | 用途 |
+> 🎨 **全应用玻璃参数统一（唯一入口）**：所有 `lg-*` 材质只引用 `:root` 里的这一组令牌，
+> 不再有第二处模糊半径 / 底色不透明度 / 边缘高光。改玻璃观感 = 改这 5 段令牌。
+
+| 类/令牌 | 行号（约） | 用途 |
 | --- | --- | --- |
-| `.glass-window` | 644 | 透明窗口底层 |
-| `.glass-surface` | 647 / `::before` 653 | 标准玻璃面板（`--glass-surface-opacity` + blur 都写在 `::before` 上），深色阴影覆盖于 :668 |
-| `.glass-surface-strong` | 673 / `::before` 679 | 高不透明玻璃（`--glass-strong-opacity`），深色覆盖于 :781 |
-| `.glass-control-surface` | 694 / `::before` 699 | 控件区玻璃（不透明度再减 25%） |
-| `.glass-field` | 159 / `::before` 164 | 表单控件玻璃（`--glass-field-opacity`，blur × 0.43） |
-| `.account-glass-panel` / `-inner` / `-row` | 714 / 730 / 743（`::before` 随类定义） | 账户页三层玻璃（48%/30%/22% 不透明度），深色覆盖于 :756-766 |
-| `.dashboard-card-shell` | 769 | 仪表盘卡片外壳（透明 + 圆角 10px + 裁切，`> .glass-surface > *` 保持内容在模糊层之上） |
-| `@layer components`：玻璃层定位上下文 | 802 | 给上述玻璃类补 `position: relative; z-index: 0`；**必须在低优先级层**，否则会盖掉 `fixed`/`sticky`/`absolute`/`z-*` 等 Tailwind 工具类 |
-| `.glass-backdrop` | 786 | 模态遮罩（黑 50% + blur 4px） |
-| `.glass-native` | 831 | **原生磨砂窗口层**（托盘面板）：`backdrop-filter: none`，只用低不透明度 `--surface` 渐变 + 底色压住背景，避免"模糊的模糊"；深色覆盖于 :851。不透明度由设置页「毛玻璃清晰度」（`glass_clarity`）驱动：`applyGlassClarity()` 换算为 `--glass-native-opacity`（38%–92%）与 `--glass-native-base`（12%–38%） |
-| `html[data-window="tray-panel"]` / 其 `body` | 869-872 | 托盘页去掉 body 底色（默认 `rgba(255,255,255,.33)`），让系统 Acrylic 透出 |
-| `.avatar-feather` | 874 | 头像径向羽化 mask |
-| `.context-item-normal` | 881 | 右键菜单项 hover 染色 |
-| `.glass` / `.glass-strong` | 897 / 903 | 兼容占位类（均置为 transparent，深浅色相同） |
+| ① 材质基参数 `--lg-blur`(20px) / `--lg-saturate`(1.6) | 173-181 | **全应用唯一的模糊半径与饱和度**；此前 regular/clear/control/field/material 各写一个数（20/14/16/12/22），同名控件深浅不一 |
+| `--lg-tint-light` / `--lg-tint-dark` / `--lg-tint` | 179-181 | 玻璃底色调，`.dark` 下自动切到深色支 |
+| ② 密度 `--lg-density` + 倍率 `--lg-k-control/field/material` | 183-205 | 变体差异只剩“同一块玻璃的浓淡”：`control = density×0.90`、`field = ×1.08`、`material = ×0.87`；深色主题另行下调 `--lg-k-material`（0.64 → 46%）保持深色内容层不发灰。**原 `--lg-alpha-sheet`(94%/92%) 与 `--lg-fill-sheet` 已随 `.lg-sheet` 一并移除**（标题栏/侧边栏改为渐变磨砂，不再铺实底） |
+| ③ 边缘/阴影四档 `--lg-edge`、`--lg-edge-top`、`--lg-shadow-*` | 207-214 | 全部 theme 化（`.dark` 覆盖），`.lg-material` 与 `.dashboard-card-shell` 不再各自写 rgba |
+| ④ 交互填充 `--lg-interactive-soft/-/strong`、`--lg-hairline`、`--lg-inset-alpha` | 216-225 | 玻璃上的 hover/选中/内嵌块；浅色压暗、深色提亮（旧 `hover:bg-white/10` 在浅色下几乎不可见） |
+| ⑤ 最终填充色 `--lg-fill-regular/-control/-field/-material/-clear/-media` | 227-236 | `color-mix(primary X%, tint / alpha)` —— 主题色一变全部玻璃同步变，无需逐处改色 |
+| ⑥ 媒体层 `--lg-media-tint` / `--lg-alpha-media` | 199-203 | 压在视频/壁纸上的 HUD（游戏模式）：文字恒为浅色，底色固定深色支，只让通透度随主题微调 |
+| `.lg-regular` | 285-305 | **功能层 regular**：控件/导航/浮层默认变体（blur/saturate/密度全部来自令牌） |
+| `.lg-clear` | 307-338 | **功能层 clear**：悬浮于照片/视频等丰富背景；`::after` 暗化层浅色 35% / 深色 12%（HIG 可读性兜底） |
+| `.lg-sheet` | — | **已移除**。标题栏/侧边栏原先用它铺近乎不透明的实底，现改为 `.frost-main` 渐变磨砂（无底色） |
+| `.frost-main` / `.frost-with-sidebar` / `.frost-titlebar-only` / `.frost-drawer` | 约 385-490 | **渐变磨砂层**（替代 `.lg-sheet`）：`backdrop-filter` + `mask-image` 的全屏覆盖层，模糊与遮罩同放 `::before`。纵向遮罩（标题栏：top→bottom 衰减）+ 横向遮罩（侧边栏：left→right 衰减）用 mask 多图层语法取并集，合成连通的 L 形强区——标题栏与侧边栏的磨砂连成一片，左上角无断裂。令牌 `--lg-frost-fade`(28px 衰减距离) / `--lg-frost-titlebar-h`(44px 标题栏本体高) / `--lg-frost-blur-delta`(12px 模糊增量)；衰减终点即用户设定的 `--bg-blur`。游戏模式用 `.frost-titlebar-only`（只留标题栏窄带，避免整屏 backdrop-filter 跟视频逐帧重算），移动端抽屉用 `.frost-drawer`（fixed 定位、仅横向遮罩） |
+| `.lg-control` | 340-359 | 功能层控件底（开关/复选/分页/圆钮） |
+| `.lg-field` | 361-396 | 功能层输入字段；`:is(input,textarea,select).lg-field` 替换元素直接铺实底并禁用模糊 |
+| `.lg-material` / `-sub` / `-row` | 399-427 | 内容层标准材质（卡片/列表/分区），与功能层共用同一套 blur/saturate |
+| `.lg-scrim` | 470-474 | 全屏遮罩（黑 35% + `blur(calc(--lg-blur * 0.4))`） |
+| `.dashboard-card-shell` | 438-467 | **仪表板卡片壳（唯一约束点）**：`:has(> div > .lg-material)` 检测到卡片根自带材质时退位为透明纯容器；始终负责圆角/裁切/阴影 |
+| `.lg-native` | 476-490 | 原生磨砂窗口层（托盘 Acrylic）：不叠 webview 模糊，只压渐变 |
+| `.glass-surface` / `.glass-surface-strong` 兼容别名 | 511-534 | **冻结件专用**：映射到 regular 变体，仅供 `char-select-modal.tsx`；其余代码禁止使用 |
+| `@layer components` 定位上下文 + 统一状态类 | 536-632 | 给玻璃宿主补 `position:relative; z-index:0`；并提供 `.lg-hoverable` / `.lg-hoverable-soft` / `.lg-selected` / `.lg-hairline` / `.lg-thumb` / `.lg-inset` / `.lg-media-chip` / `.lg-media-chip-interactive` —— 组件内**禁止**再写 `hover:bg-white/10`、`hover:bg-default-100`、`bg-default-100/50` 这类硬编码底色 |
+| `html[data-window-effects="fallback"]` | 639-648 | 无原生磨砂平台：只抬 `--lg-density`（92% / 深色 90%），派生档位随 calc 一起抬高 |
+| `.titlebar-mode-toggle` | 739-782 | 标题栏「数据/游戏」分段控件：玻璃底落在 `::after`（`::before` 被拨杆占用），与 `.lg-control` 同一套 tint/密度/主题色 |
 
-**为什么模糊都写在 `::before` 上（Windows/Linux 通用）**：
-- 玻璃类（`.glass-surface*` / `.glass-control-surface` / `.glass-field` / `.account-glass-*`）元素本身只保留 `background: transparent` + 外阴影，底色与 `backdrop-filter` 全部移到 `::before { position:absolute; inset:0; z-index:-1; border-radius:inherit; pointer-events:none }`。
-- 起因是 Linux（WebKitGTK）的合成 bug：设置页拖动「毛玻璃清晰度」时 `--glass-blur` 在运行时改写，WebKit 会把该元素的**背景模糊层重新合成到元素内容之上**，整张卡片连同文字、滑块一起变成一块糊掉的方块。把过滤放到没有子内容的伪元素里，内容永远在模糊层之上。
-- 伪元素要落在内容下方，父级必须是「定位元素 + 层叠上下文」，所以 `@layer components` 统一补 `position: relative; z-index: 0`；放低优先级层是为了不覆盖组件的 `fixed`/`sticky`/`absolute` 定位。
-- `<input>/<textarea>/<select>` 是替换元素、不渲染 `::before`，因此 `:is(input, textarea, select).glass-field`（182 行）直接铺底色并删掉 `backdrop-filter`；字段底色本就有 80%+ 不透明度，观感几乎无差。
+**动效令牌（约 186-199 行 `:root` 内）**：`--lg-dur-fast`(150ms)/`--lg-dur-base`(200ms)/`--lg-dur-slow`(280ms)/`--lg-dur-page`(320ms) 四档时长；`--lg-ease-standard`(0.2,0,0,1)/`--lg-ease-emphasized`(0.16,1,0.3,1)/`--lg-ease-spring`(0.34,1.56,0.64,1)/`--lg-ease-exit`(0.4,0,1,1) 四族缓动；`--lg-shift-1/2/3`(8/16/24px) 位移尺度。全部 keyframes 与 `.animate-*`、`.interactive-hover` 等工具类统一引用这些变量。
 
-**其他说明**：`--bg-image` 变量在 `.dashboard-background`（177 行）作为第一层背景图使用，配合 `--bg-image-opacity` 与 `--bg-blur` 实现设置页“背景图片/透明度/磨砂”三项配置；全局 `[class*="text-"]` text-shadow（204 行）用于在浅色背景图上保证文字可读。
+**为什么模糊写在 `::before` 上（沿用旧实现的 WebKitGTK 规避）**：
+- 玻璃宿主（`.lg-regular/.lg-clear/.lg-control/.lg-field`）元素本身只保留透明背景 + 外阴影，底色、噪点纹理与 `backdrop-filter` 全部移到 `::before { position:absolute; inset:0; z-index:-1; border-radius:inherit; pointer-events:none }`。
+- 起因是 Linux（WebKitGTK）的合成 bug：运行时改写模糊半径（旧 `glass_clarity` 设置）时，WebKit 会把背景模糊层重新合成到元素内容之上，整张卡片连同文字变成糊掉的方块。新体系把模糊半径固化为静态令牌并移除 glass_clarity 链路（`theme.ts` 的 `applyGlassClarity`、`main.tsx`/`tray-panel.tsx` 的读取、设置页滑条与 locale 键均已删除），风险源头不复存在。
+- 伪元素要落在内容下方，父级必须是「定位元素 + 层叠上下文」，`@layer components` 统一补 `position: relative; z-index: 0`。
+- `<input>/<textarea>/<select>` 是替换元素、不渲染 `::before`，因此 `:is(input, textarea, select).lg-field` 直接铺底色并删掉 `backdrop-filter`。
+
+**性能预算**：backdrop-filter 同屏实例 ≤ 8（全屏 scrim 计 2）；内容层一律零模糊，玻璃实例集中在导航/标题栏/浮层；嵌套不得超过一层。
+
+**其他说明**：`--bg-image` 变量在 `.dashboard-background`（177 行）作为第一层背景图使用，配合 `--bg-image-opacity` 与 `--bg-blur` 实现设置页“背景图片/透明度/磨砂”三项配置；`.dashboard-veil` 再叠一层与主题同色的压暗（`--bg-veil-opacity`，浅色 0.45 / 深色 0.68），保证壁纸透明度拉满、模糊归零时正文仍然可读。**全局 `[class*="text-"]` text-shadow 已移除**——它曾是「文字在花壁纸上不糊」的手段，实际把中文小字号笔画染成灰边、形成重影，改为靠压暗层 + 实底解决。
 
 ## `src/App.css`
 **职责**：遗留的 Vite/Tauri 启动模板样式（116 行），仅包含 demo 页用到的 logo、容器、按钮与系统深色适配；与 globals.css 的设计令牌体系无交集，疑似未被业务代码引用。

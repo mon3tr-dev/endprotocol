@@ -130,7 +130,7 @@
 | `handleMaximize` | custom-titlebar.tsx:125 | `await invoke("toggle_maximize_window")`，100ms 后再 `checkMaximizedState()` 同步图标 |
 | `handleClose` | custom-titlebar.tsx:148 | 托盘不可用（`trayAvailable === false`）时直接 `invoke("app_quit")`；否则按 `closeAction` 分支：`"ask"` → `setShowCloseConfirm(true)`；`"minimize_to_tray"` → `invoke("minimize_to_tray")`；否则 `invoke("app_quit")` |
 | `handleConfirmClose` | custom-titlebar.tsx:167 | `(action: "close" \| "minimize_to_tray")`：`minimize_to_tray` 且托盘可用时 `invoke("minimize_to_tray")`，其余情况一律 `invoke("app_quit")`；之后重新 `getConfig("close_action")` 回写本地 `closeAction`（用户可能勾选了「记住」） |
-| 渲染块 | custom-titlebar.tsx:165-289 | `titlebar-shell h-11`（拖动区用 `data-tauri-drag-region="deep"`，可点击元素由 Tauri `drag.js` 自动排除，需要禁止拖动的容器才写 `data-tauri-drag-region="false"`）：品牌区（`/app-icon.png` 链扣标 18×18 + 标题，`viewMode === "game"` 显示 `launcher.game_title`，否则 `ENDPROTOCOL`，178 行）→ `ToggleGroup` 视图切换（182-204，值 `"data"` / `"game"`，写入 `setLauncherMode`）→ 弹性占位 → 铃铛按钮（211-226，未读角标 `99+` 截断，`hasUrgent` 用 `bg-danger`）→ 新消息浮层（228-246，`createPortal(document.body)` + `fixed right-12 top-10 z-[10005]`，内嵌 `MessageCard compact`）→ 窗口三键（248-282）→ `<AppInfoDrawer>`（286）与 `<CloseConfirmDialog>`（287-291） |
+| 渲染块 | custom-titlebar.tsx:165-289 | `titlebar-shell h-11`（**不再挂 `lg-sheet` 实底**，改由布局层的 `.frost-main` 渐变磨砂负责底部过渡；拖动区用 `data-tauri-drag-region="deep"`，可点击元素由 Tauri `drag.js` 自动排除，需要禁止拖动的容器才写 `data-tauri-drag-region="false"`）：品牌区（`/app-icon.png` 链扣标 18×18 + 标题，`viewMode === "game"` 显示 `launcher.game_title`，否则 `ENDPROTOCOL`，178 行）→ `ToggleGroup` 视图切换（182-204，值 `"data"` / `"game"`，写入 `setLauncherMode`）→ 弹性占位 → 铃铛按钮（211-226，未读角标 `99+` 截断，`hasUrgent` 用 `bg-danger`）→ 新消息浮层（228-246，`createPortal(document.body)` + `fixed right-12 top-10 z-[10005]`，内嵌 `MessageCard compact`）→ 窗口三键（248-282）→ `<AppInfoDrawer>`（286）与 `<CloseConfirmDialog>`（287-291） |
 
 **备注**：
 - **invoke 命令**：`minimize_window`（custom-titlebar.tsx:133）、`toggle_maximize_window`（141）、`minimize_to_tray`（158、170）、`app_quit`（152、160、172）。
@@ -138,6 +138,7 @@
 - 其它事件源：`subscribeMessages`、`subscribeLauncherMode`（均为前端 store 回调，非 Tauri event）。
 - 层级：标题栏 `titlebar-shell`；**消息浮层经 portal 渲染到 `document.body`、`fixed` + `z-[10005]`，高于任何 modal/抽屉/全屏遮罩（modal backdrop `z-[100]`~`z-[300]`、快选菜单 `z-[9999]`、取色器 `z-[10001]`），保证打开弹窗时依然可见**；抽屉 `z-[200]/[210]`（在 `AppInfoDrawer` 内）。
 - i18n key：`launcher.game_title`、`launcher.mode_data`、`launcher.mode_game`。
+- **玻璃材质一律走 `.titlebar-mode-toggle`（globals.css 定义）**：切换胶囊不再写 `bg-default-100/55` / `border-white/20`，玻璃底落在 `::after`（`::before` 被拨杆占用），与控制件 `.lg-control` 共用 `--lg-tint` / `--lg-alpha-control` / `--lg-blur` / `--lg-saturate`，随 theme 一起换深浅。铃铛与窗口三键的 hover 由 `.lg-hoverable` 提供，不再写 `hover:bg-white/10`。
 - 游戏模式切换仅在 Windows 显示；macOS/Linux 通过 `isWindowsPlatform()` 隐藏切换控件，模式 store 也会拒绝切换到游戏模式。
 - 关闭确认框文案本身无 i18n key（见 close-confirm-dialog 备注）。
 

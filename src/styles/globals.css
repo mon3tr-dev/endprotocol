@@ -30,6 +30,10 @@
     --primary-800: #3730a3;
     --primary-900: #312e81;
     --primary: #6366f1;
+    /* 文字版主色：由 applyPrimaryTextColor() 按当前底色算到 ≥4.5:1 再写入。
+     * 默认值与 --primary 相同（indigo 本身就达标），自定义高亮主题色
+     * （#00FFBC 之类）会在运行时被替换成压深/提亮后的版本。 */
+    --primary-text: #4f46e5;
     --primary-foreground: #ffffff;
     --accent: #8b5cf6;
     --accent-foreground: #ffffff;
@@ -46,6 +50,16 @@
     --danger-50: #fef2f2;
     --danger: #ef4444;
     --danger-foreground: #ffffff;
+    /* ---- 状态色的「文字版」----
+     * `text-success / -warning / -danger` 若直接取状态色本身，在浅色底上
+     * 对比度只有 2.2 / 2.1 / 3.6 : 1，全部低于 AA 的 4.5（进度条数值、
+     * 逾期提示、信任等级这类小字直接读不清）。
+     * 这里给每个状态色配一个压深（浅色主题）/ 提亮（深色主题）的文字变体，
+     * 只用于「当文字」的场景；背景、边框、图标描边仍用原色保持鲜艳度。 */
+    --success-text: #15803d; /* on #fafafa → 4.81:1 */
+    --warning-text: #b45309; /* on #fafafa → 4.81:1 */
+    --danger-text: #b91c1c; /* on #fafafa → 5.42:1 */
+    --info-text: #1d4ed8; /* on #fafafa → 6.64:1 */
     --background: #fafafa;
     --foreground: #171717;
     --muted: oklch(0.4 0.016 286);
@@ -120,6 +134,7 @@
   --color-default-800: var(--default-800);
   --color-default-900: var(--default-900);
   --color-primary: var(--primary);
+  --color-primary-text: var(--primary-text);
   --color-primary-foreground: var(--primary-foreground);
   --color-primary-50: var(--primary-50);
   --color-primary-100: var(--primary-100);
@@ -134,13 +149,17 @@
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-success: var(--success);
+  --color-success-text: var(--success-text);
   --color-success-foreground: var(--success-foreground);
   --color-info: var(--info);
+  --color-info-text: var(--info-text);
   --color-info-foreground: var(--info-foreground);
   --color-warning: var(--warning);
+  --color-warning-text: var(--warning-text);
   --color-warning-foreground: var(--warning-foreground);
   --color-warning-dark: var(--warning-dark);
   --color-danger: var(--danger);
+  --color-danger-text: var(--danger-text);
   --color-danger-foreground: var(--danger-foreground);
   --color-danger-50: var(--danger-50);
   --color-ring: var(--ring);
@@ -150,63 +169,688 @@
   --radius-xl: calc(var(--radius) + 4px);
 }
 
-/* Native glass-field control style
+/* ==================================================================
+ * Liquid Glass 设计体系（重写，替代旧 glass-* 毛玻璃实现）
  *
- * 模糊只放在 ::before 这一层（z-index:-1），控件自身不再持有 backdrop-filter。
- * 原因见下方「Glass Surfaces」注释：WebKitGTK 在运行时改模糊半径后会把背景模糊
- * 层重新合成到元素内容之上，控件连同里面的文字会一起变成一块糊掉的方块。
- */
-.glass-field {
-  background: transparent;
-  border: 1px solid color-mix(in oklch, var(--border) 60%, transparent);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+ * 分层规则（Apple HIG: Liquid Glass 是「功能层」材质）：
+ *   - 功能层 .lg-regular / .lg-clear / .lg-control / .lg-field
+ *     只用于悬浮在内容之上的控件与导航：标题栏、侧栏、FAB、下拉、
+ *     tooltip、模态、抽屉、toast、输入控件。
+ *   - 内容层 .lg-material* 不使用任何 backdrop-filter——卡片、列表、
+ *     设置分区等「本身就是内容」的容器用标准材质，避免层级混乱，
+ *     同时把实时模糊实例数压到个位数（性能预算见文件末尾注释）。
+ *   - 变体：regular（模糊+提亮，可读性优先，大多数控件）与
+ *     clear（高透明，仅悬浮于照片/视频等丰富背景，亮背景由
+ *     .lg-clear::after 提供暗化层保对比）。
+ *
+ * WebKitGTK 合成约束（沿用旧实现已验证的做法，globals.css 原注释）：
+ *   backdrop-filter 一律放在 ::before（z-index:-1）上，宿主元素不持有；
+ *   模糊半径是静态令牌，禁止运行时改写（旧 glass_clarity 因此移除）；
+ *   禁止对 backdrop-filter 做 transition/animation。
+ * ================================================================== */
+
+:root {
+  /* ---- ① 材质基参数：全应用唯一，所有玻璃变体共享 ----
+   * 模糊半径与饱和度只有这一处定义：标题栏、侧栏、面板、卡片、浮层、
+   * 输入框全部引用 --lg-blur / --lg-saturate，不再逐类各写一个数字。 */
+  --lg-blur: 20px;
+  --lg-saturate: 1.6;
+  --lg-tint-light: 255 255 255; /* 浅色玻璃底色调（RGB 三值） */
+  --lg-tint-dark: 18 20 26; /* 深色玻璃底色调（RGB 三值） */
+  --lg-tint: var(--lg-tint-light); /* 生效值：浅色取 light，.dark 覆盖为 dark */
+
+  /* ---- ② 密度：单一基准 + 固定倍率 ----
+   * 变体之间只允许“同一块玻璃、不同浓淡”：倍率是设计常量，密度才是主题变量。
+   * 三个派生档全部由 --lg-density 算出，改一处即全变。
+   *
+   * 倍率为什么分浅/深两组：深色玻璃的 tint 本身就把背后压暗了，
+   * 同样的“实度倍率”在高密度下会显得比浅色更闷（深色内容层历来要比
+   * 浅色更透才不发灰）。所以只有在倍率这一层随主题分档，密度仍是一处。 */
+  --lg-density: 78%; /* 基准档（regular） */
+  --lg-k-control: 0.9; /* 小面积控件 */
+  --lg-k-field: 1.08; /* 输入字段，保文字可读 */
+  --lg-k-material: 0.87; /* 内容层 */
+  --lg-alpha-regular: var(--lg-density);
+  --lg-alpha-control: calc(var(--lg-density) * var(--lg-k-control));
+  --lg-alpha-field: calc(var(--lg-density) * var(--lg-k-field));
+  --lg-alpha-material: calc(var(--lg-density) * var(--lg-k-material));
+  --lg-alpha-clear: 28%; /* clear 是独立通透档，不随基准走 */
+  /* 媒体层（压在视频/壁纸上的 HUD）：文字永远是浅色，因此底色固定取
+   * 深色 tint 这一支，与浅/深主题无关。
+   * 只有一个值、只有一层：48% ≈ 原 bg-black/40 + backdrop-blur 的观感。
+   * **不能再叠 ::after 黑遮罩**——那会是「48% 深色 + 35% 黑」叠成 ~66%，
+   * 明亮壁纸一压就没了，整块界面变成实心板。 */
+  --lg-media-tint: 16 18 24;
+  --lg-media-alpha: 40%; /* 对齐旧 bg-black/40 的观感 */
+  --lg-alpha-material-sub: 50%;
+  --lg-alpha-material-row: 30%;
+  --lg-scrim-alpha: 0.35; /* clear 在亮背景的暗化层（HIG: ~35%） */
+
+  /* ---- ③ 边缘 1px 内高光 + 外阴影（四档，全部 theme 化） ---- */
+  --lg-edge: rgba(255, 255, 255, 0.55);
+  --lg-edge-top: rgba(255, 255, 255, 0.35);
+  --lg-shadow-control: 0 1px 2px rgba(0, 0, 0, 0.08);
+  --lg-shadow-regular:
+    0 1px 2px rgba(0, 0, 0, 0.07), 0 8px 24px rgba(0, 0, 0, 0.1);
+  --lg-shadow-clear:
+    0 1px 2px rgba(0, 0, 0, 0.05), 0 6px 18px rgba(0, 0, 0, 0.08);
+  --lg-shadow-material:
+    0 1px 2px rgba(0, 0, 0, 0.1), 0 8px 24px rgba(0, 0, 0, 0.12);
+  --lg-shadow-float:
+    0 2px 6px rgba(0, 0, 0, 0.1), 0 16px 48px rgba(0, 0, 0, 0.14);
+
+  /* ---- ④ 统一交互填充 / 分隔线：组件里禁止再写死 white/black ----
+   * 旧写法 hover:bg-white/10 在浅色主题下几乎不可见、hover:bg-default-100
+   * 又是实色，同屏出现深浅两三步——这正是“毛玻璃深浅不一”的来源。
+   * 这里改成随 theme 反转的令牌：浅色压暗、深色提亮。 */
+  --lg-interactive-soft: color-mix(in oklab, #000000 5%, transparent);
+  --lg-interactive: color-mix(in oklab, #000000 9%, transparent);
+  --lg-interactive-strong: color-mix(in oklab, #000000 16%, transparent);
+  --lg-hairline: color-mix(in oklab, var(--separator) 60%, transparent);
+  --lg-inset-alpha: 55%; /* 内容层内部的次级填充块（代码块、分组底、徽章底） */
+
+  /* ---- ⑤ 主题色染色 + 各变体最终填充色 ----
+   * 玻璃底色 = tint × 密度，再掺入 --lg-accent-mix 的主题色，
+   * 主题色一变（设置页换色）全部玻璃同步变化；所有实现只引用这五个令牌。 */
+  --lg-accent-mix: 6%;
+  --lg-fill-regular: color-mix(
+    in oklab,
+    var(--primary) var(--lg-accent-mix),
+    rgb(var(--lg-tint) / var(--lg-alpha-regular))
+  );
+  --lg-fill-control: color-mix(
+    in oklab,
+    var(--primary) var(--lg-accent-mix),
+    rgb(var(--lg-tint) / var(--lg-alpha-control))
+  );
+  --lg-fill-field: color-mix(
+    in oklab,
+    var(--primary) var(--lg-accent-mix),
+    rgb(var(--lg-tint) / var(--lg-alpha-field))
+  );
+  --lg-fill-material: color-mix(
+    in oklab,
+    var(--primary) var(--lg-accent-mix),
+    rgb(var(--lg-tint) / var(--lg-alpha-material))
+  );
+  --lg-fill-clear: rgb(var(--lg-tint) / var(--lg-alpha-clear));
+  --lg-fill-media: rgb(var(--lg-media-tint) / var(--lg-media-alpha));
+
+  /* ---- 动效令牌：全应用唯一时长/缓动/位移尺度 ---- */
+  --lg-dur-fast: 150ms; /* hover/active/开关等即时反馈 */
+  --lg-dur-base: 200ms; /* 下拉、tooltip、菜单、小弹层 */
+  --lg-dur-slow: 280ms; /* 模态、抽屉、面板开合 */
+  --lg-dur-page: 320ms; /* 页面切换、横幅推动等大位移 */
+  --lg-ease-standard: cubic-bezier(0.2, 0, 0, 1); /* 通用过渡/退出 */
+  --lg-ease-emphasized: cubic-bezier(
+    0.16,
+    1,
+    0.3,
+    1
+  ); /* 进入主力（减速收尾） */
+  --lg-ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1); /* 仅小元素弹性 */
+  --lg-ease-exit: cubic-bezier(0.4, 0, 1, 1); /* 退出专用 */
+  --lg-shift-1: 8px; /* tooltip/菜单项微移 */
+  --lg-shift-2: 16px; /* popover/toast */
+  --lg-shift-3: 24px; /* 模态/卡片进入 */
+  /* SVG 噪点纹理：固定 0.04 不透明度叠在 tint 上，弱化 banding */
+  --lg-noise: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+
+  /* 背景层令牌（与玻璃无关，appearance-settings 继续 usable） */
+  --bg-opacity: 0.33;
+  --bg-image: none;
+  --bg-image-opacity: 0.5;
+  --bg-blur: 16px;
+  /* 渐变磨砂（标题栏 / 侧边栏）：
+   * --lg-frost-fade         磨砂从满强度衰减到 0 的距离（只做过渡，不覆盖内容区）
+   * --lg-frost-titlebar-h   标题栏本体高度（h-11 = 44px），这段保持满强度
+   * --lg-frost-blur-delta   磨砂层额外的模糊半径（相对用户设定的背景模糊）
+   * 衰减终点即壁纸自身的 --bg-blur 模糊（用户设定值）。 */
+  --lg-frost-fade: 28px;
+  --lg-frost-titlebar-h: 44px;
+  --lg-frost-blur-delta: 12px;
+  /* 壁纸压暗层不透明度：壁纸是任意图片，透明度可拉到 100%、模糊可拉到 0，
+   * 必须有一层与主题同色的压暗保证正文区对比度（见 .dashboard-veil）。
+   * 浅色主题用白纱、深色主题用深色纱。 */
+  --bg-veil-opacity: 0.45;
 }
-.glass-field::before {
+.dark {
+  --lg-tint: var(--lg-tint-dark);
+  /* 深色基准档与原实现一致（72%）；内容层额外调低倍率到 46%：
+   * 深色 tint 本身已把背后压暗，同样实度会比浅色发灰，
+   * 只有“内容层更透”才能保持同一套玻璃的语言。 */
+  --lg-density: 72%;
+  --lg-k-field: 1.02; /* 73%，输入框在深色壁纸上要更实才好读 */
+  --lg-k-material: 0.64; /* 46%，与原深色材质一致 */
+  /* 深色主题下原状态色本身已达标（surface #18181b 上 success 7.78、
+   * warning 8.25、danger 4.71、info 6.97），无需再压深/提亮 */
+  --success-text: var(--success);
+  --warning-text: var(--warning);
+  --danger-text: var(--danger);
+  --info-text: var(--info);
+  --lg-alpha-clear: 24%;
+  --lg-media-alpha: 34%; /* 深色主题：媒体层比浅色更透 */
+  --lg-scrim-alpha: 0.12; /* 深色媒体背景上暗化层减轻 */
+  --lg-edge: rgba(255, 255, 255, 0.2);
+  --lg-edge-top: rgba(255, 255, 255, 0.12);
+  --lg-shadow-control: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --lg-shadow-regular:
+    0 1px 2px rgba(0, 0, 0, 0.45), 0 8px 24px rgba(0, 0, 0, 0.38);
+  --lg-shadow-clear:
+    0 1px 2px rgba(0, 0, 0, 0.4), 0 6px 18px rgba(0, 0, 0, 0.32);
+  --lg-shadow-material:
+    0 1px 2px rgba(0, 0, 0, 0.45), 0 8px 24px rgba(0, 0, 0, 0.38);
+  --lg-shadow-float:
+    0 2px 6px rgba(0, 0, 0, 0.5), 0 16px 48px rgba(0, 0, 0, 0.45);
+  --lg-inset-alpha: 40%;
+  --lg-alpha-material-sub: 52%;
+  --lg-alpha-material-row: 40%;
+  --lg-interactive-soft: color-mix(in oklab, #ffffff 6%, transparent);
+  --lg-interactive: color-mix(in oklab, #ffffff 11%, transparent);
+  --lg-interactive-strong: color-mix(in oklab, #ffffff 20%, transparent);
+  /* 深色主题的壁纸多数是亮色（游戏壁纸/截图），压暗层要更重：
+   * 浅色主题下正文字是深色，0.45 的白纱已足够；深色主题下是白字，
+   * 背后亮度必须压到 ≤0.23 才有 4.5:1。 */
+  --bg-veil-opacity: 0.68;
+}
+
+/* ---- 功能层：regular（控件/导航/浮层默认变体） ---- */
+.lg-regular {
+  position: relative;
+  z-index: 0;
+  background: transparent;
+  box-shadow: var(--lg-shadow-regular);
+}
+.lg-regular::before {
   content: "";
   position: absolute;
   inset: 0;
   z-index: -1;
   border-radius: inherit;
   pointer-events: none;
-  background: color-mix(
-    in oklch,
-    var(--field) var(--glass-field-opacity, 80%),
-    transparent
-  );
-  backdrop-filter: blur(calc(var(--glass-blur, 28px) * 0.43)) saturate(1.5);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  background: var(--lg-noise), var(--lg-fill-regular);
+  background-size:
+    120px 120px,
+    auto;
+  backdrop-filter: blur(var(--lg-blur)) saturate(var(--lg-saturate));
+  box-shadow:
+    inset 0 0 0 1px var(--lg-edge),
+    inset 0 1px 0 var(--lg-edge-top);
 }
-/* <input>/<textarea>/<select> 是替换元素，::before 不会被渲染，模糊层没地方放。
- * 字段底色本来就有 80%+ 不透明度，这里直接铺底色并去掉 backdrop-filter，
- * 顺带避免同一个 WebKit 合成 bug 把输入框里的文字糊掉。 */
-:is(input, textarea, select).glass-field {
-  background: color-mix(
-    in oklch,
-    var(--field) var(--glass-field-opacity, 80%),
-    transparent
+
+/* ---- 功能层：clear（悬浮于照片/视频等视觉丰富背景） ---- */
+.lg-clear {
+  position: relative;
+  z-index: 0;
+  background: transparent;
+  box-shadow: var(--lg-shadow-clear);
+}
+.lg-clear::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  pointer-events: none;
+  background: var(--lg-fill-clear);
+  backdrop-filter: blur(var(--lg-blur)) saturate(var(--lg-saturate));
+  box-shadow: inset 0 0 0 1px var(--lg-edge);
+}
+/* 独立暗化层：浅色 35% / 深色 12%（HIG 可读性兜底）；
+ * 压在已知深色媒体上时可置 --lg-scrim-alpha: 0 关闭。
+ * 层叠顺序：同为一个负 z-index 时，::after（暗化）在源码顺序上
+ * 位于 ::before（模糊层）之后，DOM 绘制顺序保证暗化压在模糊之上、
+ * 内容（宿主 z-index:0 的子树）之下。 */
+.lg-clear::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  pointer-events: none;
+  background: rgb(0 0 0 / var(--lg-scrim-alpha));
+}
+
+/* ------------------------------------------------------------------
+ * 渐变磨砂（标题栏 / 侧边栏）
+ *
+ * 目标：这两块「贴边的大面积区域」不铺任何底色（原 .lg-sheet 实底已移除），
+ * 只保留磨砂，且磨砂强度沿离开边缘的方向平滑衰减：
+ *   - 标题栏：纵向衰减（top → bottom），强 → 弱；
+ *   - 侧边栏：横向衰减（left → right），强 → 弱。
+ * 衰减到 0 处只剩壁纸自身的 --bg-blur 模糊，即用户设定的背景模糊值。
+ *
+ * 实现方式：backdrop-filter 覆盖层 + mask 渐变。
+ *   - 单个全屏覆盖层，遮罩用 mask-image 的**两层**渐变合成一个 L 形强区：
+ *       第一层纵向（标题栏：top → bottom 衰减）
+ *       第二层横向（侧边栏：left → right 衰减）
+ *     多层遮罩默认 composite: add（取并集），两层在左上角重叠处合成连通
+ *     的 L 形，标题栏与侧边栏的磨砂**连成一片**，中间没有断裂。
+ *     早先拆成「标题栏横带 + 侧边栏竖带」两个独立元素时，左上角是断开的，
+ *     两块磨砂之间有明显裂缝——改为单层双遮罩即解决。
+ *
+ * 层级：覆盖层放在**背景层之上、内容层之下**（z-index 0，内容层 z-10）。
+ *   backdrop-filter 只采样「已绘制在它下方」的内容。
+ *
+ *   - mask 只控制覆盖层自身的合成强度，不产生任何底色，满足「不加底色」。
+ *   - blur 与 mask 必须落在**同一个元素**上（Chromium 实测：拆开写时模糊
+ *     整层失效），故两者同放 ::before —— 这同时满足本文件既有的 WebKitGTK
+ *     规避（backdrop-filter 一律写在 ::before 上）。
+ *   - 模糊半径是静态令牌 --lg-frost-blur-delta（恒定增量），绝不随用户设定
+ *     实时改写（运行时改写模糊半径会触发 WebKitGTK 重合成 bug）。
+ *     效果：标题栏处模糊 = 壁纸自身的 --bg-blur + 增量，向外渐弱到
+ *     用户设定的 --bg-blur（标题栏下方 / 侧边栏右侧）。
+ * ------------------------------------------------------------------ */
+.frost-main {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+.frost-main::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  backdrop-filter: blur(var(--lg-frost-blur-delta));
+  -webkit-backdrop-filter: blur(var(--lg-frost-blur-delta));
+  /* 纵向：标题栏本体满强度，向下线性衰减到 0（终点 = 用户设定的背景模糊） */
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    #000 0,
+    #000 var(--lg-frost-titlebar-h),
+    transparent calc(var(--lg-frost-titlebar-h) + var(--lg-frost-fade))
   );
+  mask-image: linear-gradient(
+    to bottom,
+    #000 0,
+    #000 var(--lg-frost-titlebar-h),
+    transparent calc(var(--lg-frost-titlebar-h) + var(--lg-frost-fade))
+  );
+} /* 侧边栏：横向衰减（第二层遮罩，与纵向遮罩取并集 → 连通的 L 形强区）。
+ * --frost-sidebar-w 由布局层按展开/折叠宽度写入（288px / 64px）。 */
+.frost-with-sidebar::before {
+  -webkit-mask-image:
+    linear-gradient(
+      to bottom,
+      #000 0,
+      #000 var(--lg-frost-titlebar-h),
+      transparent calc(var(--lg-frost-titlebar-h) + var(--lg-frost-fade))
+    ),
+    linear-gradient(
+      to right,
+      #000 0,
+      #000 var(--frost-sidebar-w),
+      transparent calc(var(--frost-sidebar-w) + var(--lg-frost-fade))
+    );
+  mask-image:
+    linear-gradient(
+      to bottom,
+      #000 0,
+      #000 var(--lg-frost-titlebar-h),
+      transparent calc(var(--lg-frost-titlebar-h) + var(--lg-frost-fade))
+    ),
+    linear-gradient(
+      to right,
+      #000 0,
+      #000 var(--frost-sidebar-w),
+      transparent calc(var(--frost-sidebar-w) + var(--lg-frost-fade))
+    );
+}
+/* 游戏模式：背景是视频，整屏 backdrop-filter 会跟着每帧重算，
+ * 因此只保留标题栏那条窄带（无侧边栏遮罩层）。 */
+.frost-titlebar-only {
+  bottom: auto;
+  height: calc(var(--lg-frost-titlebar-h) + var(--lg-frost-fade));
+}
+
+/* 移动端抽屉：fixed 全高容器，只需要侧边栏的横向遮罩。
+ * 遮罩写在自己的 ::before 上，覆盖掉 .frost-main 的纵向遮罩。 */
+.frost-drawer {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: calc(var(--frost-sidebar-w) + var(--lg-frost-fade));
+}
+.frost-drawer::before {
+  -webkit-mask-image: linear-gradient(
+    to right,
+    #000 0,
+    #000 var(--frost-sidebar-w),
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to right,
+    #000 0,
+    #000 var(--frost-sidebar-w),
+    transparent 100%
+  );
+}
+
+/* ---- 功能层：控件底与小面积玻璃 ---- */
+.lg-control {
+  position: relative;
+  z-index: 0;
+  background: transparent;
+  box-shadow: var(--lg-shadow-control);
+}
+.lg-control::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  pointer-events: none;
+  background: var(--lg-fill-control);
+  backdrop-filter: blur(var(--lg-blur)) saturate(var(--lg-saturate));
+  box-shadow:
+    inset 0 0 0 1px var(--lg-edge),
+    inset 0 1px 0 var(--lg-edge-top);
+}
+
+/* ---- 功能层：输入字段 ---- */
+.lg-field {
+  position: relative;
+  z-index: 0;
+  background: transparent;
+  border: 1px solid color-mix(in oklch, var(--border) 60%, transparent);
+  box-shadow: var(--lg-shadow-control);
+}
+.lg-field::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  pointer-events: none;
+  background: var(--lg-fill-field);
+  backdrop-filter: blur(var(--lg-blur)) saturate(var(--lg-saturate));
+  box-shadow: inset 0 1px 0 var(--lg-edge-top);
+}
+/* <input>/<textarea>/<select> 是替换元素，::before 不渲染：
+ * 直接铺更实的底色并禁用模糊（沿用旧实现验证过的 WebKit 规避）。 */
+:is(input, textarea, select).lg-field {
+  background: color-mix(in oklch, var(--surface) 88%, transparent);
   backdrop-filter: none;
 }
 
-html {
-  transition: color-scheme 0.3s ease;
+/* ------------------------------------------------------------------
+ * 内容层：材质玻璃（card / panel 专用，唯一实现）
+ *
+ * 修正记录：上一版把内容层做成「零 backdrop-filter 的纯色」，结果
+ * 卡片在壁纸上只剩"压暗/透明"，完全没有玻璃质感——这是把 HIG 的
+ * 「内容层不用 Liquid Glass 功能材质」误读成了「内容层不能有模糊」。
+ * 正确做法：内容层用同一套玻璃参数（模糊 + 饱和度 + 提亮 + 边缘高光），
+ * 只是透明度档位比功能层更实，保证内容可读。模糊仍在 ::before 上
+ * （WebKitGTK 合成 bug 的规避前提依然成立）。
+ *
+ * 嵌套约束：.lg-material-sub / -row 只做纯色叠加（它们总在 material
+ * 内部，再叠一层 backdrop-filter 会变成"模糊的模糊"）。
+ * ------------------------------------------------------------------ */
+.lg-material {
+  position: relative;
+  z-index: 0;
+  background: transparent;
+  box-shadow: var(--lg-shadow-material);
 }
-* {
-  -webkit-tap-highlight-color: transparent;
-  -webkit-touch-callout: none;
+.lg-material::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  pointer-events: none;
+  background: var(--lg-noise), var(--lg-fill-material);
+  background-size:
+    120px 120px,
+    auto;
+  backdrop-filter: blur(var(--lg-blur)) saturate(var(--lg-saturate));
+  box-shadow:
+    inset 0 0 0 1px var(--lg-edge),
+    inset 0 1px 0 var(--lg-edge-top);
+}
+
+/* 内容层的次级/行级底色：纯色叠加，无模糊（嵌套在 .lg-material 内） */
+.lg-material-sub {
+  background: color-mix(
+    in oklch,
+    var(--surface) var(--lg-alpha-material-sub),
+    transparent
+  );
+}
+.lg-material-row {
+  background: color-mix(
+    in oklch,
+    var(--surface) var(--lg-alpha-material-row),
+    transparent
+  );
+}
+
+/* ------------------------------------------------------------------
+ * 仪表板卡片壳（唯一约束点）
+ *
+ * 壳只负责圆角 / 裁切 / 阴影 / 盒模型；背景一律交给卡片根元素的
+ * .lg-material（玻璃参数在那一处定义）。壳自己**不铺任何底色**，
+ * 因此：
+ *   - 正常卡片：单层 .lg-material 玻璃，不会被壳叠成实心板；
+ *   - 万一某张卡漏写背景：壳用 :not(:has(...)) 兜底补同样的玻璃底，
+ *     永远不出现透明卡片。新卡片仍然零心智。
+ * ------------------------------------------------------------------ */
+.dashboard-card-shell {
+  position: relative;
+  z-index: 0;
+  border-radius: 10px;
+  overflow: hidden;
+  background: transparent;
+  box-shadow: var(--lg-shadow-material);
+}
+
+/* 兜底：卡片根没有 .lg-material 时，壳自己长出一层同样的玻璃。
+ * DOM 结构固定为 shell > div.h-full > 卡片根（button 或 div）。 */
+.dashboard-card-shell:not(:has(> div > .lg-material))::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  pointer-events: none;
+  background: var(--lg-noise), var(--lg-fill-material);
+  background-size:
+    120px 120px,
+    auto;
+  backdrop-filter: blur(var(--lg-blur)) saturate(var(--lg-saturate));
+  box-shadow:
+    inset 0 0 0 1px var(--lg-edge),
+    inset 0 1px 0 var(--lg-edge-top);
+}
+/* 无原生磨砂平台：兜底层直接用不透明 surface，避免透出桌面 */
+html[data-window-effects="fallback"]
+  .dashboard-card-shell:not(:has(> div > .lg-material))::before {
+  background: var(--surface);
+  backdrop-filter: none;
+}
+
+/* ---- 全屏遮罩（模态/抽屉背后） ---- */
+.lg-scrim {
+  background: rgb(0 0 0 / 0.35);
+  backdrop-filter: blur(calc(var(--lg-blur) * 0.4));
+}
+
+/* ---- 原生磨砂窗口（托盘 Acrylic）：不叠 webview 模糊，只压渐变 ---- */
+.lg-native {
+  background:
+    linear-gradient(
+      to bottom,
+      color-mix(in oklch, var(--surface) 53%, transparent),
+      color-mix(in oklch, var(--surface) 71%, transparent)
+    ),
+    color-mix(in oklch, var(--background) 28%, transparent);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  box-shadow: none;
+}
+.dark .lg-native {
+  background:
+    linear-gradient(
+      to bottom,
+      color-mix(in oklch, var(--surface) 57%, transparent),
+      color-mix(in oklch, var(--surface) 71%, transparent)
+    ),
+    color-mix(in oklch, #05070c 32%, transparent);
+}
+/* 原生磨砂窗口：body 不铺底色，让系统 Acrylic 透出来 */
+html[data-window="tray-panel"],
+html[data-window="tray-panel"] body {
+  background: transparent;
+}
+
+/* ------------------------------------------------------------------
+ * 冻结弹窗兼容别名（唯一保留的旧类名桥）
+ *
+ * char detail modal（cards/character-list/char-select-modal.tsx）按契约
+ * 逐字冻结，其内部（如下拉 201 行、槽位栏 3006/3024 行）仍写着旧类名。
+ * 这里把旧类映射到新 regular 变体，使冻结代码在新视觉体系下零改动、
+ * 零行为漂移地渲染。除该冻结文件外，src/ 内不允许再出现旧类引用。
+ * ------------------------------------------------------------------ */
+.glass-surface,
+.glass-surface-strong {
+  position: relative;
+  z-index: 0;
+  background: transparent;
+  box-shadow: var(--lg-shadow-regular);
+}
+.glass-surface::before,
+.glass-surface-strong::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  pointer-events: none;
+  background: var(--lg-noise), var(--lg-fill-regular);
+  background-size:
+    120px 120px,
+    auto;
+  backdrop-filter: blur(var(--lg-blur)) saturate(var(--lg-saturate));
+  box-shadow:
+    inset 0 0 0 1px var(--lg-edge),
+    inset 0 1px 0 var(--lg-edge-top);
+}
+
+/* 玻璃宿主需要定位上下文，负层级伪元素才不会漏进祖先层叠上下文。
+ * 放 @layer components：Tailwind 工具类（fixed/sticky/z-*）仍能覆盖。 */
+@layer components {
+  :is(.lg-regular, .lg-clear, .lg-control, .lg-field) {
+    position: relative;
+    z-index: 0;
+  }
+
+  /* ---- 统一状态反馈（玻璃上的 hover / press / 选中底） ----
+   * 组件里此前散落 hover:bg-white/10、hover:bg-default-100、
+   * hover:bg-default-100/50 等写法：浅色主题下 white/10 几乎不可见、
+   * default-100 又是实色，同屏出现深浅三步，正是“毛玻璃深浅不一”的来源。
+   * 这三个类只读 §④ 令牌，随 theme 自动反转，一个界面里不会再有第二种取值。 */
+  .lg-hoverable {
+    transition:
+      background-color var(--lg-dur-fast) var(--lg-ease-standard),
+      color var(--lg-dur-fast) var(--lg-ease-standard);
+  }
+  .lg-hoverable:hover {
+    background-color: var(--lg-interactive);
+  }
+  .lg-hoverable:active {
+    background-color: var(--lg-interactive-strong);
+  }
+
+  /* 更大容器上的弱反馈（列表行、公告行、分组标题） */
+  .lg-hoverable-soft {
+    transition:
+      background-color var(--lg-dur-fast) var(--lg-ease-standard),
+      color var(--lg-dur-fast) var(--lg-ease-standard);
+  }
+  .lg-hoverable-soft:hover {
+    background-color: var(--lg-interactive-soft);
+  }
+
+  /* 常驻选中态（当前导航项、当前标签页） */
+  .lg-selected {
+    background-color: var(--lg-interactive);
+  }
+
+  /* 玻璃表面上的次级分隔线（1px 细线，随 theme 换色） */
+  .lg-hairline {
+    border-color: var(--lg-hairline);
+  }
+
+  /* 滑块手柄 / 开关滑块：小面积实体控件，边框与内高光同样随 theme 换 */
+  .lg-thumb {
+    border-color: var(--lg-hairline);
+  }
+
+  /* 内容层内部的次级填充块（代码块、分组底、徽章底、分段控件轨道）
+   * 必须与表面反向：浅色压暗、深色提亮。用 foreground 参与混合即可自动反转，
+   * 若沿用 tint（浅色=白）就会在白卡上叠出白块、毫无对比。 */
+  .lg-inset {
+    background-color: color-mix(
+      in oklab,
+      var(--foreground) var(--lg-inset-alpha),
+      transparent
+    );
+  }
+
+  /* 深色媒体上的玻璃浮层（游戏模式：操作按钮、公告条、二维码浮层、内嵌浏览器工具栏）
+   *
+   * 它们永远压在视频 / 壁纸上，文字恒为浅色，所以底色走 dark tint 这一支
+   * （--lg-media-*），而不是跟着浅色主题变成半透白。
+   * 模糊、饱和度、边缘高光仍与其他玻璃共用同一套令牌。
+   *
+   * 关键：**只有 ::before 一层**。这里不能再叠一层黑色遮罩——
+   * 「48% 深色底 + 35% 黑」会合成约 66% 的不透明度，明亮壁纸整块被压死，
+   * 看起来就是实心板（旧实现 bg-black/40 + backdrop-blur 反而更透气）。 */
+  .lg-media-chip {
+    position: relative;
+    z-index: 0;
+    background: transparent;
+  }
+  .lg-media-chip::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    border-radius: inherit;
+    pointer-events: none;
+    background: var(--lg-fill-media);
+    backdrop-filter: blur(var(--lg-blur)) saturate(var(--lg-saturate));
+    box-shadow:
+      inset 0 0 0 1px var(--lg-edge),
+      inset 0 1px 0 var(--lg-edge-top);
+  }
+  .lg-media-chip-interactive {
+    transition: filter var(--lg-dur-fast) var(--lg-ease-standard);
+  }
+  .lg-media-chip-interactive:hover {
+    filter: brightness(1.08);
+  }
+  .lg-media-chip-interactive:active {
+    filter: brightness(0.94);
+  }
+}
+
+/* 无原生磨砂的平台（Linux / 开发态浏览器）：模糊没有背衬，
+ * 玻璃退化为更实的不透明材质，clear 的暗化层一并关闭。
+ * 只抬高密度基准，三个派生档位随 calc 一起抬高（不再逐档硬写）。
+ * 特异性 (0,1,1) 高于 .dark (0,1,0)，因此深色下同样生效。 */
+html[data-window-effects="fallback"] {
+  --lg-density: 92%;
+  --lg-alpha-clear: 86%;
+  --lg-scrim-alpha: 0;
+}
+html[data-window-effects="fallback"].dark {
+  --lg-density: 90%;
+  --lg-alpha-clear: 84%;
 }
 
 /* Tauri acrylic window background */
-:root {
-  --bg-opacity: 0.33;
-  --bg-image: none;
-  --bg-image-opacity: 0.5;
-  --bg-blur: 16px;
-  --glass-blur: 28px;
-  --glass-surface-opacity: 78%;
-  --glass-strong-opacity: 85%;
-  --glass-field-opacity: 80%;
-}
 body {
   min-height: 100vh;
   background: rgba(255, 255, 255, var(--bg-opacity));
@@ -218,42 +862,14 @@ body::before {
   display: none;
 }
 
-/* ------------------------------------------------------------------
- * 无原生窗口磨砂的平台（Linux / WebKitGTK、开发态浏览器）
- *
- * 主窗口以 `transparent(true)` 创建，Windows/macOS 由系统级 Acrylic /
- * Vibrancy 提供磨砂背衬；而 `tauri::vibrancy::set_window_effects` 只对
- * Windows 与 macOS 分发，Linux 分支直接返回成功、什么也不做。于是这里的
- * 半透明 `body`（--bg-opacity 0.33）没有背衬，桌面会整片透出来，
- * `.dashboard-background` 的主题渐变只剩半个图层，观感就是「纯透明」。
- *
- * 因此对没有原生磨砂的窗口铺一层不透明底色，让主题渐变像 Windows 一样
- * 真正渲染出来。属性由 `@/utils/platform` 的 `applyWindowEffectsSupport()`
- * 在首屏渲染前写入 `<html>`。
- * ------------------------------------------------------------------ */
+/* 无原生磨砂的窗口铺不透明底色（applyWindowEffectsSupport 写入标记） */
 html[data-window-effects="fallback"] body {
   background: var(--background);
 }
 
 /* ------------------------------------------------------------------
- * 窗口圆角（无边框窗口）
- *
- * 主窗口 `decorations(false)`，四角原本是直角：
- *   - Windows 11 由 DWM 自动给窗口加圆角；
- *   - macOS 由系统给无边框窗口圆角；
- *   - Linux（WebKitGTK）两者都没有，只能前端自己裁。
- *
- * **不能用 `overflow:hidden` + `border-radius`**：实测它裁不住
- * `position: fixed` 后代，`fixed inset-0` 的层照样是直角并铺满视口，
- * 而本界面到处是 `fixed inset-0`（背景层、模态遮罩、抽屉）。
- *
- * **必须把 `clip-path` 挂在 `<html>` 上**：挂在中间的包裹元素会同时成为
- * `fixed` 后代的包含块，导致整层偏移（实测确认）；挂在根元素上则既不改变
- * fixed 的视口定位，又能把包括 fixed 在内的一切裁出圆角。
- * 同时 `clip-path` 与 `backdrop-filter` 可以共存，玻璃模糊不受影响（实测确认）。
- *
- * Tauri 的 NSIS / AppImage 安装包都不做窗口 shadow，圆角外侧露出的就是桌面，
- * 因此这里不需要额外补阴影。
+ * 窗口圆角（无边框窗口）：clip-path 必须挂在 <html> 上才能裁到
+ * fixed 后代且不改变其定位（实测结论，沿用旧注释）。
  * ------------------------------------------------------------------ */
 html[data-window-radius="self"] {
   --window-radius: 12px;
@@ -295,28 +911,98 @@ html[data-window-radius="self"] {
   opacity: var(--bg-image-opacity);
   filter: blur(var(--bg-blur, 16px));
 }
+
+/* 壁纸压暗层（veil）：直接把用户壁纸整体压到不影响文字对比度的亮度。
+ *
+ * 为什么必须有这一层：壁纸是任意图片，`--bg-image-opacity` 可以拉到 1、
+ * 模糊可以拉到 0（当前用户的配置正是 100% + 0px，一张亮色天空图）。
+ * 此时任何"薄玻璃"都挡不住，白字落在白云上直接读不出来。
+ * 压暗层按主题取色（浅色主题压白、深色主题压黑），比半透明 tint 更稳：
+ * 无论壁纸多亮，正文区的最低对比度都是确定的。
+ * 它不是玻璃，不做模糊——只是叠在壁纸之上的一层纯色。
+ *
+ * z-index 分层（同一层内按 DOM 顺序叠放）：
+ *   .dashboard-background  壁纸本体（z-0，最底）
+ *   .frost-main           渐变磨砂覆盖层（z-0，压在壁纸之上）
+ *   .dashboard-veil        压暗层（z-0，压在磨砂之上）
+ * 磨砂必须在 veil 之下：veil 是均匀色层，压在它之上即可保留压暗效果；
+ * 若磨砂压在 veil 之上，veil 会被一起糊掉、压暗效果打折。 */
+.dashboard-veil {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: var(--background);
+  opacity: var(--bg-veil-opacity);
+}
+
+/* 标题栏是页面骨架的一部分：它压在壁纸上、直接承载窗口标题，
+ * z 必须高于 veil；底色改为渐变磨砂（见 .frost-main）。 */
+.titlebar-shell {
+  z-index: 10;
+}
+/* 可读性靠「背景压暗 + 实底」保证，不靠文字阴影。
+ *
+ * 历史：这里曾加过全局 [class*="text-"] 双向阴影（黑 55% + 白 65%），
+ * 想让文字在花壁纸上不糊。实际效果相反——两个相反方向的阴影把笔画
+ * 边缘染成灰边，中文小字号直接变成"重影糊字"（搜索框、列表标题、侧栏
+ * 菜单全都受影响），而且它对有实底的文字毫无必要。
+ * 现在的规则：壁纸统一盖一层与主题同色的 veil（.dashboard-veil），
+ * 承载正文的容器各自有实底，文字保持干净的单色，不再加任何阴影。 */
 .adaptive-contrast-text {
   color: var(--foreground);
 }
+/* 文字颜色的对比度兜底。
+ *
+ * 这套覆盖只做一件事：把「在任意壁纸/玻璃上都读不清」的取色拉回可达标的值，
+ * 而不是把所有文字涂成同一个颜色。此前它一律映射成 --foreground，结果
+ * 标题与「0/4」这种次要信息同色，层级全丢——那是可读性问题的另一个极端。
+ *
+ * 分档依据（WCAG AA 4.5:1，正文，按当前 --surface 亮度算）：
+ *   --muted 浅色≈#4a4a52 / 深色≈#a8a8af，在各自底色上都 ≥4.5:1 → 直接放行
+ *   text-muted/70 与 /60 混到 30%–40% 底，不足 4.5 → 抬到 --muted
+ *   text-foreground/50 只有一半实度，同样不足 → 抬到 --foreground
+ *   text-foreground/70 及以上、text-gray-500/600 已达标 → 放行
+ *   text-gray-400 在浅底上最差（≈3:1）→ 抬到 --muted */
 :is(
   [class~="text-muted"],
   [class*="text-muted/"],
-  [class~="text-foreground/50"],
-  [class~="text-foreground/70"],
-  [class~="text-foreground/80"],
-  [class~="text-foreground/85"],
-  [class~="text-foreground/90"],
   [class~="text-gray-400"],
   [class~="text-gray-500"],
   [class~="text-gray-600"]
 ) {
+  color: var(--muted);
+}
+:is([class~="text-foreground/50"], [class~="text-foreground/60"]) {
   color: var(--foreground);
 }
-[class*="text-"] {
-  text-shadow:
-    0 1px 2px rgb(0 0 0 / 55%),
-    0 -1px 2px rgb(255 255 255 / 65%);
+/* 标题栏「数据 / 游戏」模式切换
+ *
+ * 玻璃底走与控制件同一套材质（tint × --lg-alpha-control + 同一 blur/saturate），
+ * 因此随 theme 一起换深浅；::before 被拨杆占用，玻璃层只能落在 ::after 上
+ * （两者都是负 z-index：::after 在源码顺序上晚于 ::before，因此盖在模糊层上、
+ * 位于宿主内容之下）。此前这里写死 `bg-default-100/55` + `border-white/20`，
+ * 是标题栏和侧栏/窗口按钮深浅不一致的直接来源。 */
+.titlebar-mode-toggle {
+  position: relative;
+  z-index: 0;
+  background: transparent;
+  border: 1px solid var(--lg-hairline);
 }
+.titlebar-mode-toggle::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  pointer-events: none;
+  background: var(--lg-fill-control);
+  backdrop-filter: blur(var(--lg-blur)) saturate(var(--lg-saturate));
+  box-shadow:
+    inset 0 0 0 1px var(--lg-edge),
+    inset 0 1px 0 var(--lg-edge-top);
+}
+
 .titlebar-mode-toggle::before {
   content: "";
   position: absolute;
@@ -332,9 +1018,10 @@ html[data-window-radius="self"] {
     inset 0 1px 0 rgba(255, 255, 255, 0.28),
     0 1px 4px rgba(0, 0, 0, 0.16);
   will-change: transform;
+  /* 拨杆位移：page 档 + spring（小元素弹性，旧 360ms/0.22,1.25 归并） */
   transition:
-    transform 360ms cubic-bezier(0.22, 1.25, 0.36, 1),
-    background-color 180ms ease;
+    transform var(--lg-dur-page) var(--lg-ease-spring),
+    background-color var(--lg-dur-fast) var(--lg-ease-standard);
   pointer-events: none;
 }
 .titlebar-mode-toggle.is-game::before {
@@ -350,7 +1037,40 @@ html[data-window-radius="self"] {
   color: inherit;
 }
 
-/* Animations */
+/* ==================================================================
+ * 动效系统：所有关键帧统一引用 --lg-dur-* / --lg-ease-* 令牌。
+ * 属性约束：位移/缩放/淡入淡出只用 transform + opacity（合成器），
+ * box-shadow 仅用于浮层进出场的阴影同步渐进，不参与状态过渡。
+ * ================================================================== */
+
+/* 浮层进出场：位移 + 淡入 + 阴影扩散同步（同一 duration/easing） */
+@keyframes lg-float-in {
+  from {
+    opacity: 0;
+    transform: translateY(var(--lg-shift-3)) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+@keyframes lg-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.lg-float-in {
+  animation: lg-float-in var(--lg-dur-slow) var(--lg-ease-emphasized);
+  transition: box-shadow var(--lg-dur-slow) var(--lg-ease-emphasized);
+}
+.lg-float-in::before {
+  animation: lg-fade-in var(--lg-dur-slow) var(--lg-ease-emphasized);
+}
+
+/* Animations — 通用工具类（沿用旧命名，值并入新令牌） */
 @keyframes slide-down {
   0% {
     opacity: 0;
@@ -366,12 +1086,12 @@ html[data-window-radius="self"] {
   }
 }
 .animate-slide-down {
-  animation: slide-down 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+  animation: slide-down var(--lg-dur-slow) var(--lg-ease-spring);
 }
 @keyframes slide-up {
   0% {
     opacity: 0;
-    transform: translateY(20px);
+    transform: translateY(var(--lg-shift-2));
   }
   100% {
     opacity: 1;
@@ -379,12 +1099,12 @@ html[data-window-radius="self"] {
   }
 }
 .animate-slide-up {
-  animation: slide-up 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+  animation: slide-up var(--lg-dur-slow) var(--lg-ease-emphasized);
 }
 @keyframes slide-down-account {
   0% {
     opacity: 0;
-    transform: translateY(-20px);
+    transform: translateY(calc(-1 * var(--lg-shift-2)));
   }
   100% {
     opacity: 1;
@@ -392,12 +1112,12 @@ html[data-window-radius="self"] {
   }
 }
 .animate-slide-down-account {
-  animation: slide-down-account 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+  animation: slide-down-account var(--lg-dur-slow) var(--lg-ease-emphasized);
 }
 @keyframes fade-in {
   0% {
     opacity: 0;
-    transform: translateY(8px);
+    transform: translateY(var(--lg-shift-1));
   }
   100% {
     opacity: 1;
@@ -405,15 +1125,7 @@ html[data-window-radius="self"] {
   }
 }
 .animate-fade-in {
-  animation: fade-in 0.3s ease-out;
-}
-@keyframes switch-flyin {
-  0% {
-    opacity: 0;
-  }
-  100% {
-    opacity: 1;
-  }
+  animation: fade-in var(--lg-dur-base) var(--lg-ease-emphasized);
 }
 @keyframes fade-out {
   0% {
@@ -422,11 +1134,11 @@ html[data-window-radius="self"] {
   }
   100% {
     opacity: 0;
-    transform: translateY(-8px);
+    transform: translateY(calc(-1 * var(--lg-shift-1)));
   }
 }
 .animate-fade-out {
-  animation: fade-out 0.25s ease-in;
+  animation: fade-out var(--lg-dur-base) var(--lg-ease-exit);
 }
 @keyframes slide-in-right {
   0% {
@@ -437,7 +1149,7 @@ html[data-window-radius="self"] {
   }
 }
 .animate-slide-in-right {
-  animation: slide-in-right 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  animation: slide-in-right var(--lg-dur-slow) var(--lg-ease-emphasized);
 }
 @keyframes slide-in-left {
   0% {
@@ -448,12 +1160,12 @@ html[data-window-radius="self"] {
   }
 }
 .animate-slide-in-left {
-  animation: slide-in-left 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  animation: slide-in-left var(--lg-dur-slow) var(--lg-ease-emphasized);
 }
 @keyframes scale-in {
   0% {
     opacity: 0;
-    transform: scale(0.95);
+    transform: scale(0.96);
   }
   100% {
     opacity: 1;
@@ -461,7 +1173,7 @@ html[data-window-radius="self"] {
   }
 }
 .animate-scale-in {
-  animation: scale-in 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  animation: scale-in var(--lg-dur-base) var(--lg-ease-emphasized);
 }
 @keyframes spin-slow {
   0% {
@@ -512,7 +1224,8 @@ html[data-window-radius="self"] {
   }
 }
 .animate-resource-page {
-  animation: resource-page-enter 0.24s cubic-bezier(0.2, 0.7, 0.3, 1) both;
+  animation: resource-page-enter var(--lg-dur-base) var(--lg-ease-emphasized)
+    both;
 }
 .card-flash-highlight {
   animation: card-flash 0.6s ease-in-out 4;
@@ -528,7 +1241,7 @@ html[data-window-radius="self"] {
   }
 }
 
-/* Banner Carousel — push (翻页推动) transition */
+/* Banner Carousel — push（翻页推动）：大位移归 page 档 */
 @keyframes banner-push-in-right {
   from {
     transform: translateX(100%);
@@ -562,21 +1275,25 @@ html[data-window-radius="self"] {
   }
 }
 .animate-banner-push-in-right {
-  animation: banner-push-in-right 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: banner-push-in-right var(--lg-dur-page) var(--lg-ease-emphasized)
+    both;
 }
 .animate-banner-push-in-left {
-  animation: banner-push-in-left 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: banner-push-in-left var(--lg-dur-page) var(--lg-ease-emphasized)
+    both;
 }
 .animate-banner-push-out-left {
-  animation: banner-push-out-left 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: banner-push-out-left var(--lg-dur-page) var(--lg-ease-emphasized)
+    both;
 }
 .animate-banner-push-out-right {
-  animation: banner-push-out-right 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: banner-push-out-right var(--lg-dur-page) var(--lg-ease-emphasized)
+    both;
 }
 
-/* Page Transitions */
+/* Page Transitions — 页面切换统一 page 档 */
 .page-transition-enter {
-  animation: page-enter 0.45s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: page-enter var(--lg-dur-page) var(--lg-ease-emphasized) forwards;
 }
 @keyframes page-enter {
   0% {
@@ -587,16 +1304,12 @@ html[data-window-radius="self"] {
   }
 }
 .page-transition-slide-up {
-  animation: page-slide-up 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: page-slide-up var(--lg-dur-page) var(--lg-ease-emphasized) forwards;
 }
 @keyframes page-slide-up {
   0% {
     opacity: 0;
-    transform: translateY(40px) scale(0.96);
-  }
-  60% {
-    opacity: 1;
-    transform: translateY(-4px) scale(1.002);
+    transform: translateY(var(--lg-shift-3)) scale(0.97);
   }
   100% {
     opacity: 1;
@@ -604,12 +1317,12 @@ html[data-window-radius="self"] {
   }
 }
 .page-transition-scale-in {
-  animation: page-scale-in 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: page-scale-in var(--lg-dur-page) var(--lg-ease-emphasized) forwards;
 }
 @keyframes page-scale-in {
   0% {
     opacity: 0;
-    transform: scale(0.92);
+    transform: scale(0.95);
   }
   100% {
     opacity: 1;
@@ -627,7 +1340,7 @@ html[data-window-radius="self"] {
   }
 }
 .animate-list-item {
-  animation: list-item-in 0.3s ease-out both;
+  animation: list-item-in var(--lg-dur-base) var(--lg-ease-emphasized) both;
 }
 .animate-list-item:nth-child(1) {
   animation-delay: 0ms;
@@ -654,12 +1367,6 @@ html[data-window-radius="self"] {
   animation-delay: 280ms;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .animate-resource-page {
-    animation: none;
-  }
-}
-
 /* Scrollbar — overlay floats on top of content, no layout space */
 * {
   scrollbar-width: none;
@@ -672,293 +1379,12 @@ html[data-window-radius="self"] {
   background: rgba(80, 82, 90, 0.9);
 }
 
-/* Glass Surfaces - Native backdrop-filter (replaces AuraGlass tokens)
- *
- * ⚠️ 模糊（backdrop-filter）一律放在 ::before 上，元素本身只保留透明背景与外阴影。
- * 这样做是为了绕开 WebKitGTK（Linux）的合成 bug：调节「毛玻璃清晰度」时
- * --glass-blur 会在运行时改写，WebKit 会把该元素的「背景模糊层」重新合成到
- * 元素内容之上，于是整张卡片（含文字、滑块等控件）被一块模糊方块盖住。
- * 把过滤放到没有子内容的伪元素上，内容层级永远在模糊层之上，就不可能被糊掉。
- *
- * 配套的 position/z-index 见下方 @layer components —— 必须放低优先级层，
- * 否则会盖掉组件的 fixed / sticky / absolute 等 Tailwind 工具类。
- */
-.glass-window {
-  background: transparent;
-}
-.glass-surface {
-  background: transparent;
-  box-shadow:
-    0 1px 3px rgba(0, 0, 0, 0.08),
-    0 4px 12px rgba(0, 0, 0, 0.04);
-}
-.glass-surface::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  border-radius: inherit;
-  pointer-events: none;
-  background: color-mix(
-    in oklch,
-    var(--surface) var(--glass-surface-opacity, 78%),
-    transparent
-  );
-  backdrop-filter: blur(var(--glass-blur, 28px)) saturate(1.35);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
-}
-.dark .glass-surface {
-  box-shadow:
-    0 1px 3px rgba(0, 0, 0, 0.2),
-    0 4px 12px rgba(0, 0, 0, 0.12);
-}
-.dark .glass-surface::before {
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
-}
-.glass-surface-strong {
-  background: transparent;
-  box-shadow:
-    0 2px 6px rgba(0, 0, 0, 0.12),
-    0 4px 12px rgba(0, 0, 0, 0.08);
-}
-.glass-surface-strong::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  border-radius: inherit;
-  pointer-events: none;
-  background: color-mix(
-    in oklch,
-    var(--surface) var(--glass-strong-opacity, 85%),
-    transparent
-  );
-  backdrop-filter: blur(var(--glass-blur, 28px)) saturate(1.35);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
-}
-.glass-control-surface {
-  background: transparent;
-  box-shadow:
-    0 2px 8px rgba(0, 0, 0, 0.14);
-}
-.glass-control-surface::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  border-radius: inherit;
-  pointer-events: none;
-  background: color-mix(
-    in oklch,
-    var(--surface) calc(var(--glass-surface-opacity, 78%) - 25%),
-    transparent
-  );
-  backdrop-filter: blur(var(--glass-blur, 28px)) saturate(1.35);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
-}
-.account-glass-panel {
-  background: transparent;
-  box-shadow:
-    0 8px 24px rgba(0, 0, 0, 0.08);
-}
-.account-glass-panel::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  border-radius: inherit;
-  pointer-events: none;
-  background: color-mix(in oklch, var(--surface) 48%, transparent);
-  backdrop-filter: blur(28px) saturate(1.35);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18);
-}
-.account-glass-inner {
-  background: transparent;
-}
-.account-glass-inner::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  border-radius: inherit;
-  pointer-events: none;
-  background: color-mix(in oklch, var(--surface) 30%, transparent);
-  backdrop-filter: blur(18px) saturate(1.2);
-}
-.account-glass-row {
-  background: transparent;
-}
-.account-glass-row::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  border-radius: inherit;
-  pointer-events: none;
-  background: color-mix(in oklch, var(--surface) 22%, transparent);
-  backdrop-filter: blur(12px) saturate(1.15);
-}
-.dark .account-glass-panel {
-  box-shadow:
-    0 8px 24px rgba(0, 0, 0, 0.2);
-}
-.dark .account-glass-panel::before {
-  background: color-mix(in oklch, var(--surface) 58%, transparent);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
-}
-.dark .account-glass-inner::before {
-  background: color-mix(in oklch, var(--surface) 40%, transparent);
-}
-.dark .account-glass-row::before {
-  background: color-mix(in oklch, var(--surface) 32%, transparent);
-}
-.dashboard-card-shell {
-  background: transparent;
-  border-radius: 10px;
-  overflow: hidden;
-}
-.dashboard-card-shell > .h-full > .glass-surface {
-  position: relative;
-}
-.dashboard-card-shell > .h-full > .glass-surface > * {
-  position: relative;
-  z-index: 1;
-}
-.dark .glass-surface-strong {
-  box-shadow:
-    0 2px 6px rgba(0, 0, 0, 0.3),
-    0 8px 24px rgba(0, 0, 0, 0.2);
-}
-.dark .glass-surface-strong::before {
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
-}
-.glass-backdrop {
-  background: rgba(0, 0, 0, 0.5);
-  backdrop-filter: blur(4px);
-}
-
-/* ------------------------------------------------------------------
- * 毛玻璃模糊层：定位上下文
- *
- * 上面各玻璃类的模糊层都是 `::before { position:absolute; z-index:-1 }`，
- * 需要父级是「定位元素 + 层叠上下文」，否则负层级会漏到祖先层叠上下文里，
- * 反而被上层背景盖住。
- *
- * 这里刻意放进 @layer components：Tailwind 工具类在 utilities 层，
- * 优先级更高，所以 `fixed` / `sticky` / `absolute` / `z-[210]` 仍然生效
- * （抽屉、浮层、FAB 等玻璃元素依赖这些工具类定位）。
- * ------------------------------------------------------------------ */
-@layer components {
-  :is(
-    .glass-field,
-    .glass-surface,
-    .glass-surface-strong,
-    .glass-control-surface,
-    .account-glass-panel,
-    .account-glass-inner,
-    .account-glass-row
-  ) {
-    position: relative;
-    z-index: 0;
-  }
-}
-
-/* ------------------------------------------------------------------
- * 原生磨砂窗口（tray-panel 使用 Tauri Acrylic 的窗口）
- *
- * 这类窗口的系统级 Acrylic 已提供真实的桌面模糊。若再叠加一层
- * `backdrop-filter: blur()`，就是“模糊的模糊”，文字会糊到看不清。
- * 所以这里**不做任何模糊**，只压一层低不透明度的深色 + 主色渐变：
- *   - 背景保持真透明，桌面透过系统磨砂隐约可见；
- *   - 渐变越靠底部越实，保证操作区文字始终清晰可读。
- * 不透明度由设置页的「毛玻璃清晰度」（配置键 glass_clarity）驱动：
- * `applyGlassClarity()` 把它换算成 --glass-native-opacity（38%–92%）与 --glass-native-base（12%–38%）.
- * 清晰度调高 → 面板更实；调低 → 更透。
- * 渐变层与底层底色都乘同一个变量，两档差距才看得出来；
- * 下面的默认值只是未应用主题时的回退值。
- * ------------------------------------------------------------------ */
-.glass-native {
-  background:
-    linear-gradient(
-      to bottom,
-      color-mix(
-        in oklch,
-        var(--surface) calc(var(--glass-native-opacity, 71%) - 18%),
-        transparent
-      ),
-      color-mix(
-        in oklch,
-        var(--surface) var(--glass-native-opacity, 71%),
-        transparent
-      )
-    ),
-    color-mix(in oklch, var(--background) var(--glass-native-base, 28%), transparent);
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
-  box-shadow: none;
-}
-.dark .glass-native {
-  background:
-    linear-gradient(
-      to bottom,
-      color-mix(
-        in oklch,
-        var(--surface) calc(var(--glass-native-opacity, 71%) - 14%),
-        transparent
-      ),
-      color-mix(
-        in oklch,
-        var(--surface) var(--glass-native-opacity, 71%),
-        transparent
-      )
-    ),
-    color-mix(in oklch, #05070c var(--glass-native-base, 32%), transparent);
-}
-/* 原生磨砂窗口：body 不再铺底色，让系统 Acrylic 透出来 */
-html[data-window="tray-panel"],
-html[data-window="tray-panel"] body {
-  background: transparent;
-}
-
-.avatar-feather {
-  mask-image: radial-gradient(
-    ellipse 90% 90% at center,
-    black 60%,
-    transparent 100%
-  );
-  -webkit-mask-image: radial-gradient(
-    ellipse 90% 90% at center,
-    black 60%,
-    transparent 100%
-  );
-}
-.context-item-normal {
-  color: var(--foreground);
-}
-.context-item-normal:hover {
-  background: color-mix(in oklab, var(--primary) 8%, transparent);
-  color: var(--primary);
-}
-.dark .context-item-normal:hover {
-  background: color-mix(in oklab, var(--primary) 12%, transparent);
-  color: var(--primary-300, var(--primary));
-}
-.glass {
-  background: transparent;
-}
-.dark .glass {
-  background: transparent;
-}
-.glass-strong {
-  background: transparent;
-}
-.dark .glass-strong {
-  background: transparent;
-}
-
-/* Interactive Effects */
+/* Interactive Effects — 状态反馈统一 fast 档 + standard 曲线，
+ * 只过渡 transform/box-shadow（颜色态瞬时生效） */
 .interactive-hover {
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  transition:
+    transform var(--lg-dur-fast) var(--lg-ease-standard),
+    box-shadow var(--lg-dur-fast) var(--lg-ease-standard);
 }
 .interactive-hover:hover {
   transform: translateY(-2px) scale(1.02);
@@ -971,7 +1397,9 @@ html[data-window="tray-panel"] body {
   transform: translateY(0) scale(0.98);
 }
 .card-hover {
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  transition:
+    transform var(--lg-dur-fast) var(--lg-ease-standard),
+    box-shadow var(--lg-dur-fast) var(--lg-ease-standard);
 }
 .card-hover:hover {
   transform: translateY(-2px) scale(1.02);
@@ -984,17 +1412,16 @@ html[data-window="tray-panel"] body {
   transform: translateY(0) scale(0.98);
 }
 .button-hover {
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: transform var(--lg-dur-fast) var(--lg-ease-standard);
 }
 .button-hover:hover {
   transform: scale(1.05);
-  box-shadow: 0 4px 12px color-mix(in oklab, var(--foreground) 10%, transparent);
 }
 .button-hover:active {
   transform: scale(0.95);
 }
 .icon-hover {
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: transform var(--lg-dur-fast) var(--lg-ease-standard);
 }
 .icon-hover:hover {
   transform: scale(1.1) rotate(5deg);
@@ -1003,7 +1430,9 @@ html[data-window="tray-panel"] body {
   transform: scale(0.9) rotate(-5deg);
 }
 .nav-hover {
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  transition:
+    transform var(--lg-dur-fast) var(--lg-ease-standard),
+    background-color var(--lg-dur-fast) var(--lg-ease-standard);
 }
 .nav-hover:hover {
   transform: translateX(4px);
@@ -1013,7 +1442,9 @@ html[data-window="tray-panel"] body {
   transform: translateX(2px);
 }
 .list-item-hover {
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  transition:
+    transform var(--lg-dur-fast) var(--lg-ease-standard),
+    background-color var(--lg-dur-fast) var(--lg-ease-standard);
 }
 .list-item-hover:hover {
   transform: translateX(4px);
@@ -1023,28 +1454,25 @@ html[data-window="tray-panel"] body {
   transform: translateX(2px);
 }
 .input-hover {
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: box-shadow var(--lg-dur-fast) var(--lg-ease-standard);
 }
 .input-hover:hover {
-  border-color: color-mix(in oklab, var(--primary) 50%, transparent);
   box-shadow: 0 0 0 2px color-mix(in oklab, var(--primary) 10%, transparent);
 }
 .input-hover:focus {
-  border-color: var(--primary);
   box-shadow: 0 0 0 3px color-mix(in oklab, var(--primary) 20%, transparent);
 }
 .chip-hover {
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: transform var(--lg-dur-fast) var(--lg-ease-standard);
 }
 .chip-hover:hover {
   transform: scale(1.05);
-  box-shadow: 0 2px 8px color-mix(in oklab, var(--foreground) 10%, transparent);
 }
 .chip-hover:active {
   transform: scale(0.95);
 }
 .switch-hover {
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: transform var(--lg-dur-fast) var(--lg-ease-spring);
 }
 .switch-hover:hover {
   transform: scale(1.05);
@@ -1053,7 +1481,7 @@ html[data-window="tray-panel"] body {
   transform: scale(0.95);
 }
 .checkbox-hover {
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: transform var(--lg-dur-fast) var(--lg-ease-spring);
 }
 .checkbox-hover:hover {
   transform: scale(1.1);
@@ -1062,7 +1490,7 @@ html[data-window="tray-panel"] body {
   transform: scale(0.9);
 }
 .modal-hover {
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: transform var(--lg-dur-fast) var(--lg-ease-standard);
 }
 .modal-hover:hover {
   transform: scale(1.01);
@@ -1071,13 +1499,15 @@ html[data-window="tray-panel"] body {
   transform: scale(0.99);
 }
 .tooltip-hover {
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: transform var(--lg-dur-fast) var(--lg-ease-standard);
 }
 .tooltip-hover:hover {
   transform: translateY(-2px);
 }
 .dropdown-item-hover {
-  transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+  transition:
+    transform var(--lg-dur-fast) var(--lg-ease-standard),
+    background-color var(--lg-dur-fast) var(--lg-ease-standard);
 }
 .dropdown-item-hover:hover {
   transform: translateX(4px);
@@ -1087,13 +1517,15 @@ html[data-window="tray-panel"] body {
   transform: translateX(2px);
 }
 .table-row-hover {
-  transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: background-color var(--lg-dur-fast) var(--lg-ease-standard);
 }
 .table-row-hover:hover {
   background: color-mix(in oklab, var(--primary) 5%, transparent);
 }
 .link-hover {
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  transition:
+    transform var(--lg-dur-fast) var(--lg-ease-standard),
+    color var(--lg-dur-fast) var(--lg-ease-standard);
 }
 .link-hover:hover {
   transform: translateY(-1px);
@@ -1227,7 +1659,7 @@ html[data-window="tray-panel"] body {
   display: inline-block;
   min-width: 0.62em;
   text-align: center;
-  animation: elapsed-pop 0.32s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: elapsed-pop var(--lg-dur-base) var(--lg-ease-emphasized) both;
 }
 .elapsed-sep {
   display: inline-block;
@@ -1245,8 +1677,38 @@ html[data-window="tray-panel"] body {
   }
 }
 
+/* ------------------------------------------------------------------
+ * prefers-reduced-motion：动画与过渡收敛到近零时长（保留即时反馈：
+ * 状态直达终值、focus ring 无动画直出），仅加载 spinner 保留旋转。
+ * ------------------------------------------------------------------ */
 @media (prefers-reduced-motion: reduce) {
-  .elapsed-digit {
-    animation: none;
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  .animate-spin-slow,
+  .lg-spin,
+  .animate-spin {
+    animation-duration: 2s !important;
+    animation-iteration-count: infinite !important;
   }
 }
+
+html {
+  transition: color-scheme 0.3s ease;
+}
+* {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+}
+
+/* 性能预算备注：
+ * - backdrop-filter 同屏实例 ≤ 8（全屏 scrim 计 2）。内容层全部走
+ *   .lg-material*（零模糊）后，实时模糊只剩导航/标题栏/浮层/控件，
+ *   由旧实现的两位数实例降到个位数。
+ * - 嵌套禁令：backdrop-filter 元素互为祖先不得超过一层。
+ * - 模糊半径全部为静态令牌；运行时改写会触发 WebKitGTK 重合成 bug
+ *   （旧 --glass-blur / glass_clarity 链路因此整体移除）。 */
