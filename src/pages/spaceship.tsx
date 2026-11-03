@@ -221,7 +221,7 @@ export default function SpaceshipPage() {
               isDisabled={accounts.length === 0}
               onPress={() => setShowRoleMenu((v) => !v)}
               endContent={<ChevronDownIcon size={14} />}
-              className="border border-separator/70 max-w-48"
+              className="lg-material border border-separator/70 max-w-48"
             >
               <span className="truncate">
                 {currentAccount?.nickname || t("spaceship_page.switch_account")}

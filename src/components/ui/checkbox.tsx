@@ -36,7 +36,7 @@ function GlassCheckbox({
           "hover:scale-110 active:scale-90",
           "focus-within:ring-2 focus-within:ring-primary/40",
           isSelected
-            ? "border-primary bg-primary text-primary-foreground"
+            ? "lg-solid border-primary bg-primary text-primary-foreground"
             : "border-default-400 bg-transparent",
         )}
       >
@@ -87,7 +87,7 @@ function Checkbox({
           "hover:scale-110 active:scale-90",
           "focus-within:ring-2 focus-within:ring-primary/40",
           checked
-            ? "border-primary bg-primary text-primary-foreground"
+            ? "lg-solid border-primary bg-primary text-primary-foreground"
             : "border-default-400 bg-transparent",
         )}
       >

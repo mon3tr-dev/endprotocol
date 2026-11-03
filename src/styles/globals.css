@@ -355,10 +355,11 @@
 }
 
 /* ---- 功能层：regular（控件/导航/浮层默认变体） ---- */
+/* position/z-index 一律不在这里写：非分层声明会压过 @layer utilities 里的
+ * Tailwind 工具类，导致 lg-regular + fixed/absolute/sticky/z-* 的浮层
+ * （消息 flyout、select 菜单、tooltip、alert 弹窗关闭钮…）定位整体失效。
+ * 定位上下文统一由下方 @layer components 提供（工具类可正常覆盖）。 */
 .lg-regular {
-  position: relative;
-  z-index: 0;
-  background: transparent;
   box-shadow: var(--lg-shadow-regular);
 }
 .lg-regular::before {
@@ -380,9 +381,6 @@
 
 /* ---- 功能层：clear（悬浮于照片/视频等视觉丰富背景） ---- */
 .lg-clear {
-  position: relative;
-  z-index: 0;
-  background: transparent;
   box-shadow: var(--lg-shadow-clear);
 }
 .lg-clear::before {
@@ -529,9 +527,6 @@
 
 /* ---- 功能层：控件底与小面积玻璃 ---- */
 .lg-control {
-  position: relative;
-  z-index: 0;
-  background: transparent;
   box-shadow: var(--lg-shadow-control);
 }
 .lg-control::before {
@@ -548,11 +543,26 @@
     inset 0 1px 0 var(--lg-edge-top);
 }
 
+/* ---- 实底玻璃：控件本身就是实色（主色/危险色按钮、选中态开关键） ----
+ * .lg-control 的 ::before 会铺一层 tint × 84% 的玻璃填充，压在 bg-primary
+ * 之上就是把主色直接压暗成灰紫，而文字仍按 --primary-foreground 取近黑
+ * （indigo #6366f1 → #0b0b0d），深色主题下按钮几乎读不出字。
+ * 这一类「实底玻璃」只需要 ::before 提供边缘内高光，不铺填充。
+ * 必须写在非分层区并叠两个类：只有它才能压过上面的 .lg-control::before。 */
+.lg-control.lg-solid::before {
+  background: none;
+}
+
+/* 选中态同样要撤掉玻璃填充：开关/复选在选中时由 bg-primary 铺实底
+ * （Radix 的 data-state 落在 root 上，玻璃宿主常是其子元素，故两种写法都收）。 */
+.lg-control[aria-checked="true"]::before,
+.lg-control[data-state="checked"]::before,
+[data-state="checked"] .lg-control::before {
+  background: none;
+}
+
 /* ---- 功能层：输入字段 ---- */
 .lg-field {
-  position: relative;
-  z-index: 0;
-  background: transparent;
   border: 1px solid color-mix(in oklch, var(--border) 60%, transparent);
   box-shadow: var(--lg-shadow-control);
 }
@@ -588,9 +598,6 @@
  * 内部，再叠一层 backdrop-filter 会变成"模糊的模糊"）。
  * ------------------------------------------------------------------ */
 .lg-material {
-  position: relative;
-  z-index: 0;
-  background: transparent;
   box-shadow: var(--lg-shadow-material);
 }
 .lg-material::before {
@@ -637,11 +644,8 @@
  *     永远不出现透明卡片。新卡片仍然零心智。
  * ------------------------------------------------------------------ */
 .dashboard-card-shell {
-  position: relative;
-  z-index: 0;
   border-radius: 10px;
   overflow: hidden;
-  background: transparent;
   box-shadow: var(--lg-shadow-material);
 }
 
@@ -714,9 +718,6 @@ html[data-window="tray-panel"] body {
  * ------------------------------------------------------------------ */
 .glass-surface,
 .glass-surface-strong {
-  position: relative;
-  z-index: 0;
-  background: transparent;
   box-shadow: var(--lg-shadow-regular);
 }
 .glass-surface::before,
@@ -740,9 +741,24 @@ html[data-window="tray-panel"] body {
 /* 玻璃宿主需要定位上下文，负层级伪元素才不会漏进祖先层叠上下文。
  * 放 @layer components：Tailwind 工具类（fixed/sticky/z-*）仍能覆盖。 */
 @layer components {
-  :is(.lg-regular, .lg-clear, .lg-control, .lg-field) {
+  :is(
+    .lg-regular,
+    .lg-clear,
+    .lg-control,
+    .lg-field,
+    .lg-material,
+    .dashboard-card-shell,
+    .glass-surface,
+    .glass-surface-strong
+  ) {
     position: relative;
     z-index: 0;
+    /* 玻璃宿主的「透明底」也必须留在 components 层：未分层声明会压过
+     * @layer utilities 的 bg-* 工具类，导致 lg-control + bg-primary /
+     * bg-danger 这类「实底玻璃」只剩下 ::before 的玻璃层——深色下就是
+     * 一片暗灰，而前景仍按 --primary-foreground 取近黑色，文字直接糊掉。
+     * 与上面 position/z-index 是同一条教训。 */
+    background: transparent;
   }
 
   /* ---- 统一状态反馈（玻璃上的 hover / press / 选中底） ----

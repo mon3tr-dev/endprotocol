@@ -232,25 +232,26 @@
 | ④ 交互填充 `--lg-interactive-soft/-/strong`、`--lg-hairline`、`--lg-inset-alpha` | 216-225 | 玻璃上的 hover/选中/内嵌块；浅色压暗、深色提亮（旧 `hover:bg-white/10` 在浅色下几乎不可见） |
 | ⑤ 最终填充色 `--lg-fill-regular/-control/-field/-material/-clear/-media` | 227-236 | `color-mix(primary X%, tint / alpha)` —— 主题色一变全部玻璃同步变，无需逐处改色 |
 | ⑥ 媒体层 `--lg-media-tint` / `--lg-alpha-media` | 199-203 | 压在视频/壁纸上的 HUD（游戏模式）：文字恒为浅色，底色固定深色支，只让通透度随主题微调 |
-| `.lg-regular` | 285-305 | **功能层 regular**：控件/导航/浮层默认变体（blur/saturate/密度全部来自令牌） |
+| `.lg-regular` | 285-305 | **功能层 regular**：控件/导航/浮层默认变体（blur/saturate/密度全部来自令牌）。**宿主类一律不在此处写 `position/z-index`**——非分层声明会压过 `@layer utilities` 的 Tailwind 定位工具类，导致 `lg-regular + fixed/absolute` 的浮层定位整体失效（历史 bug：消息 flyout、select 菜单、tooltip 全部错位）；定位上下文统一由 `@layer components` 的 `:is(...)` 规则供给 |
 | `.lg-clear` | 307-338 | **功能层 clear**：悬浮于照片/视频等丰富背景；`::after` 暗化层浅色 35% / 深色 12%（HIG 可读性兜底） |
 | `.lg-sheet` | — | **已移除**。标题栏/侧边栏原先用它铺近乎不透明的实底，现改为 `.frost-main` 渐变磨砂（无底色） |
 | `.frost-main` / `.frost-with-sidebar` / `.frost-titlebar-only` / `.frost-drawer` | 约 385-490 | **渐变磨砂层**（替代 `.lg-sheet`）：`backdrop-filter` + `mask-image` 的全屏覆盖层，模糊与遮罩同放 `::before`。纵向遮罩（标题栏：top→bottom 衰减）+ 横向遮罩（侧边栏：left→right 衰减）用 mask 多图层语法取并集，合成连通的 L 形强区——标题栏与侧边栏的磨砂连成一片，左上角无断裂。令牌 `--lg-frost-fade`(28px 衰减距离) / `--lg-frost-titlebar-h`(44px 标题栏本体高) / `--lg-frost-blur-delta`(12px 模糊增量)；衰减终点即用户设定的 `--bg-blur`。游戏模式用 `.frost-titlebar-only`（只留标题栏窄带，避免整屏 backdrop-filter 跟视频逐帧重算），移动端抽屉用 `.frost-drawer`（fixed 定位、仅横向遮罩） |
-| `.lg-control` | 340-359 | 功能层控件底（开关/复选/分页/圆钮） |
+| `.lg-control` | 340-359 | 功能层控件底（开关/复选/分页/圆钮）。**自身不写 `background`**——透明底由 `@layer components` 的 `:is(...)` 规则统一提供，见下条 |
+| `.lg-control.lg-solid` + `[aria-checked="true"]` / `[data-state="checked"]` | 约 551-575 | **实底玻璃**：`::before` 只保留边缘内高光、不铺填充（`background: none`）。主色/危险色按钮与选中态开关复选本身就是实色，若再叠一层 `--lg-fill-control`（深色约 84% 的 tint）会把 `bg-primary` 压成灰紫；配合 `--primary-foreground` 深色下取近黑，文字直接读不出。组件里凡是 `<玻璃类> + bg-primary/bg-danger` 的组合都必须加 `lg-solid` |
 | `.lg-field` | 361-396 | 功能层输入字段；`:is(input,textarea,select).lg-field` 替换元素直接铺实底并禁用模糊 |
 | `.lg-material` / `-sub` / `-row` | 399-427 | 内容层标准材质（卡片/列表/分区），与功能层共用同一套 blur/saturate |
 | `.lg-scrim` | 470-474 | 全屏遮罩（黑 35% + `blur(calc(--lg-blur * 0.4))`） |
 | `.dashboard-card-shell` | 438-467 | **仪表板卡片壳（唯一约束点）**：`:has(> div > .lg-material)` 检测到卡片根自带材质时退位为透明纯容器；始终负责圆角/裁切/阴影 |
 | `.lg-native` | 476-490 | 原生磨砂窗口层（托盘 Acrylic）：不叠 webview 模糊，只压渐变 |
 | `.glass-surface` / `.glass-surface-strong` 兼容别名 | 511-534 | **冻结件专用**：映射到 regular 变体，仅供 `char-select-modal.tsx`；其余代码禁止使用 |
-| `@layer components` 定位上下文 + 统一状态类 | 536-632 | 给玻璃宿主补 `position:relative; z-index:0`；并提供 `.lg-hoverable` / `.lg-hoverable-soft` / `.lg-selected` / `.lg-hairline` / `.lg-thumb` / `.lg-inset` / `.lg-media-chip` / `.lg-media-chip-interactive` —— 组件内**禁止**再写 `hover:bg-white/10`、`hover:bg-default-100`、`bg-default-100/50` 这类硬编码底色 |
+| `@layer components` 定位上下文 + 统一状态类 | 536-632 | 给玻璃宿主补 `position:relative; z-index:0` **和 `background: transparent`**（作用范围含 `.lg-regular/.lg-clear/.lg-control/.lg-field/.lg-material/.dashboard-card-shell/.glass-surface/.glass-surface-strong` 全部八类）；并提供 `.lg-hoverable` / `.lg-hoverable-soft` / `.lg-selected` / `.lg-hairline` / `.lg-thumb` / `.lg-inset` / `.lg-media-chip` / `.lg-media-chip-interactive` —— 组件内**禁止**再写 `hover:bg-white/10`、`hover:bg-default-100`、`bg-default-100/50` 这类硬编码底色。**透明底必须留在本层**：未分层的 `background` 声明会压过 `@layer utilities` 的 `bg-*` 工具类，`lg-control + bg-primary` 就只剩 `::before` 的玻璃层（历史上深色主题下主按钮文字读不出，就是这个）|
 | `html[data-window-effects="fallback"]` | 639-648 | 无原生磨砂平台：只抬 `--lg-density`（92% / 深色 90%），派生档位随 calc 一起抬高 |
 | `.titlebar-mode-toggle` | 739-782 | 标题栏「数据/游戏」分段控件：玻璃底落在 `::after`（`::before` 被拨杆占用），与 `.lg-control` 同一套 tint/密度/主题色 |
 
 **动效令牌（约 186-199 行 `:root` 内）**：`--lg-dur-fast`(150ms)/`--lg-dur-base`(200ms)/`--lg-dur-slow`(280ms)/`--lg-dur-page`(320ms) 四档时长；`--lg-ease-standard`(0.2,0,0,1)/`--lg-ease-emphasized`(0.16,1,0.3,1)/`--lg-ease-spring`(0.34,1.56,0.64,1)/`--lg-ease-exit`(0.4,0,1,1) 四族缓动；`--lg-shift-1/2/3`(8/16/24px) 位移尺度。全部 keyframes 与 `.animate-*`、`.interactive-hover` 等工具类统一引用这些变量。
 
 **为什么模糊写在 `::before` 上（沿用旧实现的 WebKitGTK 规避）**：
-- 玻璃宿主（`.lg-regular/.lg-clear/.lg-control/.lg-field`）元素本身只保留透明背景 + 外阴影，底色、噪点纹理与 `backdrop-filter` 全部移到 `::before { position:absolute; inset:0; z-index:-1; border-radius:inherit; pointer-events:none }`。
+- 玻璃宿主（`.lg-regular/.lg-clear/.lg-control/.lg-field`）元素本身只保留透明背景 + 外阴影，底色、噪点纹理与 `backdrop-filter` 全部移到 `::before { position:absolute; inset:0; z-index:-1; border-radius:inherit; pointer-events:none }`。这里的「透明背景」由 `@layer components` 声明，不在宿主选择器里直接写——否则会压掉调用方追加的 `bg-*` 工具类。
 - 起因是 Linux（WebKitGTK）的合成 bug：运行时改写模糊半径（旧 `glass_clarity` 设置）时，WebKit 会把背景模糊层重新合成到元素内容之上，整张卡片连同文字变成糊掉的方块。新体系把模糊半径固化为静态令牌并移除 glass_clarity 链路（`theme.ts` 的 `applyGlassClarity`、`main.tsx`/`tray-panel.tsx` 的读取、设置页滑条与 locale 键均已删除），风险源头不复存在。
 - 伪元素要落在内容下方，父级必须是「定位元素 + 层叠上下文」，`@layer components` 统一补 `position: relative; z-index: 0`。
 - `<input>/<textarea>/<select>` 是替换元素、不渲染 `::before`，因此 `:is(input, textarea, select).lg-field` 直接铺底色并删掉 `backdrop-filter`。

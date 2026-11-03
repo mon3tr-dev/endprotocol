@@ -100,7 +100,7 @@
 | `GlassButtonVariant` | button.tsx:6 | `primary/secondary/tertiary/outline/ghost/danger` |
 | `GlassButtonSize` | button.tsx:7 | `sm/md/lg` |
 | `GlassButtonProps` | button.tsx:9 | 关键 props：`variant`（默认 `secondary`）、`size`（默认 `md`）、`isIconOnly`（方形图标按钮）、`isDisabled`、`isLoading`（前置 spinner 并禁用）、`fullWidth`、`onPress`（点击回调）、`startContent`/`endContent`（前后插槽节点） |
-| `buttonVariants` | button.tsx:22 | cva 变体表；基础类含 hover `scale-105`、active `scale-95`、focus ring、disabled 50% 透明 |
+| `buttonVariants` | button.tsx:22 | cva 变体表；基础类含 hover `scale-105`、active `scale-95`、focus ring、disabled 50% 透明。**`lg-control` 玻璃底挂在 primary/secondary/outline/danger 四个变体上**（不含 ghost/tertiary）——历史上挂在基础类 + 用 `before:hidden` 隐藏 ghost/tertiary 的玻璃层，结果 `display:none` 连带杀死调用方经 `className` 追加的 `lg-material`（同属宿主的 `::before` 一票否决），导致账户胶囊等 ghost+lg-material 组合丢失玻璃底。**`primary`/`danger` 另加 `lg-solid`**：实底按钮的 `::before` 只留边缘高光、不铺玻璃填充，否则深色主题下 `--primary` 被 tint 压成灰紫，而前景按 `--primary-foreground`（indigo 上算出的近黑 `#0b0b0d`）落上去几乎读不出 |
 | `iconOnlySize` | button.tsx:55 | `isIconOnly` 时 sm=32 / md=36 / lg=40 的方形尺寸 |
 | `ButtonProps` | button.tsx:61 | 基础按钮 props（原生 button attrs + variant/size） |
 | `Button` | button.tsx:65 | forwardRef；`type` 默认 `"button"`，`variant` 默认 `secondary`、`size` 默认 `md` |
