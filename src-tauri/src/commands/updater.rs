@@ -64,7 +64,13 @@ pub async fn check_update_endpoint(
 
     Ok(update.map(|update| UpdateEndpointInfo {
         version: update.version.to_string(),
-        date: update.date.map(|date| date.to_string()),
+        // `OffsetDateTime::to_string()` 产出 "2026-11-01 10:09:39.585 +00:00:00"（空格分隔、
+        // 全量偏移），JS 的 `new Date()` 解析不了，前端会显示 Invalid Date。
+        // 序列化为 RFC 3339（"...T...Z"），与 latest.json 的 pub_date 格式一致。
+        date: update.date.map(|date| {
+            date.format(&time::format_description::well_known::Rfc3339)
+                .unwrap_or_else(|_| date.to_string())
+        }),
         body: update.body,
     }))
 }

@@ -830,7 +830,7 @@
 - 位置：updater.rs:58（async）
 - 参数：`app: AppHandle`、`endpoint: String`
 - 返回：`Result<Option<UpdateEndpointInfo>, String>`
-- 逻辑：仅允许稳定/预览镜像、GitHub latest 或指定版本 Release 清单；通过 updater builder 检查本机目标与更新版本。
+- 逻辑：仅允许稳定/预览镜像、GitHub latest 或指定版本 Release 清单；通过 updater builder 检查本机目标与更新版本。`date` 字段将插件的 `OffsetDateTime` 格式化为 RFC 3339（`time` crate，Cargo.toml 显式依赖 `time 0.3 + formatting`）——直接 `to_string()` 产出的是 `"2026-11-01 10:09:39.585 +00:00:00"` 空格分隔格式，JS `new Date()` 解析为 Invalid Date。
 
 ### `install_update_endpoint`
 - 位置：updater.rs:73（async）

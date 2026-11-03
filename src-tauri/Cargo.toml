@@ -30,6 +30,9 @@ tokio = { version = "1", features = ["full"] }
 thiserror = "1"
 dirs = "5"
 chrono = { version = "0.4", features = ["serde"] }
+# tauri-plugin-updater 已依赖 time 0.3；这里显式引入以格式化 Rfc3339
+# （commands/updater.rs 把 OffsetDateTime 转成 JS 可解析的 ISO 字符串）。
+time = { version = "0.3", features = ["formatting"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["fmt"] }
 aes = "0.8"
