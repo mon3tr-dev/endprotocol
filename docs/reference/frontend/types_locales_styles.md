@@ -204,7 +204,7 @@
 
 **关键变量（`:root`，7-66 行）**：
 - 色阶：`--default-50…900`、`--primary-50…900`、`--danger-50`
-- 语义色：`--primary`、`--accent`、`--success`、`--info`、`--warning`、`--warning-dark`、`--danger` 及各自 `-foreground`
+- 语义色：`--primary`、`--accent`、`--success`、`--info`、`--warning`、`--warning-dark`（浅色压深 `#b45309`，`.dark` 覆盖为 `var(--warning)` —— 它只当文字用，深色底上原压深值对比不足）、`--danger` 及各自 `-foreground`
 - **文字专用色**（当同一颜色既要当背景/边框又要当文字时，文字走这一套，保证 ≥4.5:1）：
   - `--primary-text`：由 `applyPrimaryTextColor()`（`src/utils/theme.ts`）按当前底色动态计算并写入内联样式，浅色主题混黑、深色主题混白，只调明度不换色相。默认值 `#4f46e5`。**`text-primary` → Tailwind `text-primary-text`**（由 `@theme inline` 的 `--color-primary-text` 映射）
   - `--success-text` / `--warning-text` / `--danger-text` / `--info-text`：浅色主题取压深版（`#15803d` / `#b45309` / `#b91c1c` / `#1d4ed8`），深色主题回退原状态色（原色在 `#18181b` 上已 ≥4.71:1）。对应工具类 `text-success-text` / `text-warning-text` / `text-danger-text` / `text-info-text`

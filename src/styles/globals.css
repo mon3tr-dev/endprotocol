@@ -328,6 +328,9 @@
   --warning-text: var(--warning);
   --danger-text: var(--danger);
   --info-text: var(--info);
+  /* --warning-dark 只有浅色压深值（#b45309），深色底上对比不足；
+   * 它仅用作文字（badge soft/outline warning、搜索高亮 mark），深色下切到亮档。 */
+  --warning-dark: var(--warning);
   --lg-alpha-clear: 24%;
   --lg-media-alpha: 34%; /* 深色主题：媒体层比浅色更透 */
   --lg-scrim-alpha: 0.12; /* 深色媒体背景上暗化层减轻 */

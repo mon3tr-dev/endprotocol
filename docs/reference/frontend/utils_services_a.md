@@ -173,7 +173,7 @@
 | `resolveThemeColor(name, customColors?)` | theme.ts:162 | 自定义 → 预设 → 首项的兜底链，保证永远有可用色板（自定义色被删除后配置可能残留旧名称） |
 | `applyThemeColor(colors)` | theme.ts:277 | 把 `--primary-50`…`--primary-900`、`--primary` 写入 `<html>` 内联样式；`--primary-foreground` **不再照抄配色表**，改由 `pickForegroundOn(#色调)` 按亮度自动选黑/白；末尾调用 `applyPrimaryTextColor` 同步算出 `--primary-text` |
 | `applyThemeMode(mode)` | theme.ts:305 | 给 `<html>` 切换 `dark` 类（`globals.css` 的 `@custom-variant dark` 依赖它），并在切完后重算 `--primary-text`（达标方向取决于底色深浅） |
-| `pickForegroundOn(hex, fallback?)` | theme.ts:252 | 按 WCAG 相对亮度取黑/白中对比度更高的那个。用户自定义高亮主题色（`#00FFBC`）配白字只有 1.2:1，必须自动选 |
+| `pickForegroundOn(hex, fallback?)` | theme.ts:252 | 按 WCAG 相对亮度选黑/白。规则是**白字优先**：白字对比度 ≥3:1 就返回 `#ffffff`；否则仅当黑字比白字高 1.4 倍以上才反黑。不再用「黑白取更高者」——它在亮度交叉点会横跳（indigo `#6366f1` 白 4.47 / 黑 4.70 判黑，slate `#64748b` 判白），同一颗主按钮只因主题色微调就黑白翻转，深色界面上近黑字压在紫底上读不出。现在仅 `emerald`/`amber`/`#00FFBC` 这类亮底色才反黑 |
 | `applyPrimaryTextColor(primary)` | theme.ts:267 | 计算并写入 `--primary-text`：浅色主题混黑、深色主题混白，逐步逼近直到与底色对比度 ≥4.5:1，只调明度不换色相。`--primary-text` 供 `text-primary-text`（文字）使用，`--primary` 仍供背景/边框 |
 | `loadTheme()` | theme.ts:322 | 并行读 `theme_mode`/`theme_color`/`theme_custom_colors`，依次应用并返回 `{ mode, colorName }`；托盘面板入口靠它一次到位 |
 

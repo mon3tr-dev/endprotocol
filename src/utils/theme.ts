@@ -233,15 +233,21 @@ function mixUntilContrast(fg: string, bg: string, toward: string, target = 4.5):
  * 必须自动算，不能信配色表里的 `foreground`：用户可以自由建自定义主题色，
  * 例如 #00FFBC 这种高亮青绿——配表里的 #ffffff 落在它上面只有约 1.2:1，
  * 主按钮/徽章/标题栏模式切换上的文字会直接读不出来（WCAG AA 正文要
- * ≥4.5:1）。规则：取黑/白中与该底色对比度更高的一个，
- * 阈值取亮度 0.5（两种极端色的对比度在此处交叉）。
+ * ≥4.5:1）。
+ *
+ * 规则是「白字优先，只有底不够深才反黑」，而不是「黑白取对比度更高的那个」：
+ * 后者在亮度交叉点附近会来回横跳——indigo #6366f1 白字 4.47、黑字 4.70
+ * 判黑；换 slate #64748b 又判白。同一颗主按钮只因主题色动了一点就黑白
+ * 翻转，看起来就像「莫名其妙的例外」，深色界面上一片近黑字压在紫底上
+ * 尤其脏。这里改成单一阈值：白字达到 3:1（AA 大字号门槛）就用白，
+ * 否则反黑。结果连续、可预测——蓝/靛/玫红/灰一律白字，只有
+ * emerald/amber/#00FFBC 这类确实亮到白字读不出的底色才反黑。
  */
 export function pickForegroundOn(hex: string, fallback = "#ffffff"): string {
   const lum = relativeLuminance(hex);
   if (lum === null) return fallback;
   const contrastWithWhite = 1.05 / (lum + 0.05);
-  const contrastWithBlack = (lum + 0.05) / 0.05;
-  return contrastWithWhite >= contrastWithBlack ? "#ffffff" : "#0b0b0d";
+  return contrastWithWhite >= 3 ? "#ffffff" : "#0b0b0d";
 }
 
 /** 当前主题的正文底色（与 --background / --surface 保持一致） */
