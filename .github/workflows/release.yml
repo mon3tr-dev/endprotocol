@@ -102,8 +102,6 @@ jobs:
   release:
     name: Build and Release Windows x64
     runs-on: windows-latest
-    needs: build-platforms
-    if: ${{ always() }}
 
     steps:
       # ==========================================================
@@ -459,14 +457,24 @@ jobs:
           releaseDraft: true
           prerelease: ${{ steps.release-type.outputs.prerelease }}
           uploadUpdaterJson: false
-          args: ${{ steps.tauri_sync.outputs.args || '--ignore-version-mismatches' }} --bundles nsis
+          args: ${{ steps.tauri_sync.outputs.args || '--target x86_64-pc-windows-msvc' }} --bundles nsis
 
       - name: Download platform bundles
         uses: actions/download-artifact@v4
+        continue-on-error: true
         with:
           pattern: platform-bundles-*
           path: platform-bundles
           merge-multiple: false
+
+      - name: Check for the Linux bundles
+        shell: bash
+        run: |
+          if [ -d platform-bundles/platform-bundles-x86_64-unknown-linux-gnu ]; then
+            echo "Linux bundles found."
+          else
+            echo "::warning title=Linux bundles missing::The Linux AppImage is absent, so the updater manifest carries no linux-x86_64 entry. The Linux build job has to succeed for that entry to exist."
+          fi
 
       - name: Create signed multi-platform updater manifest
         shell: bash
