@@ -31,6 +31,9 @@
 | To-Do 卡片 / 页面 / 弹窗 | `src/components/cards/todo/`、`src/stores/todoStore.ts`、`src/pages/todo.tsx` | [cards_system_todo.md](reference/frontend/cards_system_todo.md) |
 | 卡片全局默认值（系统资源 / To-Do） | `src/components/system-resource-settings.tsx`、`src/components/todo-settings.tsx` | [cards_system_todo.md](reference/frontend/cards_system_todo.md) |
 | 仪表板布局 / 标签页（多 Tab） | `src/pages/dashboard.tsx`、`src/utils/dashboardConfig.ts` | [pages_core.md](reference/frontend/pages_core.md)、[utils_services_a.md](reference/frontend/utils_services_a.md) |
+| 仪表盘主界面（标签页总览 + 快照缩略图）；侧栏「仪表盘」父节点进入主界面 | `src/pages/dashboard.tsx`（selector 视图）、`src/components/tab-selector.tsx`、`src/components/tab-snapshot.tsx` | [pages_core.md](reference/frontend/pages_core.md)、[components_dialogs.md](reference/frontend/components_dialogs.md) |
+| 仪表盘标签页快照（离开标签页时截取内容区左上角落盘） | `src/utils/tabSnapshotService.ts`、`src-tauri/src/commands/window.rs`（`save_tab_snapshot`/`delete_tab_snapshot`，PrintWindow） | [utils_services_a.md](reference/frontend/utils_services_a.md)、[commands.md](reference/backend/commands.md) |
+| 侧边栏拖拽换位 FLIP 动画（导航项/标签页） | `src/hooks/useFlipList.ts`、`src/components/dashboard-sidebar.tsx` | [components_sidebar_charts.md](reference/frontend/components_sidebar_charts.md)、[entry_and_app.md](reference/frontend/entry_and_app.md) |
 | 每日签到 | `src/components/cards/attendance/index.tsx`、`pages/attendance.tsx`、`commands/attendance.rs` | [cards_attendance_domain_spaceship.md](reference/frontend/cards_attendance_domain_spaceship.md)、[commands.md](reference/backend/commands.md) |
 | 区域信息卡片 / 独立页面（`/domain`） | `src/components/cards/domain-info/`（含 `domain-shared.ts`）、`src/pages/domain.tsx` | [cards_attendance_domain_spaceship.md](reference/frontend/cards_attendance_domain_spaceship.md)、[pages_core.md](reference/frontend/pages_core.md) |
 | 帝江号卡片 / 独立页面（`/spaceship`） | `src/components/cards/spaceship/`（含 `spaceship-shared.ts`）、`src/pages/spaceship.tsx` | [cards_attendance_domain_spaceship.md](reference/frontend/cards_attendance_domain_spaceship.md)、[pages_core.md](reference/frontend/pages_core.md) |
@@ -56,7 +59,7 @@
 
 | 需求 | 位置 | 详细参考 |
 | --- | --- | --- |
-| **IPC 命令在哪定义 / 前端谁调用** | 生成的对照表 | [ipc_index.md](reference/ipc_index.md)（134 个命令全表） |
+| **IPC 命令在哪定义 / 前端谁调用** | 生成的对照表 | [ipc_index.md](reference/ipc_index.md)（137 个命令全表） |
 | 新增/修改一个 Tauri 命令 | `src-tauri/src/commands/`、`src-tauri/src/lib.rs` | [commands.md](reference/backend/commands.md)、[bootstrap.md](reference/backend/bootstrap.md)、[backend_development.md](backend_development.md) |
 | 错误类型与转换 | `src-tauri/src/utils/error.rs` | [utils.md](reference/backend/utils.md) |
 | 加密与签名（RSA/AES/DES/HMAC） | `src-tauri/src/utils/hg_crypto.rs`、`services/skland_service.rs` | [utils.md](reference/backend/utils.md)、[services_skland.md](reference/backend/services_skland.md) |
@@ -96,7 +99,7 @@
 | 文件 | 覆盖范围 |
 | --- | --- |
 | [reference/backend/bootstrap.md](reference/backend/bootstrap.md) | `main.rs`、`lib.rs`（含全部命令注册清单）、`tray.rs`、`build.rs`、`Cargo.toml`、`tauri.conf.json`、`capabilities/*`、`examples/sign_test.rs` |
-| [reference/backend/commands.md](reference/backend/commands.md) | `commands/` 全部 17 个文件、**128 处 `#[tauri::command]` 注解**：参数、返回值、内部调用链（含 `proxy.rs` 的 5 个代理命令） |
+| [reference/backend/commands.md](reference/backend/commands.md) | `commands/` 全部 18 个文件、**141 处 `#[tauri::command]` 注解（137 个命令名）**：参数、返回值、内部调用链（含 `proxy.rs` 的 5 个代理命令、`window.rs` 的快照命令） |
 | [reference/backend/models.md](reference/backend/models.md) | `models/` 全部 7 个文件：79 个结构体/枚举的字段与 serde 映射 |
 | [reference/backend/services_account.md](reference/backend/services_account.md) | `services/account_service.rs`（约 3100 行）：登录、凭证刷新、角色数据、状态中枢 |
 | [reference/backend/services_skland.md](reference/backend/services_skland.md) | `services/skland_service.rs`：森空岛 API 端点总表、签名与加密流程 |

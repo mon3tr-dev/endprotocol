@@ -1,7 +1,7 @@
 # Tauri 命令层（IPC 入口）— 文件功能参考
 
 > 逐文件精读源码生成。行号基于当前工作区版本，仅用于快速定位。
-> 覆盖范围：`src-tauri/src/commands/` 下 18 个命令文件（另有 `mod.rs` 共 19 个 `.rs`），当前参考表收录 **132 个不同命令名**；源码含 135 处命令注解（`capture_screen`、`finish_screen_pick`、`run_installer` 各有 `cfg` 门控的两个版本，按名去重后为 132）。注册入口见 `src-tauri/src/lib.rs` 的 `generate_handler!`。
+> 覆盖范围：`src-tauri/src/commands/` 下 18 个命令文件（另有 `mod.rs` 共 19 个 `.rs`），当前参考表收录 **137 个不同命令名**；源码含 141 处命令注解（`capture_screen`、`finish_screen_pick`、`run_installer`、`save_tab_snapshot` 各有 `cfg` 门控的两个版本，按名去重后为 137）。注册入口见 `src-tauri/src/lib.rs` 的 `generate_handler!`。
 
 ## 命令速查表
 
@@ -131,10 +131,12 @@
 | `check_update_endpoint` | commands/updater.rs:58 | `app: AppHandle`、`endpoint: String` | `Result<Option<UpdateEndpointInfo>, String>` | 限定镜像/GitHub 清单，使用 updater 检查本机平台与版本 |
 | `install_update_endpoint` | commands/updater.rs:73 | `app: AppHandle`、`endpoint: String` | `Result<(), String>` | 限定端点后流式下载到 temp 文件，下载循环中检查 `DOWNLOAD_CANCELLED` 取消标志并删除半成品，完成后用 `update.install()` 验签安装；emit `download-progress` |
 | `run_installer` | commands/updater.rs:260/280 | `app: AppHandle`、`path: String` | `Result<(), String>` | Windows：静默启动 NSIS 安装器并退出应用；非 Windows：返回不支持错误 |
-| `minimize_window` | commands/window.rs:24 | `app: AppHandle<R>` | `()`（无返回） | `app.get_window("main")` → `window.minimize()` |
-| `toggle_maximize_window` | commands/window.rs:31 | `app: AppHandle<R>` | `()`（无返回） | `is_maximized` → `maximize()` / `unmaximize()` |
-| `close_window` | commands/window.rs:42 | `app: AppHandle<R>` | `()`（无返回） | `window.close()` |
-| `minimize_to_tray` | commands/window.rs:49 | `app: AppHandle<R>` | `Result<(), String>` | 托盘可用 → `window.hide()`；托盘不可用（`tray::is_tray_available()` 为 false）→ `app.exit(0)`，避免窗口隐藏后用户无法恢复 |
+| `minimize_window` | commands/window.rs:33 | `app: AppHandle<R>` | `()`（无返回） | `app.get_window("main")` → `window.minimize()` |
+| `toggle_maximize_window` | commands/window.rs:40 | `app: AppHandle<R>` | `()`（无返回） | `is_maximized` → `maximize()` / `unmaximize()` |
+| `close_window` | commands/window.rs:51 | `app: AppHandle<R>` | `()`（无返回） | `window.close()` |
+| `minimize_to_tray` | commands/window.rs:58 | `app: AppHandle<R>` | `Result<(), String>` | 托盘可用 → `window.hide()`；托盘不可用（`tray::is_tray_available()` 为 false）→ `app.exit(0)`，避免窗口隐藏后用户无法恢复 |
+| `save_tab_snapshot` | commands/window.rs:80/102 | `app: AppHandle<R>`、`tab_id: String`、`x/y/width/height: u32` | `Result<String, String>` | Windows：PrintWindow 截主窗口客户区 → 裁切 → PNG 存 `snapshots/<tab_id>-<ts>.png`（同 tab 旧文件清理），返回路径；非 Windows 返回不支持 |
+| `delete_tab_snapshot` | commands/window.rs:115 | `tab_id: String` | `Result<(), String>` | 删除该标签页的全部快照文件 |
 | `get_system_snapshot` | commands/system_resource.rs:9 | `state: State<Arc<Mutex<SystemResourceService>>>` | `Result<SystemSnapshot, String>` | `SystemResourceService::snapshot`（`spawn_blocking`；sysinfo + nvidia-smi） |
 | `browser_go_back` | commands/browser.rs:36 | `app: AppHandle<R>`、`webview_label: String` | `Result<(), String>` | `app.get_webview(label)` → `webview.eval("window.history.back();")` |
 | `browser_go_forward` | commands/browser.rs:48 | `app`、`webview_label: String` | `Result<(), String>` | `webview.eval("window.history.forward();")` |
@@ -851,24 +853,36 @@
 ---
 
 ## `src-tauri/src/commands/window.rs`
-**职责**：主窗口基础控制（4 个命令 + 1 个私有取窗辅助函数），全部针对标签为 `"main"` 的窗口，均为同步命令。
+**职责**：主窗口控制（4 个命令）+ 仪表盘标签页快照（2 个命令）+ 私有辅助函数。窗口命令全部针对标签为 `"main"` 的窗口，均为同步命令；快照命令 Windows 专用（GDI PrintWindow），非 Windows 返回不支持。
 
 > ⚠️ **取窗必须用 `Manager::get_window`，不能用 `get_webview_window`**：`get_webview_window` 内部先 `get_webview(label)` 再检查 `window.is_webview_window()`，后者要求该窗口下**所有** webview 的 label 都等于窗口 label（tauri-2.12 `src/window/mod.rs:1257`）。in-app browser 打开时主窗口 "main" 下多出 label 为 `inapp-browser-N` 的子 webview，于是 `get_webview_window("main")` 返回 `None`，所有窗口命令会**静默失效**（表现为按钮点了没反应）。`Manager::get_window` 按窗口 label 查，不受子 webview 影响。
 
 ### `minimize_window`
-- 位置：window.rs:24（同步）；参数：`app: tauri::AppHandle<R>`；返回：`()`；逻辑：`main_window(&app)` → `window.minimize()`（忽略错误）。
+- 位置：window.rs:33（同步）；参数：`app: tauri::AppHandle<R>`；返回：`()`；逻辑：`main_window(&app)` → `window.minimize()`（忽略错误）。
 
 ### `toggle_maximize_window`
-- 位置：window.rs:31（同步）；参数：`app`；返回：`()`；逻辑：`main_window(&app)` → `is_maximized()`（失败按 false）→ 已最大化则 `unmaximize()`，否则 `maximize()`。
+- 位置：window.rs:40（同步）；参数：`app`；返回：`()`；逻辑：`main_window(&app)` → `is_maximized()`（失败按 false）→ 已最大化则 `unmaximize()`，否则 `maximize()`。
 
 ### `close_window`
-- 位置：window.rs:42（同步）；参数：`app`；返回：`()`；逻辑：`main_window(&app)` → `window.close()`，忽略错误。
+- 位置：window.rs:51（同步）；参数：`app`；返回：`()`；逻辑：`main_window(&app)` → `window.close()`，忽略错误。
 
 ### `minimize_to_tray`
-- 位置：window.rs:49（同步）；参数：`app`；返回：`Result<(), String>`；逻辑：`main_window(&app)` → `window.hide()` 隐藏主窗口到托盘，错误转字符串。
+- 位置：window.rs:58（同步）；参数：`app`；返回：`Result<(), String>`；逻辑：`main_window(&app)` → `window.hide()` 隐藏主窗口到托盘，错误转字符串。
+
+### `save_tab_snapshot`
+- 位置：window.rs:80（`#[cfg(windows)]` 异步）/ 102（非 Windows 桩，返回错误）；参数：`app`、`tab_id: String`、`x/y/width/height: u32`（客户区物理像素矩形）；返回：`Result<String, String>`（PNG 路径）。
+- 逻辑：`main_window` → `window.hwnd()` → HWND 转 `isize` 跨线程 → `spawn_blocking` 内 `save_tab_snapshot_sync`：`GetClientRect` 取客户区尺寸并把请求矩形夹进边界 → `GetDC`/`CreateCompatibleDC`/`CreateCompatibleBitmap` → `PrintWindow(PW_CLIENTONLY | PW_RENDERFULLCONTENT)`（常量 2 由本地定义，windows-sys 0.61 未导出；WebView2 内容必须带该标志否则截成空白）→ `GetDIBits`（负高度=自顶而下）读回 BGRA → 裁切 + BGRA→RGBA → `png` crate 编码写盘。
+- 存储：`<app_data>/snapshots/<tab_id>-<时间戳>.png`；写新前 `prune_snapshots` 删除同 tab 旧文件（只留最新）。文件名带时间戳：`imageCacheManager` 与浏览器均按路径缓存图片，新文件名保证重拍后的快照不被陈旧 blob 顶替。
+- 校验：`validate_tab_id`（≤64 字符、仅字母数字 `-` `_`）；尺寸 0 或 >8192 拒绝。
+
+### `delete_tab_snapshot`
+- 位置：window.rs:115（同步）；参数：`tab_id`；返回：`Result<(), String>`；逻辑：校验 id 后 `prune_snapshots` 删除该标签页全部快照。前端经 `tabSnapshotService.deleteTabSnapshotFile` 调用（删除标签页时）。
 
 ### `main_window`（私有辅助）
-- 位置：window.rs:18；参数：`&tauri::AppHandle<R>`；返回：`Option<tauri::Window<R>>`；逻辑：`app.get_window("main")`。取不到时返回 `None`，调用方全部静默跳过。
+- 位置：window.rs:28；参数：`&tauri::AppHandle<R>`；返回：`Option<tauri::Window<R>>`；逻辑：`app.get_window("main")`。取不到时返回 `None`，调用方全部静默跳过。
+
+### 私有辅助（快照相关）
+- `snapshots_dir` / `snapshot_file_name` / `prune_snapshots` / `validate_tab_id`：路径与命名策略；`save_tab_snapshot_sync`：GDI 截图 + 裁切 + PNG 落盘主体（仅 Windows 编译）。
 
 ---
 
@@ -913,7 +927,7 @@
 
 ## 汇总
 
-- 命令总数：**128**（account 23、launcher 26、capture 7、gacha 7、tray 8、updater 9、image 6、config 7、proxy 6、window 4、card_config 3、attendance 2、color_picker 2、logs 1、system_resource 1；`mod.rs` 0）。
+- 命令总数：**137**（account 24、launcher 28、capture 7、gacha 7、tray 8、updater 9、image 6、config 8、proxy 6、window 6、card_config 3、attendance 2、color_picker 2、logs 2、system_resource 1、browser 5、diagnostics 6、startup 7；`mod.rs` 0。源码 141 处注解，`capture_screen`/`finish_screen_pick`/`run_installer`/`save_tab_snapshot` 各含一对 `cfg` 门控版本，按名去重计）。
 - 事件 emit：`launcher-progress`（launcher.rs）、`download-progress`（updater.rs）。
 - 关键配置键：`account_token_*`（含 `cred`/`token`/`u8token`/`roles[]`）、`selected_account_id`、`card_settings.{card_id}`、`tray_user_info`、`proxy_config`（代理设置，写入后同步刷新全局代理缓存），以及前端侧的 `system_resource_defaults` / `todo_lists` / `todo_defaults`（经 config 命令读写）；相关本地文件：`gacha_avatar_map.json`、`total.json`、`backgrounds/bg.webp`。
 - 主要状态（managed state）：`Arc<std::sync::Mutex<ConfigService>>`（config/tray/proxy 直接用）、`Arc<tokio::sync::Mutex<AccountService>>`（account/attendance/card_config/gacha）、`Arc<GachaService>`、`Arc<Mutex<GameLauncherService>>`、`Arc<std::sync::Mutex<SystemResourceService>>`（见 `lib.rs` 的 `setup`）。

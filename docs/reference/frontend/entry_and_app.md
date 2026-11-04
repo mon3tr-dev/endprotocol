@@ -1,4 +1,4 @@
-﻿# 前端入口与应用骨架 — 文件功能参考
+# 前端入口与应用骨架 — 文件功能参考
 
 > 逐文件精读源码生成。行号基于当前工作区版本，仅用于快速定位。
 
@@ -167,6 +167,22 @@
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
 | `cn` | utils.ts:4-6 | `twMerge(clsx(inputs))`，接受可变参数（对象/数组/字符串/条件值） |
+
+## `src/hooks/useFlipList.ts`
+**职责**：列表换位 FLIP 动画 Hook——针对「拖拽换位直接改数组顺序 → DOM 瞬间跳位」：`keys` 顺序变化后的同一帧内，按 `data-flip-id` 取每个子项新位置，与上一帧记录求差，先用 transform 按回旧位置再过渡回 0，让换位是滑过去而不是闪现。
+**导出**：`useFlipList`（命名 + 默认，useFlipList.ts:37）。
+**主要依赖**：`react`（useLayoutEffect/useRef）。
+
+| 符号 | 位置 | 说明 |
+| --- | --- | --- |
+| `FlipSnapshot`（接口） | useFlipList.ts:4-9 | 记录 `{top,left,width,height}`（相对容器的 rect 值） |
+| `UseFlipListOptions`（接口） | useFlipList.ts:11-18 | `duration?`（默认 240ms）、`easing?`（默认 glide 曲线 `cubic-bezier(0.33,1,0.68,1)`）、`attr?`（默认 `data-flip-id`） |
+| `useFlipList` | useFlipList.ts:37-147 | 参数 `(containerRef, keys, options?)`。核心 useLayoutEffect：`signature = keys.join('\\u0000')` 变化才介入；`measure()` 用 `getBoundingClientRect` 相对容器定位；未变化或 `prefers-reduced-motion: reduce` 时只记录基准位置；变化时对位移 ≥0.5px 的子项 `transition:none` + 旧位置 transform → 强制回流 → rAF 设回 `transition: transform {duration}ms {easing}` + `transform:""`；动画结束（duration+40ms）清掉临时 inline style；卸载时清理全部定时器 |
+
+**备注**：
+- 使用点：`dashboard-sidebar.tsx` 的主导航列表（`navListRef`，260ms）与仪表盘标签列表（`tabsListRef`，220ms）；子项须为容器**直接子元素**且带 `data-flip-id`。
+- 与折叠/主题切换解耦：这些重渲染不改变 `keys` 顺序，effect 只更新记录，不打断进行中的动画。
+- 测量的是重排后的最终布局（transform 不影响 rect 的 top/left 记录策略：记录在 layout 阶段读取，包含未播完动画的当前视觉位置，因此连续快速换位从当前位置续接）。
 
 ## `src/hooks/useLongPressDrag.ts`
 **职责**：可复用的「长按进入编辑态并随后开始拖拽」Hook：长按期间按 40ms 步进显示进度环，达到时长后触发回调并置位待拖拽标志，提供取消与模拟 pointerdown 的接口。

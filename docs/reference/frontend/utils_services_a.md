@@ -1,7 +1,7 @@
 # 前端服务与工具（A 组：账户/配置/角色/启动器）— 文件功能参考
 
 > 逐文件精读源码生成。行号基于当前工作区版本，仅用于快速定位。
-> 本文件覆盖 15 个服务封装：account / config / proxy / cardConfig / dashboardConfig / theme / backgroundSettings / roleData / roleDetail / tab / tabIcons / messageStore / launcher / systemResource / tray。
+> 本文件覆盖 16 个服务封装：account / config / proxy / cardConfig / dashboardConfig / theme / backgroundSettings / roleData / roleDetail / tab / tabSnapshot / tabIcons / messageStore / launcher / systemResource / tray。
 
 ## `src/utils/accountService.ts`
 **职责**：封装森空岛/游戏账户相关的全部 Tauri IPC 调用（登录、登出、刷新、扫码、验证码、选中账户、凭证刷新），并定义账户相关的 TS 类型。是前端访问账户后端的唯一入口层。
@@ -298,6 +298,28 @@
 - 封装的 invoke 命令（经 `configService`）：`get_config`、`set_config`、`remove_config`。
 - 配置键：`dashboard_tabs`（`DashboardTab[]`，含每个标签的 `cards`）、`dashboard_active_tab`（当前激活标签 id）。
 - 缓存策略：无缓存，整数组全量读写；`saveTabs` 是标签相关数据（含卡片布局）的唯一落盘出口。
+
+## `src/utils/tabSnapshotService.ts`
+**职责**：仪表盘标签页**快照**——离开当前标签页视图时截取主窗口内容区左上角画面并落盘，主界面卡片用其作缩略图。截图经后端 `save_tab_snapshot`（PrintWindow GDI），文件存 `<app_data>/snapshots/<tabId>-<时间戳>.png`，路径映射写配置键 `dashboard_tab_snapshots`。
+**导出**：`registerDashboardLeaveHandler`、`runDashboardLeaveHandler`、`captureTabSnapshot`、`getSnapshotPaths`、`deleteTabSnapshotFile`。
+**主要依赖**：`@tauri-apps/api/core`（`invoke`）、`./configService`、`./platform`（`isWindowsPlatform`）、`./logger`。
+
+| 符号 | 位置 | 说明 |
+| --- | --- | --- |
+| `SNAPSHOT_CONFIG_KEY` | tabSnapshotService.ts:7 | 配置键 `"dashboard_tab_snapshots"`（`{ [tabId]: PNG 路径 }`） |
+| `SNAPSHOT_CSS_WIDTH` / `SNAPSHOT_CSS_HEIGHT` | :10 / :11 | 截取区域 CSS 尺寸上限 640×420（乘以 devicePixelRatio 得物理像素，与后端 8192 上限一致） |
+| `inflight` | :14 | `Map<tabId, Promise>`：同标签页截图进行中去重 |
+| `registerDashboardLeaveHandler` | :22 | DashboardPage 挂载时注册 / 卸载时置 `null` 的「离开仪表盘」钩子 |
+| `runDashboardLeaveHandler` | :28 | 侧栏导航守卫点击前 await 该函数，钩子不在时为空操作 |
+| `captureTabSnapshot` | :46 | 核心：非 Windows / 无 tabId 直接 resolve；截图前把内容区滚回顶部（`closest("main").scrollTop=0` + 等两帧 rAF）；以 `#dashboard-main` 的视口矩形 × dpr 计算 `(x,y,width,height)`（宽/高钳到 640×420）；`invoke("save_tab_snapshot", { tabId, x, y, width, height })` 取回路径写入映射并 `setConfig`；失败仅 `logError`（静默降级，不阻塞导航） |
+| `getSnapshotPaths` | :104 | 读映射（模块级 `snapshotMap` 缓存，首次从 config 加载） |
+| `deleteTabSnapshotFile` | :109 | `invoke("delete_tab_snapshot")` + 从映射中移除该 tabId |
+
+**备注**：
+- **invoke 命令**：`save_tab_snapshot`（tabSnapshotService.ts:78，参数 `{ tabId, x, y, width, height }`）、`delete_tab_snapshot`（:111，参数 `{ tabId }`）；配置读写经 `get_config`/`set_config`。
+- 时序契约：所有调用点都保证「窗口画面仍是该标签页」时截图——DashboardPage 的 `loadDashboard` 开头、`handleBackToSelector`、`dashboardOpenSelector` 事件，以及侧栏 `handleNavClick`/父节点点击（`preventDefault` 后 await 再 `navigate`，否则 Link 默认导航先于截图完成）。
+- 文件命名带时间戳 + 写新删旧：`imageCacheManager`/浏览器均按路径缓存图片，路径变化保证读到最新画面。
+- 非 Windows 平台后端返回不支持，`captureTabSnapshot` 内部先行 `isWindowsPlatform()` 短路，主界面显示占位。
 
 ## `src/utils/tabIcons.tsx`
 **职责**：标签页图标键到 React 图标组件的映射表，以及中英文图标名称表，提供按 key 取组件/取文案的工具函数。

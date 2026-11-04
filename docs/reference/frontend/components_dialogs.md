@@ -1,7 +1,7 @@
 # 对话框与交互组件 — 文件功能参考
 
 > 逐文件精读源码生成。行号基于当前工作区版本，仅用于快速定位。
-> 覆盖 `src/components/` 下 15 个对话框/交互类文件。
+> 覆盖 `src/components/` 下 16 个对话框/交互类文件。
 
 ## `src/components/custom-modal.tsx`
 **职责**：应用级 Modal 兼容层，把自研 `GlassModal`（液态玻璃）包装成语义化的头部/主体/底部结构，并保留向后兼容的 `size` 语义。全项目业务弹窗（账户切换、添加卡片、选人、标签页编辑等）均基于此层构建。
@@ -186,26 +186,41 @@
 - 异常：`onSave` 字段名为 `defaultRoleId`，但实际取值来自 `getAccounts()` 返回的**账户 id**（tab-editor-modal.tsx:57-62），命名与语义不一致，调用方按账户 id 处理。
 
 ## `src/components/tab-selector.tsx`
-**职责**：仪表盘标签页总览页。以卡片网格展示全部标签页，支持搜索、新建、悬停/右键菜单编辑与删除。
+**职责**：仪表盘主界面（标签页总览）。以卡片网格展示全部标签页，支持搜索、新建、悬停/右键菜单编辑与删除；每张卡片内嵌该标签页的**快照缩略图**（`TabSnapshot`，上次离开时的画面）。
 **导出**：`TabSelector`
-**主要依赖**：`react`（`useMemo/useState`）、`react-i18next`、`@/components/ui/glass`（`GlassButton`、`GlassChip`、`GlassInput`）、`@/types/dashboard`（`DashboardTab`）、`@/utils/tabIcons`（`getTabIcon`）、`@/components/icons`（`PlusIcon`、`SearchIcon`、`EditIcon`、`TrashIcon`）、`@/components/cards/card-context-menu`（`CardContextMenu`）
+**主要依赖**：`react`（`useMemo/useState`）、`react-i18next`、`@/components/ui/glass`（`GlassButton`、`GlassChip`、`GlassInput`）、`@/types/dashboard`（`DashboardTab`）、`@/utils/tabIcons`（`getTabIcon`）、`@/components/icons`（`PlusIcon`、`SearchIcon`、`EditIcon`、`TrashIcon`）、`@/components/cards/card-context-menu`（`CardContextMenu`）、`@/components/tab-snapshot`（`TabSnapshot`）
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
-| `TabSelectorProps` | tab-selector.tsx:9 | 接口：`tabs: DashboardTab[]`、`onSelectTab(tabId)`、`onCreateTab()`、`onEditTab(tab)`、`onDeleteTab(tabId)` |
-| `TabSelector` | tab-selector.tsx:17 | 组件主体（无受控开关，始终渲染，父级决定显隐） |
-| 局部状态 | tab-selector.tsx:25-26 | `searchQuery`；`contextMenu: { x, y, tab } \| null`（右键菜单锚点与目标 tab） |
-| `filteredTabs` | tab-selector.tsx:28 | `useMemo([tabs, searchQuery])`：空查询原样返回，否则按 `tab.name` 或任一 `tab.tags`（忽略大小写）匹配 |
-| 标题区块 | tab-selector.tsx:41-52 | 「仪表盘」标题 + 副标题文案 |
-| 搜索/新建区 | tab-selector.tsx:54-73 | 带 `SearchIcon` 的 `GlassInput` + `New Tab` 主按钮（`onCreateTab`） |
-| 空态区 | tab-selector.tsx:75-101 | 区分「搜索无结果」与「还没有标签页」两种文案；后者额外提供「创建第一个标签页」按钮 |
-| 网格区 | tab-selector.tsx:103-171 | `sm/lg/xl` 响应式网格。每张 tab 卡片：图标、名称、卡片数、`Role set` 徽章（有 `defaultRoleId` 时）+ tags chips；hover 显示右上角编辑/删除按钮（`stopPropagation` 后回调）；`onClick` → `onSelectTab(tab.id)`；`onContextMenu` → 记录坐标并打开右键菜单 |
-| 右键菜单 | tab-selector.tsx:174-193 | `CardContextMenu` props：`x`、`y`、`items`（`edit` → `onEditTab(tab)`；`delete` → `onDeleteTab(tab.id)`，`danger: true`）、`onClose` |
+| `TabSelectorProps` | tab-selector.tsx:10 | 接口：`tabs: DashboardTab[]`、`snapshotPaths?: Record<string, string>`（tabId → 快照 PNG 路径）、`onSelectTab(tabId)`、`onCreateTab()`、`onEditTab(tab)`、`onDeleteTab(tabId)` |
+| `TabSelector` | tab-selector.tsx:20 | 组件主体（无受控开关，始终渲染，父级决定显隐） |
+| 局部状态 | tab-selector.tsx:29-30 | `searchQuery`；`contextMenu: { x, y, tab } \| null`（右键菜单锚点与目标 tab） |
+| `filteredTabs` | tab-selector.tsx:32 | `useMemo([tabs, searchQuery])`：空查询原样返回，否则按 `tab.name` 或任一 `tab.tags`（忽略大小写）匹配 |
+| 标题区块 | tab-selector.tsx:45-56 | 「仪表盘」标题 + 副标题文案 |
+| 搜索/新建区 | tab-selector.tsx:58-77 | 带 `SearchIcon` 的 `GlassInput` + `New Tab` 主按钮（`onCreateTab`） |
+| 空态区 | tab-selector.tsx:79-105 | 区分「搜索无结果」与「还没有标签页」两种文案；后者额外提供「创建第一个标签页」按钮 |
+| 网格区 | tab-selector.tsx:107-181 | `sm/lg/xl` 响应式网格。每张 tab 卡片：图标、名称、卡片数、`Role set` 徽章（有 `defaultRoleId` 时）+ tags chips；**卡片中部 `<TabSnapshot path={snapshotPaths?.[tab.id]} iconKey={tab.icon} />`（137-141）展示上次离开时的左上角截图**；hover 显示右上角编辑/删除按钮（`stopPropagation` 后回调）；`onClick` → `onSelectTab(tab.id)`；`onContextMenu` → 记录坐标并打开右键菜单 |
+| 右键菜单 | tab-selector.tsx:184-204 | `CardContextMenu` props：`x`、`y`、`items`（`edit` → `onEditTab(tab)`；`delete` → `onDeleteTab(tab.id)`，`danger: true`）、`onClose` |
 
 **备注**：
 - 无 `invoke` / `listen` / portal（`CardContextMenu` 自行处理挂载）。
-- i18n：未用 i18next key，全部 `i18n.language === "zh"` 三元（tab-selector.tsx:44、47-50、59、71、82、85、88-90、98、127、135、181、186）。
+- i18n：未用 i18next key，全部 `i18n.language === "zh"` 三元。
 - 右键与悬停按钮行为一致，均只提供「编辑/删除」两项。
+
+## `src/components/tab-snapshot.tsx`
+**职责**：仪表盘标签页快照缩略图。显示**上次离开该标签页时**经后端截取的内容区左上角 PNG（截图逻辑在 `utils/tabSnapshotService`，本组件只负责读取本地文件并显示），固定高度顶左裁剪；无快照时渲染虚线占位 + 标签图标。
+**导出**：`TabSnapshot`（命名 + 默认）
+**主要依赖**：`react`（`useEffect/useState`）、`react-i18next`、`clsx`、`@/components/icons`（`CardIcon`）、`@/utils/imageCacheManager`（`cacheManager.load`）、`@/utils/logger`（`logError`）
+
+| 符号 | 位置 | 说明 |
+| --- | --- | --- |
+| `TabSnapshotProps` | tab-snapshot.tsx:8 | `path?: string \| null`（快照 PNG 绝对路径）、`iconKey: string`（占位/失败兜底的卡片图标键）、`className?` |
+| `FRAME_HEIGHT` | tab-snapshot.tsx:17 | 缩略区固定高度 132px，保证网格卡片对齐 |
+| `TabSnapshot` | tab-snapshot.tsx:24-79 | `path` 变化时 `cacheManager.load(path)` 异步取 blob URL；无 `path`/未加载完成 → 虚线框占位（文案「暂无快照，进入后自动记录」按语言切换）；有图 → `object-cover` + `object-position: top left` 展示左上角区域 |
+
+**备注**：
+- **invoke 命令**：无直接 `invoke`；经 `cacheManager.load` 间接调用 `read_image_file`（本地路径 → blob URL，带 LRU 缓存）。
+- 快照文件名含时间戳（后端策略），路径每次重拍都变化，因此缓存永不陈旧。
 
 ## `src/components/screen-color-picker.tsx`
 **职责**：Windows 专用全屏取色器。截取整屏像素铺满窗口，鼠标移动时显示 220px 放大镜与实时色值，点击取色、右键或 Esc 取消；macOS/Linux 不展示屏幕吸管入口。
@@ -361,7 +376,8 @@
 | custom-titlebar.tsx | 324 | `CustomTitlebar` |
 | role-select-modal.tsx | 182 | 默认 `RoleSelectModal` |
 | tab-editor-modal.tsx | 244 | `TabEditorModal` |
-| tab-selector.tsx | 196 | `TabSelector` |
+| tab-selector.tsx | 207 | `TabSelector` |
+| tab-snapshot.tsx | 81 | `TabSnapshot`（命名 + 默认） |
 | screen-color-picker.tsx | 304 | 默认 `ScreenColorPicker` |
 | simple-pagination.tsx | 127 | `SimplePagination` |
 | dashboard-fab.tsx | 68 | `DashboardFAB` |

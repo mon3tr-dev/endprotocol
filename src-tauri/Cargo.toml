@@ -58,6 +58,8 @@ walkdir = "2"
 rfd = "0.15"
 sysinfo = "0.38.4"
 zip = { version = "4.6.1", default-features = false, features = ["aes-crypto", "deflate-flate2"] }
+# 仪表盘快照：窗口截图落盘为 PNG（commands/window.rs）
+png = "0.17"
 # 机密存储：OS 凭据库（Windows Credential Manager / macOS Keychain / Linux Secret Service）
 keyring = { version = "4.2", features = ["v1"] }
 # 机密存储降级后端：AES-256-GCM 加密文件
@@ -83,7 +85,7 @@ windows-native-keyring-store = "1.1"
 #   Win32_System_JobObjects             —— 直接启动路径的 Job（应用退出时兜底终止挂起父进程）
 #   Win32_System_LibraryLoader          —— FindResourceW / LoadLibraryExW（game_icon 图标提取）
 #   Win32_Storage_FileSystem            —— 文件/句柄相关常量
-windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_UI_WindowsAndMessaging", "Win32_System_Com", "Win32_UI_Shell", "Win32_System_Threading", "Win32_System_Power", "Win32_System_Performance", "Win32_Security", "Win32_Security_Cryptography", "Win32_Security_Cryptography_Catalog", "Win32_Security_Cryptography_Sip", "Win32_Security_WinTrust", "Win32_System_Registry", "Win32_System_Environment", "Win32_System_Console", "Win32_System_Diagnostics_Debug", "Win32_System_Diagnostics_ToolHelp", "Win32_System_JobObjects", "Win32_System_LibraryLoader", "Win32_Storage_FileSystem"] }
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_UI_WindowsAndMessaging", "Win32_Storage_Xps", "Win32_System_Com", "Win32_UI_Shell", "Win32_System_Threading", "Win32_System_Power", "Win32_System_Performance", "Win32_Security", "Win32_Security_Cryptography", "Win32_Security_Cryptography_Catalog", "Win32_Security_Cryptography_Sip", "Win32_Security_WinTrust", "Win32_System_Registry", "Win32_System_Environment", "Win32_System_Console", "Win32_System_Diagnostics_Debug", "Win32_System_Diagnostics_ToolHelp", "Win32_System_JobObjects", "Win32_System_LibraryLoader", "Win32_Storage_FileSystem"] }
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-updater = "~2.13"

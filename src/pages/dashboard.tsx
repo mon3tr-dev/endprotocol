@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { GlassButton, GlassProgressCircle, GlassTooltip } from "@/components/ui/glass";
 import { useTranslation } from "react-i18next";
 import { getSelectedAccount, refreshAccountData, getAccounts } from "@/utils/accountService";
@@ -46,6 +46,12 @@ import {
 } from "@/components/custom-modal";
 import { resolveServerLabel } from "@/types";
 import { trackStartupTask } from "@/utils/startupProgress";
+import {
+  captureTabSnapshot,
+  deleteTabSnapshotFile,
+  getSnapshotPaths,
+  registerDashboardLeaveHandler,
+} from "@/utils/tabSnapshotService";
 import { buildDefaultCardSettings } from "@/types/system-resource";
 import { getSystemResourceDefaults } from "@/utils/systemResourceService";
 import { createTodoListFromTemplate } from "@/utils/todoTemplateService";
@@ -75,11 +81,34 @@ export default function DashboardPage() {
   const [availableAccounts, setAvailableAccounts] = useState<Account[]>([]);
   const [selectedRoleId, setSelectedRoleId] = useState<string | null>(null);
   const [highlightedCardId, setHighlightedCardId] = useState<string | null>(null);
+  /** tabId -> 快照 PNG 路径（主界面缩略图用） */
+  const [snapshotPaths, setSnapshotPaths] = useState<Record<string, string>>({});
 
   const activeTab = tabs.find((t) => t.id === activeTabId);
 
+  // 当前渲染中的视图与标签页（ref 供事件回调读取最新值，用于「离开时截图」）
+  const viewRef = useRef<DashboardView>("loading");
+  const tabIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    viewRef.current = view;
+  }, [view]);
+  useEffect(() => {
+    tabIdRef.current = activeTabId;
+  }, [activeTabId]);
+
+  // 快照策略：截图都发生在「当前视图要被换掉」之前（await，此时窗口画面仍是
+  // 旧标签页），PrintWindow 截到的就是「上次离开时的画面」。
+  const snapshotLeavingTab = async () => {
+    if (viewRef.current === "tab" && tabIdRef.current) {
+      await captureTabSnapshot(tabIdRef.current);
+    }
+  };
+
   const loadDashboard = async () => {
     try {
+      // 重新加载前给当前视图留快照（切标签页 / 刷新 / 切账户都会走到这里；
+      // 同一标签页重截只是把画面更新到最新，不会污染其它标签页）
+      await snapshotLeavingTab();
       setIsLoading(true);
       const selectedAccountId = await getSelectedAccount();
       setCurrentRoleId(selectedAccountId);
@@ -97,14 +126,9 @@ export default function DashboardPage() {
         const config = await getDashboardConfig(savedActiveId);
         setDashboardConfig(config);
         setView("tab");
-      } else if (allTabs.length > 0) {
-        const firstTabId = allTabs[0].id;
-        setActiveTabIdState(firstTabId);
-        await setActiveTabId(firstTabId);
-        const config = await getDashboardConfig(firstTabId);
-        setDashboardConfig(config);
-        setView("tab");
       } else {
+        // 没有激活标签页 → 进入主界面（标签页总览），不再自动跳进第一个仪表盘
+        setActiveTabIdState(null);
         setDashboardConfig(null);
         setView("selector");
       }
@@ -116,8 +140,18 @@ export default function DashboardPage() {
     }
   };
 
+  // 回到主界面时刷新各标签页的快照路径（截图在离开 tab 视图时已完成）
+  useEffect(() => {
+    if (view === "selector") {
+      void getSnapshotPaths().then(setSnapshotPaths);
+    }
+  }, [view]);
+
   useEffect(() => {
     void trackStartupTask(loadDashboard());
+
+    // 供侧栏导航使用：点击前 await，趁画面还是仪表盘先截图
+    registerDashboardLeaveHandler(snapshotLeavingTab);
 
     const handleAccountChange = () => {
       loadDashboard();
@@ -126,11 +160,22 @@ export default function DashboardPage() {
       logDebug("[Dashboard] Received manual refresh event, reloading data...");
       loadDashboard();
     };
+    // 侧边栏点击「仪表盘」父节点：先给当前仪表盘留快照，再回到主界面（标签页总览）
+    const handleOpenSelector = async () => {
+      await snapshotLeavingTab();
+      setActiveTabIdState(null);
+      setDashboardConfig(null);
+      setView("selector");
+      void getAllTabs().then(setTabs);
+    };
     window.addEventListener("accountChanged", handleAccountChange);
     window.addEventListener("manualRefresh", handleManualRefresh);
+    window.addEventListener("dashboardOpenSelector", handleOpenSelector);
     return () => {
+      registerDashboardLeaveHandler(null);
       window.removeEventListener("accountChanged", handleAccountChange);
       window.removeEventListener("manualRefresh", handleManualRefresh);
+      window.removeEventListener("dashboardOpenSelector", handleOpenSelector);
     };
   }, []);
 
@@ -327,15 +372,19 @@ export default function DashboardPage() {
     const config = await getDashboardConfig(tabId);
     setDashboardConfig(config);
     setView("tab");
+    // 同步侧边栏的标签页高亮
+    window.dispatchEvent(new CustomEvent("tabsChanged"));
   };
 
   const handleBackToSelector = async () => {
+    await snapshotLeavingTab();
     await setActiveTabId(null);
     setActiveTabIdState(null);
     setDashboardConfig(null);
     setView("selector");
     const allTabs = await getAllTabs();
     setTabs(allTabs);
+    window.dispatchEvent(new CustomEvent("tabsChanged"));
   };
 
   const handleCreateTab = () => {
@@ -359,6 +408,7 @@ export default function DashboardPage() {
     if (!confirmed) return;
 
     await removeTab(tabId);
+    void deleteTabSnapshotFile(tabId);
     const allTabs = await getAllTabs();
     setTabs(allTabs);
     if (activeTabId === tabId) {
@@ -402,6 +452,7 @@ export default function DashboardPage() {
       <>
         <TabSelector
           tabs={tabs}
+          snapshotPaths={snapshotPaths}
           onSelectTab={handleSelectTab}
           onCreateTab={handleCreateTab}
           onEditTab={handleEditTab}

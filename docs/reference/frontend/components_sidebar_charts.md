@@ -3,62 +3,60 @@
 > 逐文件精读源码生成。行号基于当前工作区版本，仅用于快速定位。
 
 ## `src/components/dashboard-sidebar.tsx`
-**职责**：应用左侧全局侧边栏——展示当前选中账户卡片、可拖拽排序的主导航（仪表板/角色/勋章/出勤/抽卡）、仪表板多标签页列表（增删改、右键菜单、折叠）、底部功能入口与主题/语言切换；同时内含一个被硬关闭的命令面板式搜索模块。
+**职责**：应用左侧全局侧边栏——展示当前选中账户卡片、可拖拽排序的主导航（仪表板/角色/勋章/出勤/抽卡/To-Do/区域/帝江号，换位带 FLIP 滑动动画）、仪表板多标签页列表（增删改、右键菜单、折叠、拖拽换位带动画）、底部功能入口与主题/语言切换；同时内含一个被硬关闭的命令面板式搜索模块。
 **导出**：`Sidebar`（唯一导出，命名导出，无 default）
-**主要依赖**：`react-router-dom`（`Link`/`useLocation`/`useNavigate`）、`react-dom` 的 `createPortal`、`react-i18next` 的 `useTranslation`、`clsx`、`@/components/ui/glass`（`GlassKbd`、`GlassSkeleton`）、`@/components/icons`（11 个图标）、`@/components/theme-switch`、`@/components/language-switch`、`@/components/ui/account-avatar`、`@/components/ui/app-icon`（`ChevronDownIcon`/`ChevronLeftIcon`/`ChevronRightIcon`/`SwitchIcon`）、`./account-switch-modal`、`@/components/cards/card-context-menu`、`@/components/tab-editor-modal`、`@/components/ui/confirm-dialog`、`@/utils/accountService`、`@/utils/configService`、`@/utils/tabService`、`@/utils/tabIcons`、`@/utils/imageCacheManager`、`@/utils/logger`、`@/config/site`、`@/types`（`resolveServerLabel`）、`@/types/dashboard`（`DashboardTab`）
+**主要依赖**：`react-router-dom`（`Link`/`useLocation`/`useNavigate`）、`react-dom` 的 `createPortal`、`react-i18next` 的 `useTranslation`、`clsx`、`@/components/ui/glass`（`GlassKbd`、`GlassSkeleton`）、`@/components/icons`（14 个图标）、`@/components/theme-switch`、`@/components/language-switch`、`@/components/ui/account-avatar`、`@/components/ui/app-icon`（`ChevronDownIcon`/`ChevronLeftIcon`/`ChevronRightIcon`/`SwitchIcon`）、`./account-switch-modal`、`@/components/cards/card-context-menu`、`@/components/tab-editor-modal`、`@/components/ui/confirm-dialog`、`@/utils/accountService`、`@/utils/configService`、`@/utils/tabService`、`@/utils/tabIcons`、`@/utils/tabSnapshotService`（`runDashboardLeaveHandler` / `deleteTabSnapshotFile`）、`@/hooks/useFlipList`、`@/utils/imageCacheManager`、`@/utils/logger`、`@/config/site`、`@/types`（`resolveServerLabel`）、`@/types/dashboard`（`DashboardTab`）
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
-| `SearchResult` | dashboard-sidebar.tsx:50 | 接口：`id`、`title`、`description?`、`path`、`category`、`elementId?`（页面内锚点）、`titleEn/titleZh/descriptionEn/descriptionZh/categoryEn/categoryZh?`（跨语言检索字段）、`matchedLang?("current"/"en"/"zh")`、`matchedText?` |
-| `SidebarProps` | dashboard-sidebar.tsx:75 | props：`onNavigate?: () => void`（移动端点击导航后关闭抽屉的回调）、`collapsed?: boolean`（桌面端折叠为仅图标窄轨，默认 `false`）、`onToggleCollapsed?: () => void`（切换折叠状态；提供时页脚渲染折叠/展开按钮） |
-| `NavKey` | dashboard-sidebar.tsx:89 | 联合类型：`"dashboard" \| "characters" \| "medals" \| "attendance" \| "gacha" \| "todo" \| "domain" \| "spaceship"` |
-| `NAV_KEYS` | dashboard-sidebar.tsx:91 | 默认导航顺序数组（8 项，含 `/domain` 区域信息与 `/spaceship` 帝江号页），作为 `navOrder` 初值 |
-| `GripHandle` | dashboard-sidebar.tsx:84 | 六点拖拽手柄按钮（内联 SVG）。props：`onPointerDown`（必需）、`onDragEnd?`、`isDragging?`；`pointerUp`/`click` 均 `preventDefault+stopPropagation`（97-105），hover 时才显示（106） |
-| `Sidebar` | dashboard-sidebar.tsx:132 | 主组件，约 132-1973 行，见下方内部结构 |
+| `SearchResult` | dashboard-sidebar.tsx:65 | 接口：`id`、`title`、`description?`、`path`、`category`、`elementId?`（页面内锚点）、`titleEn/titleZh/descriptionEn/descriptionZh/categoryEn/categoryZh?`（跨语言检索字段）、`matchedLang?("current"/"en"/"zh")`、`matchedText?` |
+| `SidebarProps` | dashboard-sidebar.tsx:84 | props：`onNavigate?: () => void`（移动端点击导航后关闭抽屉的回调）、`collapsed?: boolean`（桌面端折叠为仅图标窄轨，默认 `false`）、`onToggleCollapsed?: () => void`（切换折叠状态；提供时页脚渲染折叠/展开按钮） |
+| `NavKey` | dashboard-sidebar.tsx:93 | 联合类型：`"dashboard" \| "characters" \| "medals" \| "attendance" \| "gacha" \| "todo" \| "domain" \| "spaceship"` |
+| `NAV_KEYS` | dashboard-sidebar.tsx:95 | 默认导航顺序数组（8 项，含 `/domain` 区域信息与 `/spaceship` 帝江号页），作为 `navOrder` 初值 |
+| `GripHandle` | dashboard-sidebar.tsx:106 | 六点拖拽手柄按钮（内联 SVG）。props：`onPointerDown`（必需）、`onDragEnd?`、`isDragging?`；`pointerUp`/`click` 均 `preventDefault+stopPropagation`，hover 时才显示 |
+| `Sidebar` | dashboard-sidebar.tsx:145 | 主组件，约 145-2270 行，见下方内部结构 |
+| `handleNavClick` | dashboard-sidebar.tsx:291 | 导航点击守卫：`preventDefault` → await `runDashboardLeaveHandler()`（当前若停在仪表盘标签页则先截图）→ `navigate(href)` → `onNavigate?.()`。用于除「仪表盘父节点」「子标签」外的全部导航项与底部入口 |
+| `useFlipList(navListRef, navOrder)` | dashboard-sidebar.tsx:302 | 主导航列表换位 FLIP 动画（260ms） |
+| `useFlipList(tabsListRef, tabIds)` | dashboard-sidebar.tsx:303 | 仪表板标签列表换位 FLIP 动画（220ms） |
 
-**内部结构**：
+**内部结构**（行号为当前工作区快照，改动后以源码为准）：
 
-- **1-48 行**：import 区（依赖清单见上）。全文件无任何 Tauri `invoke`/`listen`，后端交互全部经由 `accountService`/`configService`/`tabService` 封装。
-- **50-82 行**：类型与常量（`SearchResult`、`SidebarProps`、`NavKey`、`NAV_KEYS`）。
-- **84-121 行**：`GripHandle` 子组件。
-- **126-173 行**：状态/引用声明。搜索态 `searchQuery`/`showResults`/`selectedIndex`/`searchMenuPos` 与 refs（126-139）；账户态 `selectedAccount`/`isLoadingAccount`/`isSwitchModalOpen`/`accountUnavailable`/`isManualRefreshing`/`expectedAccountCount`（默认 3）（142-153）；`developerMode`（153）、`sidebarTabs`/`sidebarActiveTab`（154-155）、`isDashboardCollapsed`（156）、`contextMenu`（157-162）、`isTabEditorOpen`/`editingTabForSidebar`（163-166）；拖拽态 `navOrder`/`draggingNav`/`draggingTab` 及对应 ref（167-173）。
-- **175-181 行**：把 `navOrder`、`sidebarTabs` 同步进 ref（供拖拽结束时读取最新值）。
-- **184-196 行**：读取配置 `sidebar_nav_order`，过滤非法键并补齐缺失键后写入 `navOrder`。
-- **198-232 行**：拖拽核心函数——`swapNav`（198，交换两个导航项）、`swapTab`（209，交换两个标签页）、`endNavDrag`（220，`setConfig("sidebar_nav_order", ...)` 持久化）、`endTabDrag`（227，`saveTabs(...)` 持久化）。
-- **234-256 行**：`startNavDrag` / `startTabDrag`——标记拖拽目标并临时挂 `window pointerup` 监听以结束拖拽。
-- **259-274 行**：加载标签页（`getAllTabs` + `getActiveTabId`），并监听 `tabsChanged`、`accountChanged` 两个 window 事件重载。
-- **277-286 行**：监听 `themeChange` → `themeChangeKey++`，用于 952 行强制重挂 `<aside>`。
-- **289-304 行**：读取配置 `developer_mode`、`sidebar_collapsed` 初始化状态。
-- **307-315 行**：监听 `developerModeChange`（CustomEvent，`detail.enabled`）。
-- **338-423 行**：选中账户加载与同步——`Promise.all([getSelectedAccount(), getAccounts()])` 并按 id 匹配；订阅 `accountAvailability` 状态并在账户数据不可用时置 `accountUnavailable`（侧边栏显示「账号不可用 / 重新登录」并跳转 `/account`）；监听 `accountChanged`（重读配置 `refresh_on_account_switch`）、`manualRefresh`（`detail.count` 上限 5，置骨架屏 300ms 后复位）。
-- **432-780 行**：`getAllSearchableContent`（`useMemo`，依赖 `t`/`i18n.language`）——硬编码的可检索条目表：导航项 `nav-dashboard`(438)/`nav-settings`(455)/`nav-account`(471)、仪表板块 488-660（welcome、stats-revenue/users/sales、activity、projects、quick-actions、create/start/invite、analytics）、设置块 662-777（settings-title 662-695 / general 696-712 / **network 713-730（`elementId: "settings-network"`）** / language 731-747 / theme 748-762）、`nav-developer`(763-777)，每条含中英双语 title/description/category 与可选 `elementId`。
-- **782-853 行**：`searchResults`（`useMemo`）——先按当前语言再按中/英备选语言匹配（786-800 附近），再标注 `matchedLang` 与 `matchedText`。
-- **791-801 行**：`Cmd/Ctrl+K` 聚焦搜索框。
-- **804-818 行**：点击外部/滚动时关闭搜索结果。
-- **821-847 行**：搜索结果键盘导航（↑↓/Enter/Escape）。
-- **850-860 行**：选中项 `scrollIntoView`。
-- **862-899 行**：`handleSelectResult`——`navigate(path)`、清空搜索状态；有 `elementId` 时延迟 100ms 滚动到元素（偏移 80px）并加 `animate-pulse` + 光圈高亮 2 秒。
-- **901-922 行**：`highlightMatch(text, query)`——转义正则后 split 并用 `<mark>` 包裹命中片段。
-- **924-948 行**：`bottomItems`（`useMemo`）——账户项固定；`developerMode` 为真时插入开发者项；最后追加设置项。
-- **950-1016 行**：渲染起点——`<aside key={themeChangeKey}>`（952）+ 账户卡片区三态：骨架屏（955-962）/ 已选账户（963-996，含头像、昵称、`Lv.`、`resolveServerLabel` 服务器、森空岛 userId、hover 显示切换按钮 `setIsSwitchModalOpen(true)`）/ 未选择占位（997-1014）。
-- **1018-1237 行**：搜索区，**被 `{false && ...}` 硬关闭（1019）**：输入框 1024-1061、清除按钮 1062-1086、⌘K 提示 1087-1092、`createPortal(document.body)` 下拉 1096-1234、按 category 分组 1121-1133、结果项按钮 1138-1204（含 EN/中文 命中徽章 1166-1173、跨语言匹配文本 1184-1200）、底部快捷键页脚 1210-1231。
-- **1239-1593 行**：主导航 `<nav>`，按 `navOrder.map` + `switch` 渲染，每项 hover 时与 `draggingNav` 交换位置：
-  - `dashboard`（1244-1421）：`Link to="/"` + 折叠按钮（1281-1305，`setConfig("sidebar_collapsed", next)`）+ `GripHandle`(1306)；子级标签列表用 `grid-template-rows: 0fr/1fr` 做展开动画（1314-1322）；「Tabs」标题 + `PlusIcon` 新增按钮（1325-1340）；标签项 1341-1407（右键 `onContextMenu` 开菜单 1352-1361、hover 拖拽交换 1362-1366、点击 `setActiveTabId` 后派发 `accountChanged` 1370-1377、激活态左侧竖条 1388-1390）；空态 1408-1416。
-  - `characters`（1423-1463）、`medals`（1465-1505）、`attendance`（1507-1547）、`gacha`（1549-1589）：结构相同，仅路由/图标/文案不同。
-- **1595-1638 行**：`CardContextMenu`（标签页右键）——`edit` 取回标签后打开编辑器（1604-1611）；`delete` 走 `confirmDialog` 确认后 `removeTab` 并派发 `tabsChanged`（1617-1633）。
-- **1640-1660 行**：`TabEditorModal`——`onSave` 按是否在编辑调用 `updateTab` 或 `addTab(name, icon, tags, defaultRoleId)`，随后刷新并派发 `tabsChanged`。
-- **1662-1711 行**：页脚——`bottomItems` 链接列表（1666-1694）、GitHub 外链（`siteConfig.links.github`，1698-1706）、`ThemeSwitch`、`LanguageSwitch`。
-- **1714-1719 行**：`AccountSwitchModal`（`isOpen`/`onClose`/`currentAccountId`）。
-- **折叠（`collapsed`）**：`return` 前派生 `tabsHidden = isDashboardCollapsed || collapsed`。折叠时账户卡片收缩为居中的小头像：`AccountAvatar size` 由 `md`→`sm`，账户区外层横向内边距 `px-3`→`px-[7px]`、卡片内边距 `p-2`→`p-[5px]`，卡片始终 `w-full`（不切换 `justify-center`/`w-fit`），使头像位置随容器宽度与内边距的过渡连续移动而不跳变（折叠后卡片宽 50px = 头像 40px + 左右各 5px），文字/切换按钮以 `max-w-0 + opacity-0` 过渡隐藏；主导航与页脚项改为 `justify-center` 仅显示图标（标签同样 `max-w-0` 过渡隐藏、`title` 提供提示），`GripHandle` 与仪表板标签列表隐藏；页脚隐藏 GitHub/主题/语言按钮，仅保留折叠/展开按钮（`ChevronLeftIcon`/`ChevronRightIcon`，在 `onToggleCollapsed` 提供时渲染）。所有过渡统一 `duration-300 ease-out`。
+- **1-63 行**：import 区（依赖清单见上）。全文件无任何 Tauri `invoke`/`listen`，后端交互全部经由 `accountService`/`configService`/`tabService`/`tabSnapshotService` 封装。
+- **65-104 行**：类型与常量（`SearchResult`、`SidebarProps`、`NavKey`、`NAV_KEYS`）。
+- **106-143 行**：`GripHandle` 子组件。
+- **145-203 行**：状态/引用声明。搜索态 `searchQuery`/`showResults`/`selectedIndex`/`searchMenuPos` 与 refs；账户态 `selectedAccount`/`isLoadingAccount`/`isSwitchModalOpen`/`accountUnavailable`/`isManualRefreshing`/`expectedAccountCount`；`developerMode`、`sidebarTabs`/`sidebarActiveTab`、`isDashboardCollapsed`、`contextMenu`、`isTabEditorOpen`/`editingTabForSidebar`；拖拽态 `navOrder`/`draggingNav`/`draggingTab` 及对应 ref；FLIP 容器 ref `navListRef`/`tabsListRef`（202-203）。
+- **205-211 行**：把 `navOrder`、`sidebarTabs` 同步进 ref（供拖拽结束时读取最新值）。
+- **213-225 行**：读取配置 `sidebar_nav_order`，过滤非法键并补齐缺失键后写入 `navOrder`。
+- **228-282 行**：拖拽核心函数——`swapNav`(228)、`swapTab`(239)、`endNavDrag`(250，`setConfig("sidebar_nav_order", ...)` 持久化)、`endTabDrag`(257，`saveTabs(...)` 持久化)、`startNavDrag`(264)/`startTabDrag`(276)（标记目标 + 临时 `window pointerup` 结束拖拽）。**换位交换时列表位置移动由 FLIP 动画呈现，不再是瞬间跳位。**
+- **291-300 行**：`handleNavClick` 导航守卫——`preventDefault()` → await `runDashboardLeaveHandler()`（DashboardPage 注册的「离开仪表盘先截图」钩子；不在仪表盘视图时为空操作）→ `navigate(href)` → `onNavigate?.()`。必须 preventDefault：Link 的默认导航不受 await 阻塞，否则 PrintWindow 会截到已切换的新页面。
+- **302-307 行**：`useFlipList(navListRef, navOrder, {260ms})` 与 `useFlipList(tabsListRef, tabIds, {220ms})`——主导航与标签列表的换位 FLIP 动画（见 `@/hooks/useFlipList`）。
+- **309-325 行**：加载标签页（`getAllTabs` + `getActiveTabId`），并监听 `tabsChanged`、`accountChanged` 两个 window 事件重载。
+- **328-336 行**：监听 `themeChange` → `themeChangeKey++`，用于渲染起点强制重挂 `<aside>`。
+- **340-366 行**：读取配置 `developer_mode`、`sidebar_collapsed` 初始化状态；监听 `developerModeChange`（CustomEvent，`detail.enabled`）。
+- **369-460 行**：选中账户加载与同步——`Promise.all([getSelectedAccount(), getAccounts()])` 并按 id 匹配；订阅 `accountAvailability` 状态并在账户数据不可用时置 `accountUnavailable`（侧边栏显示「账号不可用 / 重新登录」并跳转 `/account`）；监听 `accountChanged`（重读配置 `refresh_on_account_switch`）、`manualRefresh`（`detail.count` 上限 5，置骨架屏 300ms 后复位）。
+- **463-810 行**：`getAllSearchableContent`（`useMemo`，依赖 `t`/`i18n.language`）——硬编码的可检索条目表（导航项、仪表板块、设置块、开发者项），每条含中英双语 title/description/category 与可选 `elementId`。
+- **813-1017 行**：`searchResults` 匹配（当前语言 → 备选语言，标注 `matchedLang`/`matchedText`）、`Cmd/Ctrl+K` 聚焦、点击外部/滚动关闭、键盘导航、选中项 `scrollIntoView`、`handleSelectResult`、`highlightMatch`。
+- **1019-1043 行**：`bottomItems`（`useMemo`）——账户项固定；`developerMode` 为真时插入开发者项；最后追加设置项。
+- **1045-1049 行**：派生 `tabsHidden = isDashboardCollapsed || collapsed`；渲染起点 `<aside key={themeChangeKey}>`。
+- **1052-1113 行**：账户卡片区三态：骨架屏 / 已选账户（头像、昵称、`Lv.`、`resolveServerLabel` 服务器、森空岛 userId、hover 切换按钮）/ 未选择占位。
+- **1115-1330 行**：搜索区，**被 `{false && ...}` 硬关闭**（输入框、清除按钮、⌘K 提示、`createPortal` 下拉、分组渲染、快捷键页脚）——死代码保留。
+- **1455-2085 行**：主导航 `<nav>`，外层 `<div ref={navListRef}>`（1463），按 `navOrder.map` + `switch` 渲染；**每个导航项根 `<div>` 带 `data-flip-id="<key>"`**，hover 越过另一项时 `swapNav` 交换、FLIP 补间：
+  - `dashboard`（1466-1660）：父节点 `<Link to="/">` 的 `onClick`(1491)：`preventDefault` → `setActiveTabId(null)` → `setSidebarActiveTab(null)` → `navigate("/")` → 派发 `dashboardOpenSelector` → `onNavigate?.()`——**点击父节点进入主界面（标签页总览），不再跳进任何仪表盘**；父节点高亮 = `pathname === "/" && !sidebarActiveTab`（1484，HomeIcon 判断同步修复）。折叠按钮（`setConfig("sidebar_collapsed", next)`）+ `GripHandle`；子级标签列表 `<div ref={tabsListRef}>`（1588）内每项带 `data-flip-id={tab.id}`（1603）、hover 拖拽交换、点击 `setActiveTabId` 后派发 `accountChanged`（页面侧经 leave handler 先给旧标签页截图）、激活态左侧竖条；空态提示。
+  - `characters`/`medals`/`attendance`/`gacha`/`todo`/`domain`/`spaceship`（1677-2085）：结构相同，`onClick={(e) => void handleNavClick(e, "/xxx")}`。
+- **2090-2135 行**：`CardContextMenu`（标签页右键）——`edit` 打开编辑器；`delete` 确认后 `removeTab` + `deleteTabSnapshotFile`（清理快照文件，2127）+ 派发 `tabsChanged`。
+- **2138-2158 行**：`TabEditorModal`——`onSave` 按是否在编辑调用 `updateTab` 或 `addTab(name, icon, tags, defaultRoleId)`，随后刷新并派发 `tabsChanged`。
+- **2161-2220 行**：页脚——`bottomItems` 链接（每项 `onClick={(e) => void handleNavClick(e, item.href)}`）、GitHub 外链、`ThemeSwitch`、`LanguageSwitch`。
+- **2225 行附近**：`AccountSwitchModal`。
+- **折叠（`collapsed`）**：账户卡片收缩为居中小头像（`AccountAvatar size` `md`→`sm`、外层 `px-3`→`px-[7px]`、卡片 `p-2`→`p-[5px]`、始终 `w-full`，过渡连续不跳变），文字/切换按钮 `max-w-0 + opacity-0` 隐藏；主导航与页脚项 `justify-center` 仅图标；`GripHandle` 与仪表板标签列表隐藏；页脚仅折叠/展开按钮。所有过渡统一 `duration-300 ease-out`。
 
 **备注**：
-- **invoke 命令**：本文件 0 个（无 `@tauri-apps/api/core` 引用；账户可用性经 `@/utils/accountAvailability` 读取）；后端能力经 `getAccounts`/`getSelectedAccount`/`getConfig`/`setConfig`/`getAllTabs`/`addTab`/`updateTab`/`removeTab`/`saveTabs`/`getActiveTabId`/`setActiveTabId` 间接调用。
+- **invoke 命令**：本文件 0 个直接 `invoke`；后端能力经 `getAccounts`/`getSelectedAccount`/`getConfig`/`setConfig`/`getAllTabs`/`addTab`/`updateTab`/`removeTab`/`saveTabs`/`getActiveTabId`/`setActiveTabId`/`runDashboardLeaveHandler`（间接触发 `save_tab_snapshot`）/`deleteTabSnapshotFile`（`delete_tab_snapshot`）间接调用。
 - **listen/事件**（全部为 DOM 事件，非 Tauri `listen`）：
-  - 监听：`window "tabsChanged"`(268)、`window "accountChanged"`(269, 371)、`window "themeChange"`(282)、`window "developerModeChange"`(312)、`window "manualRefresh"`(393)、`window "pointerup"`(243, 255)、`document "keydown"`(799, 844)、`document "mousedown"`(812)、`window "scroll"` capture(813)。
-  - 派发：`window.dispatchEvent(accountChanged)`(1373-1375)、`window.dispatchEvent(tabsChanged)`(1632, 1657)。
-- **配置键（configService）**：读 `sidebar_nav_order`(185)、`developer_mode`(291)、`sidebar_collapsed`(300)、`refresh_on_account_switch`(353)；写 `sidebar_nav_order`(222)、`sidebar_collapsed`(1286)。（整条侧边栏的折叠状态 `sidebar_rail_collapsed` 由外层布局 `layouts/dashboard.tsx` 读写，本文件不涉及。）
+  - 监听：`window "tabsChanged"`(319)、`window "accountChanged"`(320, ~410)、`window "themeChange"`(332)、`window "developerModeChange"`(362)、`window "manualRefresh"`(~430)、`window "pointerup"`(272, 284)、`document "keydown"`/`"mousedown"`、`window "scroll"` capture（搜索区）。
+  - 派发：`window.dispatchEvent(accountChanged)`（子标签点击）、`window.dispatchEvent(tabsChanged)`（删除/保存标签页）、`window.dispatchEvent(dashboardOpenSelector)`（父节点点击，1497）。
+- **配置键（configService）**：读 `sidebar_nav_order`(~215)、`developer_mode`(~341)、`sidebar_collapsed`(~350)、`refresh_on_account_switch`(~415)；写 `sidebar_nav_order`(252)、`sidebar_collapsed`（折叠按钮）。（整条侧边栏的折叠状态 `sidebar_rail_collapsed` 由外层布局 `layouts/dashboard.tsx` 读写，本文件不涉及。）
 - **Props 清单**：`Sidebar` 的 `onNavigate?`（默认 `{}`）、`collapsed`（默认 `false`）、`onToggleCollapsed?`。
-- **异常/注意点**：① 搜索 UI 被 `{false && ...}` 永久隐藏（1019），但其状态、4 个键盘/鼠标 effect 与约 500 行 JSX 仍保留在文件中（1018-1237，属死代码）。② `handleManualRefresh` 中 `void expectedAccountCount`(380) 为规避 lint 的占位，且 390 行 `logger.debug` 读到的是闭包旧值。③ `highlightMatch`(904-911) 用带 `g` 标志的正则做 `.test()`，`lastIndex` 有状态残留风险。④ 1272 行判断 `location.pathname === ""`（其余处均为 `"/"`），该分支实际不会命中。⑤ `startNavDrag`/`startTabDrag` 注册的 `pointerup` 监听只在触发后移除，拖拽中途卸载组件会短暂泄漏。
+- **异常/注意点**：① 搜索 UI 被 `{false && ...}` 永久隐藏，但其状态、4 个键盘/鼠标 effect 与约 500 行 JSX 仍保留在文件中（属死代码）。② `handleManualRefresh` 中 `void expectedAccountCount` 为规避 lint 的占位。③ `highlightMatch` 用带 `g` 标志的正则做 `.test()`，`lastIndex` 有状态残留风险。④ ~~`location.pathname === ""` 永不命中~~ 已修复：与父节点高亮统一为 `pathname === "/" && !sidebarActiveTab`。⑤ `startNavDrag`/`startTabDrag` 注册的 `pointerup` 监听只在触发后移除，拖拽中途卸载组件会短暂泄漏。⑥ FLIP 动画与 `grid-template-rows` 展开折叠并存：换位只改顺序（高度不变），折叠展开只改容器（keys 不变），互不干扰；`prefers-reduced-motion` 下 FLIP 自动跳过。
 
 ## `src/components/gacha-pity-chart.tsx`
 **职责**：抽卡「寻访统计」保底条形图——按卡池分组，以横向柱条展示每次六星距离上个六星的抽数（或赠送十连内序号）及未出六星的余量，柱头附角色/武器圆形头像，支持卡池筛选与中英文案。

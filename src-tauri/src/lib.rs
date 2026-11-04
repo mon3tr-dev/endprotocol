@@ -185,6 +185,8 @@ pub fn run() {
             commands::window::toggle_maximize_window,
             commands::window::close_window,
             commands::window::minimize_to_tray,
+            commands::window::save_tab_snapshot,
+            commands::window::delete_tab_snapshot,
             // In-app browser commands (native child webview navigation)
             commands::browser::browser_go_back,
             commands::browser::browser_go_forward,

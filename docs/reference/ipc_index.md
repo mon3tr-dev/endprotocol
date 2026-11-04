@@ -1,6 +1,6 @@
 # IPC 命令索引（前端 invoke ↔ 后端定义）
 
-> 由脚本扫描 `#[tauri::command]` 与前端 `invoke('...')` 自动生成。共 135 个后端命令，其中 116 个在前端有直接调用；19 个未见前端调用。行号基于当前工作区版本。
+> 由脚本扫描 `#[tauri::command]` 与前端 `invoke('...')` 自动生成。共 137 个后端命令，其中 118 个在前端有直接调用；19 个未见前端调用。行号基于当前工作区版本。
 >
 > 注：`browser_go_back` / `browser_go_forward` / `browser_reload` / `browser_navigate` / `browser_current_url` 经 `src/utils/browserViewService.ts` 的私有 `run(command, args)` 动态调用（`invoke(command, …)`，命令名不是字面量），脚本的字面量正则扫不到，已人工补录。
 
@@ -36,6 +36,7 @@
 | `close_window` | [src-tauri/src/commands/window.rs:36](backend/commands.md) | —（前端未调用） |
 | `create_game_shortcut` | [src-tauri/src/commands/startup.rs:272](backend/commands.md) | [src/utils/launcherService.ts](../../src/utils/launcherService.ts) |
 | `delete_background_image` | [src-tauri/src/commands/image.rs:193](backend/commands.md) | [src/components/appearance-settings.tsx](../../src/components/appearance-settings.tsx) |
+| `delete_tab_snapshot` | [src-tauri/src/commands/window.rs:115](backend/commands.md) | [src/utils/tabSnapshotService.ts](../../src/utils/tabSnapshotService.ts) |
 | `do_attendance` | [src-tauri/src/commands/attendance.rs:182](backend/commands.md) | [src/components/cards/attendance/index.tsx](../../src/components/cards/attendance/index.tsx) |
 | `download_file` | [src-tauri/src/commands/updater.rs:200](backend/commands.md) | —（前端未调用） |
 | `download_image` | [src-tauri/src/commands/image.rs:29](backend/commands.md) | [src/components/cards/character-list/char-select-modal.tsx](../../src/components/cards/character-list/char-select-modal.tsx)<br>[src/utils/imageCacheManager.ts](../../src/utils/imageCacheManager.ts) |
@@ -124,6 +125,7 @@
 | `save_proxy_settings` | [src-tauri/src/commands/proxy.rs:71](backend/commands.md) | [src/utils/proxyService.ts](../../src/utils/proxyService.ts) |
 | `save_selected_roles` | [src-tauri/src/commands/account.rs:250](backend/commands.md) | [src/components/role-select-modal.tsx](../../src/components/role-select-modal.tsx)<br>[src/utils/accountService.ts](../../src/utils/accountService.ts) |
 | `save_skland_account` | [src-tauri/src/commands/account.rs:74](backend/commands.md) | [src/utils/accountService.ts](../../src/utils/accountService.ts) |
+| `save_tab_snapshot` | [src-tauri/src/commands/window.rs:80](backend/commands.md) | [src/utils/tabSnapshotService.ts](../../src/utils/tabSnapshotService.ts) |
 | `scan_status` | [src-tauri/src/commands/account.rs:223](backend/commands.md) | [src/utils/accountService.ts](../../src/utils/accountService.ts) |
 | `send_verification_code` | [src-tauri/src/commands/account.rs:188](backend/commands.md) | [src/utils/accountService.ts](../../src/utils/accountService.ts) |
 | `set_config` | [src-tauri/src/commands/config.rs:50](backend/commands.md) | [src/utils/configService.ts](../../src/utils/configService.ts)<br>[src/utils/launcherService.ts](../../src/utils/launcherService.ts) |

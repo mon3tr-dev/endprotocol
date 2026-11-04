@@ -53,18 +53,18 @@ EndProtocol/
 │   │   │   └── <card-name>/       #   11 张卡片（含 locales/、*.meta.json；
 │   │   │                          #   含新增 system-resource/、todo/）
 │   │   └── *.tsx                  # 弹窗/面板/侧栏/图表等大组件
-│   ├── utils/                     # 18 个服务封装与工具（accountService、
-│   │                              #   configService、roleDataService、updateService…）
+│   ├── utils/                     # 35 个服务封装与工具（accountService、
+│   │                              #   configService、roleDataService、updateService、tabSnapshotService…）
 │   ├── types/                     # TS 类型（card-settings、charDetail、gacha、dashboard）
 │   ├── locales/{zh,en}/           # 国际化资源
 │   ├── styles/globals.css         # 全局样式与主题变量
-│   ├── stores/ hooks/ lib/ config/ cards/  # zustand 风格 store、hooks、工具
+│   ├── stores/ hooks/ lib/ config/ cards/  # zustand 风格 store、hooks（useLongPressDrag、useFlipList）、工具
 │   │                              #   （含 todoStore.ts：To-Do 单一数据源）
 ├── src-tauri/                     # ===== 后端源码 =====
 │   ├── src/main.rs                # 进程入口
 │   ├── src/lib.rs                 # 启动模式分流、完整模式单实例、驻守实例、插件/状态/托盘/命令注册
 │   ├── src/tray.rs                # 完整模式托盘与悬浮面板（驻守实例无托盘）
-│   ├── src/commands/              # 16 个文件：IPC 命令入口
+│   ├── src/commands/              # 19 个文件（18 命令 + mod.rs）：IPC 命令入口
 │   ├── src/services/              # 12 个服务：account、skland、game_launcher、
 │   │                              #   gacha、char_detail、char_wiki、config、
 │   │                              #   avatar_cache、data_query、network、

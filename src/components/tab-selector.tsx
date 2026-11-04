@@ -5,9 +5,12 @@ import { DashboardTab } from "@/types/dashboard";
 import { getTabIcon } from "@/utils/tabIcons";
 import { PlusIcon, SearchIcon, EditIcon, TrashIcon } from "@/components/icons";
 import { CardContextMenu } from "@/components/cards/card-context-menu";
+import { TabSnapshot } from "@/components/tab-snapshot";
 
 interface TabSelectorProps {
   tabs: DashboardTab[];
+  /** tabId -> 上次离开该标签页时的快照 PNG 路径 */
+  snapshotPaths?: Record<string, string>;
   onSelectTab: (tabId: string) => void;
   onCreateTab: () => void;
   onEditTab: (tab: DashboardTab) => void;
@@ -16,6 +19,7 @@ interface TabSelectorProps {
 
 export function TabSelector({
   tabs,
+  snapshotPaths,
   onSelectTab,
   onCreateTab,
   onEditTab,
@@ -128,6 +132,13 @@ export function TabSelector({
                       </p>
                     </div>
                   </div>
+
+                  {/* 仪表盘快照：上次离开时截取的内容区左上角画面 */}
+                  <TabSnapshot
+                    path={snapshotPaths?.[tab.id]}
+                    iconKey={tab.icon}
+                    className="mt-4"
+                  />
 
                   <div className="flex flex-wrap gap-1 mt-3">
                     {tab.defaultRoleId && (

@@ -54,6 +54,8 @@ import {
   saveTabs,
 } from "@/utils/tabService";
 import { getTabIcon } from "@/utils/tabIcons";
+import { useFlipList } from "@/hooks/useFlipList";
+import { runDashboardLeaveHandler, deleteTabSnapshotFile } from "@/utils/tabSnapshotService";
 import { CardContextMenu } from "@/components/cards/card-context-menu";
 import { TabEditorModal } from "@/components/tab-editor-modal";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
@@ -196,6 +198,9 @@ export const Sidebar = ({
   const tabDragRef = useRef<string | null>(null);
   const navOrderRef = useRef(navOrder);
   const sidebarTabsRef = useRef(sidebarTabs);
+  // FLIP 动画的容器引用（导航列表 / 仪表盘标签列表）
+  const navListRef = useRef<HTMLDivElement>(null);
+  const tabsListRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     navOrderRef.current = navOrder;
@@ -279,6 +284,27 @@ export const Sidebar = ({
     };
     window.addEventListener("pointerup", handleUp);
   };
+
+  // 点击侧栏其它导航离开时：若当前正停在某个仪表盘标签页，先让页面截图，再跳转。
+  // Link 的默认导航不受 await 阻塞，所以这里必须 preventDefault，等截图完成后再
+  // navigate —— 否则 PrintWindow 会截到已经切换过去的新页面。
+  const handleNavClick = async (
+    e: React.MouseEvent<HTMLAnchorElement>,
+    href: string,
+  ) => {
+    e.preventDefault();
+    await runDashboardLeaveHandler();
+    navigate(href);
+    onNavigate?.();
+  };
+
+  // 拖拽换位时的 FLIP 位移动画（否则顺序变化会让条目直接闪现到新位置）
+  useFlipList(navListRef, navOrder, { duration: 260 });
+  useFlipList(
+    tabsListRef,
+    sidebarTabs.map((tab) => tab.id),
+    { duration: 220 },
+  );
 
   // Load tabs for sidebar
   useEffect(() => {
@@ -1433,13 +1459,14 @@ export const Sidebar = ({
             collapsed ? "px-2" : "px-3",
           )}
         >
-          <div className="space-y-0.5 py-2">
+          <div className="space-y-0.5 py-2" ref={navListRef}>
             {navOrder.map((key) => {
               switch (key) {
                 case "dashboard":
                   return (
                     <div
                       key="dashboard"
+                      data-flip-id="dashboard"
                       onMouseEnter={() =>
                         draggingNav &&
                         draggingNav !== "dashboard" &&
@@ -1454,15 +1481,27 @@ export const Sidebar = ({
                             ? "justify-center px-0 py-2.5 gap-0"
                             : "gap-1 pl-3 pr-8 py-2.5",
                           draggingNav === "dashboard" ? "opacity-60" : "",
-                          location.pathname === "/"
+                          location.pathname === "/" && !sidebarActiveTab
                             ? "lg-control text-foreground"
                             : "text-foreground hover:text-foreground",
                         )}
                       >
                         <Link
                           to="/"
-                          onClick={onNavigate}
-                          title={collapsed ? t("sidebar.dashboard") : undefined}
+                          onClick={async (e) => {
+                            e.preventDefault();
+                            // 点击父节点：进入主界面（标签页总览），而不是任何一个仪表盘
+                            await setActiveTabId(null);
+                            setSidebarActiveTab(null);
+                            navigate("/");
+                            window.dispatchEvent(
+                              new CustomEvent("dashboardOpenSelector"),
+                            );
+                            onNavigate?.();
+                          }}
+                          title={
+                            collapsed ? t("sidebar.dashboard") : undefined
+                          }
                           className={clsx(
                             "flex items-center min-w-0 transition-all duration-300 ease-in-out",
                             collapsed
@@ -1473,7 +1512,7 @@ export const Sidebar = ({
                           <HomeIcon
                             className={clsx(
                               "w-5 h-5 flex-shrink-0 transition-all duration-200",
-                              location.pathname === ""
+                              location.pathname === "/" && !sidebarActiveTab
                                 ? ""
                                 : "group-hover:scale-110 group-hover:rotate-12",
                             )}
@@ -1552,7 +1591,7 @@ export const Sidebar = ({
                               </button>
                             </div>
                             {sidebarTabs.length > 0 && (
-                              <div className="space-y-0.5 pb-2">
+                              <div className="space-y-0.5 pb-2" ref={tabsListRef}>
                                 {sidebarTabs.map((tab) => {
                                   const Icon = getTabIcon(tab.icon);
                                   const isTabActive =
@@ -1561,6 +1600,7 @@ export const Sidebar = ({
                                   return (
                                     <div
                                       key={tab.id}
+                                      data-flip-id={tab.id}
                                       className="relative group"
                                       onContextMenu={(e) => {
                                         e.preventDefault();
@@ -1637,6 +1677,7 @@ export const Sidebar = ({
                   return (
                     <div
                       key="characters"
+                      data-flip-id="characters"
                       className="relative group"
                       onMouseEnter={() =>
                         draggingNav &&
@@ -1646,7 +1687,7 @@ export const Sidebar = ({
                     >
                       <Link
                         to="/characters"
-                        onClick={onNavigate}
+                        onClick={(e) => void handleNavClick(e, "/characters")}
                         title={
                           collapsed
                             ? t("sidebar.characters") || "Characters"
@@ -1696,6 +1737,7 @@ export const Sidebar = ({
                   return (
                     <div
                       key="medals"
+                      data-flip-id="medals"
                       className="relative group"
                       onMouseEnter={() =>
                         draggingNav &&
@@ -1705,7 +1747,7 @@ export const Sidebar = ({
                     >
                       <Link
                         to="/medals"
-                        onClick={onNavigate}
+                        onClick={(e) => void handleNavClick(e, "/medals")}
                         title={
                           collapsed ? t("sidebar.medals") || "Medals" : undefined
                         }
@@ -1753,6 +1795,7 @@ export const Sidebar = ({
                   return (
                     <div
                       key="attendance"
+                      data-flip-id="attendance"
                       className="relative group"
                       onMouseEnter={() =>
                         draggingNav &&
@@ -1762,7 +1805,7 @@ export const Sidebar = ({
                     >
                       <Link
                         to="/attendance"
-                        onClick={onNavigate}
+                        onClick={(e) => void handleNavClick(e, "/attendance")}
                         title={
                           collapsed
                             ? t("sidebar.attendance") || "Attendance"
@@ -1812,6 +1855,7 @@ export const Sidebar = ({
                   return (
                     <div
                       key="gacha"
+                      data-flip-id="gacha"
                       className="relative group"
                       onMouseEnter={() =>
                         draggingNav &&
@@ -1821,7 +1865,7 @@ export const Sidebar = ({
                     >
                       <Link
                         to="/gacha"
-                        onClick={onNavigate}
+                        onClick={(e) => void handleNavClick(e, "/gacha")}
                         title={
                           collapsed ? t("sidebar.gacha") || "Gacha" : undefined
                         }
@@ -1869,6 +1913,7 @@ export const Sidebar = ({
                   return (
                     <div
                       key="todo"
+                      data-flip-id="todo"
                       className="relative group"
                       onMouseEnter={() =>
                         draggingNav &&
@@ -1878,7 +1923,7 @@ export const Sidebar = ({
                     >
                       <Link
                         to="/todo"
-                        onClick={onNavigate}
+                        onClick={(e) => void handleNavClick(e, "/todo")}
                         title={
                           collapsed ? t("sidebar.todo") || "To-Do" : undefined
                         }
@@ -1926,6 +1971,7 @@ export const Sidebar = ({
                   return (
                     <div
                       key="domain"
+                      data-flip-id="domain"
                       className="relative group"
                       onMouseEnter={() =>
                         draggingNav &&
@@ -1935,7 +1981,7 @@ export const Sidebar = ({
                     >
                       <Link
                         to="/domain"
-                        onClick={onNavigate}
+                        onClick={(e) => void handleNavClick(e, "/domain")}
                         title={
                           collapsed ? t("sidebar.domain") || "Domain" : undefined
                         }
@@ -1983,6 +2029,7 @@ export const Sidebar = ({
                   return (
                     <div
                       key="spaceship"
+                      data-flip-id="spaceship"
                       className="relative group"
                       onMouseEnter={() =>
                         draggingNav &&
@@ -1992,7 +2039,7 @@ export const Sidebar = ({
                     >
                       <Link
                         to="/spaceship"
-                        onClick={onNavigate}
+                        onClick={(e) => void handleNavClick(e, "/spaceship")}
                         title={
                           collapsed
                             ? t("sidebar.spaceship") || "Spaceship"
@@ -2077,6 +2124,7 @@ export const Sidebar = ({
                   });
                   if (!confirmed) return;
                   await removeTab(contextMenu.tabId);
+                  void deleteTabSnapshotFile(contextMenu.tabId);
                   const tabs = await getAllTabs();
                   setSidebarTabs(tabs);
                   window.dispatchEvent(new CustomEvent("tabsChanged"));
@@ -2126,7 +2174,7 @@ export const Sidebar = ({
                 <Link
                   key={item.href}
                   to={item.href}
-                  onClick={onNavigate}
+                  onClick={(e) => void handleNavClick(e, item.href)}
                   title={collapsed ? item.label : undefined}
                   className={clsx(
                     "flex items-center rounded-xl transition-all duration-300 ease-in-out group",

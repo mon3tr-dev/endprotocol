@@ -17,11 +17,11 @@
 | `STORAGE_KEY_CHANNEL` | dashboard.tsx:47 | 常量，localStorage 键名 `"launcher_channel"` |
 | `DashboardLayoutProps` | dashboard.tsx:49-51 | 接口，仅含 `children: React.ReactNode` |
 | `DashboardLayout` | dashboard.tsx:53 | 页面外壳组件：见下方「内部结构」 |
-| `BG_SWITCH_TRIGGER_HEIGHT` | dashboard.tsx:512 | 浮出触发区：指针距窗口顶部 ≤150px |
-| `BG_SWITCH_TRIGGER_HALF_WIDTH` | dashboard.tsx:513 | 浮出触发区：指针水平距窗口中线 ≤220px |
-| `BG_SWITCH_HIDE_DELAY` | dashboard.tsx:514 | 离开触发区后 300ms 收起 |
-| `BG_MODE_OPTIONS` | dashboard.tsx:516-531 | 两个选项：`video`（`Video`）、`image`（`ImageIcon`），标签键 `settings.game_launch.bg_media_video` / `bg_media_image` |
-| `GameBackgroundSwitch` | dashboard.tsx:537-635 | 内部组件（未导出）：游戏界面顶部中央的背景模式悬浮切换器；props `mode: GameBgMode`、`media: LauncherBgMedia`；监听 window `mousemove` 控制浮出/收起动画，点击图标调用 `setGameBgMode`（与设置页共用 store），`video_url`/`image_url` 缺失的选项禁用 |
+| `BG_SWITCH_TRIGGER_HEIGHT` | dashboard.tsx:552 | 浮出触发区：指针距窗口顶部 ≤150px |
+| `BG_SWITCH_TRIGGER_HALF_WIDTH` | dashboard.tsx:553 | 浮出触发区：指针水平距窗口中线 ≤220px |
+| `BG_SWITCH_HIDE_DELAY` | dashboard.tsx:554 | 离开触发区后 300ms 收起 |
+| `BG_MODE_OPTIONS` | dashboard.tsx:556-571 | 两个选项：`video`（`Video`）、`image`（`ImageIcon`），标签键 `settings.game_launch.bg_media_video` / `bg_media_image` |
+| `GameBackgroundSwitch` | dashboard.tsx:577-675 | 内部组件（未导出）：游戏界面顶部中央的背景模式悬浮切换器；props `mode: GameBgMode`、`media: LauncherBgMedia`；监听 window `mousemove` 控制浮出/收起动画，点击图标调用 `setGameBgMode`（与设置页共用 store），`video_url`/`image_url` 缺失的选项禁用 |
 
 **内部结构**：
 - 1-43 行：导入与常量。`STORAGE_KEY_CHANNEL = "launcher_channel"`（45）。
@@ -49,9 +49,9 @@
   - 渐变磨砂层：`.frost-main frost-with-sidebar` 全屏覆盖层（`--frost-sidebar-w` 按折叠状态写入 `288px`/`64px`），纵向遮罩对应标题栏、横向遮罩对应侧边栏，两者取并集形成连通的 L 形强区；游戏模式下换成 `.frost-main frost-titlebar-only`（仅标题栏窄带，避免整屏 backdrop-filter 跟视频逐帧重算）。放在背景层之上、veil 之下、内容层之下。
   - 441-453 行：桌面端侧边栏——外层 `div` 宽度在 `w-72` 与 `w-[64px]` 间以 `transition-[width] duration-300 ease-out` 平滑过渡（`overflow-hidden` 裁剪），向 `<Sidebar collapsed={sidebarCollapsed} onToggleCollapsed={toggleSidebarCollapsed} />` 传入折叠状态与切换回调。
   - 455-468 行：移动端抽屉（`mobileOpen` 为真时渲染遮罩 + `Sidebar onNavigate={关闭}`）；抽屉内另挂 `.frost-main frost-drawer`（fixed 定位、仅横向遮罩）。
-  - 470-484 行：`<main>` 滚动容器，内部 `div` 以 `location.pathname` 为 key 强制路由切换时重挂载，其中 `<Suspense>` 包裹 `{children}`，懒加载页面 chunk 未就绪时以居中的 `GlassSpinner` 作为兜底（布局外壳保持挂载）。
+  - 470-492 行：`<main>` 滚动容器，内部 `div` 带 `id="dashboard-main"`（509，仪表盘快照的截图基准：`tabSnapshotService` 以它的视口矩形计算截取区域）并以 `location.pathname` 为 key 强制路由切换时重挂载，其中 `<Suspense>` 包裹 `{children}`，懒加载页面 chunk 未就绪时以居中的 `GlassSpinner` 作为兜底（布局外壳保持挂载）。
   - 487-507 行：移动端右下角浮动菜单按钮（`lg:hidden`），点击 `setMobileOpen(true)`。
-- 512-635 行：背景模式切换器实现——触发区常量（512-514）、选项表 `BG_MODE_OPTIONS`（516-531）、`GameBackgroundSwitch`（537-635）：固定定位在 `top-12`（标题栏下方）居中，隐藏态 `-translate-y-2 scale-95 opacity-0 pointer-events-none`，显示态复位（`transition-all duration-300 ease-out` 浮出动画）；胶囊容器内为滑动主色指示块 + 两个图标按钮（`h-8 w-9`，`MorphIcon size=16`），激活图标使用 `text-primary-foreground`。
+- 552-675 行：背景模式切换器实现——触发区常量（552-554）、选项表 `BG_MODE_OPTIONS`（556-571）、`GameBackgroundSwitch`（577-675）：固定定位在 `top-12`（标题栏下方）居中，隐藏态 `-translate-y-2 scale-95 opacity-0 pointer-events-none`，显示态复位（`transition-all duration-300 ease-out` 浮出动画）；胶囊容器内为滑动主色指示块 + 两个图标按钮（`h-8 w-9`，`MorphIcon size=16`），激活图标使用 `text-primary-foreground`。
 
 **备注**：
 - **invoke 命令**：本文件无直接 `invoke(...)`；间接经 `launcherService` 调用 `launcher_get_notice_content`（公告 + Banner + 右侧栏）与 `launcher_get_background_image`（背景）。
@@ -84,68 +84,67 @@
 - **异常**：全仓库搜索显示该组件**未被任何文件 import**（`App.tsx` 未使用），属未挂载的遗留布局；改动它不会影响现有界面。
 
 ## `src/pages/dashboard.tsx`
-**职责**：仪表板主页。在「标签页选择器（selector）」与「标签页卡片画布（tab）」两种视图间切换，负责 Tab 的增删改查、卡片（Card）的新增/删除/编辑模式、刷新以及角色选择弹窗等完整交互流程。
+**职责**：仪表板主页（主界面）。在「标签页选择器（selector，即主界面）」与「标签页卡片画布（tab）」两种视图间切换，负责 Tab 的增删改查、卡片（Card）的新增/删除/编辑模式、刷新、角色选择弹窗等完整交互流程；并实现**仪表盘快照**——离开当前标签页视图前趁画面仍是旧标签页，调用 `tabSnapshotService` 截内容区左上角落盘，主界面卡片即展示该截图。
 
 **导出**：`export default function DashboardPage`（默认导出组件）。
 
 **主要依赖**：
-- 项目内：`@/components/ui/glass`（`GlassButton`/`GlassProgressCircle`/`GlassTooltip`）、`@/components/cards/card-container`（`CardContainer`）、`@/components/dashboard-fab`（`DashboardFAB`）、`@/components/add-card-modal`（`AddCardModal`）、`@/components/cards/character-list/character-list-size-modal`（`CharacterListSizeModal`）、`@/components/tab-selector`（`TabSelector`）、`@/components/tab-editor-modal`（`TabEditorModal`）、`@/components/custom-modal`（`CustomModal` 系列）、`@/components/ui/confirm-dialog`（`confirmDialog`）、`@/components/ui/app-icon`（`RefreshIcon`/`ChevronLeftIcon`）、`@/utils/accountService`、`@/utils/dashboardConfig`、`@/utils/tabService`、`@/utils/tabIcons`（`getTabIcon`，实为 `tabIcons.tsx`）、`@/utils/logger`、`@/utils/roleDetailService`、`@/utils/cardConfigService`（`CardConfigService`）、`@/cards/startup-service`（`CardStartupService`）、`@/utils/imageLoader`（`Img`）、`@/utils/startupProgress`（`trackStartupTask`）、`@/types/dashboard`、`@/types/card-settings`、`@/types`（`resolveServerLabel`）。
-- 第三方：`react`（`useEffect`/`useState`）、`react-i18next`（`useTranslation`）。
+- 项目内：`@/components/ui/glass`（`GlassButton`/`GlassProgressCircle`/`GlassTooltip`）、`@/components/cards/card-container`（`CardContainer`）、`@/components/dashboard-fab`（`DashboardFAB`）、`@/components/add-card-modal`（`AddCardModal`）、`@/components/cards/character-list/character-list-size-modal`（`CharacterListSizeModal`）、`@/components/tab-selector`（`TabSelector`）、`@/components/tab-editor-modal`（`TabEditorModal`）、`@/components/custom-modal`（`CustomModal` 系列）、`@/components/ui/confirm-dialog`（`confirmDialog`）、`@/components/ui/app-icon`（`RefreshIcon`/`ChevronLeftIcon`）、`@/utils/accountService`、`@/utils/dashboardConfig`、`@/utils/tabService`、`@/utils/tabIcons`（`getTabIcon`，实为 `tabIcons.tsx`）、`@/utils/tabSnapshotService`（`captureTabSnapshot`/`deleteTabSnapshotFile`/`getSnapshotPaths`/`registerDashboardLeaveHandler`）、`@/utils/logger`、`@/utils/roleDetailService`、`@/utils/cardConfigService`（`CardConfigService`）、`@/cards/startup-service`（`CardStartupService`）、`@/utils/imageLoader`（`Img`）、`@/utils/startupProgress`（`trackStartupTask`）、`@/types/dashboard`、`@/types/card-settings`、`@/types`（`resolveServerLabel`）。
+- 第三方：`react`（`useEffect`/`useRef`/`useState`）、`react-i18next`（`useTranslation`）。
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
-| `DashboardView`（type） | dashboard.tsx:43 | `"loading" \| "selector" \| "tab"` 三态视图类型 |
-| `DashboardPage` | dashboard.tsx:45 | 页面组件（唯一导出），见内部结构 |
-| `activeTab`（派生） | dashboard.tsx:67 | `tabs.find(t => t.id === activeTabId)` |
-| `loadDashboard` | dashboard.tsx:69 | 核心加载流程：取选中账户 → `roleDetailService.setCurrentRoleId` → 读全部 Tab → 恢复/兜底激活 Tab → `getDashboardConfig` → 决定 `view` |
-| 初始加载 effect | dashboard.tsx:108 | 挂载时 `trackStartupTask(loadDashboard())`；监听 window 事件 `accountChanged`、`manualRefresh` 并重载 |
-| `handleRefresh` | dashboard.tsx:125 | 派发 `manualRefresh` 自定义事件 → `refreshAccountData()` → 成功后 `loadDashboard()`；控制 `isRefreshing` |
-| `handleAddCard` | dashboard.tsx:145 | 新增卡片入口：`character_list` 先弹尺寸弹窗，其余直接 `openRoleSelect` |
-| `openRoleSelect` | dashboard.tsx:155 | 拉取 `getAccounts()`，设置 `availableAccounts`/`pendingCardType`/默认选中角色，打开角色选择弹窗 |
-| `closeRoleSelect` | dashboard.tsx:167 | 关闭弹窗并清空 `pendingCardType`/`pendingDisplayMode`/`selectedRoleId` |
-| `handleSizeConfirm` | dashboard.tsx:174 | 记录 `pendingDisplayMode` 后转到角色选择 |
-| `handleRoleConfirm` | dashboard.tsx:181 | 真正 `addCard(...)`：按卡片类型写入不同 `settings`，随后 `getDashboardConfig` 刷新并 `setHighlightedCardId` |
-| 高亮滚动 effect | dashboard.tsx:221 | 200ms 后 `scrollIntoView` 到 `[data-card-id="..."]`，2800ms 后清除高亮 |
-| `handleRemoveCard` | dashboard.tsx:236 | 并行清理：`CardConfigService.removeCardSettings` + `CardStartupService.removeCardFromMapping` + `removeCard`，再重载配置 |
-| `handleSelectTab` | dashboard.tsx:253 | 激活指定 Tab 并载入其配置，`view = "tab"` |
-| `handleBackToSelector` | dashboard.tsx:261 | 清空激活 Tab 与配置，`view = "selector"`，重读 Tab 列表 |
-| `handleCreateTab` | dashboard.tsx:270 | 打开 Tab 编辑弹窗（`editingTab = undefined` 表示新建） |
-| `handleEditTab` | dashboard.tsx:275 | 打开 Tab 编辑弹窗并带入 `editingTab` |
-| `handleDeleteTab` | dashboard.tsx:280 | `confirmDialog` 确认后 `removeTab`，若删的是当前 Tab 则清空激活状态 |
-| `handleSaveTab` | dashboard.tsx:299 | `editingTab` 存在走 `updateTab`，否则 `addTab(name, icon, tags, defaultRoleId)`，随后重载 Tab 列表 |
-| 加载中渲染分支 | dashboard.tsx:316-327 | `isLoading && view === "loading"` 时渲染不定向 `GlassProgressCircle` |
-| selector 渲染分支 | dashboard.tsx:329-350 | `TabSelector` + `TabEditorModal` |
-| `IconComponent`（派生） | dashboard.tsx:352 | `getTabIcon(activeTab.icon)`，用于标题左侧图标 |
-| tab 主渲染分支 | dashboard.tsx:354-532 | 头部（返回/标题/刷新）+ 内容（刷新中/卡片容器）+ 各类弹窗 |
-| 头部区 | dashboard.tsx:356-407 | 返回按钮（`handleBackToSelector`，tooltip `settings.account.back`）、Tab 名与提示文案、刷新按钮（`handleRefresh`，`isRefreshing` 时 `animate-spin` 且禁用） |
-| 刷新中占位 | dashboard.tsx:409-420 | `isRefreshing` 时显示进度圈 + `common.refreshing` |
-| `CardContainer` | dashboard.tsx:422-431 | 传入 `roleId`（优先 `activeTab.defaultRoleId`，否则 `currentRoleId`）、`tabId`、`cards`、编辑模式回调与 `highlightCardId` |
-| `DashboardFAB` | dashboard.tsx:434-438 | 浮动按钮：`onAddCard` 打开加卡弹窗，`onToggleEdit` 切换编辑模式 |
-| `AddCardModal` | dashboard.tsx:440-447 | 传 `existingTypes` 去重，`onAdd = handleAddCard` |
-| `CharacterListSizeModal` | dashboard.tsx:449-456 | 角色列表尺寸选择，`onConfirm = handleSizeConfirm` |
-| 角色选择 `CustomModal` | dashboard.tsx:459-530 | 列出 `availableAccounts`（头像 `Img`、`resolveServerLabel` + 等级），选中态 `selectedRoleId`，确认走 `handleRoleConfirm` |
+| `DashboardView`（type） | dashboard.tsx:59 | `"loading" \| "selector" \| "tab"` 三态视图类型；`"selector"` 即**主界面**（标签页总览 + 快照） |
+| `DashboardPage` | dashboard.tsx:61 | 页面组件（唯一导出），见内部结构 |
+| `activeTab`（派生） | dashboard.tsx:87 | `tabs.find(t => t.id === activeTabId)` |
+| `snapshotPaths`（state） | dashboard.tsx:85 附近 | `{ [tabId]: PNG 路径 }`，selector 视图渲染时传给 `TabSelector` |
+| `viewRef`/`tabIdRef` | dashboard.tsx:90 附近 | 当前视图/标签页的 ref 镜像，供异步回调读取最新值（截图判定） |
+| `snapshotLeavingTab` | dashboard.tsx:101 | 若当前视图是某标签页则 `await captureTabSnapshot(tabId)`；所有「换掉当前视图」入口之前调用 |
+| `loadDashboard` | dashboard.tsx:107 | 核心加载流程：先 `snapshotLeavingTab()` → 取选中账户 → `setCurrentRoleId` → 读全部 Tab → **有合法激活 Tab 进 `tab` 视图；否则进 `selector`（主界面），不再自动跳第一个 Tab** → `getDashboardConfig` |
+| 初始加载 effect | dashboard.tsx:149 附近 | 挂载时 `trackStartupTask(loadDashboard())`；注册 leave handler（`registerDashboardLeaveHandler(snapshotLeavingTab)`，卸载时置 null）；监听 window `accountChanged`、`manualRefresh`、`dashboardOpenSelector`（侧栏父节点点击：leave 截图后回 selector） |
+| selector 快照刷新 effect | dashboard.tsx:143-147 | `view === "selector"` 时 `getSnapshotPaths()` 刷新快照映射 |
+| `handleRefresh` | dashboard.tsx:193 | 派发 `manualRefresh` → `refreshAccountData()` → `loadDashboard()`；控制 `isRefreshing` |
+| `handleAddCard` | dashboard.tsx:~210 | 新增卡片入口：`character_list` 先弹尺寸弹窗，system_resource/todo 弹各自弹窗，其余直接 `openRoleSelect` |
+| `openRoleSelect`/`closeRoleSelect`/`handleSizeConfirm` | dashboard.tsx:~220-260 | 拉取 `getAccounts()` 设置弹窗状态 / 关闭清理 / 记录 `pendingDisplayMode` 后转角色选择 |
+| `handleRoleConfirm` | dashboard.tsx:~270 | 真正 `addCard(...)`：按卡片类型写入不同 `settings`，随后刷新并 `setHighlightedCardId` |
+| 高亮滚动 effect | dashboard.tsx:~330 | 200ms 后 `scrollIntoView` 到 `[data-card-id="..."]`，2800ms 后清除高亮 |
+| `handleRemoveCard` | dashboard.tsx:352 | 并行清理 `CardConfigService.removeCardSettings` + `CardStartupService.removeCardFromMapping` + `removeCard`，再重载配置 |
+| `handleSelectTab` | dashboard.tsx:369 | 激活指定 Tab 并载入配置进 `tab` 视图；派发 `tabsChanged` 同步侧栏高亮 |
+| `handleBackToSelector` | dashboard.tsx:379 | **先 `await snapshotLeavingTab()`** → 清空激活 Tab 与配置 → `view = "selector"` → 重读 Tab 列表；派发 `tabsChanged` |
+| `handleCreateTab`/`handleEditTab` | dashboard.tsx:390/400 附近 | 打开 Tab 编辑弹窗（新建/编辑） |
+| `handleDeleteTab` | dashboard.tsx:400 | `confirmDialog` 确认后 `removeTab` + `deleteTabSnapshotFile`（清理快照），删的是当前 Tab 则清空激活状态 |
+| `handleSaveTab` | dashboard.tsx:420 | `editingTab` 存在走 `updateTab`，否则 `addTab(name, icon, tags, defaultRoleId)`，随后重载 Tab 列表 |
+| 加载中渲染分支 | dashboard.tsx:437-448 | `isLoading && view === "loading"` 时渲染不定向 `GlassProgressCircle` |
+| selector 渲染分支 | dashboard.tsx:450-471 | `TabSelector`（传 `snapshotPaths`）+ `TabEditorModal` |
+| `IconComponent`（派生） | dashboard.tsx:474 | `getTabIcon(activeTab.icon)`，用于标题左侧图标 |
+| tab 主渲染分支 | dashboard.tsx:476-667 | 头部（返回/标题/刷新，含 `id="dashboard-header"`）+ 内容（卡片容器）+ 各类弹窗 |
 
-**内部结构**：
-- 1-41 行：导入。
-- 43-67 行：类型与全部 state（19 个）：`view`、`tabs`、`activeTabIdState`、`currentRoleId`、`dashboardConfig`、`isLoading`、`isEditMode`、`isAddCardModalOpen`、`isRefreshing`、`isSizeModalOpen`、`pendingCardType`、`isEditorOpen`、`editingTab`、`isRoleSelectModalOpen`、`pendingDisplayMode`、`availableAccounts`、`selectedRoleId`、`highlightedCardId`，以及派生 `activeTab`。
-- 69-105 行：`loadDashboard` 异步流程与错误处理（`logError`，失败仅 `setIsLoading(false)`）。
-- 107-123 行：挂载 effect —— 初始化加载 + window 事件 `accountChanged` / `manualRefresh` 监听（卸载时移除）。
-- 125-234 行：刷新与新增卡片相关处理函数（含 `SIZE_MAP`：`single→2x3`、`double→3x3`、`triple→4x3`，见 188-192 行）与高亮滚动 effect。
-- 236-314 行：删除卡片、Tab 选择/返回/新建/编辑/删除/保存处理函数。
-- 316-352 行：加载中与 selector 分支渲染 + `IconComponent`。
-- 354-533 行：tab 视图 JSX（头部 356-407、内容 409-432、FAB 434-438、三类弹窗 440-530）。
+**内部结构**（行号为当前工作区快照，改动后以源码为准）：
+- 1-57 行：导入。
+- 59-96 行：类型与全部 state（20 个，新增 `snapshotPaths`）：`view`、`tabs`、`activeTabIdState`、`currentRoleId`、`dashboardConfig`、`isLoading`、`isEditMode`、`isAddCardModalOpen`、`isSystemResourceAddOpen`、`isTodoAddOpen`、`isRefreshing`、`isSizeModalOpen`、`pendingCardType`、`isEditorOpen`、`editingTab`、`isRoleSelectModalOpen`、`pendingDisplayMode`、`availableAccounts`、`selectedRoleId`、`highlightedCardId`；派生 `activeTab`（87）；截图判定用 `viewRef`/`tabIdRef`（90-96）。
+- 101-105 行：`snapshotLeavingTab`——视图为 `tab` 且有激活标签页时 `await captureTabSnapshot`。
+- 107-141 行：`loadDashboard` 异步流程：先 `snapshotLeavingTab()`；**激活 Tab 合法 → `tab` 视图；否则一律 `selector`（主界面），不再自动兜底进第一个 Tab**。
+- 144-148 行：`view === "selector"` 时刷新 `snapshotPaths` 的 effect。
+- 150-181 行：挂载 effect —— 初始化加载 + 注册 `registerDashboardLeaveHandler(snapshotLeavingTab)`（卸载置 null）+ window 事件 `accountChanged`/`manualRefresh`/`dashboardOpenSelector`（父节点点击：leave 截图后回 selector）。
+- 183-191 行：监听 `cardLayoutChanged` 刷新当前标签页配置。
+- 193-351 行：刷新与新增卡片相关处理函数（含 `SIZE_MAP`：`single→2x3`、`double→3x3`、`triple→4x3`，见 303-307 行）与高亮滚动 effect（337-351）。
+- 352-435 行：删除卡片、Tab 选择/返回（均先截图）/新建/编辑/删除（删标签页时清理快照文件）/保存处理函数。
+- 437-471 行：加载中与 selector 分支渲染。
+- 474-667 行：tab 视图 JSX（头部、内容、FAB、弹窗）。
 
 **备注**：
 - **invoke 命令**：本文件无直接 `invoke(...)`，全部经服务层间接调用：
   - 账户：`get_selected_account`、`get_accounts`、`refresh_accounts`（`refreshAccountData = refreshAccounts`）。
-  - Tab/配置存储：`get_config` / `set_config` / `remove_config`（键 `dashboard_tabs`、`dashboard_active_tab`）。
+  - Tab/配置存储：`get_config` / `set_config` / `remove_config`（键 `dashboard_tabs`、`dashboard_active_tab`、`dashboard_tab_snapshots`）。
   - 卡片设置：`get_card_settings` / `save_card_settings` / `remove_card_settings`。
+  - 快照：经 `tabSnapshotService` 间接调用 `save_tab_snapshot` / `delete_tab_snapshot`。
   - 其余经 `roleDetailService.setCurrentRoleId`、`CardStartupService.removeCardFromMapping` 内部处理（其内部无直接 invoke 字符串）。
-- 路由：`/`（`App.tsx:59-66`），外层为 `DashboardLayout`。
-- window 事件：监听 `accountChanged`、`manualRefresh`；派发 `manualRefresh`（`CustomEvent`，`detail.count = cards.length`）。**注意**：`handleRefresh` 既自己派发 `manualRefresh`（触发 listener 立即 `loadDashboard`）又在 `refreshAccountData` 后再次 `loadDashboard`，会造成一次冗余重载。
+- 路由：`/`（`App.tsx:68-75`），外层为 `DashboardLayout`。
+- window 事件：监听 `accountChanged`、`manualRefresh`、`dashboardOpenSelector`、`cardLayoutChanged`；派发 `manualRefresh`（`CustomEvent`，`detail.count = cards.length`）与 `tabsChanged`（`handleSelectTab`/`handleBackToSelector` 中，用于同步侧栏标签高亮）。**注意**：`handleRefresh` 既自己派发 `manualRefresh`（触发 listener 立即 `loadDashboard`）又在 `refreshAccountData` 后再次 `loadDashboard`，会造成一次冗余重载（快照截图按 tabId 去重且同 tab 重截幂等，无副作用）。
 - i18n key：`tab.confirm_delete_title`、`tab.confirm_delete_body`、`common.delete/cancel/refresh/refreshing/confirm/unknown`、`nav.dashboard`、`dashboard.customize_hint`、`settings.account.back`、`card:select_role`、`card:no_accounts`。
 - 卡片设置字段差异：`character_list` → `settings = { roleId, displayMode }` + 显式 `w/h`；`attendance` → `settings = { selectedRoleId }`（键名不同）；其他类型 → `settings = { roleId }`。
 - 数据流：`tabService`（config 存储）→ `getDashboardConfig(tabId)` → `dashboardConfig.cards` → `CardContainer`；新增/删除卡片后必须重新 `getDashboardConfig` 才会刷新。
+- 快照数据流：离开 tab 视图（切 Tab / 返回主界面 / 侧栏父节点 / 侧栏导航守卫）→ `tabSnapshotService.captureTabSnapshot` → invoke `save_tab_snapshot` → PNG 落盘 `snapshots/<tabId>-<ts>.png` + 映射写 config `dashboard_tab_snapshots` → selector 渲染时 `TabSnapshot` 经 `imageCacheManager.load(path)` 显示。
 
 ## `src/pages/attendance.tsx`
 **职责**：签到（考勤）页面。读取当前选中账户 → 通过 Tauri 后端取签到原始数据并解析 → 渲染 `AttendanceRewards` 奖励面板；处理加载、错误与空态。
