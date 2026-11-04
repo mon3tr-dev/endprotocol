@@ -229,7 +229,7 @@ export default function SpaceshipPage() {
             </GlassButton>
 
             {showRoleMenu && (
-              <div className="lg-regular absolute right-0 top-full mt-2 z-50 w-64 rounded-xl border border-separator/70 shadow-xl overflow-hidden">
+              <div className="lg-regular absolute right-0 top-full mt-2 z-50 w-64 rounded-xl border border-separator/70 shadow-xl overflow-hidden animate-scale-in">
                 <div className="max-h-72 overflow-y-auto">
                   {accounts.map((acc) => {
                     const isSelected = acc.id === roleId;
@@ -239,8 +239,7 @@ export default function SpaceshipPage() {
                         type="button"
                         onClick={() => void handleSelectRole(acc.id)}
                         className={clsx(
-                          "w-full flex items-center gap-3 px-3 py-2.5 text-left transition-all duration-150",
-                          "hover:translate-x-1 active:translate-x-0.5",
+                          "w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors duration-200",
                           isSelected ? "bg-primary/15" : "lg-hoverable",
                         )}
                       >

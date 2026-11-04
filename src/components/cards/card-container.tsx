@@ -352,7 +352,7 @@ function FreeDragCard({
       ref={setNodeRef}
       style={style}
       data-card-id={card.id}
-      className={`dashboard-card-shell group ${isEditMode ? "active:cursor-grabbing" : ""} ${
+      className={`dashboard-card-shell group ${isEditMode ? "active:cursor-grabbing" : "card-hover cursor-default"} ${
         card.id === highlightCardId ? "card-flash-highlight" : ""
       }`}
       {...(isEditMode ? { ...attributes, ...listeners } : {})}

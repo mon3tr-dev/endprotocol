@@ -53,7 +53,7 @@ function ProgressCircle({
       aria-valuenow={isIndeterminate ? undefined : clamped}
       className={cn(
         "inline-flex items-center justify-center",
-        "[transition:transform_var(--lg-dur-fast)_var(--lg-ease-spring)]",
+        "[transition:transform_var(--lg-dur-press)_var(--lg-ease-spring),translate_var(--lg-dur-press)_var(--lg-ease-spring),scale_var(--lg-dur-press)_var(--lg-ease-spring)]",
         "hover:scale-110",
         className,
       )}

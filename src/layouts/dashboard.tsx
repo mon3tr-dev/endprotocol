@@ -524,7 +524,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
       <button
         type="button"
         onClick={() => setMobileOpen(true)}
-        className="lg:hidden fixed bottom-6 right-6 z-30 p-3.5 rounded-full bg-primary text-primary-foreground shadow-lg [transition:transform_var(--lg-dur-fast)_var(--lg-ease-spring)] hover:scale-105 active:scale-95"
+        className="lg:hidden fixed bottom-6 right-6 z-30 p-3.5 rounded-full bg-primary text-primary-foreground shadow-lg [transition:transform_var(--lg-dur-press)_var(--lg-ease-spring),translate_var(--lg-dur-press)_var(--lg-ease-spring),scale_var(--lg-dur-press)_var(--lg-ease-spring)] hover:scale-105 active:scale-95"
         aria-label="Open menu"
       >
         <svg
@@ -632,7 +632,7 @@ function GameBackgroundSwitch({
       >
         <span
           aria-hidden="true"
-          className={`pointer-events-none absolute inset-y-1 left-1 w-9 rounded-full border border-white/30 bg-primary shadow-[inset_0_1px_0_rgba(255,255,255,0.28),0_1px_4px_rgba(0,0,0,0.25)] transition-transform duration-300 ease-out ${
+          className={`pointer-events-none absolute inset-y-1 left-1 w-9 rounded-full border border-white/30 bg-primary shadow-[inset_0_1px_0_rgba(255,255,255,0.28),0_1px_4px_rgba(0,0,0,0.25)] [transition:translate_var(--lg-dur-press)_var(--lg-ease-inertia)] ${
             mode === "image" ? "translate-x-9" : "translate-x-0"
           }`}
         />

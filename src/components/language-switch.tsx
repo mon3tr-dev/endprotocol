@@ -167,7 +167,7 @@ export const LanguageSwitch = ({ compact = false }: LanguageSwitchProps) => {
             {filteredLanguages.map((lang) => (
               <button
                 key={lang.key}
-                className="w-full px-3 py-2 flex items-center gap-3 transition-all duration-150 lg-hoverable hover:translate-x-1 active:translate-x-0.5"
+                className="w-full px-3 py-2 flex items-center gap-3 transition-colors duration-200 lg-hoverable"
                 onClick={() => handleLanguageChange(lang.key)}
               >
                 <div className="flex-shrink-0">{lang.flag}</div>

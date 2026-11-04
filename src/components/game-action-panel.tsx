@@ -2211,7 +2211,7 @@ export function GameActionPanel() {
             <div
               ref={menuFlyoutRef}
               data-flyout-menu
-              className="fixed z-[200] lg-regular w-52 rounded-xl border border-separator/70 shadow-2xl animate-fade-in"
+              className="fixed z-[200] lg-regular w-52 rounded-xl border border-separator/70 shadow-2xl animate-fade-in p-1"
               style={{
                 left: menuFlyoutPos.x,
                 top: menuFlyoutPos.y,
@@ -2224,7 +2224,7 @@ export function GameActionPanel() {
                   setMenuFlyoutPos(null);
                   setSettingsOpen(true);
                 }}
-                className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-foreground/80 lg-hoverable hover:text-foreground transition-colors cursor-pointer"
+                className="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-foreground/80 rounded-lg lg-hoverable hover:text-foreground transition-colors cursor-pointer"
               >
                 <svg
                   className="w-4 h-4 text-foreground/50"
@@ -2255,7 +2255,7 @@ export function GameActionPanel() {
                   setMenuFlyoutPos(null);
                   setQuickLaunchOpen(true);
                 }}
-                className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-foreground/80 lg-hoverable hover:text-foreground transition-colors cursor-pointer"
+                className="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-foreground/80 rounded-lg lg-hoverable hover:text-foreground transition-colors cursor-pointer"
               >
                 <svg
                   className="w-4 h-4 text-foreground/50"
@@ -2282,7 +2282,7 @@ export function GameActionPanel() {
                   setConfirmCheckbox(false);
                 }}
                 disabled={busyWithDownload}
-                className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-foreground/80 lg-hoverable hover:text-foreground transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                className="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-foreground/80 rounded-lg lg-hoverable hover:text-foreground transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <svg
                   className="w-4 h-4 text-foreground/50"
@@ -2308,7 +2308,7 @@ export function GameActionPanel() {
                   handleQuickVerify();
                 }}
                 disabled={busyWithDownload}
-                className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-foreground/80 lg-hoverable hover:text-foreground transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                className="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-foreground/80 rounded-lg lg-hoverable hover:text-foreground transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <svg
                   className="w-4 h-4 text-foreground/50"
@@ -2335,7 +2335,7 @@ export function GameActionPanel() {
                   setConfirmCheckbox(false);
                 }}
                 disabled={busyWithDownload || !installPath || !hasTempFiles}
-                className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-foreground/80 lg-hoverable hover:text-foreground transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                className="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-foreground/80 rounded-lg lg-hoverable hover:text-foreground transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <svg
                   className="w-4 h-4 text-foreground/50"
@@ -2360,7 +2360,7 @@ export function GameActionPanel() {
                   setMenuFlyoutPos(null);
                   handleLocate();
                 }}
-                className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-foreground/80 lg-hoverable hover:text-foreground transition-colors cursor-pointer border-t border-separator/50"
+                className="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-foreground/80 rounded-lg lg-hoverable hover:text-foreground transition-colors cursor-pointer border-t border-separator/50"
               >
                 <svg
                   className="w-4 h-4 text-foreground/50"

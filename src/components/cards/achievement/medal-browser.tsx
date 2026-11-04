@@ -188,14 +188,14 @@ export function MedalBrowser({
               )}
             </div>
             {globalQuery.trim() && (
-              <div className="absolute left-1.5 right-1.5 top-full z-20 max-h-72 overflow-y-auto rounded-lg border border-separator/70 lg-regular shadow-xl">
+              <div className="absolute left-1.5 right-1.5 top-full z-20 max-h-72 overflow-y-auto rounded-lg border border-separator/70 lg-regular shadow-xl animate-scale-in">
                 {globalResults.length > 0 ? (
                   globalResults.slice(0, 50).map((medal) => (
                     <button
                       key={medal.achievementData.id}
                       type="button"
                       onClick={() => handleLocate(medal)}
-                      className="w-full text-left px-3 py-1.5 rounded-md text-xs truncate text-foreground lg-hoverable-soft transition-all duration-150 hover:translate-x-1"
+                      className="w-full text-left px-3 py-1.5 rounded-md text-xs truncate text-foreground lg-hoverable-soft transition-colors duration-200"
                       title={medal.achievementData.name}
                     >
                       {medal.achievementData.name}

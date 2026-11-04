@@ -106,7 +106,7 @@ export function TabSelector({
               return (
                 <div
                   key={tab.id}
-                  className="group relative lg-material border border-separator/90 rounded-xl p-5 [transition:transform_var(--lg-dur-fast)_var(--lg-ease-standard),box-shadow_var(--lg-dur-fast)_var(--lg-ease-standard),border-color_var(--lg-dur-fast)_var(--lg-ease-standard)] hover:border-primary/50 hover:shadow-md hover:-translate-y-0.5 cursor-pointer active:translate-y-0 active:scale-[0.99]"
+                  className="group relative lg-material border border-separator/90 rounded-xl p-5 [transition:transform_var(--lg-dur-fast)_var(--lg-ease-standard),translate_var(--lg-dur-fast)_var(--lg-ease-standard),scale_var(--lg-dur-fast)_var(--lg-ease-standard),box-shadow_var(--lg-dur-fast)_var(--lg-ease-standard),border-color_var(--lg-dur-fast)_var(--lg-ease-standard)] hover:border-primary/50 hover:shadow-md hover:-translate-y-0.5 cursor-pointer active:translate-y-0 active:scale-[0.99]"
                   onClick={() => onSelectTab(tab.id)}
                   onContextMenu={(e) => {
                     e.preventDefault();

@@ -188,7 +188,7 @@ export default function DomainPage() {
             </GlassButton>
 
             {showRoleMenu && (
-              <div className="lg-regular absolute right-0 top-full mt-2 z-50 w-64 rounded-xl border border-separator/60 overflow-hidden">
+              <div className="lg-regular absolute right-0 top-full mt-2 z-50 w-64 rounded-xl border border-separator/60 overflow-hidden animate-scale-in">
                 <div className="max-h-72 overflow-y-auto">
                   {accounts.map((acc) => {
                     const isSelected = acc.id === roleId;
@@ -198,8 +198,7 @@ export default function DomainPage() {
                         type="button"
                         onClick={() => void handleSelectRole(acc.id)}
                         className={clsx(
-                          "w-full flex items-center gap-3 px-3 py-2.5 text-left transition-all duration-150",
-                          "hover:translate-x-1 active:translate-x-0.5",
+                          "w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors duration-200",
                           isSelected ? "bg-primary/15" : "lg-hoverable",
                         )}
                       >
@@ -277,7 +276,20 @@ export default function DomainPage() {
         <div className="space-y-5">
           {/* 区域切换（标题下方居中，毛玻璃胶囊） */}
           {domains.length > 1 && (
-            <div className="w-full max-w-2xl mx-auto rounded-full p-1.5 flex gap-1.5 lg-control border border-separator/70">
+            <div className="relative w-full max-w-2xl mx-auto rounded-full p-1.5 flex lg-control border border-separator/70">
+              {/* 选中态交给滑动指示器：等宽分格 + translateX，切换时是滑过去而非换底。
+                  这里用 glide（无过冲）而非 inertia：指示器宽度是 300px 级，5% 的过冲
+                  就是 15px 以上，远超容器 6px 的内边距余量，切换瞬间会冲出胶囊；而宿主
+                  又不能加 overflow-hidden（与 ::after 的 backdrop-filter 组合会把圆角
+                  裁成直角），所以宽指示器一律用无过冲曲线。 */}
+              <span
+                aria-hidden
+                className="pointer-events-none absolute top-1.5 bottom-1.5 left-1.5 rounded-full lg-control border border-primary/50 [transition:transform_var(--lg-dur-slow)_var(--lg-ease-glide)]"
+                style={{
+                  width: `calc((100% - 0.75rem) / ${domains.length})`,
+                  transform: `translateX(${Math.max(0, domains.findIndex((x) => x.domainId === effectiveDomain.domainId)) * 100}%)`,
+                }}
+              />
               {domains.map((d) => {
                 const active = d.domainId === effectiveDomain.domainId;
                 return (
@@ -286,12 +298,13 @@ export default function DomainPage() {
                     type="button"
                     onClick={() => setSelectedDomainId(d.domainId ?? null)}
                     className={clsx(
-                      "flex-1 h-10 rounded-full text-sm lg:text-base font-semibold transition-all duration-200",
+                      "relative z-10 flex-1 h-10 rounded-full text-sm lg:text-base font-semibold transition-all duration-200",
                       "flex items-center justify-center gap-2 min-w-0",
-                      "hover:scale-105 active:scale-95",
+                      // 按钮是 flex-1 撑满胶囊的，放大必然溢出父容器圆角，故只做按压内缩
+                      "active:scale-[0.98]",
                       active
-                        ? "lg-control border border-primary/50 text-primary-text"
-                        : "border border-transparent text-foreground/70 hover:text-foreground lg-hoverable",
+                        ? "text-primary-text"
+                        : "text-foreground/70 hover:text-foreground lg-hoverable",
                     )}
                   >
                     <span className="truncate max-w-[60%]">

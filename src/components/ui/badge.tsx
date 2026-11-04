@@ -13,7 +13,7 @@ export interface GlassChipProps
 
 const badgeVariants = cva(
   // Chip：小面积纯色标签，不做模糊（小元素模糊无收益，HIG 克制原则）
-  "inline-flex items-center gap-1 whitespace-nowrap font-medium rounded-full [transition:transform_var(--lg-dur-fast)_var(--lg-ease-spring)]",
+  "inline-flex items-center gap-1 whitespace-nowrap font-medium rounded-full [transition:transform_var(--lg-dur-press)_var(--lg-ease-spring),translate_var(--lg-dur-press)_var(--lg-ease-spring),scale_var(--lg-dur-press)_var(--lg-ease-spring)]",
   {
     variants: {
       variant: {

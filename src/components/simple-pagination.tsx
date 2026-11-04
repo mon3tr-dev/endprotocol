@@ -54,7 +54,7 @@ export const SimplePagination: React.FC<SimplePaginationProps> = ({
   const itemClass = (active: boolean) =>
     cn(
       "lg-control flex h-8 min-w-8 items-center justify-center rounded-xl border px-2 text-xs",
-      "[transition:transform_var(--lg-dur-fast)_var(--lg-ease-spring),border-color_var(--lg-dur-fast)_var(--lg-ease-standard),color_var(--lg-dur-fast)_var(--lg-ease-standard)]",
+      "[transition:transform_var(--lg-dur-press)_var(--lg-ease-spring),translate_var(--lg-dur-press)_var(--lg-ease-spring),scale_var(--lg-dur-press)_var(--lg-ease-spring),border-color_var(--lg-dur-fast)_var(--lg-ease-standard),color_var(--lg-dur-fast)_var(--lg-ease-standard)]",
       "cursor-pointer select-none hover:border-primary/50 hover:text-primary-text",
       "hover:scale-110 active:scale-90",
       active

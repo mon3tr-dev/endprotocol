@@ -29,7 +29,7 @@ export function SectionCard({
       id={id}
       className={clsx(
         "border border-separator/90 overflow-hidden",
-        "[transition:box-shadow_var(--lg-dur-fast)_var(--lg-ease-standard),transform_var(--lg-dur-fast)_var(--lg-ease-standard)]",
+        "[transition:box-shadow_var(--lg-dur-fast)_var(--lg-ease-standard),transform_var(--lg-dur-fast)_var(--lg-ease-standard),translate_var(--lg-dur-fast)_var(--lg-ease-standard),scale_var(--lg-dur-fast)_var(--lg-ease-standard)]",
         "hover:shadow-md hover:scale-[1.01]",
         className,
       )}

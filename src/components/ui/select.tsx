@@ -28,18 +28,30 @@ function GlassSelect({
   highlightSelected = false,
 }: GlassSelectProps) {
   const [open, setOpen] = useState(false);
+  const [closing, setClosing] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [pos, setPos] = useState({ top: 0, left: 0, width: 0 });
+
+  const closeMenu = () => {
+    if (!open || closing) return;
+    setClosing(true);
+    closeTimerRef.current = setTimeout(() => {
+      setOpen(false);
+      setClosing(false);
+      closeTimerRef.current = null;
+    }, 280);
+  };
 
   useEffect(() => {
     if (!open) return;
     const onDocClick = (e: MouseEvent) => {
       if (menuRef.current?.contains(e.target as Node)) return;
       if (wrapRef.current?.contains(e.target as Node)) return;
-      setOpen(false);
+      closeMenu();
     };
-    const onScroll = () => setOpen(false);
+    const onScroll = () => closeMenu();
     document.addEventListener("mousedown", onDocClick);
     window.addEventListener("scroll", onScroll, true);
     return () => {
@@ -48,11 +60,22 @@ function GlassSelect({
     };
   }, [open]);
 
+  useEffect(
+    () => () => {
+      if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
+    },
+    [],
+  );
+
   const normalized = value ?? "";
   const current = options.find((o) => o.value === normalized);
 
   const handleToggle = () => {
     const next = !open;
+    if (!next) {
+      closeMenu();
+      return;
+    }
     if (next && wrapRef.current) {
       const r = wrapRef.current.getBoundingClientRect();
       setPos({ top: r.bottom + 4, left: r.left, width: r.width });
@@ -67,7 +90,7 @@ function GlassSelect({
         onClick={handleToggle}
         className={cn(
           "lg-field flex items-center gap-2 h-9 pl-3 pr-2.5 rounded-xl text-sm cursor-pointer",
-          "[transition:transform_var(--lg-dur-fast)_var(--lg-ease-spring),box-shadow_var(--lg-dur-fast)_var(--lg-ease-standard)]",
+          "[transition:transform_var(--lg-dur-press)_var(--lg-ease-spring),translate_var(--lg-dur-press)_var(--lg-ease-spring),scale_var(--lg-dur-press)_var(--lg-ease-spring),box-shadow_var(--lg-dur-fast)_var(--lg-ease-standard)]",
           "hover:-translate-y-px active:translate-y-0",
           open && "ring-2 ring-primary/40",
         )}
@@ -79,7 +102,7 @@ function GlassSelect({
           size={12}
           className={cn(
             "shrink-0 text-muted",
-            "[transition:transform_var(--lg-dur-fast)_var(--lg-ease-standard)]",
+            "[transition:transform_var(--lg-dur-fast)_var(--lg-ease-standard),translate_var(--lg-dur-fast)_var(--lg-ease-standard),scale_var(--lg-dur-fast)_var(--lg-ease-standard)]",
             open && "rotate-180",
           )}
         />
@@ -90,7 +113,7 @@ function GlassSelect({
             ref={menuRef}
             className={cn(
               "lg-regular fixed z-[9999] min-w-[150px] rounded-xl border border-separator/60 overflow-y-auto overflow-x-hidden",
-              "animate-scale-in",
+              closing ? "animate-fade-out" : "animate-scale-in",
             )}
             style={{
               top: pos.top,
@@ -108,7 +131,7 @@ function GlassSelect({
                   type="button"
                   onClick={() => {
                     onChange(opt.value);
-                    setOpen(false);
+                    closeMenu();
                   }}
                   className={cn(
                     "w-full text-left px-3 py-2 text-sm truncate cursor-pointer",

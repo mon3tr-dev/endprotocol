@@ -319,7 +319,7 @@
 | `GlassModal` | modal.tsx:54 | 打开时挂 Esc 关闭 + 锁定 body 滚动（:55-67），Portal 到 body 并提供 `close` Context；关闭时不渲染任何节点 |
 | `Backdrop` | modal.tsx:77 | 全屏遮罩 `z-[100] bg-black/60 backdrop-blur`；`isDismissable` 时 mousedown 点击自身关闭 |
 | `Container` | modal.tsx:94 | 定位与宽度容器，`placement` 决定上下对齐 |
-| `Dialog` | modal.tsx:115 | `role="dialog" aria-modal="true"`，`animate-scale-in rounded-2xl bg-surface` |
+| `Dialog` | modal.tsx:123 | `role="dialog" aria-modal="true"`，`lg-float-in lg-regular rounded-2xl`（入场：`translateY(24px)+scale(0.96)` → 1，阴影同步扩散，slow 档） |
 | `Header` / `Heading` / `Body` / `Footer` | modal.tsx:130 / 134 / 138 / 149 | 结构分区；`Heading` 为 `h2 text-lg`；`Body` 是 forwardRef（displayName `GlassModalBody`）默认 `overflow-y-auto` 并支持 `onScroll` |
 | `CloseTrigger` | modal.tsx:153 | 右上角 x 按钮，读 Context 关闭 |
 | `GlassModalWithSub`（即 `GlassModalCompound`） | modal.tsx:174 / 194 | 挂载 8 个子件：`Backdrop/Container/Dialog/Header/Heading/Body/Footer/CloseTrigger` |
@@ -411,10 +411,10 @@
 | --- | --- | --- |
 | `GlassSelectOption` | select.tsx:6 | `{ value, label }` |
 | `GlassSelectProps` | select.tsx:11 | `value`（可 null）、`options`、`onChange(value)`、`className`、`placeholder`、`maxMenuHeight`（默认 288）、`highlightSelected`（默认 false，选中项加粗） |
-| `GlassSelect` | select.tsx:21 | 触发按钮 + fixed 定位菜单（`z-[9999]`，按下拉框底部 `top = rect.bottom + 4`，:56-59）；菜单宽度 `max(150, 触发器宽度)` |
-| `SelectProps` / `Select` | select.tsx:128 / 138 | 薄封装：回调取 `onValueChange ?? onChange`；**两者都不传时直接返回 null（不渲染）**（:148） |
+| `GlassSelect` | select.tsx:21 | 触发按钮 + fixed 定位菜单（`z-[9999]`，按下拉框底部 `top = rect.bottom + 4`，:80-82）；菜单宽度 `max(150, 触发器宽度)` |
+| `SelectProps` / `Select` | select.tsx:158 / 168 | 薄封装：回调取 `onValueChange ?? onChange`；**两者都不传时直接返回 null（不渲染）**（:178） |
 
-**备注**：打开状态下任意 document mousedown 或 window scroll（capture）都会关闭菜单（select.tsx:35-49）。
+**备注**：打开状态下任意 document mousedown 或 window scroll（capture）都会关闭菜单（select.tsx:48-62）。菜单入场用 `animate-scale-in`（slow 档，`-8px + scale(0.9)`，origin 由该类内置为 top center），关闭先置 `closing` 播 `animate-fade-out`、280ms 后卸载（closeMenu，:37-45），收尾不再被切掉。
 
 ## `src/components/ui/settings-row.tsx`
 **职责**：设置项行（左侧标题描述、右侧控件），及统一分隔线。
@@ -503,7 +503,16 @@
 | `SwitchThumb` | switch.tsx:77 | forwardRef 的 Radix Thumb，样式同上但用 `data-[state=checked]`（无 group 前缀） |
 | `Switch` | switch.tsx:93 | forwardRef 一体式 Root：轨道样式直接写在 Root 上，children 缺省渲染 `SwitchThumb`（:105） |
 
-**备注**：两套 API 选一即可——`GlassSwitch`（分体，需显式组合 Control/Thumb）或 `Switch`（一体，零子件可用）。
+**备注**：两套 API 选一即可——`GlassSwitch`（分体，需显式组合 Control/Thumb）或 `Switch`（一体，零子件可用）；`GlassSwitch` 不传 children 时回落到本项目的 `Thumb`（此前是 Radix 原生 `Thumb`，无样式也无过渡，即「库里的组件没动画」）。轨道底色走 `--lg-dur-base`(260ms) + `--lg-ease-standard`，滑块位移走 `--lg-dur-press`(340ms) + `--lg-ease-spring`（带惯性过冲，滑到位而非瞬移）。选中态不闪烁的另一个前提在 globals.css：`.lg-control::before` 的填充必须用 `background-color` 过渡——原先的 `background: none` 简写不可过渡，会在铺上 `bg-primary` 的同一帧整块消失。
+
+**页面里自制的分段控件（同一套动效约定）**：区域信息切换（domain.tsx）、抽卡记录的分类选择与稀有度筛选（gacha-records.tsx）、仪表盘背景模式（layouts/dashboard.tsx）、标题栏「数据/游戏」（`.titlebar-mode-toggle`）都不是 Radix Switch，而是等宽分格 + 一个绝对定位的**滑动指示器**：指示器宽度 `calc((100% - 两侧内边距) / 项数)`、`transform: translateX(选中下标 * 100%)`、过渡 `transform var(--lg-dur-slow) var(--lg-ease-inertia)`。选中态由指示器承担，按钮本身只负责文字色——**不要再让每个按钮各自换底**（那是瞬间换底，不是惯性滑动），也不要在撑满宽度的按钮上加 `hover:scale-*`（必然溢出父容器圆角）。
+
+**⚠️ 指示器/拨杆的两条硬约束**：
+
+1. **几何必须给出过冲余量**。宿主可以留 `overflow-hidden`（挡拨杆那个 `0 1px 4px` 外阴影溢出胶囊），但拨杆不能正好占满半格——标题栏原来用 `calc(50% - 2px)`，选中位右边缘刚好贴到 padding box 边界，inertia 的回弹整块被裁掉，看上去只剩匀速平移。现在改为容器 `p-[3px]` + 拨杆 `calc(50% - 3px)`，选中位右侧余 3px，容得下约 2.5px 的回弹。
+2. **惯性曲线要够猛**：用 `--lg-ease-inertia`(1.4)，不要用 `--lg-ease-spring`(1.2)——后者只有约 4% 过冲，49px 的拨杆才弹 2px，肉眼等于没有。
+
+**标题栏那个是特例（切模式时标题栏会被重建）**：`DashboardLayout` 的两个模式分支各渲染一份 `<CustomTitlebar />`，且它处于**不同的子节点索引**（游戏分支是第 3 个，数据分支前面多一个 `dashboard-veil` 是第 4 个），React 按位置协调时类型对不上，于是切模式会卸载重建整棵标题栏——新挂载的拨杆一开始就带 `is-game`，`transition` 永远没机会播放。所以拨杆用「挂载即播放」的 `animation`（`titlebar-knob-in-left/right`）兜住，`fill-mode` 取 `backwards` 而非 `both`：动画结束不占着 `transform`，将来若把标题栏改成常驻挂载，状态过渡照样能走 `transition`。**要彻底修这个重建问题，需要把 `<CustomTitlebar />` 提到两个分支之外（共同父级），属于主布局重构，尚未做。**
 
 ## `src/components/ui/table.tsx`
 **职责**：语义化表格复合组件（容器 + table + 表头/行/单元格）。
@@ -531,8 +540,8 @@
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
-| `ToggleGroup` | toggle-group.tsx:13 | forwardRef 直通 `ToggleGroupPrimitive.Root`（`type="single"/"multiple"`、`value`、`onValueChange` 等 Radix 原生 props）；**只做布局、不铺底色**——轨道材质由调用点给出（标题栏用 `.titlebar-mode-toggle`，其余用 `.lg-control` / `.lg-inset`），避免分段控件比旁边浮层更实 |
-| `ToggleGroupItem` | toggle-group.tsx:30 | forwardRef 直通 `Item`；选中态不再铺 `bg-primary/20` 实色（选中指示由外部拨杆/胶囊承担），hover 走 `.lg-hoverable`；首尾自动圆角 |
+| `ToggleGroup` | toggle-group.tsx:21 | forwardRef 直通 `ToggleGroupPrimitive.Root`（`type="single"/"multiple"`、`value`、`onValueChange` 等 Radix 原生 props）；**只做布局、不铺底色**——轨道材质由调用点给出（标题栏用 `.titlebar-mode-toggle`，其余用 `.lg-control` / `.lg-inset`），避免分段控件比旁边浮层更实 |
+| `ToggleGroupItem` | toggle-group.tsx:34 | forwardRef 直通 `Item`；选中态不再铺 `bg-primary/20` 实色（选中指示由外部拨杆/胶囊承担），hover 走 `.lg-hoverable`；**圆角只由调用点给出（基类不写 `rounded-*`）**——基类曾带 `first:rounded-l-md` / `last:rounded-r-md`（10px），与调用点的 `rounded-full`（`calc(infinity * 1px)`）混用会触发 border-radius 重叠缩放，把具体值那一侧压成 0px，首/末项悬浮高亮块被渲染成直角并顶出胶囊 |
 
 ## `src/components/ui/tooltip.tsx`
 **职责**：纯 CSS 悬浮提示（group-hover 触发，绝对定位在触发元素上方），两套同构实现。

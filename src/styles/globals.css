@@ -167,6 +167,11 @@
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+  /* Tailwind 隐式默认：裸 transition-* / transition-all 此前落到框架自带的
+   * 150ms + ease，等于「极快的上跳」。改挂到令牌上后，未显式写 duration 的
+   * 组件也走从容的位移档。显式写了 duration-* 的组件不受影响。 */
+  --default-transition-duration: var(--lg-dur-press);
+  --default-transition-timing-function: var(--lg-ease-glide);
 }
 
 /* ==================================================================
@@ -276,19 +281,29 @@
   --lg-fill-clear: rgb(var(--lg-tint) / var(--lg-alpha-clear));
   --lg-fill-media: rgb(var(--lg-media-tint) / var(--lg-media-alpha));
 
-  /* ---- 动效令牌：全应用唯一时长/缓动/位移尺度 ---- */
-  --lg-dur-fast: 150ms; /* hover/active/开关等即时反馈 */
-  --lg-dur-base: 200ms; /* 下拉、tooltip、菜单、小弹层 */
-  --lg-dur-slow: 280ms; /* 模态、抽屉、面板开合 */
-  --lg-dur-page: 320ms; /* 页面切换、横幅推动等大位移 */
+  /* ---- 动效令牌：全应用唯一时长/缓动/位移尺度 ----
+   * 分档原则：颜色反馈要「跟手」，位移要「从容」。二者刻意分开——
+   * 此前 hover 上跳与开关滑块复用 fast/base 档 + 爆发式曲线，80% 位移
+   * 挤在前 100ms 内完成，观感就是啪一下弹上去；浮层入场只有 200ms 且
+   * 起始幅度接近 0，等价于闪现。故新增 press 档与无过冲的 glide 曲线。 */
+  --lg-dur-fast: 180ms; /* 颜色/背景/透明度等即时反馈 */
+  --lg-dur-base: 260ms; /* tooltip、菜单项、小状态切换 */
+  --lg-dur-press: 340ms; /* hover 位移/缩放、开关滑块等要跟手但不能跳的位移 */
+  --lg-dur-slow: 420ms; /* 模态、抽屉、下拉、面板进出场 */
+  --lg-dur-page: 500ms; /* 页面切换、横幅推动等大位移 */
   --lg-ease-standard: cubic-bezier(0.2, 0, 0, 1); /* 通用过渡/退出 */
   --lg-ease-emphasized: cubic-bezier(
     0.16,
     1,
     0.3,
     1
-  ); /* 进入主力（减速收尾） */
-  --lg-ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1); /* 仅小元素弹性 */
+  ); /* 淡入/缩放主力（收尾长，但起步爆发，勿用于纯位移） */
+  --lg-ease-glide: cubic-bezier(0.33, 1, 0.68, 1); /* 位移主力：起步平缓、无过冲 */
+  --lg-ease-spring: cubic-bezier(0.34, 1.2, 0.64, 1); /* 小元素弹性（hover/按压缩放） */
+  /* 滑块/拨杆/指示器这类「一块东西滑到另一个位置」的位移：过冲给足，
+   * 到位时明显回弹一次才有惯性。spring 的 1.2 只有约 4% 过冲，49px 的
+   * 拨杆才弹 2px，肉眼等于没有。 */
+  --lg-ease-inertia: cubic-bezier(0.34, 1.4, 0.64, 1);
   --lg-ease-exit: cubic-bezier(0.4, 0, 1, 1); /* 退出专用 */
   --lg-shift-1: 8px; /* tooltip/菜单项微移 */
   --lg-shift-2: 16px; /* popover/toast */
@@ -539,7 +554,11 @@
   z-index: -1;
   border-radius: inherit;
   pointer-events: none;
-  background: var(--lg-fill-control);
+  /* 用 background-color 而非 background 简写：选中态要把填充淡出，简写
+   * （`background: none`）不可过渡，会在切到 bg-primary 的同一帧整块消失，
+   * 观感就是开关「闪一下」——这是滑块之外的另一半闪烁源。 */
+  background-color: var(--lg-fill-control);
+  transition: background-color var(--lg-dur-base) var(--lg-ease-standard);
   backdrop-filter: blur(var(--lg-blur)) saturate(var(--lg-saturate));
   box-shadow:
     inset 0 0 0 1px var(--lg-edge),
@@ -553,15 +572,16 @@
  * 这一类「实底玻璃」只需要 ::before 提供边缘内高光，不铺填充。
  * 必须写在非分层区并叠两个类：只有它才能压过上面的 .lg-control::before。 */
 .lg-control.lg-solid::before {
-  background: none;
+  background-color: transparent;
 }
 
 /* 选中态同样要撤掉玻璃填充：开关/复选在选中时由 bg-primary 铺实底
- * （Radix 的 data-state 落在 root 上，玻璃宿主常是其子元素，故两种写法都收）。 */
+ * （Radix 的 data-state 落在 root 上，玻璃宿主常是其子元素，故两种写法都收）。
+ * 这里写 transparent 而不是 none，才能让上面的 transition 真正淡出。 */
 .lg-control[aria-checked="true"]::before,
 .lg-control[data-state="checked"]::before,
 [data-state="checked"] .lg-control::before {
-  background: none;
+  background-color: transparent;
 }
 
 /* ---- 功能层：输入字段 ---- */
@@ -1026,25 +1046,53 @@ html[data-window-radius="self"] {
   content: "";
   position: absolute;
   z-index: 0;
-  top: 2px;
-  bottom: 2px;
-  left: 2px;
-  width: calc(50% - 2px);
+  top: 3px;
+  bottom: 3px;
+  left: 3px;
+  width: calc(50% - 3px);
   border: 1px solid color-mix(in oklab, var(--primary) 65%, white);
   border-radius: 9999px;
   background: var(--primary);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.28),
-    0 1px 4px rgba(0, 0, 0, 0.16);
+  /* 只留顶部内高光，去掉 `0 1px 4px` 那圈外阴影：宿主不能裁剪（见下），
+   * 外阴影会直接漏出胶囊外面糊成一圈灰边。 */
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28);
   will-change: transform;
-  /* 拨杆位移：page 档 + spring（小元素弹性，旧 360ms/0.22,1.25 归并） */
+  /* 拨杆位移，三条约束缺一不可：
+   * 1) 宿主**不加 overflow-hidden**——容器里有 backdrop-filter（::after 玻璃层），
+   *    裁剪 + backdrop-filter + border-radius 的组合在部分 WebView2 版本上会把
+   *    圆角裁剪退化成矩形（右侧被切成直角）。
+   * 2) 不裁剪就必须靠几何容纳位移：内边距 3px、拨杆 calc(50% - 3px)，
+   *    选中位右边缘距 padding box 还有 3px，而 inertia 的过冲约 2.5px，不会溢出。
+   * 3) 拨杆自身不能有外阴影（上面已去掉），否则那圈 4px 的投影必然漏出去。
+   * 挂载动画见下：切模式时标题栏会被重建，transition 没机会播放。 */
+  animation: titlebar-knob-in-left var(--lg-dur-slow) var(--lg-ease-inertia)
+    backwards;
   transition:
-    transform var(--lg-dur-page) var(--lg-ease-spring),
+    transform var(--lg-dur-slow) var(--lg-ease-inertia),
     background-color var(--lg-dur-fast) var(--lg-ease-standard);
   pointer-events: none;
 }
 .titlebar-mode-toggle.is-game::before {
   transform: translateX(100%);
+  animation: titlebar-knob-in-right var(--lg-dur-slow) var(--lg-ease-inertia)
+    backwards;
+}
+
+@keyframes titlebar-knob-in-right {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(100%);
+  }
+}
+@keyframes titlebar-knob-in-left {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
 }
 
 ::selection {
@@ -1184,15 +1232,19 @@ html[data-window-radius="self"] {
 @keyframes scale-in {
   0% {
     opacity: 0;
-    transform: scale(0.96);
+    transform: translateY(-8px) scale(0.9);
   }
   100% {
     opacity: 1;
-    transform: scale(1);
+    transform: translateY(0) scale(1);
   }
 }
+/* 下拉/菜单/浮层入场：slow 档 + 明显的「长出来」。
+ * 幅度一路从 -4px/scale(0.98) 放到 -8px/scale(0.9)：前两版幅度在视觉上
+ * 接近不可察觉，等于整块面板闪现。配合 slow 档后可看到缩放 + 下落。 */
 .animate-scale-in {
-  animation: scale-in var(--lg-dur-base) var(--lg-ease-emphasized);
+  animation: scale-in var(--lg-dur-slow) var(--lg-ease-emphasized) both;
+  transform-origin: top center;
 }
 @keyframes spin-slow {
   0% {
@@ -1398,27 +1450,30 @@ html[data-window-radius="self"] {
   background: rgba(80, 82, 90, 0.9);
 }
 
-/* Interactive Effects — 状态反馈统一 fast 档 + standard 曲线，
- * 只过渡 transform/box-shadow（颜色态瞬时生效） */
+/* Interactive Effects — 状态反馈分两条：
+ *   颜色/背景走 fast 档（要跟手，瞬时生效即可）；
+ *   transform 位移走 press 档 + glide 曲线（无过冲，位移看得见但不上跳）。
+ * 此前位移与颜色同为 220ms + emphasized：该曲线前 15% 时间吃掉一半位移，
+ * 2px 的上跳因此显得又短又猛。 */
 .interactive-hover {
   transition:
-    transform var(--lg-dur-fast) var(--lg-ease-standard),
-    box-shadow var(--lg-dur-fast) var(--lg-ease-standard);
+    transform var(--lg-dur-press) var(--lg-ease-glide),
+    box-shadow var(--lg-dur-press) var(--lg-ease-standard);
 }
 .interactive-hover:hover {
-  transform: translateY(-2px) scale(1.02);
+  transform: translateY(-3px) scale(1.018);
   box-shadow: 0 8px 25px color-mix(in oklab, var(--foreground) 8%, transparent);
 }
 .dark .interactive-hover:hover {
   box-shadow: 0 8px 25px color-mix(in oklab, var(--foreground) 6%, transparent);
 }
 .interactive-hover:active {
-  transform: translateY(0) scale(0.98);
+  transform: translateY(0) scale(0.995);
 }
 .card-hover {
   transition:
-    transform var(--lg-dur-fast) var(--lg-ease-standard),
-    box-shadow var(--lg-dur-fast) var(--lg-ease-standard);
+    transform var(--lg-dur-press) var(--lg-ease-glide),
+    box-shadow var(--lg-dur-press) var(--lg-ease-standard);
 }
 .card-hover:hover {
   transform: translateY(-2px) scale(1.02);
@@ -1428,10 +1483,10 @@ html[data-window-radius="self"] {
   box-shadow: 0 8px 25px color-mix(in oklab, var(--foreground) 6%, transparent);
 }
 .card-hover:active {
-  transform: translateY(0) scale(0.98);
+  transform: translateY(0) scale(0.995);
 }
 .button-hover {
-  transition: transform var(--lg-dur-fast) var(--lg-ease-standard);
+  transition: transform var(--lg-dur-press) var(--lg-ease-glide);
 }
 .button-hover:hover {
   transform: scale(1.05);
@@ -1440,7 +1495,7 @@ html[data-window-radius="self"] {
   transform: scale(0.95);
 }
 .icon-hover {
-  transition: transform var(--lg-dur-fast) var(--lg-ease-standard);
+  transition: transform var(--lg-dur-press) var(--lg-ease-glide);
 }
 .icon-hover:hover {
   transform: scale(1.1) rotate(5deg);
@@ -1450,7 +1505,7 @@ html[data-window-radius="self"] {
 }
 .nav-hover {
   transition:
-    transform var(--lg-dur-fast) var(--lg-ease-standard),
+    transform var(--lg-dur-press) var(--lg-ease-glide),
     background-color var(--lg-dur-fast) var(--lg-ease-standard);
 }
 .nav-hover:hover {
@@ -1462,7 +1517,7 @@ html[data-window-radius="self"] {
 }
 .list-item-hover {
   transition:
-    transform var(--lg-dur-fast) var(--lg-ease-standard),
+    transform var(--lg-dur-press) var(--lg-ease-glide),
     background-color var(--lg-dur-fast) var(--lg-ease-standard);
 }
 .list-item-hover:hover {
@@ -1482,7 +1537,7 @@ html[data-window-radius="self"] {
   box-shadow: 0 0 0 3px color-mix(in oklab, var(--primary) 20%, transparent);
 }
 .chip-hover {
-  transition: transform var(--lg-dur-fast) var(--lg-ease-standard);
+  transition: transform var(--lg-dur-press) var(--lg-ease-glide);
 }
 .chip-hover:hover {
   transform: scale(1.05);
@@ -1491,7 +1546,7 @@ html[data-window-radius="self"] {
   transform: scale(0.95);
 }
 .switch-hover {
-  transition: transform var(--lg-dur-fast) var(--lg-ease-spring);
+  transition: transform var(--lg-dur-press) var(--lg-ease-glide);
 }
 .switch-hover:hover {
   transform: scale(1.05);
@@ -1500,7 +1555,7 @@ html[data-window-radius="self"] {
   transform: scale(0.95);
 }
 .checkbox-hover {
-  transition: transform var(--lg-dur-fast) var(--lg-ease-spring);
+  transition: transform var(--lg-dur-press) var(--lg-ease-glide);
 }
 .checkbox-hover:hover {
   transform: scale(1.1);
@@ -1509,7 +1564,7 @@ html[data-window-radius="self"] {
   transform: scale(0.9);
 }
 .modal-hover {
-  transition: transform var(--lg-dur-fast) var(--lg-ease-standard);
+  transition: transform var(--lg-dur-press) var(--lg-ease-glide);
 }
 .modal-hover:hover {
   transform: scale(1.01);
@@ -1518,14 +1573,14 @@ html[data-window-radius="self"] {
   transform: scale(0.99);
 }
 .tooltip-hover {
-  transition: transform var(--lg-dur-fast) var(--lg-ease-standard);
+  transition: transform var(--lg-dur-press) var(--lg-ease-glide);
 }
 .tooltip-hover:hover {
   transform: translateY(-2px);
 }
 .dropdown-item-hover {
   transition:
-    transform var(--lg-dur-fast) var(--lg-ease-standard),
+    transform var(--lg-dur-press) var(--lg-ease-glide),
     background-color var(--lg-dur-fast) var(--lg-ease-standard);
 }
 .dropdown-item-hover:hover {
@@ -1543,7 +1598,7 @@ html[data-window-radius="self"] {
 }
 .link-hover {
   transition:
-    transform var(--lg-dur-fast) var(--lg-ease-standard),
+    transform var(--lg-dur-press) var(--lg-ease-glide),
     color var(--lg-dur-fast) var(--lg-ease-standard);
 }
 .link-hover:hover {
@@ -1697,16 +1752,19 @@ html[data-window-radius="self"] {
 }
 
 /* ------------------------------------------------------------------
- * prefers-reduced-motion：动画与过渡收敛到近零时长（保留即时反馈：
- * 状态直达终值、focus ring 无动画直出），仅加载 spinner 保留旋转。
+ * prefers-reduced-motion：收敛「位移」，保留「淡入」。
+ * 此前一律压到 0.01ms——等价于把动画全部换成硬切：卡片上跳、开关切换、
+ * 下拉展开全部变成瞬时闪现（与「系统里关了动画效果」的观感完全一致）。
+ * 改成 80ms：位移短到几乎不可察（减少动效的意图成立），但内容出现仍有
+ * 一次极短淡入，不再是一帧怼脸。spinner 是唯一例外，照旧常转。
  * ------------------------------------------------------------------ */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
-    animation-duration: 0.01ms !important;
+    animation-duration: 80ms !important;
     animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
+    transition-duration: 80ms !important;
   }
   .animate-spin-slow,
   .lg-spin,

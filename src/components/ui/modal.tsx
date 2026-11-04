@@ -170,7 +170,7 @@ function CloseTrigger({ className }: { className?: string }) {
       className={cn(
         "lg-control flex h-8 w-8 items-center justify-center rounded-xl text-muted",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50",
-        "[transition:transform_var(--lg-dur-fast)_var(--lg-ease-spring),color_var(--lg-dur-fast)_var(--lg-ease-standard)]",
+        "[transition:transform_var(--lg-dur-press)_var(--lg-ease-spring),translate_var(--lg-dur-press)_var(--lg-ease-spring),scale_var(--lg-dur-press)_var(--lg-ease-spring),color_var(--lg-dur-fast)_var(--lg-ease-standard)]",
         "hover:text-foreground hover:-translate-y-px active:scale-90",
         className,
       )}
@@ -320,7 +320,7 @@ function AlertDialogCloseTrigger({ className }: { className?: string }) {
       onClick={close}
       className={cn(
         "lg-control absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-xl text-muted",
-        "[transition:transform_var(--lg-dur-fast)_var(--lg-ease-spring),color_var(--lg-dur-fast)_var(--lg-ease-standard)]",
+        "[transition:transform_var(--lg-dur-press)_var(--lg-ease-spring),translate_var(--lg-dur-press)_var(--lg-ease-spring),scale_var(--lg-dur-press)_var(--lg-ease-spring),color_var(--lg-dur-fast)_var(--lg-ease-standard)]",
         "hover:text-foreground hover:-translate-y-px active:scale-90",
         className,
       )}

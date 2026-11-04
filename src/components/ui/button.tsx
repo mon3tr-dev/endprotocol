@@ -27,7 +27,7 @@ const buttonVariants = cva(
   "inline-flex items-center justify-center font-medium select-none whitespace-nowrap cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 disabled:opacity-50 disabled:pointer-events-none " +
     // Liquid Glass 交互反馈：亮度/高光经 inset 高光与阴影过渡体现，
     // 不做生硬边框变色；位移只用 transform（fast 档 + spring）。
-    "[transition:transform_var(--lg-dur-fast)_var(--lg-ease-spring),box-shadow_var(--lg-dur-fast)_var(--lg-ease-standard)] hover:-translate-y-px hover:shadow-[0_4px_14px_rgba(0,0,0,0.14)] active:translate-y-0 active:scale-[0.97]",
+    "[transition:transform_var(--lg-dur-press)_var(--lg-ease-spring),translate_var(--lg-dur-press)_var(--lg-ease-spring),scale_var(--lg-dur-press)_var(--lg-ease-spring),box-shadow_var(--lg-dur-fast)_var(--lg-ease-standard)] hover:-translate-y-px hover:shadow-[0_4px_14px_rgba(0,0,0,0.14)] active:translate-y-0 active:scale-[0.97]",
   {
     variants: {
       variant: {

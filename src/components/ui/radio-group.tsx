@@ -164,7 +164,7 @@ function GlassRadioGroupItem({
       }}
       className={cn(
         "inline-flex h-8 select-none items-center justify-center gap-1.5 rounded-lg px-3 text-sm font-medium",
-        "[transition:transform_var(--lg-dur-fast)_var(--lg-ease-spring),background-color_var(--lg-dur-fast)_var(--lg-ease-standard),color_var(--lg-dur-fast)_var(--lg-ease-standard)]",
+        "[transition:transform_var(--lg-dur-press)_var(--lg-ease-spring),translate_var(--lg-dur-press)_var(--lg-ease-spring),scale_var(--lg-dur-press)_var(--lg-ease-spring),background-color_var(--lg-dur-fast)_var(--lg-ease-standard),color_var(--lg-dur-fast)_var(--lg-ease-standard)]",
         "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50",
         checked
           ? "bg-primary/15 text-primary-text shadow-[inset_0_0_0_1px_rgba(99,102,241,0.35)]"

@@ -480,7 +480,7 @@ export default function GachaRecordsPage() {
             </GlassButton>
 
             {showRoleMenu && (
-              <div className="lg-regular absolute right-0 top-full mt-2 z-50 w-64 rounded-xl border border-separator/60 overflow-hidden">
+              <div className="lg-regular absolute right-0 top-full mt-2 z-50 w-64 rounded-xl border border-separator/60 overflow-hidden animate-scale-in">
                 <div className="max-h-72 overflow-y-auto">
                   {accounts.map((acc) => {
                     const isSelected = acc.id === roleId;
@@ -490,8 +490,7 @@ export default function GachaRecordsPage() {
                         type="button"
                         onClick={() => handleSelectRole(acc.id)}
                         className={clsx(
-                          "w-full flex items-center gap-3 px-3 py-2.5 text-left transition-all duration-150",
-                          "hover:translate-x-1 active:translate-x-0.5",
+                          "w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors duration-200",
                           isSelected ? "bg-primary/15" : "lg-hoverable",
                         )}
                       >
@@ -626,18 +625,27 @@ export default function GachaRecordsPage() {
                   className="lg-field w-full h-9 pl-8 pr-3 rounded-lg text-sm text-foreground placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-primary/40"
                 />
               </div>
-              <div className="flex items-center gap-1 p-1 rounded-full lg-control">
+              {/* 滑动指示器承担选中态：flex-1 等宽，指示器按格位移，切换是「滑过去」。 */}
+              <div className="relative flex items-center p-1 rounded-full lg-control">
+                <span
+                  aria-hidden
+                  className="pointer-events-none absolute top-1 bottom-1 left-1 rounded-full lg-control border border-primary/50 [transition:transform_var(--lg-dur-slow)_var(--lg-ease-glide)]"
+                  style={{
+                    width: `calc((100% - 0.5rem) / ${RARITY_OPTIONS.length})`,
+                    transform: `translateX(${Math.max(0, RARITY_OPTIONS.findIndex((o) => o.value === rarityFilter)) * 100}%)`,
+                  }}
+                />
                 {RARITY_OPTIONS.map((opt) => (
                   <button
                     key={opt.label}
                     type="button"
                     onClick={() => setRarityFilter(opt.value)}
                     className={clsx(
-                      "h-8 px-3 rounded-full text-xs font-medium transition-all duration-150",
-                      "hover:scale-105 active:scale-95",
+                      "relative z-10 flex-1 h-8 rounded-full text-xs font-medium transition-all duration-200",
+                      "active:scale-[0.98]",
                       rarityFilter === opt.value
-                        ? "lg-control border border-primary/50 text-primary-text"
-                        : "border border-transparent text-muted hover:text-foreground",
+                        ? "text-primary-text"
+                        : "text-muted hover:text-foreground lg-hoverable",
                     )}
                   >
                     {opt.label}
@@ -764,8 +772,16 @@ export default function GachaRecordsPage() {
         </>
       )}
 
-      {/* 分类选择（悬浮于内容区底部的多项 switch） */}
-      <div className="sticky bottom-4 z-40 mx-auto w-full max-w-2xl rounded-full p-1.5 flex gap-1.5 lg-control border border-separator/70 shadow-lg">
+      {/* 分类选择（悬浮于内容区底部的多项 switch）：指示器滑过去，不再逐项换底 */}
+      <div className="sticky bottom-4 z-40 mx-auto w-full max-w-2xl rounded-full p-1.5 flex lg-control border border-separator/70 shadow-lg">
+        <span
+          aria-hidden
+          className="pointer-events-none absolute top-1.5 bottom-1.5 left-1.5 rounded-full lg-control border border-primary/50 [transition:transform_var(--lg-dur-slow)_var(--lg-ease-glide)]"
+          style={{
+            width: `calc((100% - 0.75rem) / ${CATEGORIES.length})`,
+            transform: `translateX(${Math.max(0, CATEGORIES.findIndex((c) => c.key === category)) * 100}%)`,
+          }}
+        />
         {CATEGORIES.map((c) => {
           const isActive = category === c.key;
           return (
@@ -778,12 +794,12 @@ export default function GachaRecordsPage() {
                 setPage(1);
               }}
               className={clsx(
-                "flex-1 h-10 rounded-full text-sm lg:text-base font-semibold transition-all duration-200",
+                "relative z-10 flex-1 h-10 rounded-full text-sm lg:text-base font-semibold transition-all duration-200",
                 "flex items-center justify-center",
-                "hover:scale-105 active:scale-95",
+                "active:scale-[0.98]",
                 isActive
-                  ? "lg-control border border-primary/50 text-primary-text"
-                  : "border border-transparent text-foreground/70 hover:text-foreground lg-hoverable",
+                  ? "text-primary-text"
+                  : "text-foreground/70 hover:text-foreground lg-hoverable",
               )}
             >
               {isZh ? c.labelZh : c.labelEn}

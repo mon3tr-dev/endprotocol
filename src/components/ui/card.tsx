@@ -26,10 +26,11 @@ function GlassCard({
         onClick={onPress}
         className={cn(
           "lg-material rounded-xl border border-separator overflow-hidden text-left w-full",
-          // 反馈：轻微上浮 + 阴影加深（transform/box-shadow 合成友好）
-          "[transition:transform_var(--lg-dur-fast)_var(--lg-ease-standard),box-shadow_var(--lg-dur-fast)_var(--lg-ease-standard)] cursor-pointer",
+          // 反馈：上浮 + 轻微放大 + 阴影加深（transform/box-shadow 合成友好）。
+          // 位移走 press 档 + glide：fast 档的 150ms 让 2px 上跳看着像弹。
+          "[transition:transform_var(--lg-dur-press)_var(--lg-ease-glide),translate_var(--lg-dur-press)_var(--lg-ease-glide),scale_var(--lg-dur-press)_var(--lg-ease-glide),box-shadow_var(--lg-dur-press)_var(--lg-ease-standard)] cursor-pointer",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50",
-          "hover:-translate-y-0.5 hover:shadow-lg active:translate-y-0 active:scale-[0.99]",
+          "hover:-translate-y-1 hover:scale-[1.02] hover:shadow-lg active:translate-y-0 active:scale-[0.99]",
           shadow === "sm" && "shadow-sm",
           shadow === "md" && "shadow-md",
           shadow === "lg" && "shadow-lg",
@@ -45,8 +46,8 @@ function GlassCard({
     <div
       className={cn(
         "lg-material rounded-xl border border-separator overflow-hidden",
-        "[transition:transform_var(--lg-dur-fast)_var(--lg-ease-standard),box-shadow_var(--lg-dur-fast)_var(--lg-ease-standard)]",
-        "hover:-translate-y-0.5 hover:shadow-lg",
+        "[transition:transform_var(--lg-dur-press)_var(--lg-ease-glide),translate_var(--lg-dur-press)_var(--lg-ease-glide),scale_var(--lg-dur-press)_var(--lg-ease-glide),box-shadow_var(--lg-dur-press)_var(--lg-ease-standard)]",
+        "hover:-translate-y-1 hover:scale-[1.01] hover:shadow-lg",
         shadow === "sm" && "shadow-sm",
         shadow === "md" && "shadow-md",
         shadow === "lg" && "shadow-lg",

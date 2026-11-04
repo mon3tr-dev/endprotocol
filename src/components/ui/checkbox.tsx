@@ -32,7 +32,7 @@ function GlassCheckbox({
         className={cn(
           "lg-control flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-md border",
           // 勾选弹性缩放：fast 档 spring，仅 transform
-          "[transition:transform_var(--lg-dur-fast)_var(--lg-ease-spring),background-color_var(--lg-dur-fast)_var(--lg-ease-standard)]",
+          "[transition:transform_var(--lg-dur-press)_var(--lg-ease-spring),translate_var(--lg-dur-press)_var(--lg-ease-spring),scale_var(--lg-dur-press)_var(--lg-ease-spring),background-color_var(--lg-dur-fast)_var(--lg-ease-standard)]",
           "hover:scale-110 active:scale-90",
           "focus-within:ring-2 focus-within:ring-primary/40",
           isSelected
@@ -83,7 +83,7 @@ function Checkbox({
         aria-hidden
         className={cn(
           "lg-control flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-md border",
-          "[transition:transform_var(--lg-dur-fast)_var(--lg-ease-spring),background-color_var(--lg-dur-fast)_var(--lg-ease-standard)]",
+          "[transition:transform_var(--lg-dur-press)_var(--lg-ease-spring),translate_var(--lg-dur-press)_var(--lg-ease-spring),scale_var(--lg-dur-press)_var(--lg-ease-spring),background-color_var(--lg-dur-fast)_var(--lg-ease-standard)]",
           "hover:scale-110 active:scale-90",
           "focus-within:ring-2 focus-within:ring-primary/40",
           checked
