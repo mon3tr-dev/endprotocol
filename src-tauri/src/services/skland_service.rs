@@ -564,7 +564,11 @@ impl SklandService {
             };
 
             log_info!("=== Skland API Request (attempt {}) ===", attempt + 1);
-            log_info!("Method: {}, URL: {}", method, url);
+            log_info!(
+                "Method: {}, URL: {}",
+                method,
+                crate::utils::redact::redact_url(&url)
+            );
 
             let mut req = self.build_skland_request(&client, method, &url, cred, &did, &sign, &ts);
             if let Some(ref b) = body {

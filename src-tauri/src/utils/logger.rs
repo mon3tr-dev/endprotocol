@@ -290,6 +290,29 @@ impl Logger {
 /// 全局日志实例
 static GLOBAL_LOGGER: std::sync::OnceLock<Logger> = std::sync::OnceLock::new();
 
+/// logger 尚未初始化时使用的降级实例（丢弃所有日志，不写文件也不占内存）。
+///
+/// 存在的意义：`log_*!` 宏在 logger 未初始化时不应 panic —— 早期启动路径
+/// （配置服务初始化、崩溃捕获钩子）与单元测试都可能先于 `init_logger()` 打日志。
+static FALLBACK_LOGGER: std::sync::OnceLock<Logger> = std::sync::OnceLock::new();
+
+fn fallback_logger() -> &'static Logger {
+    FALLBACK_LOGGER.get_or_init(|| {
+        Logger {
+            config: LoggerConfig {
+                log_to_console: false,
+                log_to_file: false,
+                log_level: LogLevel::Info,
+                log_dir: PathBuf::new(),
+                max_memory_entries: 0,
+            },
+            level: AtomicU8::new(LogLevel::Info as u8),
+            log_file: Mutex::new(None),
+            memory_buffer: Mutex::new(VecDeque::new()),
+        }
+    })
+}
+
 pub fn init_logger() -> Result<(), Box<dyn std::error::Error>> {
     let config = LoggerConfig::default();
     let logger = Logger::new(config)?;
@@ -300,10 +323,12 @@ pub fn init_logger() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+/// 获取全局 logger。
+///
+/// 若尚未调用 [`init_logger`]，返回一个丢弃全部输出的降级实例（而非 panic）——
+/// 早期启动路径与单元测试会在 logger 就绪前打日志。
 pub fn get_logger() -> &'static Logger {
-    GLOBAL_LOGGER
-        .get()
-        .expect("Logger not initialized. Call init_logger() first.")
+    GLOBAL_LOGGER.get().unwrap_or_else(|| fallback_logger())
 }
 
 /// 在 panic hook 等日志系统可能尚未初始化的场景下安全获取 logger。

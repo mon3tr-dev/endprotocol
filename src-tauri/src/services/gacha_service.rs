@@ -770,7 +770,7 @@ impl GachaService {
             urlencoding::encode(server_id),
         );
         let client = http_client::create_client();
-        log_debug!("gacha: GET {}", url);
+        log_debug!("gacha: GET {}", crate::utils::redact::redact_url(url.as_str()));
         let response = capture::send(
             &client,
             client

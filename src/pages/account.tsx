@@ -74,6 +74,7 @@ import { roleDetailService } from "@/utils/roleDetailService";
 import logger, { logDebug, logError } from "../utils/logger";
 import { getConfig } from "@/utils/configService";
 import { addMessage } from "@/utils/messageStore";
+import { maskSecret } from "@/utils/redact";
 import { resolveServerLabel } from "@/types";
 
 function RoleGroup({
@@ -2851,13 +2852,13 @@ export default function AccountPage() {
                     <div>
                       <p className="text-xs italic text-muted mb-1">Hytoken:</p>
                       <p className="text-xs font-mono text-danger-text break-all">
-                        {selectedAccount.token || "N/A"}
+                        {maskSecret(selectedAccount.token) || "N/A"}
                       </p>
                     </div>
                     <div>
                       <p className="text-xs italic text-muted mb-1">Cred:</p>
                       <p className="text-xs font-mono text-danger-text break-all">
-                        {selectedAccount.cred || "N/A"}
+                        {maskSecret(selectedAccount.cred) || "N/A"}
                       </p>
                     </div>
                   </div>

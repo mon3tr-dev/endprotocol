@@ -51,7 +51,9 @@ export async function removeConfig(key: string): Promise<boolean> {
 
 /**
  * 获取所有配置
- * @returns 所有配置的键值对
+ *
+ * ⚠️ 后端会剔除所有机密字段（凭据只存在于 OS 凭据库，不经过 IPC）。
+ * @returns 所有**非机密**配置的键值对
  */
 export async function getAllConfigs(): Promise<Record<string, any>> {
   try {
@@ -71,5 +73,30 @@ export async function getAllConfigs(): Promise<Record<string, any>> {
       }
     }
     return configs;
+  }
+}
+
+/** 机密存储后端标识。 */
+export type SecretBackend = 'credential-store' | 'encrypted-file' | 'plaintext';
+
+/** 机密存储状态。 */
+export interface SecretStorageStatus {
+  /** 当前后端。`credential-store` = OS 凭据库（最强保护）。 */
+  backend: SecretBackend;
+  /** 是否处于降级状态（未使用 OS 凭据库）。 */
+  degraded: boolean;
+}
+
+/**
+ * 查询机密存储的当前保护等级。
+ *
+ * 用于设置页提示用户机密数据的存放位置。失败时返回 null（不阻断界面）。
+ */
+export async function getSecretStorageStatus(): Promise<SecretStorageStatus | null> {
+  try {
+    return await invoke<SecretStorageStatus>('get_secret_storage_status');
+  } catch (error) {
+    logger.warn('Failed to get secret storage status: ' + error, 'ConfigService');
+    return null;
   }
 }

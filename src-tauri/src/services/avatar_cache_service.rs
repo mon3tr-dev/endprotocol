@@ -171,7 +171,7 @@ impl ImageCacheService {
         let start_time = std::time::Instant::now();
         log_info!("=== HTTP REQUEST: 下载图片 ({:?}) ===", image_type);
         log_info!("Method: GET");
-        log_info!("URL: {}", url);
+        log_info!("URL: {}", crate::utils::redact::redact_url(url));
 
         let response = capture::send(
             &client,

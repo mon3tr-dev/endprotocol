@@ -452,7 +452,10 @@ impl CharDetailService {
                 }
             };
             if url.is_empty() || url.starts_with("http://asset.localhost") {
-                log_warn!("  icon is empty or asset.localhost: {}", url);
+                log_warn!(
+                    "  icon is empty or asset.localhost: {}",
+                    crate::utils::redact::redact_url(&url)
+                );
                 return;
             }
             let name = gem_data_obj

@@ -100,7 +100,10 @@ pub async fn download_image(
     }
 
     // 下载图片
-    log_info!("[download_image] Downloading from: {}", url);
+    log_info!(
+        "[download_image] Downloading from: {}",
+        crate::utils::redact::redact_url(&url)
+    );
     let client = crate::utils::http_client::create_client();
     let response = capture::send(
         &client,
