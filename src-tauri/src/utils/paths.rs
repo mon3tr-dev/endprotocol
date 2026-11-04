@@ -35,6 +35,11 @@ pub fn config_file_path() -> Result<PathBuf, &'static str> {
     app_data_dir().map(|d| d.join("app_config.json"))
 }
 
+/// 机密数据降级存储路径（AES-256-GCM 加密文件，仅在 OS 凭据库不可用时使用）
+pub fn secret_file_path() -> Result<PathBuf, &'static str> {
+    app_data_dir().map(|d| d.join("secrets.enc"))
+}
+
 /// 网络请求录制目录
 pub fn capture_dir() -> Result<PathBuf, &'static str> {
     app_data_dir().map(|d| d.join("network_capture"))

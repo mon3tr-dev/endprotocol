@@ -7,5 +7,7 @@ pub mod data_query;
 pub mod gacha_service;
 pub mod game_launcher_service;
 pub mod network_service;
+pub mod secret_registry;
+pub mod secret_store;
 pub mod skland_service;
 pub mod system_resource_service;

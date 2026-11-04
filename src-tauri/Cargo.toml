@@ -58,6 +58,15 @@ walkdir = "2"
 rfd = "0.15"
 sysinfo = "0.38.4"
 zip = { version = "4.6.1", default-features = false, features = ["aes-crypto", "deflate-flate2"] }
+# 机密存储：OS 凭据库（Windows Credential Manager / macOS Keychain / Linux Secret Service）
+keyring = { version = "4.2", features = ["v1"] }
+# 机密存储降级后端：AES-256-GCM 加密文件
+aes-gcm = { version = "0.11", features = ["alloc", "getrandom"] }
+
+[dev-dependencies]
+# 凭据库条目枚举（仅测试与运维工具使用）
+keyring-core = "1.0"
+windows-native-keyring-store = "1.1"
 
 [target.'cfg(windows)'.dependencies]
 # 免启动器启动（utils/official_launcher.rs）额外需要的特性：

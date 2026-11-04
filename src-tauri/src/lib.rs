@@ -7,9 +7,9 @@ use tokio::sync::Mutex;
 
 mod commands;
 mod models;
-mod services;
+pub mod services;
 mod tray;
-mod utils;
+pub mod utils;
 
 use services::account_service::AccountService;
 use services::avatar_cache_service::AvatarCacheService;
@@ -122,6 +122,7 @@ pub fn run() {
             commands::config::set_config,
             commands::config::remove_config,
             commands::config::get_all_configs,
+            commands::config::get_secret_storage_status,
             // Proxy commands
             commands::proxy::get_proxy_settings,
             commands::proxy::save_proxy_settings,
