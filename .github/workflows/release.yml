@@ -22,12 +22,6 @@ jobs:
           - target: x86_64-unknown-linux-gnu
             runner: ubuntu-22.04
             bundles: appimage
-          - target: x86_64-apple-darwin
-            runner: macos-latest
-            bundles: app,dmg
-          - target: aarch64-apple-darwin
-            runner: macos-latest
-            bundles: app,dmg
 
     steps:
       - name: Checkout
@@ -109,6 +103,7 @@ jobs:
     name: Build and Release Windows x64
     runs-on: windows-latest
     needs: build-platforms
+    if: ${{ always() }}
 
     steps:
       # ==========================================================
@@ -464,7 +459,7 @@ jobs:
           releaseDraft: true
           prerelease: ${{ steps.release-type.outputs.prerelease }}
           uploadUpdaterJson: false
-          args: ${{ steps.tauri_sync.outputs.args || '--target x86_64-pc-windows-msvc' }} --bundles nsis
+          args: ${{ steps.tauri_sync.outputs.args || '--ignore-version-mismatches' }} --bundles nsis
 
       - name: Download platform bundles
         uses: actions/download-artifact@v4
@@ -533,18 +528,6 @@ jobs:
               target: 'x86_64-unknown-linux-gnu',
               source: 'platform-bundles/platform-bundles-x86_64-unknown-linux-gnu',
               suffix: '.AppImage',
-            },
-            {
-              key: 'darwin-x86_64',
-              target: 'x86_64-apple-darwin',
-              source: 'platform-bundles/platform-bundles-x86_64-apple-darwin',
-              suffix: '.app.tar.gz',
-            },
-            {
-              key: 'darwin-aarch64',
-              target: 'aarch64-apple-darwin',
-              source: 'platform-bundles/platform-bundles-aarch64-apple-darwin',
-              suffix: '.app.tar.gz',
             },
           ];
           const platforms = {};
