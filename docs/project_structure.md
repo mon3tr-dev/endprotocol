@@ -94,6 +94,7 @@ EndProtocol/
    - 后端主动推送用 `emit`（如启动器进度、主题变更），前端 `listen` 订阅。
 4. **持久化**：
    - 配置信息由 `ConfigService` 存储在本地 `app_config.json`（键值 + 点号路径，如 `card_settings.{cardId}`）。
+   - **账户凭据等机密字段不落盘** —— 由 `ConfigService` 分流到操作系统凭据库（Windows Credential Manager / macOS Keychain / Linux Secret Service），配置文件里只留非机密子字段。登记与流程见 [`secure_storage.md`](secure_storage.md)。
    - 图片经 `ImageCacheService`/`AvatarCacheService` 本地缓存；抽卡记录、Wiki 详情各自落盘。
 
 ## 5. 核心业务流程

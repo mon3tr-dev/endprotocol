@@ -127,13 +127,31 @@ Wiki 数据集成：词条目录、物品详情、升级材料解析、技能描
 
 ```
 %LOCALAPPDATA%\cn.msk-network.endprotocol\
-├── app_config.json          # 全部应用配置与卡片设置
+├── app_config.json          # 应用配置与卡片设置（**不含账户凭据**）
 ├── image_cache/             # 图片缓存（avatars、skill_icons、weapon_icons 等 9 类）
 ├── backgrounds/             # 自定义背景图
 ├── wiki_detail_cache/       # Wiki 词条磁盘缓存
 ├── gacha_records/           # 抽卡记录（按 userId_serverId 分文件）
+├── secrets.enc / secrets.key # 机密降级存储（仅在系统凭据库不可用时出现）
 └── logs/                    # 日志 app-<日期>.log
 ```
+
+### 账户凭据存放在哪
+
+登录凭证（`cred` / `token` / `hytoken` / `u8token` / `device_token` / 手机号）
+**不写进 `app_config.json`**，而是存放在操作系统的凭据库里：
+
+| 系统 | 存放位置 |
+|---|---|
+| Windows | 控制面板 → 凭据管理器 → Windows 凭据 → 通用凭据（`cn.msk-network.endprotocol`） |
+| macOS | 钥匙串访问（`cn.msk-network.endprotocol`） |
+| Linux | Secret Service（GNOME Keyring / KWallet） |
+
+这些数据由操作系统用**当前登录用户的凭据**加密，其他用户、其他程序（无用户授权）无法读取。
+应用可以随时正常使用，不需要额外解锁。
+
+> 若在 Linux 上找不到系统凭据库，应用会降级为在数据目录写 `secrets.enc`（AES-256-GCM 加密）
+> 与 `secrets.key` —— 保护强度低于系统凭据库。
 
 ---
 

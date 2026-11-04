@@ -23,6 +23,7 @@
   - 敏感信息（Token/Cred）严禁硬编码，必须通过 `ConfigService` 或 `AccountService` 内存态存取。
 - **日志记录**: 使用 `tracing` 宏（`info!`/`error!`/`debug!`）或 `utils/logger.rs` 封装的 `log_*` 宏；日志级别由 `log_level` 配置控制（关闭开发者模式时 DEBUG 自动屏蔽），前端可通过 `set_log_level` 命令运行时调整；禁止裸 `eprintln!` 调试残留（应用现为 Windows GUI 子系统，进程可能无控制台，确需写 stderr 时必须用 `logger::safe_eprintln!`，它会在无控制台时静默跳过）。
 - **配置读写**: 一律走 `ConfigService`（`src-tauri/src/services/config_service.rs`），键名用点号路径（如 `card_settings.{cardId}`、`account_token_{userId}.user_info`）。
+- **机密字段**: 账户凭据（`cred` / `token` / `hytoken` / `u8token` / `device_token` / `phone`）与代理凭据**不落盘** —— 由 `ConfigService` 分流到操作系统凭据库（Windows Credential Manager / macOS Keychain / Linux Secret Service）。判定规则见 `src-tauri/src/services/secret_registry.rs` 的 `SECRET_FIELDS` 常量。**新增机密字段必须**：① 在 `SECRET_FIELDS` 登记；② 更新 [`secure_storage.md`](secure_storage.md) §3.1 表格；③ 补单元测试。前端的 `set_config` 命令会拒写机密键。
 - **静默/驻守启动**：应用入口解析 `--silent` 与 `--launch-game`。仅 `--silent` 不启动任何内容；`--silent --launch-game` 创建不可见驻守实例（无窗口/托盘、不计时、不注册单实例插件），启动游戏并驻留到游戏退出；仅 `--launch-game` 以正常完整模式启动应用并一并启动游戏。游戏启动必须复用 `commands::launcher::launch_game`，不得另写启动流程。
 
 ## 3. 拓展位置与方法

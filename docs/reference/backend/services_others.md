@@ -4,9 +4,9 @@
 > 覆盖 `src-tauri/src/services/` 下除 `account_service.rs` / `skland_service.rs` / `game_launcher_service.rs` 外的全部文件。
 
 ## `src-tauri/src/services/mod.rs`
-**职责**：服务层的模块声明清单，11 行，把 11 个服务模块公开为 `pub mod`。
+**职责**：服务层的模块声明清单，13 行，把 13 个服务模块公开为 `pub mod`。
 
-**导出**：`account_service`、`avatar_cache_service`、`char_detail_service`、`char_wiki_detail_service`、`config_service`、`data_query`、`game_launcher_service`、`gacha_service`、`network_service`、`skland_service`、`system_resource_service`（全部为模块，无类型/方法）。
+**导出**：`account_service`、`avatar_cache_service`、`char_detail_service`、`char_wiki_detail_service`、`config_service`、`data_query`、`game_launcher_service`、`gacha_service`、`network_service`、`secret_registry`、`secret_store`、`skland_service`、`system_resource_service`（全部为模块，无类型/方法）。
 
 **状态**：不注册任何 Tauri State，仅提供命名空间。
 
@@ -16,44 +16,127 @@
 | `pub mod avatar_cache_service` | mod.rs:2 | 图片/头像本地缓存服务 |
 | `pub mod char_detail_service` | mod.rs:3 | 角色详情获取与图片懒加载处理 |
 | `pub mod char_wiki_detail_service` | mod.rs:4 | Wiki 物品详情批量/按需缓存 |
-| `pub mod config_service` | mod.rs:5 | JSON 配置读写（app_config.json） |
+| `pub mod config_service` | mod.rs:5 | JSON 配置读写（app_config.json）+ 机密字段分流 |
 | `pub mod data_query` | mod.rs:6 | 数据路径解析与 API 名枚举 |
 | `pub mod game_launcher_service` | mod.rs:7 | 游戏启动器（其他文档负责） |
 | `pub mod gacha_service` | mod.rs:8 | 抽卡记录抓取与本地存储 |
 | `pub mod network_service` | mod.rs:9 | 统一数据查询入口（聚合子服务） |
-| `pub mod skland_service` | mod.rs:10 | 森兰 API 底层调用（其他文档负责） |
+| `pub mod secret_registry` | mod.rs:10 | **机密字段登记表**（唯一判定来源） |
+| `pub mod secret_store` | mod.rs:11 | **机密存储后端**（OS 凭据库 / 加密文件降级） |
+| `pub mod skland_service` | mod.rs:12 | 森兰 API 底层调用（其他文档负责） |
 
-**备注**：无 HTTP 端点、无配置键、无文件路径。`data_query` 是纯函数模块（含单元测试），不属于「服务实例」。
+**备注**：无 HTTP 端点、无配置键、无文件路径。`data_query`、`secret_registry` 是纯函数模块（含单元测试），不属于「服务实例」。
 
 ---
 
 ## `src-tauri/src/services/config_service.rs`
-**职责**：以 `HashMap<String, Value>` 为内存缓存的 JSON 配置读写服务，读写 `app_config.json`，每次写操作同步落盘（pretty JSON）。
+**职责**：以 `HashMap<String, Value>` 为内存缓存的 JSON 配置读写服务，读写 `app_config.json`；**机密字段分流到 OS 凭据库**，磁盘上不落盘。
 
 **导出**：
-- `pub struct ConfigService { config_path: PathBuf, cache: Mutex<HashMap<String, Value>> }`
+- `pub const SCHEMA_VERSION: u32 = 2` —— 配置 schema 版本（v1 = 全明文，v2 = 机密外移）
+- `pub struct ConfigService { config_path: PathBuf, cache: Mutex<HashMap<String, Value>>, secrets: SecretStore }`
 - `pub fn new() -> Result<Self, AppError>`
+- `pub fn new_with_paths(config_path: PathBuf, secrets: SecretStore) -> Result<Self, AppError>`（集成测试用）
 - `pub fn get<T: DeserializeOwned>(&self, key) -> Option<T>`
 - `pub fn set(&mut self, key: String, value: Value) -> Result<(), AppError>`
 - `pub fn remove(&mut self, key: &str) -> bool`
-- `pub fn get_all(&self) -> HashMap<String, Value>`
-- `fn save(&self)`（私有）
+- `pub fn get_all(&self) -> HashMap<String, Value>`（**含机密字段明文**，仅后端内部用）
+- `pub fn get_all_public(&self) -> HashMap<String, Value>`（**剔除机密字段**，供 IPC）
+- `pub fn get_proxy_config` / `set_proxy_config` / `remove_proxy_config`
+- `pub fn secret_backend(&self) -> Backend` / `pub fn secrets_degraded(&self) -> bool`
+- `pub fn reload_secrets(&mut self)` —— 从凭据库把机密字段读回内存
+- `pub fn migrate_to_v2(&mut self) -> Result<(), AppError>`
+- `fn write_secret_fields` / `fn load_secrets_into_cache` / `fn migrate_if_needed` / `fn save`（私有）
 
-**状态**：在 `lib.rs:311-315` 创建为 `Arc<std::sync::Mutex<ConfigService>>` 并 `app.manage(...)`；完整/静默模式均使用该配置状态。完整模式还注入 `SklandService`、`AccountService` 和托盘。
+**状态**：在 `lib.rs` 创建为 `Arc<std::sync::Mutex<ConfigService>>` 并 `app.manage(...)`；完整/静默模式均使用该配置状态。完整模式还注入 `SklandService`、`AccountService` 和托盘。
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
-| `ConfigService::new` | config_service.rs:18 | 创建 `app_data_dir()`（`%LOCALAPPDATA%\cn.msk-network.endprotocol`）并 `create_dir_all`；`config_path = paths::config_file_path()`；若文件存在则读入并 `serde_json::from_str::<HashMap<..>>`（解析失败回退空 map）。 |
-| `ConfigService::get` | config_service.rs:44 | 输入 `key: &str`；锁 cache 后 `serde_json::from_value` 反序列化为 `T`，失败或 key 不存在返回 `None`。无磁盘读取。 |
-| `ConfigService::set` | config_service.rs:55 | 输入 key/value；插入 cache 后立即 `save()` 写盘。锁失败转 `AppError::ConfigError`。 |
-| `ConfigService::remove` | config_service.rs:67 | 删除 key，返回是否真的存在；删除成功才 `save()`（失败被忽略）。 |
-| `ConfigService::get_all` | config_service.rs:79 | 克隆整份 cache 返回（`unwrap()` 可能 panic）。 |
-| `ConfigService::save` | config_service.rs:85 | `serde_json::to_string_pretty` 后 `fs::write(config_path)`。 |
+| `ConfigService::new` | config_service.rs:41 | 创建 `app_data_dir()` 并 `create_dir_all`；`config_path = paths::config_file_path()`；构造 `SecretStore::new()`；转 `new_with_paths`。 |
+| `ConfigService::new_with_paths` | config_service.rs:64 | 指定路径与机密后端构造服务；读配置文件 → `migrate_if_needed()` → `load_secrets_into_cache()`。 |
+| `ConfigService::get` | config_service.rs:95 | 锁 cache 后 `serde_json::from_value` 反序列化为 `T`，失败或不存在返回 `None`。内存命中，无磁盘读取。 |
+| `ConfigService::set` | config_service.rs:107 | 先 `write_secret_fields()` 把机密子字段写入凭据库，再插入 cache 并 `save()` 写盘。 |
+| `ConfigService::remove` | config_service.rs:122 | 若键含机密字段，先 `secrets.remove_key()` 清凭据库；再删 cache；成功才 `save()`。 |
+| `ConfigService::get_all` | config_service.rs:141 | 克隆整份 cache（含机密明文）。⚠️ 仅后端内部用。 |
+| `ConfigService::get_all_public` | config_service.rs:153 | 逐键 `strip_secret_fields` 后返回。`get_all_configs` 命令用它。 |
+| `ConfigService::write_secret_fields` | config_service.rs:196 | 把值里的机密子字段逐个写入凭据库（null 跳过）。 |
+| `ConfigService::reload_secrets` | config_service.rs:234 | 遍历含机密字段的键，逐字段从凭据库读回内存；条目缺失则保持字段缺失。 |
+| `ConfigService::migrate_to_v2` | config_service.rs:271 | v1→v2 迁移：备份 → 写凭据库（幂等）→ 原子重建配置 → 删备份。凭据库写失败时中止并保留明文配置（降级模式）。 |
+| `ConfigService::save` | config_service.rs:334 | 逐键剥离机密字段 + 写 `schema_version`；写 `.tmp` 再 `rename`（原子）。 |
 
 **备注**：
 - 文件路径：`%LOCALAPPDATA%\cn.msk-network.endprotocol\app_config.json`（`utils/paths.rs:34`）。
-- 已知配置键（散布于调用方）：`main_exe_path`（startup.rs:8）、`launcher_install_path` / `launcher_channel`（startup.rs:9-10）、`capture_autostart`、`close_action`、`tray_user_info`、`lazy_load_enabled`、`account_list`、`account_token_{id}` / skland token 键、`did_cache`、`skland_games_cache`。
+- **机密字段登记表见 `secret_registry.rs`，完整文档见 [`docs/secure_storage.md`](../../../secure_storage.md)。**
 - 调用方：`commands/account.rs:28`、`commands/attendance.rs:19`、`commands/gacha.rs:25`（`get_all()`）；`set/remove` 全部由 `account_service.rs`、`skland_service.rs`、`tray.rs` 调用。
+
+---
+
+## `src-tauri/src/services/secret_registry.rs`
+**职责**：**机密字段登记表** —— 全项目唯一的机密判定来源。判定规则显式写死，代码里不出现散落的 `if key == "account_token_..."`。
+
+**导出**：
+- `pub struct SecretField { key: &'static str, field: &'static str }`
+- `pub const ACCOUNT_TOKEN_PREFIX: &str = "account_token_"`
+- `pub const PROXY_CONFIG_KEY: &str = "proxy_config"`
+- `pub const SECRET_FIELDS: &[SecretField]` —— 登记表（A 类机密字段）
+- `pub fn matches_secret_key(key: &str) -> bool`
+- `pub fn is_secret_field(key: &str, field: &str) -> bool`
+- `pub fn has_secret_fields(key: &str) -> bool`
+- `pub fn secret_fields_of(key: &str) -> Vec<&'static str>`
+- `pub fn strip_secret_fields(key: &str, value: &serde_json::Value) -> serde_json::Value` —— **按子字段**剥离（`account_token_*` 是混合键，不能整键剥离）
+
+**状态**：纯函数模块，不注册 State。
+
+| 符号 | 位置 | 说明 |
+| --- | --- | --- |
+| `SECRET_FIELDS` | secret_registry.rs:56 | A 类机密字段登记：`account_token_*` 的 `cred`/`token`/`hytoken`/`u8token`/`device_token`/`phone`；`proxy_config` 的 `username`/`password`/`host`/`port`。 |
+| `matches_secret_key` | secret_registry.rs:117 | 键匹配（支持 `*` 结尾前缀通配），用于快速筛掉无关键。 |
+| `is_secret_field` | secret_registry.rs:126 | 判断某键下某子字段是否机密。 |
+| `has_secret_fields` | secret_registry.rs:137 | 某键下是否存在机密子字段。 |
+| `secret_fields_of` | secret_registry.rs:146 | 返回某键下登记的全部机密子字段名。 |
+| `strip_secret_fields` | secret_registry.rs:166 | 克隆值并移除机密子字段；非机密键原样返回。 |
+
+**备注**：
+- **新增机密字段必须在此登记 + 更新 [`docs/secure_storage.md`](../../../secure_storage.md) §3.1 + 补单元测试。**
+- 白名单策略：未登记的字段一律视为非机密（明文），避免误伤导致配置不可读。
+- 单元测试 7 条，覆盖前缀匹配、各子字段判定、混合键剥离。
+
+---
+
+## `src-tauri/src/services/secret_store.rs`
+**职责**：机密存储后端 —— 把机密字段放进操作系统用用户凭据保护的存储（Windows Credential Manager / macOS Keychain / Linux Secret Service），并提供降级链。
+
+**导出**：
+- `pub const SERVICE_NAME: &str = "cn.msk-network.endprotocol"` —— 凭据条目 service 名
+- `pub enum Backend { CredentialStore, EncryptedFile, Plaintext }`（`as_str()` 返回标识）
+- `pub enum SecretError { StoreUnavailable, NotFound, Failed }`
+- `pub struct SecretStore { backend, service, file_key, file_path, file_cache }`
+- `pub fn new()` / `pub fn with_service(service: String)` —— 后者仅供测试
+- `pub fn backend()` / `pub fn is_degraded()`
+- `pub fn set(key, field, value: &[u8])` / `pub fn get(key, field) -> Vec<u8>` / `pub fn remove(key, field)` / `pub fn remove_key(key)` / `pub fn existing_fields(key)`
+- `pub mod file_backend` —— 降级后端（AES-256-GCM 加密文件）：`load_or_init` / `persist`
+
+**状态**：由 `ConfigService` 持有，非独立 Tauri State。
+
+| 符号 | 位置 | 说明 |
+| --- | --- | --- |
+| `SecretStore::new` | secret_store.rs:117 | 走 `with_service(SERVICE_NAME)`。 |
+| `SecretStore::with_service` | secret_store.rs:125 | 凭据库可用 → `Backend::CredentialStore`；否则降级到加密文件后端。 |
+| `SecretStore::set` | secret_store.rs:171 | 凭据库分支用 `set_secret`（原始字节，非 UTF-16）；加密文件分支写缓存并落盘。 |
+| `SecretStore::get` | secret_store.rs:195 | 凭据库分支 `get_secret`，`NoEntry` → `SecretError::NotFound`。 |
+| `SecretStore::remove` | secret_store.rs:219 | `delete_credential`；`NoEntry` 视为成功。 |
+| `SecretStore::remove_key` | secret_store.rs:241 | 遍历该键的全部机密子字段逐个删除。 |
+| `file_backend::load_or_init` | secret_store.rs:283 | 读/建密钥文件（`secrets.key`，base64）+ 解密 `secrets.enc`。 |
+| `file_backend::persist` | secret_store.rs:317 | 序列化 → AES-256-GCM 加密 → 写 `.tmp` 再 `rename`（原子）。 |
+| `file_backend::encrypt_blob` | secret_store.rs:337 | nonce(12) \|\| ciphertext \|\| tag(16)，nonce 用 OsRng 填充。 |
+| `file_backend::decrypt_blob` | secret_store.rs:352 | GCM 完整性校验失败即报错（不返回垃圾数据）。 |
+
+**备注**：
+- 凭据条目命名：`service = "cn.msk-network.endprotocol"`，`user = "{键}::{子字段}"`。
+- **一个机密字段一条凭据**：Windows blob 上限 2560 字节（`CRED_MAX_CREDENTIAL_BLOB_SIZE`），`u8token` 单字段 584 字节。
+- 降级链：OS 凭据库 → AES-256-GCM 加密文件 → 明文兜底（仅记警告，机密字段仍不进配置文件）。
+- 依赖：`keyring` 4.2（`v1` feature）、`aes-gcm` 0.11。
+- 单元测试 3 条（含篡改检测）；端到端测试见 `src-tauri/tests/secret_storage.rs`。
 
 ---
 

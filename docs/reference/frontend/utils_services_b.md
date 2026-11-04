@@ -418,3 +418,19 @@
 | `BrowserPageLoadPayload` | `browser://page-load` 负载 `{ label, url, event: "started" \| "finished" }` |
 
 **备注**：`invoke` 命令 `browser_go_back` / `browser_go_forward` / `browser_reload` / `browser_navigate` / `browser_current_url`；`browser://page-load` 事件由后端 `lib.rs` 的 `on_page_load` 发出。调用方仅 `components/in-app-browser.tsx`。
+
+## `src/utils/redact.ts`
+**职责**：前端敏感信息遮罩工具。账户详情等界面不应把完整凭据渲染进 DOM —— 任何能读取 DOM 的脚本（被注入的第三方脚本、浏览器扩展）都能直接读到明文。
+**导出**：`maskSecret(value: string | null | undefined): string`、`redactText(text: string): string`。私有常量 `SENSITIVE_KEYS`。
+**主要依赖**：无（纯字符串处理）。
+
+| 符号 | 位置 | 说明 |
+| --- | --- | --- |
+| `maskSecret` | redact.ts:22 | 保留首尾各 4 个字符，中间 `***`；长度 ≤ 8 时整体隐藏为 `***`；空值返回 `""` |
+| `SENSITIVE_KEYS` | redact.ts:33 | 敏感参数名集合：`cred`、`token`、`u8token`、`u8_token`、`hytoken`、`hy_token`、`sign`、`password`、`passwd`、`secret`、`access_token`、`refresh_token`、`id_token`、`session`、`sessionid`、`code`、`device_token`、`devicetoken`、`phone`、`mobile` |
+| `redactText` | redact.ts:58 | 正则匹配 `key=value` / `key: value`（支持引号包裹），命中敏感参数名时用 `maskSecret` 替换值 |
+
+**备注**：
+- 调用方：`src/pages/account.tsx`（「凭证过期」弹窗里显示 `token` / `cred` 的掩码，替代明文渲染）。
+- 后端对应实现：`src-tauri/src/utils/redact.rs`（日志脱敏）。
+- 机密字段的存储与保护见 [`docs/secure_storage.md`](../../../secure_storage.md)。

@@ -47,9 +47,10 @@
 | `finish_screen_pick` | commands/color_picker.rs:56 | `window: WebviewWindow` | `()`（无返回） | Windows：退出全屏并聚焦；非 Windows：空实现 |
 | `get_config` | commands/config.rs:9 | `state: State<Arc<Mutex<ConfigService>>>`、`key: String` | `Option<Value>` | `ConfigService::get` |
 | `get_game_launch_command` | commands/startup.rs:185 | `config_service: State<Arc<Mutex<ConfigService>>>` | `Result<String, String>` | 校验/更新 `main_exe_path` 并返回含 `--silent --launch-game` 的带引号命令 |
-| `set_config` | commands/config.rs:47 | `state`、`key: String`、`value: Value` | `Result<(), String>` | `ConfigService::set`；当 `key == "proxy_config"` 时额外 `utils::http_client::set_global_proxy_config(Some(value))`（后续 HTTP 请求即时生效） |
-| `remove_config` | commands/config.rs:64 | `state`、`key: String` | `bool` | `ConfigService::remove` |
-| `get_all_configs` | commands/config.rs:71 | `state` | `HashMap<String, Value>` | `ConfigService::get_all` |
+| `set_config` | commands/config.rs:47 | `state`、`key: String`、`value: Value` | `Result<(), String>` | **拒绝写机密键**（`secret_registry::has_secret_fields`）；否则 `ConfigService::set`；当 `key == "proxy_config"` 时额外 `utils::http_client::set_global_proxy_config(Some(value))`（后续 HTTP 请求即时生效） |
+| `remove_config` | commands/config.rs:64 | `state`、`key: String` | `bool` | `ConfigService::remove`（同时清理凭据库条目） |
+| `get_all_configs` | commands/config.rs:71 | `state` | `HashMap<String, Value>` | `ConfigService::get_all_public` —— **机密字段被逐字段剔除**，不含凭据 |
+| `get_secret_storage_status` | commands/config.rs:82 | `state` | `Result<SecretStorageStatus, String>` | `ConfigService::secret_backend` + `secrets_degraded` → `{backend, degraded}` |
 | `get_proxy_config` | commands/config.rs:17 | `state` | `Option<Value>` | `ConfigService::get_proxy_config`；前端未直接调用（改用 `get_proxy_settings`） |
 | `set_proxy_config` | commands/config.rs:24 | `state`、`config: Value` | `Result<(), String>` | `ConfigService::set_proxy_config` + 刷新全局代理缓存；前端未直接调用（改用 `save_proxy_settings`） |
 | `remove_proxy_config` | commands/config.rs:38 | `state` | `Result<bool, String>` | `ConfigService::remove_proxy_config` 并把全局代理缓存置空；前端未直接调用（改用 `clear_proxy_settings`） |
@@ -451,19 +452,22 @@
 ---
 
 ## `src-tauri/src/commands/config.rs`
-**职责**：通用配置 KV 的最薄封装（38 行 / 4 个命令），直接持有 `State<Arc<std::sync::Mutex<ConfigService>>>`（注意是**同步** Mutex，与 account 系列的 tokio Mutex 不同）。**任何**前端都可经 `set_config` 写入任意键，是配置的总入口。
+**职责**：通用配置 KV 的最薄封装（5 个命令），直接持有 `State<Arc<std::sync::Mutex<ConfigService>>>`（注意是**同步** Mutex，与 account 系列的 tokio Mutex 不同）。**任何**前端都可经 `set_config` 写入任意**非机密**键，是配置的总入口。
 
 ### `get_config`
-- 位置：config.rs:9（同步）；参数：`state: State<Arc<Mutex<ConfigService>>>`、`key: String`；返回：`Option<Value>`；逻辑：`ConfigService::get(&key)`，锁中毒用 `unwrap()`（会 panic）。
+- 位置：config.rs:9（同步）；参数：`state: State<Arc<Mutex<ConfigService>>>`、`key: String`；返回：`Option<Value>`；逻辑：`ConfigService::get(&key)`，锁中毒用 `unwrap()`（会 panic）。⚠️ 该命令可读出机密字段明文（供后端/前端确有需要的场景），目前前端无调用方读机密键。
 
 ### `set_config`
-- 位置：config.rs:16（同步）；参数：`state`、`key: String`、`value: Value`；返回：`Result<(), String>`；逻辑：锁失败与 `ConfigService::set` 错误均 `map_err(to_string)`，持久化到配置文件。
+- 位置：config.rs:46（同步）；参数：`state`、`key: String`、`value: Value`；返回：`Result<(), String>`；逻辑：**先检查 `secret_registry::has_secret_fields(&key)`，命中则直接返回错误**（拒绝通过通用入口写机密字段）；否则 `ConfigService::set` 并持久化。`key == "proxy_config"` 时额外刷新全局代理缓存。
 
 ### `remove_config`
-- 位置：config.rs:27（同步）；参数：`state`、`key: String`；返回：`bool`；逻辑：`ConfigService::remove(&key)`，返回是否删除。
+- 位置：config.rs:64（同步）；参数：`state`、`key: String`；返回：`bool`；逻辑：`ConfigService::remove(&key)`，返回是否删除（同时清理凭据库里的对应机密字段）。
 
 ### `get_all_configs`
-- 位置：config.rs:34（同步）；参数：`state`；返回：`HashMap<String, Value>`；逻辑：`ConfigService::get_all()` 返回全量配置（含 `account_token_*` 等敏感项）。
+- 位置：config.rs:71（同步）；参数：`state`；返回：`HashMap<String, Value>`；逻辑：`ConfigService::get_all_public()` —— **机密字段被逐字段剔除**（`account_token_*` 只剩 `roles` / `user_info` 等非机密子字段），不含任何凭据。
+
+### `get_secret_storage_status`
+- 位置：config.rs:82（同步）；参数：`state`；返回：`Result<SecretStorageStatus, String>`；逻辑：读 `ConfigService::secret_backend()` 与 `secrets_degraded()`，返回 `{ backend, degraded }`。用于设置页展示机密数据的保护等级。
 
 ---
 

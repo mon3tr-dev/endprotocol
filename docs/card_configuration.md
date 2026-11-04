@@ -14,7 +14,10 @@
 
 ```json
 {
-  "account_token_user123": "...",
+  "account_token_user123": {
+    "roles": [...],
+    "user_info": { "...": "..." }
+  },
   "selected_account": "user123",
   "card_settings": {
     "uuid-1": {
@@ -27,9 +30,16 @@
   "dashboard_config_role123": {
     "cards": [...],
     "lastUpdated": 1234567890
-  }
+  },
+  "schema_version": 2
 }
 ```
+
+> ⚠️ **凭据不在这个文件里**。`account_token_*` 的 `cred` / `token` / `hytoken` /
+> `u8token` / `device_token` / `phone` 与代理凭据存放在**操作系统凭据库**
+> （Windows Credential Manager / macOS Keychain / Linux Secret Service），
+> 配置文件里只保留 `roles` / `user_info` 等非机密子字段。
+> 详见 [`secure_storage.md`](secure_storage.md)。
 
 ### 配置层级
 

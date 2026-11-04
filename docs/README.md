@@ -26,6 +26,7 @@
 | 卡片自动发现与注册 | `src/components/cards/registry/loader.ts` | [cards_core.md](reference/frontend/cards_core.md) |
 | 应用启动 Splash 与初始数据加载 | `index.html`、`src/utils/startupProgress.ts` | [entry_and_app.md](reference/frontend/entry_and_app.md)、[utils_services_b.md](reference/frontend/utils_services_b.md) |
 | 卡片内部配置存取 | `src/utils/cardConfigService.ts`、`commands/card_config.rs` | [utils_services_a.md](reference/frontend/utils_services_a.md)、[card_configuration.md](card_configuration.md) |
+| **机密存储（凭据放 OS 凭据库）** | `src-tauri/src/services/secret_registry.rs`（登记表）、`secret_store.rs`（凭据库）、`commands/config.rs` | [secure_storage.md](secure_storage.md)、[services_others.md](reference/backend/services_others.md) |
 | 系统资源卡片（原子/卡片组、指标配置） | `src/components/cards/system-resource/`、`src/utils/systemResourceService.ts`、`commands/system_resource.rs` | [cards_system_todo.md](reference/frontend/cards_system_todo.md)、[services_others.md](reference/backend/services_others.md) |
 | To-Do 卡片 / 页面 / 弹窗 | `src/components/cards/todo/`、`src/stores/todoStore.ts`、`src/pages/todo.tsx` | [cards_system_todo.md](reference/frontend/cards_system_todo.md) |
 | 卡片全局默认值（系统资源 / To-Do） | `src/components/system-resource-settings.tsx`、`src/components/todo-settings.tsx` | [cards_system_todo.md](reference/frontend/cards_system_todo.md) |
@@ -59,6 +60,7 @@
 | 新增/修改一个 Tauri 命令 | `src-tauri/src/commands/`、`src-tauri/src/lib.rs` | [commands.md](reference/backend/commands.md)、[bootstrap.md](reference/backend/bootstrap.md)、[backend_development.md](backend_development.md) |
 | 错误类型与转换 | `src-tauri/src/utils/error.rs` | [utils.md](reference/backend/utils.md) |
 | 加密与签名（RSA/AES/DES/HMAC） | `src-tauri/src/utils/hg_crypto.rs`、`services/skland_service.rs` | [utils.md](reference/backend/utils.md)、[services_skland.md](reference/backend/services_skland.md) |
+| **日志/界面脱敏（令牌遮罩）** | `src-tauri/src/utils/redact.rs`、`src/utils/redact.ts` | [utils.md](reference/backend/utils.md) |
 | HTTP 客户端与超时 | `src-tauri/src/utils/http_client.rs` | [utils.md](reference/backend/utils.md) |
 | 日志（前端/后端） | `src/utils/logger.ts`、`src-tauri/src/utils/logger.rs` | [utils_services_b.md](reference/frontend/utils_services_b.md)、[utils.md](reference/backend/utils.md) |
 | 崩溃提示 / 日志导出 / 错因判断 / API 熔断 | `src/utils/crashReporting.ts`、`src/components/crash-report-host.tsx`、`src-tauri/src/utils/{crash,api_health,diagnostics}.rs` | [utils_services_b.md](reference/frontend/utils_services_b.md)、[ui_components.md](reference/frontend/ui_components.md)、[utils.md](reference/backend/utils.md) |
@@ -73,7 +75,7 @@
 
 ---
 
-## 2. 开发指南（6 篇）
+## 2. 开发指南（7 篇）
 
 | 文件 | 内容 |
 | --- | --- |
@@ -83,6 +85,7 @@
 | [api_communication.md](api_communication.md) | IPC 机制、命名规范、登录/懒加载/配置同步等数据流 |
 | [card_development.md](card_development.md) | 卡片插件化开发完整指南（3 步新增卡片、meta 契约、最佳实践） |
 | [card_configuration.md](card_configuration.md) | 卡片配置存储结构、前后端 API、旧格式迁移 |
+| [secure_storage.md](secure_storage.md) | **机密存储**：OS 凭据库架构、**机密字段登记表**、新增机密字段的流程 |
 
 ---
 
@@ -98,8 +101,8 @@
 | [reference/backend/services_account.md](reference/backend/services_account.md) | `services/account_service.rs`（约 3100 行）：登录、凭证刷新、角色数据、状态中枢 |
 | [reference/backend/services_skland.md](reference/backend/services_skland.md) | `services/skland_service.rs`：森空岛 API 端点总表、签名与加密流程 |
 | [reference/backend/services_launcher.md](reference/backend/services_launcher.md) | `services/game_launcher_service.rs`（约 2960 行）：下载/校验/切服/进度事件 |
-| [reference/backend/services_others.md](reference/backend/services_others.md) | `gacha_service`、`char_detail_service`、`char_wiki_detail_service`、`avatar_cache_service`、`config_service`、`data_query`、`network_service` |
-| [reference/backend/utils.md](reference/backend/utils.md) | `utils/`：错误类型、加密、HTTP（含全局代理缓存）、**代理（`proxy`：配置解析/系统代理/连通性测试）**、日志、路径、抓包、进程探测（`process`）、游戏时长统计（`game_playtime`）、Steam 第三方游戏注入（`steam`）、exe 图标提取（`game_icon`）、崩溃捕获（`crash`）、API 熔断（`api_health`）、诊断导出（`diagnostics`） |
+| [reference/backend/services_others.md](reference/backend/services_others.md) | `gacha_service`、`char_detail_service`、`char_wiki_detail_service`、`avatar_cache_service`、`config_service`、`data_query`、`network_service`、**`secret_registry`（机密字段登记表）**、**`secret_store`（OS 凭据库封装）** |
+| [reference/backend/utils.md](reference/backend/utils.md) | `utils/`：错误类型、加密、HTTP（含全局代理缓存）、**代理（`proxy`：配置解析/系统代理/连通性测试）**、**脱敏（`redact`：日志令牌遮罩）**、日志、路径、抓包、进程探测（`process`）、游戏时长统计（`game_playtime`）、Steam 第三方游戏注入（`steam`）、exe 图标提取（`game_icon`）、崩溃捕获（`crash`）、API 熔断（`api_health`）、诊断导出（`diagnostics`） |
 | [reference/ipc_index.md](reference/ipc_index.md) | 命令名 ↔ 后端定义位置 ↔ 前端调用方（脚本生成的对照表） |
 
 ### 3.2 前端 `src/`

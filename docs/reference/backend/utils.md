@@ -262,6 +262,7 @@
 | `wiki_detail_cache_dir()` | paths.rs:24 | `<app_data_dir>/wiki_detail_cache`。调用方：char_wiki_detail_service.rs:42 |
 | `log_dir()` | paths.rs:29 | `<app_data_dir>/logs`。调用方：logger.rs:65（LoggerConfig 默认值） |
 | `config_file_path()` | paths.rs:34 | `<app_data_dir>/app_config.json`。调用方：config_service.rs:25 |
+| `secret_file_path()` | paths.rs:39 | `<app_data_dir>/secrets.enc`（**机密降级存储**：OS 凭据库不可用时的 AES-256-GCM 加密文件）。调用方：secret_store.rs:127 |
 | `capture_dir()` | paths.rs:39 | `<app_data_dir>/network_capture`。调用方：utils/capture.rs:101（`capture_root`） |
 | `gacha_records_file_path(user_id, server_id)` | paths.rs:44 | `<app_data_dir>/gacha_records/gacha_records_{userId}_{serverId}.json`。调用方：gacha_service.rs:162 |
 | `gacha_weapon_records_file_path(user_id, server_id)` | paths.rs:52 | `<app_data_dir>/gacha_records/gacha_weapon_records_{userId}_{serverId}.json`。调用方：gacha_service.rs:242 |
@@ -270,6 +271,26 @@
 | `gacha_avatar_map_file_path()` | paths.rs:78 | `<app_data_dir>/gacha_avatar_map.json`。调用方：gacha_service.rs:301 |
 
 **备注**：全部函数只拼接路径、**不创建目录**（创建由调用方 `create_dir_all` 完成）；除 `app_data_dir` 的底层查询失败外无其他错误来源，故错误类型是 `&'static str`。平台差异只体现在 `data_local_dir()` 根目录，子目录结构跨平台一致。
+
+---
+
+## `src-tauri/src/utils/redact.rs`
+**职责**：敏感信息脱敏工具（191 行）。在写入日志文件前把 URL query 中的令牌类参数替换为掩码，避免 `cred` / `token` / `u8token` 等凭证落盘到 `logs/app-*.log`。
+**导出**：`pub fn redact_url(url: &str) -> String`、`pub fn redact_text(text: &str) -> String`。私有：`SENSITIVE_QUERY_KEYS`（常量数组）、`is_sensitive_key`、`mask`。
+**主要依赖**：无（纯字符串处理）。
+
+| 符号 | 位置 | 说明 |
+| --- | --- | --- |
+| `SENSITIVE_QUERY_KEYS` | redact.rs:19 | 需要脱敏的 query 参数名：`cred`、`token`、`u8token`、`u8_token`、`hytoken`、`hy_token`、`sign`、`password`、`passwd`、`secret`、`access_token`、`refresh_token`、`id_token`、`session`、`sessionid`、`code`、`device_token`、`devicetoken`、`phone`、`mobile`。 |
+| `is_sensitive_key` | redact.rs:42 | 参数名小写比较后匹配上表。 |
+| `mask` | redact.rs:49 | 生成掩码：保留首尾各 4 字符，中间 `***`；长度 ≤ 8 时整体隐藏为 `***`。 |
+| `redact_url` | redact.rs:65 | 拆 query 逐参数脱敏；fragment 也脱敏；无 query 时原样返回（去 fragment）。 |
+| `redact_text` | redact.rs:111 | 扫描标识符 + `=`/`:` 形态，命中敏感参数名时替换值（支持引号包裹的 JSON 形态）。 |
+
+**备注**：
+- 调用方：`gacha_service.rs:773`（抽卡 URL 含 584 字节 u8token）、`skland_service.rs:567`（森空岛 API URL）、`avatar_cache_service.rs:174`、`commands/image.rs:103`、`char_detail_service.rs:455`。
+- 前端对应实现：`src/utils/redact.ts`（`maskSecret` / `redactText`）。
+- 单元测试 7 条，覆盖 query 脱敏、非敏感参数保留、无 query、fragment、短值、key=value、JSON 形态。
 
 ---
 

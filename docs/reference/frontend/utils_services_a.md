@@ -49,16 +49,17 @@
 - 账户可用性：`getAccounts`/`refreshAccounts`/三个登录入口在成功时清除不可用状态，失败时标记（详见 `src/utils/accountAvailability.ts`）。
 
 ## `src/utils/configService.ts`
-**职责**：通用键值配置读写层，封装 Tauri `get_config`/`set_config`/`remove_config`/`get_all_configs`，并在 Tauri 调用失败时自动降级到浏览器 `localStorage`（开发环境兜底）。
-**导出**：`getConfig`、`setConfig`、`removeConfig`、`getAllConfigs`。
+**职责**：通用键值配置读写层，封装 Tauri `get_config`/`set_config`/`remove_config`/`get_all_configs`/`get_secret_storage_status`，并在 Tauri 调用失败时自动降级到浏览器 `localStorage`（开发环境兜底）。
+**导出**：`getConfig`、`setConfig`、`removeConfig`、`getAllConfigs`、`getSecretStorageStatus`；类型 `SecretBackend`、`SecretStorageStatus`。
 **主要依赖**：`@tauri-apps/api/core` 的 `invoke`、`@/utils/logger` 的 `logger`。
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
 | `getConfig<T>` | configService.ts:10 | invoke `get_config`，参数 `{key}`，返回 `T \| null`（`undefined` 归一为 `null`）；启动 Splash 跟踪期间会计入初始任务；失败时 `logger.warn` 并读取 localStorage 的 `config_${key}`（JSON.parse）作兜底 |
-| `setConfig` | configService.ts:26 | invoke `set_config`，参数 `{key, value}`，返回 `void`；失败时 `logger.warn` 并写入 localStorage `config_${key}`（JSON.stringify） |
+| `setConfig` | configService.ts:26 | invoke `set_config`，参数 `{key, value}`，返回 `void`；失败时 `logger.warn` 并写入 localStorage `config_${key}`（JSON.stringify）。⚠️ 后端会**拒写机密键**（凭据只存在于 OS 凭据库） |
 | `removeConfig` | configService.ts:41 | invoke `remove_config`，参数 `{key}`，返回 `boolean`；失败时 `logger.warn`、移除 localStorage 同名键并**固定返回 `true`** |
-| `getAllConfigs` | configService.ts:55 | invoke `get_all_configs`，无参，返回 `Record<string, any>`；失败时遍历 localStorage，取所有 `config_` 前缀键、去掉前 7 个字符作为配置键并 JSON.parse 后返回 |
+| `getAllConfigs` | configService.ts:55 | invoke `get_all_configs`，无参，返回 `Record<string, any>`；**后端会剔除机密字段**；失败时遍历 localStorage，取所有 `config_` 前缀键、去掉前 7 个字符作为配置键并 JSON.parse 后返回 |
+| `getSecretStorageStatus` | configService.ts:89 | invoke `get_secret_storage_status`，无参，返回 `SecretStorageStatus \| null`（失败返回 `null`，不抛异常）。`backend` 为 `'credential-store'` / `'encrypted-file'` / `'plaintext'`；`degraded` 表示未使用 OS 凭据库 |
 
 **内部结构**：
 
@@ -67,11 +68,13 @@
 | configService.ts:9-19 | `getConfig`（主 + localStorage 兜底） |
 | configService.ts:26-49 | `setConfig` / `removeConfig` |
 | configService.ts:55-74 | `getAllConfigs`（含 localStorage 扫描兜底） |
+| configService.ts:79-97 | `SecretBackend` / `SecretStorageStatus` 类型与 `getSecretStorageStatus` |
 
 **备注**：
-- 封装的 invoke 命令：`get_config`、`set_config`、`remove_config`、`get_all_configs`（共 4 个）。
+- 封装的 invoke 命令：`get_config`、`set_config`、`remove_config`、`get_all_configs`、`get_secret_storage_status`（共 5 个）。
 - 配置键：键名由调用方传入，本文件不硬编码业务键；localStorage 命名空间为 `config_${key}`，`getAllConfigs` 通过 `key.startsWith('config_')` + `substring(7)` 还原。
 - 缓存策略：**无缓存**，每次调用都走 IPC；降级路径与主路径可能不一致（Tauri 失败时读 localStorage，而成功写入只进 Tauri）。
+- 机密字段的存储与保护见 [`docs/secure_storage.md`](../../../secure_storage.md)。
 
 ## `src/utils/proxyService.ts`
 **职责**：网络代理配置的前端封装层——读写 `proxy_config`、从系统读取代理、测试代理连通性、自动嗅探本地代理端口，并把后端返回的裸 JSON 收敛成带类型的 `ProxyConfig`。所有函数都返回显式的 `ProxyResult<T>`（`{ok:true,value}` / `{ok:false,error}`），不抛异常。
