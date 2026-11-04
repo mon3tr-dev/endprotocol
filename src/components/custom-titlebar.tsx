@@ -65,9 +65,10 @@ export const CustomTitlebar = () => {
           );
         }
       }
-      setNewMessage((prev) =>
-        prev && !messages.some((m) => m.id === prev.id) ? null : prev,
-      );
+      setNewMessage((prev) => {
+        if (!prev) return prev;
+        return messages.find((m) => m.id === prev.id) ?? null;
+      });
       setUnreadCount(getUnreadCount());
       setHasUrgent(hasUrgentUnread());
     });
