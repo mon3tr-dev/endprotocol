@@ -1279,6 +1279,7 @@ dependencies = [
  "sysinfo",
  "tauri",
  "tauri-build",
+ "tauri-plugin-devdeck",
  "tauri-plugin-fs",
  "tauri-plugin-opener",
  "tauri-plugin-process",
@@ -4898,6 +4899,19 @@ dependencies = [
  "serde_json",
  "tauri-utils",
  "walkdir",
+]
+
+[[package]]
+name = "tauri-plugin-devdeck"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a5788519cddb040e0678378581b5475d91d9e61b917ea56949e8d420ff0f583f"
+dependencies = [
+ "serde_json",
+ "sysinfo",
+ "tauri",
+ "tauri-plugin",
+ "tokio",
 ]
 
 [[package]]

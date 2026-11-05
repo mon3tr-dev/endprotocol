@@ -37,6 +37,13 @@ import {
 
 // Initialize crash handling before any startup work can fail.
 installCrashHandlers();
+
+// 开发构建（或显式 VITE_DEV_DECK=1 的度量构建）下启动 devdeck 内存监视器：
+// 独立窗口，Ctrl+Alt+M 打开。动态 import + 常量门控，Release 构建下整个分支被消除。
+if (import.meta.env.DEV || import.meta.env.VITE_DEV_DECK === "1") {
+  void import("tauri-plugin-devdeck").then((mod) => mod.startDevdeck());
+}
+
 // main.tsx 已执行：取消 index.html 中针对「前端脚本未启动」的静态兜底计时器，
 // 并撤销静态面板（避免慢启动时残留误报）。
 // 同时把标记置空：index.html 的早期错误监听只在「模块尚未接手」时报告错误，

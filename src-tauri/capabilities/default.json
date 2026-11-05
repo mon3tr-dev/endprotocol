@@ -2,9 +2,10 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Capability for the main window and tray panel",
-  "windows": ["main", "tray-panel"],
+  "windows": ["main", "tray-panel", "devdeck"],
   "permissions": [
     "core:default",
+    "devdeck:default",
     "core:window:allow-minimize",
     "core:window:allow-maximize",
     "core:window:allow-unmaximize",

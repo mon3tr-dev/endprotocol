@@ -65,6 +65,11 @@ keyring = { version = "4.2", features = ["v1"] }
 # 机密存储降级后端：AES-256-GCM 加密文件
 aes-gcm = { version = "0.11", features = ["alloc", "getrandom"] }
 
+# 内存/CPU/资源泄漏监视器（开发期度量工具）。
+# 依赖常驻是为了让 `cargo build` 不必额外传 feature；运行时注册由 lib.rs 的
+# `#[cfg(debug_assertions)]` 门控，release 构建不注册、不创建 deck 窗口。
+tauri-plugin-devdeck = "1.0.0"
+
 [dev-dependencies]
 # 凭据库条目枚举（仅测试与运维工具使用）
 keyring-core = "1.0"

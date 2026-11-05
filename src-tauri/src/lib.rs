@@ -115,6 +115,11 @@ pub fn run() {
     #[cfg(debug_assertions)]
     let builder = register_dev_asset_protocol(builder);
 
+    // 开发构建下注册 devdeck（内存 / CPU / 资源泄漏监视器，独立窗口，Ctrl+Alt+M）。
+    // release 不注册：不创建 deck 窗口、不采样进程，运行时零开销。
+    #[cfg(debug_assertions)]
+    let builder = builder.plugin(tauri_plugin_devdeck::init());
+
     builder
         .invoke_handler(tauri::generate_handler![
             // Config commands
