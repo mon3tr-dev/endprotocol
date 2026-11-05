@@ -29,7 +29,7 @@ export async function loadBackgroundSettings(): Promise<BackgroundSettings> {
   let imageUrl: string | null = null;
   if (imagePath) {
     try {
-      const bytes = await invoke<number[]>("read_image_file", { path: imagePath });
+      const bytes = await invoke<ArrayBuffer>("read_image_file", { path: imagePath });
       const blob = new Blob([new Uint8Array(bytes)], { type: "image/webp" });
       imageUrl = URL.createObjectURL(blob);
       root.style.setProperty("--bg-image", `url(${imageUrl})`);

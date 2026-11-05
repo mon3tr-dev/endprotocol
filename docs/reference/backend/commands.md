@@ -66,7 +66,7 @@
 | `get_saved_weapon_gacha_records` | commands/gacha.rs:215 | `account_state`、`gacha_state`、`role_id: String` | `Result<serde_json::Value, String>` | `GachaService::load_weapon_records_or_empty`（不联网） |
 | `resolve_gacha_avatar_map` | commands/gacha.rs:359 | `account_state`、`gacha_state`、`role_id: String` | `Result<serde_json::Value, String>` | `GachaService::{load_records_or_empty, load_weapon_records_or_empty, load_avatar_map, save_avatar_map, load_total_catalog, save_total_catalog, total_catalog_is_stale}`、`AccountService::{check_and_refresh_user_cred, query_role_data}`、本地 `resolve_missing_from_catalog` |
 | `get_gacha_record_stats` | commands/gacha.rs:518 | `account_state`、`gacha_state`、`role_id: String` | `Result<serde_json::Value, String>` | `GachaService::{load_records_or_empty, group_records_by_pool, count_by_rarity, count_by_char}` |
-| `read_image_file` | commands/image.rs:10 | `path: String` | `Result<Vec<u8>, String>` | `fs::read` |
+| `read_image_file` | commands/image.rs:18 | `path: String` | `Result<tauri::ipc::Response, String>`（原始字节） | `fs::read` |
 | `get_image_cache_dir` | commands/image.rs:16 | 无 | `Result<String, String>` | `utils::paths::image_cache_dir` |
 | `download_image` | commands/image.rs:29 | `url: String`、`cache_dir: String`、`sub_dir: String` | `Result<String, String>` | `resolve_url_subdir`/`all_sub_dir_names`、本地 `extract_filename_from_url`、`capture::send`（reqwest GET，带 Referer） |
 | `get_backgrounds_dir` | commands/image.rs:141 | 无 | `Result<String, String>` | `utils::paths::backgrounds_dir` |
@@ -540,7 +540,8 @@
 **职责**：图片与背景图的本地缓存/读写（217 行 / 6 个命令 + 1 个私有工具函数）。涉及目录：图片缓存目录（`paths::image_cache_dir`，按子目录分类）与背景目录（`paths::backgrounds_dir`，固定单文件 `bg.webp`）。
 
 ### `read_image_file`
-- 位置：image.rs:10（同步）；参数：`path: String`；返回：`Result<Vec<u8>, String>`；逻辑：直接 `fs::read(&path)`，**不校验路径范围**（可读任意本地文件），错误信息含路径。
+- 位置：image.rs:18（同步）；参数：`path: String`；返回：`Result<tauri::ipc::Response, String>`（IPC **原始字节**，前端拿到 `ArrayBuffer`）；逻辑：`fs::read(&path)` 后原样返回，**不校验路径范围**（可读任意本地文件），错误信息含路径。
+- 注意：不要改回 `Result<Vec<u8>, String>`。`Vec<u8>` 会被 Tauri 序列化成 JSON 数字数组，一张 583KB 的图标在 IPC 上膨胀到约 2.3MB 文本，前端 `JSON.parse` 再建一个约 4.6MB 的 `number[]`，合计约 12 倍于文件本身。调用方因此必须把返回值当 `ArrayBuffer` 用（长度取 `byteLength`，不是 `length`）。
 
 ### `get_image_cache_dir`
 - 位置：image.rs:16（同步）；参数：无；返回：`Result<String, String>`；逻辑：`paths::image_cache_dir()` 并 `log_info!` 记录结果。

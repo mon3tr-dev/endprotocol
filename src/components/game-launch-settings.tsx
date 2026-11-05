@@ -646,7 +646,7 @@ function IconPreview({ path }: { path: string }) {
     if (!path) return;
     void (async () => {
       try {
-        const bytes = await invoke<number[]>("read_image_file", { path });
+        const bytes = await invoke<ArrayBuffer>("read_image_file", { path });
         const blob = new Blob([new Uint8Array(bytes)], { type: "image/x-icon" });
         objectUrl = URL.createObjectURL(blob);
         if (active) setUrl(objectUrl);

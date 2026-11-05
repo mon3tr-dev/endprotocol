@@ -78,7 +78,7 @@
 
 ---
 
-## 2. 开发指南（7 篇）
+## 2. 开发指南（8 篇）
 
 | 文件 | 内容 |
 | --- | --- |
@@ -89,6 +89,7 @@
 | [card_development.md](card_development.md) | 卡片插件化开发完整指南（3 步新增卡片、meta 契约、最佳实践） |
 | [card_configuration.md](card_configuration.md) | 卡片配置存储结构、前后端 API、旧格式迁移 |
 | [secure_storage.md](secure_storage.md) | **机密存储**：OS 凭据库架构、**机密字段登记表**、新增机密字段的流程 |
+| [memory_optimization_report.md](memory_optimization_report.md) | **内存优化报告**：分进程基线、分层归因（Rust / renderer / JS 堆 / 系统资源）、优化项清单与风险等级、前后对比、回归验证、剩余风险 |
 
 ---
 

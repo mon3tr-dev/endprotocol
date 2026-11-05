@@ -12,6 +12,20 @@ interface CacheConfig {
 const SMART_MAX_ENTRIES = 100;
 const DEFAULT_MANUAL_MAX_SIZE_MB = 100;
 
+/**
+ * smart 模式的兜底字节上限。
+ *
+ * smart 模式靠「引用计数 + pin」驱动驱逐，条目数刻意不设硬上限——视图里正在用的
+ * 图片不该因为条数到了就被踢掉再重新解码。但有一条必须兜底的路径：
+ * 同一批图片同时用 `useImageRequest` 和 `usePinImages` 时，React 的卸载顺序是
+ * 先 release、后 unpin；release 那一刻图片还是 pinned，于是既不会被 release 驱逐，
+ * 也不会被 unpin 驱逐，只能永久留在内存里（blob URL 持有整张图片的二进制，
+ * 不计入 JS 堆，只体现在 WebView renderer 进程上）。
+ * `unpin()` 已补上驱逐调度，这里再给一个足够宽松的上限，
+ * 保证任何遗漏路径下缓存也不会无界增长。256MB 远高于正常浏览所需。
+ */
+const SMART_MAX_SIZE_MB = 256;
+
 class ImageCacheManager {
   private cache = new Map<string, string>();
   private sizes = new Map<string, number>();
@@ -77,7 +91,9 @@ class ImageCacheManager {
   }
 
   private getEffectiveMaxSizeBytes(): number {
-    return this.config.mode === "smart" ? Infinity : this.config.maxSizeMB * 1024 * 1024;
+    return this.config.mode === "smart"
+      ? SMART_MAX_SIZE_MB * 1024 * 1024
+      : this.config.maxSizeMB * 1024 * 1024;
   }
 
   async load(path: string): Promise<string> {
@@ -99,11 +115,11 @@ class ImageCacheManager {
     const inflight = this.loading.get(path);
     if (inflight) return inflight;
 
-    const promise = invoke<number[]>("read_image_file", { path })
+    const promise = invoke<ArrayBuffer>("read_image_file", { path })
       .then((bytes) => {
         const blob = new Blob([new Uint8Array(bytes)]);
         const url = URL.createObjectURL(blob);
-        const byteSize = bytes.length;
+        const byteSize = bytes.byteLength;
         this.evictFor(byteSize);
         this.cache.set(path, url);
         this.sizes.set(path, byteSize);
@@ -139,10 +155,10 @@ class ImageCacheManager {
         cacheDir,
         subDir: "",
       });
-      const bytes = await invoke<number[]>("read_image_file", { path: localPath });
+      const bytes = await invoke<ArrayBuffer>("read_image_file", { path: localPath });
       const blob = new Blob([new Uint8Array(bytes)]);
       const objectUrl = URL.createObjectURL(blob);
-      const byteSize = bytes.length;
+      const byteSize = bytes.byteLength;
       this.evictFor(byteSize);
       this.cache.set(url, objectUrl);
       this.sizes.set(url, byteSize);
@@ -192,6 +208,11 @@ class ImageCacheManager {
     for (const p of paths) {
       if (!p) continue;
       this.pinned.delete(p);
+      // 卸载顺序是「先 release、后 unpin」：release 那一刻图片还 pin 着，不会被驱逐；
+      // 到 unpin 这一刻它已经既没引用也没 pin，再不补一次调度就永远留在内存里了。
+      if (this.cache.has(p) && (this.refCounts.get(p) ?? 0) === 0) {
+        this.scheduleEviction(p);
+      }
     }
   }
 
@@ -230,8 +251,15 @@ class ImageCacheManager {
     this.accessOrder.push(path);
   }
 
-  private evictOne() {
-    if (this.accessOrder.length === 0) return;
+  /**
+   * 驱逐一个最久未使用的条目。
+   *
+   * @returns 是否真的驱逐成功。smart 模式下条目可能全部被 pin / 引用保护，
+   *          此时返回 false —— 调用方必须据此收手，否则 `evictFor` 的 while
+   *          会因为「驱逐不动」而空转成死循环，把界面卡死。
+   */
+  private evictOne(): boolean {
+    if (this.accessOrder.length === 0) return false;
     let scanned = 0;
     while (scanned < this.accessOrder.length) {
       const oldest = this.accessOrder.shift();
@@ -248,8 +276,9 @@ class ImageCacheManager {
       this.cache.delete(oldest);
       this.sizes.delete(oldest);
       this.totalSizeBytes -= byteSize;
-      return;
+      return true;
     }
+    return false;
   }
 
   private evictFor(incomingSize: number) {
@@ -260,7 +289,8 @@ class ImageCacheManager {
       this.cache.size > 0 &&
       (this.cache.size >= maxEntries || this.totalSizeBytes + incomingSize > maxBytes)
     ) {
-      this.evictOne();
+      // 没有任何条目可驱逐（全部被 pin / 仍被引用）时立即收手。
+      if (!this.evictOne()) break;
     }
   }
 

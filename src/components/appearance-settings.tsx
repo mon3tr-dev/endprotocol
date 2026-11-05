@@ -363,7 +363,7 @@ export function AppearanceSettings() {
       document.documentElement.style.setProperty("--bg-blur", `${bgBlurVal}px`);
       if (bgPath) {
         try {
-          const bytes = await invoke<number[]>("read_image_file", {
+          const bytes = await invoke<ArrayBuffer>("read_image_file", {
             path: bgPath,
           });
           const blob = new Blob([new Uint8Array(bytes)], {

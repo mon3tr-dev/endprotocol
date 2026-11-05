@@ -119,7 +119,7 @@
 **备注**：无 Tauri 命令、无 HTTP 端点、无缓存；全部为对传入 Wiki 数据对象的同步转换，硬编码常量包括材料表首行 id（:306）、中文关键词“技能升级材料”“升级材料”（:435、:541）、等级上限 12（:608）、描述列列头“描述”（:477）。
 
 ## `src/utils/imageCacheManager.ts`
-**职责**：图片磁盘+内存缓存管理器（共 319 行）。以 blob URL 缓存本地/远程图片，支持引用计数、pin 保护、LRU 淘汰与延迟回收，并提供配套 React hooks。
+**职责**：图片磁盘+内存缓存管理器（共 349 行）。以 blob URL 缓存本地/远程图片，支持引用计数、pin 保护、LRU 淘汰与延迟回收，并提供配套 React hooks。
 
 **导出**：类型 `CacheMode`；单例 `cacheManager`（`ImageCacheManager` 实例，类本身未导出）；hooks `useImageRequest`、`usePinImages`。
 
@@ -129,21 +129,21 @@
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
-| `CacheMode` | imageCacheManager.ts:4 | 类型：`"smart" \| "manual"`（smart 不限条数/体积且保护引用项，manual 受限） |
-| `cacheManager` | imageCacheManager.ts:288 | 单例。内部方法与 IPC：`getCacheDir` → `invoke("get_image_cache_dir")`（:36，Promise 缓存）；`load(path)`（:83）→ 本地路径 `invoke("read_image_file", {path})`（:102）转 Blob/`URL.createObjectURL`，`blob:`/`data:` 直接透传，`http(s)://` 转 `loadRemote`；`loadRemote`（:124）→ `invoke("download_image", {url, cacheDir, subDir:""})`（:137）+ `invoke("read_image_file")`（:142）。另有 `configure`/`getConfig`/`getStats`/`getEntries`/`request`/`release`/`pin`/`unpin`/`loadMultiple`/`evictInactive` 及私有 LRU `evictOne`/`evictFor`/`scheduleEviction`（20s 延迟回收） |
-| `useImageRequest` | imageCacheManager.ts:290 | hook：按 `deps` 差量对新增路径 `cacheManager.request`、消失路径 `release`，卸载时释放全部 |
-| `usePinImages` | imageCacheManager.ts:311 | hook：`paths.join(",")` 变化时 `pin`，清理时 `unpin` |
+| `CacheMode` | imageCacheManager.ts:4 | 类型：`"smart" \| "manual"`（smart 不限条数、靠引用计数 + pin 驱动驱逐，另有 `SMART_MAX_SIZE_MB=256` 字节上限兜底；manual 按 `maxEntries`/`maxSizeMB` 受限） |
+| `cacheManager` | imageCacheManager.ts:318 | 单例。内部方法与 IPC：`getCacheDir` → `invoke("get_image_cache_dir")`（:48，Promise 缓存）；`load(path)`（:99）→ 本地路径 `invoke("read_image_file", {path})`（:118）转 Blob/`URL.createObjectURL`，`blob:`/`data:` 直接透传，`http(s)://` 转 `loadRemote`；`loadRemote`（:140）→ `invoke("download_image", {url, cacheDir, subDir:""})`（:153）+ `invoke("read_image_file")`（:158）。另有 `configure`/`getConfig`/`getStats`/`getEntries`/`request`/`release`/`pin`/`unpin`/`loadMultiple`/`evictInactive` 及私有 LRU `evictOne`/`evictFor`/`scheduleEviction`（20s 延迟回收） |
+| `useImageRequest` | imageCacheManager.ts:320 | hook：按 `deps` 差量对新增路径 `cacheManager.request`、消失路径 `release`，卸载时释放全部 |
+| `usePinImages` | imageCacheManager.ts:341 | hook：`paths.join(",")` 变化时 `pin`，清理时 `unpin` |
 
 ### 内部结构（行号区间）
 
 | 区间 | 内容 |
 | --- | --- |
-| 1–32 | 导入、类型、常量（`SMART_MAX_ENTRIES=100`、`DEFAULT_MANUAL_MAX_SIZE_MB=100`）、类字段 |
-| 34–81 | 缓存目录获取、配置读写、统计与生效上限（smart 模式为 `Infinity`） |
-| 83–156 | `load` 与 `loadRemote`（含 in-flight 去重 `loading` Map） |
-| 158–231 | 引用计数 `request/release`、`pin/unpin`、延迟淘汰定时器 |
-| 233–265 | `evictOne`（smart 模式跳过受保护项）、`evictFor` |
-| 267–319 | `loadMultiple`、`evictInactive`、单例与两个 hooks |
+| 1–46 | 导入、类型、常量（`SMART_MAX_ENTRIES=100`、`DEFAULT_MANUAL_MAX_SIZE_MB=100`、`SMART_MAX_SIZE_MB=256`）、类字段 |
+| 48–95 | 缓存目录获取、配置读写、统计与生效上限（smart 模式为 256MB 字节上限） |
+| 99–172 | `load` 与 `loadRemote`（含 in-flight 去重 `loading` Map） |
+| 174–245 | 引用计数 `request/release`、`pin/unpin`（unpin 后若已无引用补一次驱逐调度）、延迟淘汰定时器 |
+| 248–292 | `touch`、`evictOne`（返回是否驱逐成功；smart 模式跳过受保护项）、`evictFor`（无可驱逐项即收手，避免死循环） |
+| 297–349 | `loadMultiple`、`evictInactive`、单例与两个 hooks |
 
 **备注**：invoke 命令仅三个：`get_image_cache_dir`、`read_image_file`（参数 `path`，返回 `number[]` 字节数组）、`download_image`（参数 `url`/`cacheDir`/`subDir`，返回本地路径）。磁盘缓存目录由后端命令决定，前端不感知具体路径。无 HTTP 直连（远程图一律经后端下载）；错误仅 `console.error`（:37），不写日志文件。
 

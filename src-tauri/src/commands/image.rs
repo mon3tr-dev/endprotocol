@@ -5,11 +5,20 @@ use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine as _;
 use std::fs;
 use std::path::PathBuf;
+use tauri::ipc::Response;
 
-/// 读取本地图片文件，返回字节数组
+/// 读取本地图片文件，以**原始字节**返回。
+///
+/// 这里刻意返回 `tauri::ipc::Response` 而不是 `Vec<u8>`：`Vec<u8>` 会被序列化成
+/// JSON 数字数组——一张 583KB 的图标在 IPC 上膨胀成约 2.3MB 文本，前端
+/// `JSON.parse` 后还要再建一个约 4.6MB 的 `number[]`（V8 里 8 字节/元素），
+/// 合计约 12 倍于文件本身，在图片密集的页面（干员列表、徽章、角色选择）形成
+/// 可观的瞬时峰值与 GC 压力。改用原始字节后前端直接拿到 `ArrayBuffer`。
 #[tauri::command]
-pub fn read_image_file(path: String) -> Result<Vec<u8>, String> {
-    fs::read(&path).map_err(|e| format!("Failed to read image file '{}': {}", path, e))
+pub fn read_image_file(path: String) -> Result<Response, String> {
+    let bytes =
+        fs::read(&path).map_err(|e| format!("Failed to read image file '{}': {}", path, e))?;
+    Ok(Response::new(bytes))
 }
 
 /// 获取图片缓存目录路径
