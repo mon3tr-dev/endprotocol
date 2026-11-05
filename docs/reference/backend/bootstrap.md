@@ -35,7 +35,8 @@
 | `dispatch_instance_request` | lib.rs:371 | 主实例收到第二实例转交的参数：含 `--launch-game` 时以 `--dx11` 转发启动游戏（`exit_when_game_ends=false`），随后显示主窗口 |
 | `wait_for_game_session`（async） | lib.rs:384 | 驻守实例的驻留等待：每 2 秒通过 `utils::process::is_process_running`（窗口/90 秒启动宽限判定，排除无窗口挂起残留）探测 `Endfield.exe`；检测到运行后等待其退出；若 120 秒内未出现（启动失败/被取消）也结束等待，供 Steam 判定「游戏中」并记录时长 |
 | `start_game_from_config` | lib.rs:404 | 读取 `launcher_install_path` / `launcher_channel` / `launcher_dx11` 并调用 `commands::launcher::launch_game`；`dx11: Option<bool>` 优先取命令行 `--dx11`，`None` 时回退配置 `launcher_dx11`（默认 false）；`exit_when_game_ends=true`（仅驻守实例）时启动成功后调用 `wait_for_game_session`，游戏退出后才退出本进程；启动失败时同样退出 |
-| `create_full_windows` / `create_main_window` / `app_webview_url` / `dev_asset_url` | lib.rs:542 / 566 / 617 / 665 | 完整模式按需创建窗口；debug 优先连 Vite，开发服务器不可用时改由自定义协议 `endprotocol` 提供 `frontendDist` 资源。**`create_main_window` 返回 `tauri::Window<R>` 而非 `WebviewWindow<R>`**，且判重用 `app.get_window("main")`：`get_webview_window` 要求窗口下所有 webview 的 label 都等于窗口 label，in-app browser 的子 webview 会让它返回 `None` |
+| `create_full_windows` / `exclude_from_alt_tab` / `create_main_window` / `app_webview_url` / `dev_asset_url` | lib.rs:574 / 614 / 654 / 712 / 760 | 完整模式按需创建窗口；debug 优先连 Vite，开发服务器不可用时改由自定义协议 `endprotocol` 提供 `frontendDist` 资源。**`create_main_window` 返回 `tauri::Window<R>` 而非 `WebviewWindow<R>`**，且判重用 `app.get_window("main")`：`get_webview_window` 要求窗口下所有 webview 的 label 都等于窗口 label，in-app browser 的子 webview 会让它返回 `None`。`create_full_windows` 在创建托盘面板后立即调用 `exclude_from_alt_tab`（见下一行） |
+| `exclude_from_alt_tab`（私有，仅 Windows 有实现） | lib.rs:614 | **把辅助窗口移出 Windows 的 Alt+Tab 列表**：`skip_taskbar(true)` 只让 tao 调 `ITaskbarList::DeleteTab`（摘任务栏按钮），不碰扩展样式；tao 又默认给窗口加 `WS_EX_APPWINDOW`，explorer（`IsAltTabWindow` 只认 `WS_EX_TOOLWINDOW`）会在窗口第一次显示时把它注册成 Alt+Tab 条目 —— 之后窗口隐藏条目仍在，表现为一张没有界面预览的空白卡片。做法：`GetWindowLongW(GWL_EXSTYLE)` → 去掉 `WS_EX_APPWINDOW`、加上 `WS_EX_TOOLWINDOW` → `SetWindowLongW` + `SetWindowPos(SWP_FRAMECHANGED\|SWP_NOMOVE\|SWP_NOSIZE\|SWP_NOZORDER\|SWP_NOOWNERZORDER\|SWP_NOACTIVATE)`。非 Windows 平台是空实现。**注意已注册进 explorer 的旧条目由 explorer 持有，改样式不会追回，需重启应用（进程退出时条目随之消失）** |
 | `register_dev_asset_protocol` / `dev_asset_error_response` | lib.rs:677 / 706 | debug 专用：注册 `endprotocol` URI scheme，经 `asset_resolver()` 提供构建产物（含 `.html`、目录 `index.html` 与入口 `index.html` 回退） |
 | `.on_page_load(...)`（Builder 钩子） | lib.rs:268-285 | **in-app browser 事件桥**：把 label 以 `inapp-browser-` 开头的子 Webview 的 `PageLoadEvent::Started/Finished` 转成 `browser://page-load` 事件（`{ label, url, event }`）emit 给前端；其它 webview（主窗、tray-panel）直接 return，不产生事件 |
 
@@ -50,8 +51,9 @@
 | lib.rs:77-241 | 完整模式：初始化日志、创建单实例插件、注册 updater/process/opener/fs 插件与完整命令集 |
 | lib.rs:243-317 | 完整模式 setup：动态窗口、全量服务、原托盘面板和账户刷新；`--launch-game` 时启动游戏 |
 | lib.rs:325-491 | 配置初始化、第二实例请求转发（仅主实例）、按需启动游戏与驻留等待（`wait_for_game_session`） |
-| lib.rs:542-614 | 完整模式窗口动态创建与关闭行为 |
-| lib.rs:615-662 | debug 专用：`endprotocol` 自定义协议，经 `asset_resolver()` 提供 `frontendDist` 构建产物 |
+| lib.rs:574-652 | 完整模式窗口动态创建与关闭行为（`create_full_windows` / `exclude_from_alt_tab`） |
+| lib.rs:654-710 | `create_main_window`：主窗口创建与「关闭→隐藏/退出」行为 |
+| lib.rs:712-799 | debug 专用：`endprotocol` 自定义协议，经 `asset_resolver()` 提供 `frontendDist` 构建产物 |
 
 **插件注册**：
 | 插件 | 行 | 对应 capability |
@@ -321,3 +323,4 @@
 7. **`cargo check` 通过但有 46 个 warning** — 大量未使用导入/死代码（如 `commands/tray.rs:2` 的 `Emitter`、`Manager`），另有 `error finalizing incremental compilation session directory ... (os error 5)` 的 target 目录权限问题（仅影响增量编译缓存，不阻断编译）。
 8. **托盘面板尺寸双重定义（已收敛为回退值）** — 窗口尺寸唯一来源是 `lib.rs::create_full_windows` 的 `inner_size(288.0, 376.0)`；`tray.rs` 的 `PANEL_WIDTH`/`PANEL_HEIGHT` 只在 `outer_size()` 取不到真实尺寸时作为定位回退，不再是「必须与窗口尺寸逐值一致」的硬性重复。`tauri.conf.json` 的 `app.windows` 为空数组，面板窗口并不在那里定义（此前文档所述 `tauri.conf.json:28,31-32` 已过时）。
 9. **托盘面板窗口不设 `shadow`** — 窗口是 `transparent(true)` + 系统 Acrylic，开启窗口阴影会在透明边缘补一块灰色底板，破坏「真透明」观感；立体层次改由前端 `.glass-native` 的圆角与色调层提供。
+10. **Alt+Tab 里出现多个「EndProtocol」条目（已修复）** — `EnumWindows` 实测进程只有 2 个 Tauri 顶层窗口：`main`（可见、`WS_EX_APPWINDOW`，Alt+Tab 正常条目）与 `tray-panel`（隐藏、`WS_EX_APPWINDOW`、**无 `WS_EX_TOOLWINDOW`**）；另外 5 个是 `tray_icon_app`、单实例插件的 `cn.msk-network.endprotocol-sic`、`Tao Thread Event Target`（三者都带 `WS_EX_TOOLWINDOW`）以及 `IME` / `MSCTFIME UI` 两个有 owner 的子窗口。用 `IApplicationViewCollection::GetViewForHwnd`（explorer 生成 Alt+Tab 列表的同一份数据）核对，并观察到 `steamwebhelper` 的 `SDL_app` 在窗口隐藏后仍留在列表里 —— explorer 的条目一旦注册就不会随窗口隐藏而消失。根因即 `tray-panel`：`skip_taskbar(true)` 只让 tao 调 `ITaskbarList::DeleteTab`，而 tao 给它加了 `WS_EX_APPWINDOW`，面板每次被显示（右键托盘图标）都会被注册成一个没有界面预览的 Alt+Tab 条目。修复见 `lib.rs::exclude_from_alt_tab`。in-app browser 的子 webview 与此无关：`tauri-runtime-wry` 走 `WebviewKind::WindowChild → wry::build_as_child`，容器窗口是 `WS_CHILD`，压根不是顶层窗口。

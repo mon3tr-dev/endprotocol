@@ -574,26 +574,82 @@ fn write_startup_error(message: &str) {
 fn create_full_windows<R: Runtime>(app: &tauri::AppHandle<R>) -> Result<(), String> {
     create_main_window(app)?;
     if app.get_webview_window("tray-panel").is_none() {
-        WebviewWindowBuilder::new(app, "tray-panel", app_webview_url(app, "tray-panel.html")?)
-            .title("tray-panel")
-            .inner_size(288.0, 376.0)
-            .resizable(false)
-            .decorations(false)
-            .transparent(true)
-            .visible(false)
-            .skip_taskbar(true)
-            .always_on_top(true)
-            .effects(
-                tauri::window::EffectsBuilder::new()
-                    .effect(tauri::window::Effect::Acrylic)
-                    .color(tauri::window::Color(18, 18, 20, 30))
-                    .build(),
-            )
-            .build()
-            .map_err(|error| error.to_string())?;
+        let tray_panel = WebviewWindowBuilder::new(
+            app,
+            "tray-panel",
+            app_webview_url(app, "tray-panel.html")?,
+        )
+        .title("tray-panel")
+        .inner_size(288.0, 376.0)
+        .resizable(false)
+        .decorations(false)
+        .transparent(true)
+        .visible(false)
+        .skip_taskbar(true)
+        .always_on_top(true)
+        .effects(
+            tauri::window::EffectsBuilder::new()
+                .effect(tauri::window::Effect::Acrylic)
+                .color(tauri::window::Color(18, 18, 20, 30))
+                .build(),
+        )
+        .build()
+        .map_err(|error| error.to_string())?;
+        exclude_from_alt_tab(&tray_panel);
     }
     Ok(())
 }
+
+/// 把辅助窗口从 Windows 的 Alt+Tab 列表里排除掉。
+///
+/// `skip_taskbar(true)` 管不到 Alt+Tab：tao 对它只调用 `ITaskbarList::DeleteTab`
+/// （摘掉任务栏按钮），既不碰扩展样式，也不影响 explorer 的窗口切换列表。而 tao 会给
+/// 普通窗口加上 `WS_EX_APPWINDOW`，explorer 在窗口第一次被显示时就会把它注册成一个
+/// Alt+Tab 条目 —— 之后窗口隐藏了，条目仍留在列表里，表现为一张没有界面预览的空白卡片
+/// （托盘面板只要被显示过一次就会留下一个）。
+///
+/// Alt+Tab 的判定（explorer 的 `IsAltTabWindow`）只认 `WS_EX_TOOLWINDOW`：带这个样式
+/// 的窗口既不会进任务栏，也不会进 Alt+Tab。这里把 `WS_EX_APPWINDOW` 换成它。
+#[cfg(target_os = "windows")]
+fn exclude_from_alt_tab<R: Runtime>(window: &tauri::WebviewWindow<R>) {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        GetWindowLongW, SetWindowLongW, SetWindowPos, GWL_EXSTYLE, SWP_FRAMECHANGED,
+        SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOOWNERZORDER, SWP_NOSIZE, SWP_NOZORDER, WS_EX_APPWINDOW,
+        WS_EX_TOOLWINDOW,
+    };
+
+    let Ok(hwnd) = window.hwnd() else {
+        return;
+    };
+
+    unsafe {
+        let hwnd = hwnd.0;
+        let ex_style = GetWindowLongW(hwnd, GWL_EXSTYLE);
+        let tool_style = (ex_style & !(WS_EX_APPWINDOW as i32)) | WS_EX_TOOLWINDOW as i32;
+        if tool_style == ex_style {
+            return;
+        }
+        SetWindowLongW(hwnd, GWL_EXSTYLE, tool_style);
+        // 换了扩展样式必须让系统重算非客户区，否则窗口仍按旧样式参与窗口枚举。
+        let _ = SetWindowPos(
+            hwnd,
+            std::ptr::null_mut(),
+            0,
+            0,
+            0,
+            0,
+            SWP_FRAMECHANGED
+                | SWP_NOMOVE
+                | SWP_NOSIZE
+                | SWP_NOZORDER
+                | SWP_NOOWNERZORDER
+                | SWP_NOACTIVATE,
+        );
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn exclude_from_alt_tab<R: Runtime>(_window: &tauri::WebviewWindow<R>) {}
 
 pub(crate) fn create_main_window<R: Runtime>(
     app: &tauri::AppHandle<R>,
