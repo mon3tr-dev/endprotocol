@@ -98,6 +98,16 @@ Never read or modify generated/distribution folders:
 - `node_modules/`
 - `src-tauri/gen/`
 
+### 🖥️ Screen Control — Denied by Default
+
+**Do not use tools that control or observe the screen unless the current prompt explicitly allows it.**
+
+This covers the `computer` tool (inspect, screenshot, click, type, key, scroll, drag, move, focus, set_value, open_url) and any equivalent OS-level automation: UI Automation / Win32 window driving, `SendKeys`, mouse or keyboard hooks, and desktop screenshot capture.
+
+- **Default is denied.** Silence in the prompt is not permission — permission must be stated explicitly in the current prompt.
+- **Permission is per-turn and per-action.** It covers only what that prompt names, and it does not carry over to later turns.
+- **Denied does not mean blocked.** If a task appears to need screen control, say what needs to happen on screen and hand that step to the user instead of doing it.
+
 ---
 
 ## 5. Verification Commands
@@ -320,6 +330,7 @@ Before pushing:
 💻 Writing code? → Read docs/*.md guides first
 📝 Changing files? → Update reference docs in the same commit
 🚫 Generated folders? → Never touch dist/, target/, node_modules/, src-tauri/gen/
+🖥️ Screen control? → Denied unless the current prompt explicitly allows it, see §4
 🐧 Linux AppImage? → WSL2 + CC=gcc-13, see §6
 ✅ Definition of done? → code + verify + docs = one commit
 ```
