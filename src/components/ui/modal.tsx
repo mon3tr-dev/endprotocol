@@ -87,7 +87,7 @@ function Backdrop({ isDismissable = true, className, children }: ModalBackdropPr
       className={cn(
         // lg-scrim：35% 暗化 + 8px 轻模糊（clear 语义），渐入渐出对称
         "lg-scrim fixed inset-0 z-[100] flex items-center justify-center",
-        "[animation:lg-fade-in_var(--lg-dur-slow)_var(--lg-ease-emphasized)]",
+        "[animation:lg-backdrop-in_var(--lg-dur-slow)_var(--lg-ease-emphasized)]",
         className,
       )}
       onMouseDown={(e) => {
@@ -127,7 +127,8 @@ function Dialog({ className, children }: { className?: string; children?: React.
       aria-modal="true"
       className={cn(
         // lg-float-in：translateY(24px)+scale(.96) → 1，阴影同步扩散；
-        // 玻璃模糊经 ::before 淡入，无「先硬边后补模糊」的割裂感
+        // 不做淡入——opacity 动画会让这层玻璃在入场期间退化成半透明，
+        // 位移/缩放（opacity 恒为 1）则全程保住 backdrop-filter
         "lg-float-in lg-regular rounded-2xl border border-separator/60",
         className,
       )}
@@ -247,7 +248,7 @@ function AlertDialogBackdrop({ className, children }: { className?: string; chil
     <div
       className={cn(
         "lg-scrim fixed inset-0 z-[100] flex items-center justify-center p-4",
-        "[animation:lg-fade-in_var(--lg-dur-slow)_var(--lg-ease-emphasized)]",
+        "[animation:lg-backdrop-in_var(--lg-dur-slow)_var(--lg-ease-emphasized)]",
         className,
       )}
     >

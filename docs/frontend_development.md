@@ -66,6 +66,7 @@
 - 如需从 `@/components/ui/glass` 统一引入，在 `ui/glass/index.ts` 里追加一行再导出
 - 复用 `glass/` 的视觉变量，支持深色模式
 - **玻璃模糊只能写在 `::before` 层**：`globals.css` 里 `.glass-surface` / `.glass-surface-strong` / `.glass-control-surface` / `.glass-field` / `.account-glass-*` 的底色与 `backdrop-filter` 都在 `::before`（`position:absolute; inset:0; z-index:-1`）上，元素自身保持 `background: transparent`。原因是 Linux（WebKitGTK）在运行时改写 `--glass-blur`（设置页拖动「毛玻璃清晰度」）后，会把背景模糊层重新合成到元素内容之上，整张卡片连文字一起糊掉；模糊放进没有子内容的伪元素就不会波及内容。新增玻璃类请沿用同一模式，并把类名补进 `globals.css` 末尾 `@layer components` 的定位列表（放低优先级层，才不会盖掉 `fixed`/`sticky`/`absolute`/`z-*` 工具类）
+- **玻璃宿主与其祖先不得带 `filter`，也不得带 `opacity < 1`，入场动画不得保留终态**：宿主/祖先一旦有 `filter`（含 `brightness-*` 这类工具类），或它的 `opacity < 1`（静态写死，或入场动画的淡入帧），或元素带着 fill-mode 为 `both`/`forwards` 的 `animation`，它就成为 backdrop root，其 `::before` 的 `backdrop-filter` 再也采不到背后的壁纸/视频——玻璃立刻（或永久）退化成一块半透明色。这正是「悬停按钮变半透明」「右键菜单没有毛玻璃」的根因。落地做法：交互提亮用 `globals.css` 的 `.lg-glass-interactive`（`filter` 落在 `::before` 上）；**入场动画只做 transform（位移/缩放），不做淡入**，fill-mode 一律 `backwards`（只有退出动画才用 `both`）；需要淡入的只有「既不是玻璃宿主也不是玻璃祖先」的层（如独立遮罩，改用 `lg-backdrop-in` 渐变背景色）。完整对照与实测数据见 [types_locales_styles.md](reference/frontend/types_locales_styles.md) 的「backdrop root 约束」
 - 组件清单与 props 见 [ui_components.md](reference/frontend/ui_components.md)
 - 单选/分段语义优先用 `GlassRadioGroup`（`<GlassRadioGroup value=… onValueChange=…>` + `<GlassRadioGroup.Item value=…>`，见 `ui/radio-group.tsx`），不要用 Radix ToggleGroup 冒充单选组（其 `type` 只接受 `single`/`multiple`，传 `horizontal`/`vertical` 会踩类型陷阱）
 

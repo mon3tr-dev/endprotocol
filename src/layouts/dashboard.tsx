@@ -479,7 +479,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
         {mobileOpen && (
           <>
             <div
-              className="lg-scrim lg:hidden fixed inset-0 z-40 [animation:lg-fade-in_var(--lg-dur-base)_var(--lg-ease-emphasized)]"
+              className="lg-scrim lg:hidden fixed inset-0 z-40 [animation:lg-backdrop-in_var(--lg-dur-base)_var(--lg-ease-emphasized)]"
               onClick={() => setMobileOpen(false)}
               aria-label="Close sidebar"
               role="button"

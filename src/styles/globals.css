@@ -871,14 +871,42 @@ html[data-window="tray-panel"] body {
       inset 0 0 0 1px var(--lg-edge),
       inset 0 1px 0 var(--lg-edge-top);
   }
+  /* ---- 玻璃层交互提亮：hover / 按压（唯一实现） ----
+   *
+   * 提亮必须落在 ::before 玻璃层上，**绝不能写在宿主元素上**。
+   * 根因（Chromium / WebKit 实测一致，非观感问题）：宿主一旦带了 filter，
+   * 它就成为 CSS Filter Effects L2 定义的 backdrop root，其 ::before 的
+   * backdrop-filter 只能采样该 root **内部**已绘制的内容——也就是采不到
+   * 背后的壁纸/视频，模糊当场失效，玻璃退化成一块半透明色。
+   * 这正是「鼠标浮到游戏启动按钮上，按钮就变半透明、不再是毛玻璃」的根因
+   * （旧写法 .lg-media-chip-interactive:hover { filter: brightness(1.08) }
+   * 与按钮变体上原先挂在宿主的 brightness 工具类都踩了这一条）。
+   *
+   * 同一条约束也适用于**动画**：带 animation 且 fill-mode 保留终态的元素
+   * 同样是 backdrop root，其后代玻璃会一直失效——故入场动画一律用
+   * backwards，详见下方「动效系统」的说明。
+   *
+   * 强度分档只用变量，宿主/媒体层各取一档：
+   *   --lg-glass-hover  默认 1.06（常规控件）、1.08（媒体层胶囊）
+   *   --lg-glass-active 默认 0.95（常规控件）、0.94（媒体层胶囊） */
+  /* 注意：transition 是简写，会整条覆盖同元素上更早的声明。
+   * .lg-control::before 自带 background-color 过渡（选中态要淡出而不是硬切），
+   * 而本条规则在源码中排在它之后，所以必须把那一条一并写回。 */
+  .lg-glass-interactive::before {
+    transition:
+      filter var(--lg-dur-fast) var(--lg-ease-standard),
+      background-color var(--lg-dur-base) var(--lg-ease-standard);
+  }
+  .lg-glass-interactive:hover::before {
+    filter: brightness(var(--lg-glass-hover, 1.06));
+  }
+  .lg-glass-interactive:active::before {
+    filter: brightness(var(--lg-glass-active, 0.95));
+  }
+  /* 媒体层胶囊（游戏模式 HUD：操作按钮、公告条、二维码浮层）档位稍强 */
   .lg-media-chip-interactive {
-    transition: filter var(--lg-dur-fast) var(--lg-ease-standard);
-  }
-  .lg-media-chip-interactive:hover {
-    filter: brightness(1.08);
-  }
-  .lg-media-chip-interactive:active {
-    filter: brightness(0.94);
+    --lg-glass-hover: 1.08;
+    --lg-glass-active: 0.94;
   }
 }
 
@@ -1113,21 +1141,37 @@ html[data-window-radius="self"] {
 
 /* ==================================================================
  * 动效系统：所有关键帧统一引用 --lg-dur-* / --lg-ease-* 令牌。
- * 属性约束：位移/缩放/淡入淡出只用 transform + opacity（合成器），
- * box-shadow 仅用于浮层进出场的阴影同步渐进，不参与状态过渡。
+ *
+ * 属性约束（Liquid Glass 下的硬约束，Chrome / Edge 实测得出）：
+ *   - **入场动画只用 transform，禁止动画 opacity**：元素 opacity < 1
+ *     （静态或动画中）会让它成为 backdrop root，其自身与后代的
+ *     backdrop-filter 当场失效——玻璃退化成半透明色块。纯 transform
+ *     的位移/缩放动画（opacity 恒为 1）不触发这条，实测动画进行中、
+ *     结束后玻璃都完整。
+ *   - 因此入场一律「位移/缩放进入」，不做淡入；只有**退出**动画
+ *     （元素本来就要消失）才继续用 opacity。
+ *   - box-shadow 仅用于浮层进出场的阴影同步渐进，不参与状态过渡。
  * ================================================================== */
 
-/* 浮层进出场：位移 + 淡入 + 阴影扩散同步（同一 duration/easing） */
+/* 浮层进出场：位移 + 缩放（无淡入，理由见上） */
 @keyframes lg-float-in {
   from {
-    opacity: 0;
     transform: translateY(var(--lg-shift-3)) scale(0.96);
   }
   to {
-    opacity: 1;
     transform: translateY(0) scale(1);
   }
 }
+.lg-float-in {
+  animation: lg-float-in var(--lg-dur-slow) var(--lg-ease-emphasized);
+  transition: box-shadow var(--lg-dur-slow) var(--lg-ease-emphasized);
+}
+
+/* 纯淡入。**只允许用在既不是玻璃宿主、也不是玻璃祖先的层上**
+ * （独立的内容淡入、不含玻璃浮层的遮罩）。
+ * 一旦它作用在玻璃宿主或玻璃祖先上，opacity < 1 会让该元素成为
+ * backdrop root，其自身与后代的玻璃在淡入期间全部退化成半透明色。
+ * 玻璃浮层的入场请用 transform（见 .animate-scale-in / .lg-float-in）。 */
 @keyframes lg-fade-in {
   from {
     opacity: 0;
@@ -1136,26 +1180,34 @@ html[data-window-radius="self"] {
     opacity: 1;
   }
 }
-.lg-float-in {
-  animation: lg-float-in var(--lg-dur-slow) var(--lg-ease-emphasized);
-  transition: box-shadow var(--lg-dur-slow) var(--lg-ease-emphasized);
-}
-.lg-float-in::before {
-  animation: lg-fade-in var(--lg-dur-slow) var(--lg-ease-emphasized);
+
+/* 遮罩（backdrop / scrim）入场：只渐变 background-color，不动 opacity。
+ *
+ * 遮罩经常是玻璃浮层的**祖先**——modal 的 Backdrop 就包着 lg-regular 的
+ * Dialog；app-info-drawer 的黑纱包着 lg-float-in 的抽屉。这类层用 opacity
+ * 淡入，子元素的玻璃会在整段动画里采不到背后的壁纸。
+ * 改成渐变背景色：容器 opacity 恒为 1，子元素玻璃全程有效，遮罩自身的
+ * backdrop-filter 也不受影响（模糊不可过渡，立即生效，观感差异极小）。
+ * 强度由 --lg-backdrop-alpha 给出，**必须与调用点的底色一致**
+ * （.lg-scrim 是 0.35；bg-black/25 这类调用点要显式写 0.25）。 */
+@keyframes lg-backdrop-in {
+  from {
+    background-color: rgb(0 0 0 / 0);
+  }
+  to {
+    background-color: rgb(0 0 0 / var(--lg-backdrop-alpha, 0.35));
+  }
 }
 
 /* Animations — 通用工具类（沿用旧命名，值并入新令牌） */
 @keyframes slide-down {
   0% {
-    opacity: 0;
     transform: translate(-50%, -100px) scale(0.9);
   }
   60% {
-    opacity: 1;
     transform: translate(-50%, 10px) scale(1.02);
   }
   100% {
-    opacity: 1;
     transform: translate(-50%, 0) scale(1);
   }
 }
@@ -1164,11 +1216,9 @@ html[data-window-radius="self"] {
 }
 @keyframes slide-up {
   0% {
-    opacity: 0;
     transform: translateY(var(--lg-shift-2));
   }
   100% {
-    opacity: 1;
     transform: translateY(0);
   }
 }
@@ -1177,24 +1227,22 @@ html[data-window-radius="self"] {
 }
 @keyframes slide-down-account {
   0% {
-    opacity: 0;
     transform: translateY(calc(-1 * var(--lg-shift-2)));
   }
   100% {
-    opacity: 1;
     transform: translateY(0);
   }
 }
 .animate-slide-down-account {
   animation: slide-down-account var(--lg-dur-slow) var(--lg-ease-emphasized);
 }
+/* 类名沿用旧命名，但实现已是「纯位移」：淡入（opacity）会毁掉玻璃，
+ * 位移方向仍是从下往上 8px（--lg-shift-1） */
 @keyframes fade-in {
   0% {
-    opacity: 0;
     transform: translateY(var(--lg-shift-1));
   }
   100% {
-    opacity: 1;
     transform: translateY(0);
   }
 }
@@ -1238,19 +1286,30 @@ html[data-window-radius="self"] {
 }
 @keyframes scale-in {
   0% {
-    opacity: 0;
     transform: translateY(-8px) scale(0.9);
   }
   100% {
-    opacity: 1;
     transform: translateY(0) scale(1);
   }
 }
 /* 下拉/菜单/浮层入场：slow 档 + 明显的「长出来」。
  * 幅度一路从 -4px/scale(0.98) 放到 -8px/scale(0.9)：前两版幅度在视觉上
- * 接近不可察觉，等于整块面板闪现。配合 slow 档后可看到缩放 + 下落。 */
+ * 接近不可察觉，等于整块面板闪现。配合 slow 档后可看到缩放 + 下落。
+ *
+ * 两条硬约束（改动这些关键帧前必读，Chrome / Edge 实测结论）：
+ *  1) **只动 transform，不做淡入**。元素 opacity < 1（无论在动画中还是
+ *     静态写死）即成为 backdrop root，它自己的 ::before 玻璃层和后代的
+ *     backdrop-filter 都采不到背后的壁纸/视频，玻璃在动画期间当场变成
+ *     半透明色。opacity 恒为 1 的位移/缩放动画完全不受影响（实测动画
+ *     进行中与结束后玻璃都完整），所以入场一律用「长出来」表达，
+ *     不用「淡出来」。
+ *  2) **fill-mode 用 backwards，不能用 both / forwards**。保留终态会让
+ *     元素永久带着动画属性，等于永久失去玻璃——右键菜单、下拉、浮层这类
+ *     「入场动画 + lg-regular 玻璃」的组合会一直只剩半透明底。
+ *     入场关键帧的 100% 帧与元素基础样式等价，backwards 结束时不会跳变，
+ *     且开始前（含 delay 期间）仍保持 0% 帧。 */
 .animate-scale-in {
-  animation: scale-in var(--lg-dur-slow) var(--lg-ease-emphasized) both;
+  animation: scale-in var(--lg-dur-slow) var(--lg-ease-emphasized) backwards;
   transform-origin: top center;
 }
 @keyframes spin-slow {
@@ -1293,17 +1352,17 @@ html[data-window-radius="self"] {
 }
 @keyframes resource-page-enter {
   from {
-    opacity: 0;
     transform: translateY(5px) scale(0.995);
   }
   to {
-    opacity: 1;
     transform: translateY(0) scale(1);
   }
 }
+/* 入场动画统一 backwards（原因见 .animate-scale-in 处的说明：
+ * both/forwards 会保留终态，使元素永久成为 backdrop root，毁掉后代玻璃） */
 .animate-resource-page {
   animation: resource-page-enter var(--lg-dur-base) var(--lg-ease-emphasized)
-    both;
+    backwards;
 }
 .card-flash-highlight {
   animation: card-flash 0.6s ease-in-out 4;
@@ -1352,13 +1411,15 @@ html[data-window-radius="self"] {
     transform: translateX(100%);
   }
 }
+/* 入场用 backwards（终态 = 基础样式 transform:none，结束不保留）；
+ * 出场必须保留 both——元素在动画结束后才被卸载，不保留会闪回原位。 */
 .animate-banner-push-in-right {
   animation: banner-push-in-right var(--lg-dur-page) var(--lg-ease-emphasized)
-    both;
+    backwards;
 }
 .animate-banner-push-in-left {
   animation: banner-push-in-left var(--lg-dur-page) var(--lg-ease-emphasized)
-    both;
+    backwards;
 }
 .animate-banner-push-out-left {
   animation: banner-push-out-left var(--lg-dur-page) var(--lg-ease-emphasized)
@@ -1369,56 +1430,57 @@ html[data-window-radius="self"] {
     both;
 }
 
-/* Page Transitions — 页面切换统一 page 档 */
+/* Page Transitions — 页面切换统一 page 档
+ * 入场同样是 backwards：页面容器是整棵树里最外层的动画节点，
+ * 保留终态会把**整页**的玻璃（卡片、分区）一起废掉。 */
 .page-transition-enter {
-  animation: page-enter var(--lg-dur-page) var(--lg-ease-emphasized) forwards;
+  animation: page-enter var(--lg-dur-page) var(--lg-ease-emphasized) backwards;
 }
+/* 页面进入同样只做位移（原为纯淡入：opacity 动画会把整页玻璃打回半透明） */
 @keyframes page-enter {
   0% {
-    opacity: 0;
+    transform: translateY(var(--lg-shift-2));
   }
   100% {
-    opacity: 1;
+    transform: translateY(0);
   }
 }
 .page-transition-slide-up {
-  animation: page-slide-up var(--lg-dur-page) var(--lg-ease-emphasized) forwards;
+  animation: page-slide-up var(--lg-dur-page) var(--lg-ease-emphasized)
+    backwards;
 }
 @keyframes page-slide-up {
   0% {
-    opacity: 0;
     transform: translateY(var(--lg-shift-3)) scale(0.97);
   }
   100% {
-    opacity: 1;
     transform: translateY(0) scale(1);
   }
 }
 .page-transition-scale-in {
-  animation: page-scale-in var(--lg-dur-page) var(--lg-ease-emphasized) forwards;
+  animation: page-scale-in var(--lg-dur-page) var(--lg-ease-emphasized)
+    backwards;
 }
 @keyframes page-scale-in {
   0% {
-    opacity: 0;
     transform: scale(0.95);
   }
   100% {
-    opacity: 1;
     transform: scale(1);
   }
 }
 @keyframes list-item-in {
   0% {
-    opacity: 0;
     transform: translateY(12px);
   }
   100% {
-    opacity: 1;
     transform: translateY(0);
   }
 }
+/* backwards（而非 both）：delay 期间仍保持 0% 帧不闪现，
+ * 结束后不再保留动画属性，列表项里的玻璃不会被打回半透明 */
 .animate-list-item {
-  animation: list-item-in var(--lg-dur-base) var(--lg-ease-emphasized) both;
+  animation: list-item-in var(--lg-dur-base) var(--lg-ease-emphasized) backwards;
 }
 .animate-list-item:nth-child(1) {
   animation-delay: 0ms;
@@ -1735,12 +1797,13 @@ html[data-window-radius="self"] {
   color: hsl(33 90% 55%);
 }
 
-/* Elapsed Time — 游戏时长平滑递增数字 */
+/* Elapsed Time — 游戏时长平滑递增数字
+ * 入场 backwards（终态 opacity:1 / translateY(0) = 基础样式） */
 .elapsed-digit {
   display: inline-block;
   min-width: 0.62em;
   text-align: center;
-  animation: elapsed-pop var(--lg-dur-base) var(--lg-ease-emphasized) both;
+  animation: elapsed-pop var(--lg-dur-base) var(--lg-ease-emphasized) backwards;
 }
 .elapsed-sep {
   display: inline-block;

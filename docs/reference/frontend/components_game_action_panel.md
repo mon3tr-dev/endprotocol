@@ -15,7 +15,7 @@
 | 区间 | 内容 |
 | --- | --- |
 | 1–47 | import：React 钩子（含 `ReactNode`）、Portal、i18n、UI 组件、launcherService 全量接口、messageStore、启动设置弹窗 |
-| 56–66 | 4 个 localStorage 键常量（56–59）+ 面板统一按钮风格常量 `PILL_BASE`/`PILL_INTERACTIVE`/`PILL_TEXT`（62–66，背景与左边 banner 同款 `bg-black/40 backdrop-blur-md border-white/10`，文字白色系） |
+| 70–90 | 4 个 localStorage 键常量（70–73）+ 面板统一按钮风格常量 `PILL_BASE`/`PILL_INTERACTIVE`/`PILL_TEXT`（86–90：底色走 `.lg-media-chip` 玻璃 + `lg-hairline` 细边，文字白色系；交互态在 `PILL_INTERACTIVE` 上叠加 `lg-media-chip-interactive`（给媒体层胶囊设 1.08/0.94 两档提亮强度）+ `lg-glass-interactive`（把 brightness 加在 `::before` 玻璃层上）——**宿主不得带 `filter`**，否则按钮一悬停就从毛玻璃退化成半透明色，理由见 [types_locales_styles.md](types_locales_styles.md) 的「backdrop root 约束」） |
 | 62–247 | 本文件内部工具与子组件：`formatEta`(62)、`ButtonProgressRing`(72)、`ProgressFlyout`(114)、`DownloadProgressBody`(138)、`DiskSpaceBar`(183) || 248–342 | `GameActionPanel` 组件声明与 30+ 个 useState / useRef 初始化（含 `dx11` 状态，与设置页同步） |
 | 301–387 | 确认对话框状态、`activeOp`/`progress`/`preparing`/`switching`/`switchProgress`/`switchTarget` 派生值 |
 | 340–440 | 渠道持久化、状态查询 `checkStatus`、渠道自动检测 effect、静默刷新 `refreshStatus`、游戏运行 3 秒轮询；累计时长 5 秒轮询 `refreshPlaytime`（平滑补间见 `ElapsedTime`） |
@@ -24,7 +24,7 @@
 | 590–980 | 业务处理器：定位、安装、渠道选择、渠道切换、启动、更新、校验、取消、预下载确认/开始/取消、杀进程 |
 | 982–1006 | 阶段标志派生（含 `preloading`/`preloadPercent`/`busyWithDownload`） |
 | 1008–1044 | 三个 `useLayoutEffect`（主按钮浮层 / 预下载浮层 / 菜单浮层定位） |
-| 1046–1254 | 主按钮文案 `getButtonLabel`、标签变更触发淡入、图标 `getButtonIcon` |
+| 1046–1254 | 主按钮文案 `getButtonLabel`、标签变更触发动效（`animate-fade-in`，现已纯位移、无淡入）、图标 `getButtonIcon` |
 | 1256–1373 | 主按钮点击分发 `handleButtonClick`、确认回调 `handleConfirmAction` |
 | 1376–1552 | JSX 操作行：累计时长徽章（操作行首个子元素，位于开始游戏按钮左侧）+ 主操作按钮 + 预下载按钮（预下载/预下载中/已预下载）+ 预下载进度浮层、汉堡菜单按钮；DX11 快捷勾选（`@/components/ui/checkbox` 的方形 `Checkbox`，`[&>span]:rounded-[4px]` 收小圆角，与设置页 `launcher_dx11` 同步）**绝对定位悬浮于主按钮下方**（`absolute left-[5px] top-full`，不参与操作行布局、不把按钮顶起，且与按钮左边缘对齐）；右上角状态栏（绝对定位在内容层右上角，1545–1578，纵向堆叠：服务器指示徽章 + 检测中指示，点击渠道徽章开切服对话框） |
 | 1554–1880 | 主按钮进度浮层（Portal）：准备/下载/校验/比较/修复/应用/切换 7 类进度展示 |
@@ -84,7 +84,7 @@
 ## 关键功能分区
 
 **常量与状态初始化（47–166）**
-4 个 localStorage 键常量 + 统一按钮风格常量 `PILL_BASE`/`PILL_INTERACTIVE`/`PILL_TEXT`（62–66，面板内所有胶囊按钮共用，与预下载按钮及左下 banner 同款半透明模糊背景；运行/切换态的 `border-danger`/`text-danger` 用 `!` 强制覆盖基类）；状态包括：`channel`、`gameStatus`、`localActiveOp`、`installPath`、`detectedChannel`、`detecting`、`statusReady`、`flyoutOpen`、`hasTempFiles`、`settingsOpen`、`launchSettingsOpen`、`gameRunning`、`btnHovered`、`btnLabelKey`、`preloadProgress`、`downloadSpeed`、`channelSelectOpen`、`pendingInstallPath`、`scanResult`、`scanOpen`、`scanning`、`diskSpace`、`switchOpen`、`switchConfirmTarget`、`verifySpeed`、`progressFlyoutPos`、`menuFlyoutPos`、`confirmAction`、`confirmCheckbox`、`playtime`；refs：`prevBtnLabelRef`、`flyoutRef`、`btnRef`、`hamburgerRef`、`speedRef`、`verifySpeedRef`、`cancellingRef`、`menuFlyoutRef`。派生值 `activeOp`（132，本地事件优先于轮询值）、`progress`（133–147）、`preparing`（148）、`switching`（151）、`switchProgress`（152–164）、`switchTarget`（165）；安装相关派生值 `isInstalled`/`hasUpdate`/`hasPreload`/`preloadCompleted`（782–785）、`preloadTotalBytes`（744，提前声明供 `handlePreload` 依赖数组使用）、`preloading`/`preloadPercent`（787–795）、`busyWithDownload = isActionRunning || preloading`（811，用于禁用渠道徽章与菜单项）。
+4 个 localStorage 键常量 + 统一按钮风格常量 `PILL_BASE`/`PILL_INTERACTIVE`/`PILL_TEXT`（86–90，面板内所有胶囊按钮共用，与预下载按钮及左下 banner 同为 `.lg-media-chip` 玻璃层；运行/切换态的 `border-danger`/`text-danger` 用 `!` 强制覆盖基类）；状态包括：`channel`、`gameStatus`、`localActiveOp`、`installPath`、`detectedChannel`、`detecting`、`statusReady`、`flyoutOpen`、`hasTempFiles`、`settingsOpen`、`launchSettingsOpen`、`gameRunning`、`btnHovered`、`btnLabelKey`、`preloadProgress`、`downloadSpeed`、`channelSelectOpen`、`pendingInstallPath`、`scanResult`、`scanOpen`、`scanning`、`diskSpace`、`switchOpen`、`switchConfirmTarget`、`verifySpeed`、`progressFlyoutPos`、`menuFlyoutPos`、`confirmAction`、`confirmCheckbox`、`playtime`；refs：`prevBtnLabelRef`、`flyoutRef`、`btnRef`、`hamburgerRef`、`speedRef`、`verifySpeedRef`、`cancellingRef`、`menuFlyoutRef`。派生值 `activeOp`（132，本地事件优先于轮询值）、`progress`（133–147）、`preparing`（148）、`switching`（151）、`switchProgress`（152–164）、`switchTarget`（165）；安装相关派生值 `isInstalled`/`hasUpdate`/`hasPreload`/`preloadCompleted`（782–785）、`preloadTotalBytes`（744，提前声明供 `handlePreload` 依赖数组使用）、`preloading`/`preloadPercent`（787–795）、`busyWithDownload = isActionRunning || preloading`（811，用于禁用渠道徽章与菜单项）。
 
 **状态查询与渠道自动检测（168–272）**
 渠道写入 localStorage（168–170）；挂载时经 `restoreLaunchConfig` 从 app config 反向回灌 `launcher_install_path`/`launcher_channel` 到 localStorage 与 state（仅挂载一次，路径需存在才写——修复静默命令行启动后从托盘打开完整版时游戏面板显示「定位游戏」的问题）；`checkStatus` 触发 effect（254–256）；`detectChannel` effect（199–238，带取消标记与缓存命中短路，检测到不同渠道时回写 state 与 localStorage）；`checkGameRunning` 每 3 秒轮询（268–272）。
@@ -159,7 +159,7 @@
    - `GameSettingsModal`：`initialPath: string`（初始安装路径）、`onClose: () => void`（关闭）、`onSave: (path: string) => void`（保存并触发状态刷新）。
    - `GameLaunchSettingsModal`：已从库中删除，「启动设置」入口直接挂 `QuickLaunchModal`（props 见 components_settings_panels.md）。
    - `GlassAlertDialog` / `GlassModal` / `GlassButton` 为其复合子组件提供的 `isOpen`、`onOpenChange`、`onPress`、`className`、`variant`、`status` 等 UI 属性。
-4. **状态管理要点**：全部为组件内 `useState`，无全局 store；`localActiveOp`（事件实时）优先于 `gameStatus.active_operation`（轮询）；`cancellingRef` 在取消期间屏蔽后续进度事件；游戏运行态 3 秒轮询，累计时长为 5 秒轮询 `getGamePlaytime`，两次快照之间的平滑补间由 `ElapsedTime` 组件内部 `requestAnimationFrame` 完成；持久化键为 `launcher_install_path`、`launcher_channel`、`launcher_skip_stop_confirm`、`launcher_cancel_behavior`，另直接读 `launcher_verify_threads`（691–694、716–719）；`confirmAction` 为五值联合（`cancel-download`｜`stop-game`｜`resume-install`｜`delete-temp`｜`verify-confirm`）；880–884 在渲染期间比较文案并 `setBtnLabelKey` 以驱动 `animate-fade-in`。
+4. **状态管理要点**：全部为组件内 `useState`，无全局 store；`localActiveOp`（事件实时）优先于 `gameStatus.active_operation`（轮询）；`cancellingRef` 在取消期间屏蔽后续进度事件；游戏运行态 3 秒轮询，累计时长为 5 秒轮询 `getGamePlaytime`，两次快照之间的平滑补间由 `ElapsedTime` 组件内部 `requestAnimationFrame` 完成；持久化键为 `launcher_install_path`、`launcher_channel`、`launcher_skip_stop_confirm`、`launcher_cancel_behavior`，另直接读 `launcher_verify_threads`（691–694、716–719）；`confirmAction` 为五值联合（`cancel-download`｜`stop-game`｜`resume-install`｜`delete-temp`｜`verify-confirm`）；880–884 在渲染期间比较文案并 `setBtnLabelKey` 以驱动 `animate-fade-in`（该类现已纯位移、无淡入）。
 5. **异常/待关注**：
    - `handleQuickVerify` 依赖数组（734）缺 `formatVerifyResult`，而 `handleVerify`（709）包含，存在闭包过期风险。
    - 扫描结果 `download_bytes === 0` 时确认按钮文案为 `launcher.start_game`（2120）但实际执行 `startInstall(false)`（2101），文案与行为不符。

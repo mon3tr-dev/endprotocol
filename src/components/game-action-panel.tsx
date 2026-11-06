@@ -77,11 +77,16 @@ const STORAGE_KEY_CANCEL_BEHAVIOR = "launcher_cancel_behavior"; // "ask" | "keep
  * 底色改走 `.lg-media-chip`（globals.css 里定义）：它和标题栏、侧栏、
  * 卡片共用同一套 tint × 密度 × 主题色染色，只是额外按 --lg-scrim-alpha
  * 压暗以适配视频/壁纸背景。此前这里写死 bg-black/40，是全应用里唯一
- * 一处无论 theme 深浅都保持纯黑四成的玻璃，也是"深浅不一"最明显的一处。 */
+ * 一处无论 theme 深浅都保持纯黑四成的玻璃，也是"深浅不一"最明显的一处。
+ *
+ * hover/按压提亮走 `.lg-glass-interactive`（提亮加在 ::before 玻璃层上）。
+ * 不要改回在宿主上加 filter/brightness：宿主带 filter 会成为 backdrop root，
+ * ::before 的 backdrop-filter 就采不到背后的视频，按钮一悬停便从毛玻璃
+ * 变成一块半透明色。 */
 const PILL_BASE =
   "lg-media-chip inline-flex items-center h-11 rounded-full whitespace-nowrap lg-hairline border shadow-lg transition-all duration-200 shrink-0";
 const PILL_INTERACTIVE =
-  "lg-media-chip-interactive cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed";
+  "lg-media-chip-interactive lg-glass-interactive cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed";
 const PILL_TEXT = "text-xs font-medium text-white/80";
 
 /** 剩余时间秒数 → `m:ss` / `h:mm:ss` */

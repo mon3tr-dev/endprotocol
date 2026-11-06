@@ -34,7 +34,7 @@ export function AppInfoDrawer({ isOpen, onClose }: AppInfoDrawerProps) {
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[200] [animation:lg-fade-in_var(--lg-dur-base)_var(--lg-ease-emphasized)] bg-black/25"
+      className="fixed inset-0 z-[200] [--lg-backdrop-alpha:0.25] [animation:lg-backdrop-in_var(--lg-dur-base)_var(--lg-ease-emphasized)] bg-black/25"
       onClick={handleBackdropClick}
       style={{ pointerEvents: "auto" }}
     >

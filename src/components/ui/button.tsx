@@ -24,6 +24,11 @@ const buttonVariants = cva(
   // 是纯透明按钮，若基础类带 lg-control，其 ::before 玻璃层会被渲染出来；
   // 而此前用 before:hidden 去hide又会连带杀死调用方通过 className 追加的
   // lg-material 玻璃（display:none 对同一个 ::before 一票否决）。
+  //
+  // hover/按压提亮走 lg-glass-interactive（globals.css）：它把 brightness 加在
+  // ::before 玻璃层上。**不能**再用挂在宿主的 brightness 工具类——宿主带 filter
+  // 即成为 backdrop root，其 ::before 的 backdrop-filter 会采不到背后的壁纸，
+  // 按钮一 hover 就从毛玻璃退化成半透明色块。
   "inline-flex items-center justify-center font-medium select-none whitespace-nowrap cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 disabled:opacity-50 disabled:pointer-events-none " +
     // Liquid Glass 交互反馈：亮度/高光经 inset 高光与阴影过渡体现，
     // 不做生硬边框变色；位移只用 transform（fast 档 + spring）。
@@ -36,9 +41,9 @@ const buttonVariants = cva(
         // ::before 的 tint 会把实底压成灰紫，深色主题下近黑前景字直接读不出。
         primary:
           "lg-control lg-solid bg-primary text-primary-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.28)] hover:bg-primary/90",
-        secondary: "lg-control text-foreground hover:brightness-105 active:brightness-95",
+        secondary: "lg-control lg-glass-interactive text-foreground",
         tertiary: "bg-transparent text-foreground/85 hover:text-foreground",
-        outline: "lg-control lg-field border bg-transparent hover:brightness-105",
+        outline: "lg-control lg-field lg-glass-interactive border bg-transparent",
         ghost: "bg-transparent text-foreground/85 hover:text-foreground",
         danger:
           "lg-control lg-solid bg-danger text-danger-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.22)] hover:bg-danger/90",

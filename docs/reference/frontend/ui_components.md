@@ -100,7 +100,7 @@
 | `GlassButtonVariant` | button.tsx:6 | `primary/secondary/tertiary/outline/ghost/danger` |
 | `GlassButtonSize` | button.tsx:7 | `sm/md/lg` |
 | `GlassButtonProps` | button.tsx:9 | 关键 props：`variant`（默认 `secondary`）、`size`（默认 `md`）、`isIconOnly`（方形图标按钮）、`isDisabled`、`isLoading`（前置 spinner 并禁用）、`fullWidth`、`onPress`（点击回调）、`startContent`/`endContent`（前后插槽节点） |
-| `buttonVariants` | button.tsx:22 | cva 变体表；基础类含 hover `scale-105`、active `scale-95`、focus ring、disabled 50% 透明。**`lg-control` 玻璃底挂在 primary/secondary/outline/danger 四个变体上**（不含 ghost/tertiary）——历史上挂在基础类 + 用 `before:hidden` 隐藏 ghost/tertiary 的玻璃层，结果 `display:none` 连带杀死调用方经 `className` 追加的 `lg-material`（同属宿主的 `::before` 一票否决），导致账户胶囊等 ghost+lg-material 组合丢失玻璃底。**`primary`/`danger` 另加 `lg-solid`**：实底按钮的 `::before` 只留边缘高光、不铺玻璃填充，否则深色主题下 `--primary` 被 tint 压成灰紫，而前景按 `--primary-foreground`（indigo 上算出的近黑 `#0b0b0d`）落上去几乎读不出 |
+| `buttonVariants` | button.tsx:22 | cva 变体表；基础类含 hover `scale-105`、active `scale-95`、focus ring、disabled 50% 透明。**`lg-control` 玻璃底挂在 primary/secondary/outline/danger 四个变体上**（不含 ghost/tertiary）——历史上挂在基础类 + 用 `before:hidden` 隐藏 ghost/tertiary 的玻璃层，结果 `display:none` 连带杀死调用方经 `className` 追加的 `lg-material`（同属宿主的 `::before` 一票否决），导致账户胶囊等 ghost+lg-material 组合丢失玻璃底。**`primary`/`danger` 另加 `lg-solid`**：实底按钮的 `::before` 只留边缘高光、不铺玻璃填充，否则深色主题下 `--primary` 被 tint 压成灰紫，而前景按 `--primary-foreground`（indigo 上算出的近黑 `#0b0b0d`）落上去几乎读不出。**`secondary`/`outline` 的 hover/按压提亮改走 `lg-glass-interactive`**（`:hover`/`:active` 只给 `::before` 加 `filter: brightness()`），已不再写 `hover:brightness-105` / `active:brightness-95`——宿主一旦带 `filter` 就成为 backdrop root，按钮一悬停便从毛玻璃退化成半透明色块（见 [types_locales_styles.md](types_locales_styles.md) 的「backdrop root 约束」）；`primary`/`danger` 的 `hover:bg-*/90` 只改底色，不受此限 |
 | `iconOnlySize` | button.tsx:55 | `isIconOnly` 时 sm=32 / md=36 / lg=40 的方形尺寸 |
 | `ButtonProps` | button.tsx:61 | 基础按钮 props（原生 button attrs + variant/size） |
 | `Button` | button.tsx:65 | forwardRef；`type` 默认 `"button"`，`variant` 默认 `secondary`、`size` 默认 `md` |
@@ -317,14 +317,14 @@
 | `ModalContainerProps` | modal.tsx:34 | `size`（`xs/sm/md/lg/xl/2xl/full`）、`placement`（`center/top/bottom`）、`scroll`（`inside/outside`，当前未参与渲染） |
 | `CONTAINER_SIZES` | modal.tsx:44 | size→max-width：xs 360 / sm 400 / md 560 / lg 720 / xl 1100 / 2xl 1000 / full `calc(100vw-2rem)` |
 | `GlassModal` | modal.tsx:54 | 打开时挂 Esc 关闭 + 锁定 body 滚动（:55-67），Portal 到 body 并提供 `close` Context；关闭时不渲染任何节点 |
-| `Backdrop` | modal.tsx:77 | 全屏遮罩 `z-[100] bg-black/60 backdrop-blur`；`isDismissable` 时 mousedown 点击自身关闭 |
+| `Backdrop` | modal.tsx:83 | 全屏遮罩 `lg-scrim z-[100]`（黑 35% + 轻模糊），**入场用 `lg-backdrop-in`（渐显背景色，不是 opacity 淡入）**——它是 `Dialog` 的父元素，用淡入会让内部玻璃在入场期间发虚；`isDismissable` 时 mousedown 点击自身关闭 |
 | `Container` | modal.tsx:94 | 定位与宽度容器，`placement` 决定上下对齐 |
 | `Dialog` | modal.tsx:123 | `role="dialog" aria-modal="true"`，`lg-float-in lg-regular rounded-2xl`（入场：`translateY(24px)+scale(0.96)` → 1，阴影同步扩散，slow 档） |
 | `Header` / `Heading` / `Body` / `Footer` | modal.tsx:130 / 134 / 138 / 149 | 结构分区；`Heading` 为 `h2 text-lg`；`Body` 是 forwardRef（displayName `GlassModalBody`）默认 `overflow-y-auto` 并支持 `onScroll` |
 | `CloseTrigger` | modal.tsx:153 | 右上角 x 按钮，读 Context 关闭 |
 | `GlassModalWithSub`（即 `GlassModalCompound`） | modal.tsx:174 / 194 | 挂载 8 个子件：`Backdrop/Container/Dialog/Header/Heading/Body/Footer/CloseTrigger` |
 | `AlertDialogProps` / `GlassAlertDialog` | modal.tsx:201 / 209 | 与 GlassModal 同构（Esc + 锁滚动 + Portal） |
-| `AlertDialogBackdrop` / `AlertDialogContainer` / `AlertDialogDialog` | modal.tsx:234 / 247 / 251 | 遮罩（不可点击关闭）、限宽 400px 容器、`role="alertdialog"` 面板 |
+| `AlertDialogBackdrop` / `AlertDialogContainer` / `AlertDialogDialog` | modal.tsx:245 / 259 / 263 | 遮罩（不可点击关闭，入场同样用 `lg-backdrop-in`）、限宽 400px 容器、`role="alertdialog"` 面板 |
 | `ICON_TONES` / `AlertDialogIcon` | modal.tsx:266 / 274 | 圆形图标底色（success/warning/danger/info/default），`status` 默认 `info`，内嵌感叹号 SVG |
 | `AlertDialogHeader` / `Heading` / `Body` / `Footer` / `CloseTrigger` | modal.tsx:285 / 289 / 293 / 297 / 301 | 结构件；`CloseTrigger` 为绝对定位右上 x |
 | `GlassAlertDialogWithSub`（即 `GlassAlertDialogCompound`） | modal.tsx:322 / 344 | 挂载 9 个子件（比 Modal 多一个 `Icon`） |

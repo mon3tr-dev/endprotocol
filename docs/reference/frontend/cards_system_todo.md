@@ -38,7 +38,7 @@
 | `components/cards/todo/locales/{zh,en}.json` | 文案（键前缀 `todo_`） |
 
 ## `src/components/cards/system-resource/index.tsx`
-**职责**：系统资源卡片。初始化时读取全局默认值（`system_resource_defaults`）与卡片配置，首次使用按默认模板生成；按 `refreshMs` 轮询 `get_system_snapshot`，维护每指标历史缓冲；**一次只显示一个指标**（整页大号数值 + 占满高度的折线图），中/大卡可配置任意多个不重复指标并逐项翻页，小卡只允许一个指标；指标切换使用轻量淡入位移动效并遵守减少动态效果偏好；监听 `cardAction`（`system-resource-settings`）与 `manualRefresh`。
+**职责**：系统资源卡片。初始化时读取全局默认值（`system_resource_defaults`）与卡片配置，首次使用按默认模板生成；按 `refreshMs` 轮询 `get_system_snapshot`，维护每指标历史缓冲；**一次只显示一个指标**（整页大号数值 + 占满高度的折线图），中/大卡可配置任意多个不重复指标并逐项翻页，小卡只允许一个指标；指标切换使用轻量位移动效（`animate-resource-page`，只做位移/缩放、不做淡入，避免 opacity 动画废掉卡片内的玻璃）并遵守减少动态效果偏好；监听 `cardAction`（`system-resource-settings`）与 `manualRefresh`。
 **导出**：`export default SystemResourceCard`。
 **主要依赖**：`../registry/types`、`../base/use-card-data`（已移除，改用内部轮询）、`@/utils/cardConfigService`、`@/utils/systemResourceService`、`@/types/system-resource`、`./metric-view`、`./metrics`、`./settings-modal`。
 
