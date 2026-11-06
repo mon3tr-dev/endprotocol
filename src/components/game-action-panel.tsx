@@ -100,7 +100,7 @@ function ButtonProgressRing({ progress }: { progress: number }) {
   return (
     <svg
       aria-hidden="true"
-      className="absolute inset-0 z-20 h-full w-full pointer-events-none text-primary-text"
+      className="absolute inset-0 z-20 h-full w-full pointer-events-none text-primary"
       viewBox="0 0 100 100"
       preserveAspectRatio="none"
     >

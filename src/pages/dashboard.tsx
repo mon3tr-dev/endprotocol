@@ -437,7 +437,7 @@ export default function DashboardPage() {
   if (isLoading && view === "loading") {
     return (
       <div className="flex items-center justify-center py-24">
-        <GlassProgressCircle isIndeterminate size="lg" aria-label="Loading" className="text-primary-text">
+        <GlassProgressCircle isIndeterminate size="lg" aria-label="Loading" className="text-primary">
           <GlassProgressCircle.Track>
             <GlassProgressCircle.TrackCircle />
             <GlassProgressCircle.FillCircle />
@@ -530,7 +530,7 @@ export default function DashboardPage() {
 
       {isRefreshing ? (
         <div className="flex flex-col items-center justify-center py-24 space-y-5">
-          <GlassProgressCircle isIndeterminate size="lg" aria-label="Loading" className="text-primary-text">
+          <GlassProgressCircle isIndeterminate size="lg" aria-label="Loading" className="text-primary">
             <GlassProgressCircle.Track>
               <GlassProgressCircle.TrackCircle />
               <GlassProgressCircle.FillCircle />

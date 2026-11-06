@@ -258,7 +258,7 @@ export default function DomainPage() {
             isIndeterminate
             size="lg"
             aria-label="Loading"
-            className="text-primary-text"
+            className="text-primary"
           >
             <GlassProgressCircle.Track>
               <GlassProgressCircle.TrackCircle />

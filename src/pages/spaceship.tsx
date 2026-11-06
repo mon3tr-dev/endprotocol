@@ -299,7 +299,7 @@ export default function SpaceshipPage() {
             isIndeterminate
             size="lg"
             aria-label="Loading"
-            className="text-primary-text"
+            className="text-primary"
           >
             <GlassProgressCircle.Track>
               <GlassProgressCircle.TrackCircle />

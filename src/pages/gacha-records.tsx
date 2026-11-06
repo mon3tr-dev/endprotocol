@@ -411,7 +411,7 @@ export default function GachaRecordsPage() {
     return (
       <div className="max-w-6xl mx-auto pb-12">
         <div className="flex items-center justify-center py-24">
-          <GlassProgressCircle isIndeterminate size="lg" aria-label="Loading" className="text-primary-text">
+          <GlassProgressCircle isIndeterminate size="lg" aria-label="Loading" className="text-primary">
             <GlassProgressCircle.Track>
               <GlassProgressCircle.TrackCircle />
               <GlassProgressCircle.FillCircle />
@@ -829,7 +829,7 @@ export default function GachaRecordsPage() {
             </div>
           ) : syncing ? (
             <div className="py-6 text-center space-y-4">
-              <GlassProgressCircle isIndeterminate size="lg" aria-label="Syncing" className="text-primary-text">
+              <GlassProgressCircle isIndeterminate size="lg" aria-label="Syncing" className="text-primary">
                 <GlassProgressCircle.Track>
                   <GlassProgressCircle.TrackCircle />
                   <GlassProgressCircle.FillCircle />

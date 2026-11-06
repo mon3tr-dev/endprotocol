@@ -88,7 +88,7 @@ export function AttendanceSettingsModal({
       <CustomModalBody>
         {loading ? (
           <div className="flex items-center justify-center py-8">
-            <GlassProgressCircle isIndeterminate size="md" aria-label="Loading" className="text-primary-text">
+            <GlassProgressCircle isIndeterminate size="md" aria-label="Loading" className="text-primary">
               <GlassProgressCircle.Track>
                 <GlassProgressCircle.TrackCircle />
                 <GlassProgressCircle.FillCircle />

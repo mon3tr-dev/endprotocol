@@ -392,7 +392,7 @@ function FreeDragCard({
             aria-label="Loading"
             value={longPressProgress}
             size="sm"
-            className="w-12 h-12 text-primary-text"
+            className="w-12 h-12 text-primary"
           >
             <GlassProgressCircle.Track>
               <GlassProgressCircle.TrackCircle />

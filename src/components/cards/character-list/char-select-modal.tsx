@@ -1488,7 +1488,7 @@ export function CharSelectModal({
                       isIndeterminate
                       size="lg"
                       aria-label="Loading wiki"
-                      className="text-primary-text"
+                      className="text-primary"
                     >
                       <GlassProgressCircle.Track>
                         <GlassProgressCircle.TrackCircle />

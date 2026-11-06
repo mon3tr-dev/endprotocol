@@ -255,7 +255,7 @@ export default function AchievementCard({
   if (isLoading) {
     return (
       <GlassCard className="p-6 border border-separator/70 h-full w-full flex items-center justify-center">
-        <GlassProgressCircle isIndeterminate size="md" aria-label="Loading" className="text-primary-text">
+        <GlassProgressCircle isIndeterminate size="md" aria-label="Loading" className="text-primary">
           <GlassProgressCircle.Track>
             <GlassProgressCircle.TrackCircle />
             <GlassProgressCircle.FillCircle />

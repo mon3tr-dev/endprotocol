@@ -377,18 +377,18 @@
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
 | `ProgressCtx` | progress.tsx:21 | 传递 `{ size, strokeWidth, value, isIndeterminate }` |
-| `ProgressCircle` | progress.tsx:28 | 根组件。props：`isIndeterminate`（默认 false，动画旋转）、`size`（`sm 24 / md 32 / lg 40` 或数字，默认 `md`）、`value`（0-100 被 clamp）、`aria-label`、`className`；线宽自动 `max(2, round(px/10))`（:44）；输出 `role="progressbar"`，svg 整体 `-rotate-90` |
-| `ProgressCircle.Track` | progress.tsx:72 | `<g>` 分组包裹 |
-| `ProgressCircle.TrackCircle` | progress.tsx:82 | 底环（`text-separator`），半径 `(size-strokeWidth)/2` |
-| `ProgressCircle.FillCircle` | progress.tsx:98 | 进度弧（`text-primary`），`strokeDashoffset` 按 value 计算；不定量时固定 75% 弧长 + `animate-spin`（:102, :116） |
-| `GlassProgressCircle` | progress.tsx:132 | `ProgressCircle` 别名（`loading-block.tsx` 使用） |
+| `ProgressCircle` | progress.tsx:28 | 根组件。props：`isIndeterminate`（默认 false，动画旋转）、`size`（`sm 24 / md 32 / lg 40` 或数字，默认 `md`）、`value`（0-100 被 clamp）、`aria-label`、`className`；线宽自动 `max(2, round(px/10))`（:44）；根节点带 `text-primary`，弧线继承其 `currentColor`（调用方传 `text-*` 即可换色）；输出 `role="progressbar"`，svg 整体 `-rotate-90` |
+| `ProgressCircle.Track` | progress.tsx:74 | `<g>` 分组包裹 |
+| `ProgressCircle.TrackCircle` | progress.tsx:84 | 底环（`text-separator`），半径 `(size-strokeWidth)/2` |
+| `ProgressCircle.FillCircle` | progress.tsx:100 | 进度弧（`text-current`，继承根节点色），`strokeDashoffset` 按 value 计算；不定量时固定 75% 弧长 + `animate-spin`（:104, :120） |
+| `GlassProgressCircle` | progress.tsx:138 | `ProgressCircle` 别名（`loading-block.tsx` 使用） |
 | `MeterCtx` / `Meter` | progress.tsx:142 / 144 | 线性进度根：props `value`（clamp 0-100）、`aria-label`、`className`；`role="meter"` |
 | `Meter.Output` | progress.tsx:170 | 百分比文本，默认 `sr-only` |
 | `Meter.Track` | progress.tsx:177 | `h-2` 圆角轨道 |
 | `Meter.Fill` | progress.tsx:191 | 主色填充，宽度 `value%`，500ms 过渡 |
 | `GlassMeter` | progress.tsx:205 | `Meter` 别名 |
 
-**备注**：圆环与进度条共用 `value` 语义（0-100），`isIndeterminate` 时 `aria-valuenow` 置空。
+**备注**：圆环与进度条共用 `value` 语义（0-100），`isIndeterminate` 时 `aria-valuenow` 置空。环的描边一律走原色：根节点默认 `text-primary`，调用点统一传 `text-primary`；按 `globals.css` 的状态色约定，`--primary-text` 这类「文字版」颜色只用于文字，描边/边框/背景保持原色。`FillCircle` 改用 `text-current` 后，调用方在根节点上传的 `text-*` 才会真正生效（此前弧线写死 `text-primary-text`，调用点的换色类全部无效）。
 
 ## `src/components/ui/section-card.tsx`
 **职责**：设置/分区卡片——标题 + 描述 + 操作区 + 内容区的标准化外壳。
@@ -457,9 +457,9 @@
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
 | `GlassSpinnerProps` | spinner.tsx:3 | `size`（`sm 16 / md 24 / lg 32` 或数字，默认 `sm`）、`color`（`current/default/primary`，默认 `current`）、`className` |
-| `colorMap` | spinner.tsx:9 | color → text 类映射 |
-| `Spinner` | spinner.tsx:15 | `animate-spin` + 底圈 25% 透明 + 90% 透明弧线，`aria-hidden` |
-| `GlassSpinner` | spinner.tsx:47 | 别名（`GlassButton` 的 `isLoading` 使用） |
+| `colorMap` | spinner.tsx:9 | color → text 类映射；`primary` 取原色 `text-primary`（描边不套用「文字版」变体） |
+| `Spinner` | spinner.tsx:17 | `animate-spin` + 底圈 25% 透明 + 90% 透明弧线，`aria-hidden`；弧的半径带与底圈严格重合——底圈是 `stroke(r=10, width=4)`（半径 8–12），弧取外 12 / 内 8（:44-48） |
+| `GlassSpinner` | spinner.tsx:53 | 别名（`GlassButton` 的 `isLoading` 使用） |
 
 ## `src/components/ui/status-badge.tsx`
 **职责**：账户同步状态徽标——把状态枚举映射为语义色 Chip。

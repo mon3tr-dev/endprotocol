@@ -52,7 +52,9 @@ function ProgressCircle({
       aria-valuemax={100}
       aria-valuenow={isIndeterminate ? undefined : clamped}
       className={cn(
-        "inline-flex items-center justify-center",
+        // 环色挂在根节点上：弧线继承 currentColor，调用方传 text-* 即可换色，
+        // 默认取原色（描边属图形，不用 -text 文字变体，见 globals.css）。
+        "inline-flex items-center justify-center text-primary",
         "[transition:transform_var(--lg-dur-press)_var(--lg-ease-spring),translate_var(--lg-dur-press)_var(--lg-ease-spring),scale_var(--lg-dur-press)_var(--lg-ease-spring)]",
         "hover:scale-110",
         className,
@@ -112,7 +114,9 @@ function FillCircle({ className }: { className?: string }) {
       strokeDasharray={c}
       strokeDashoffset={offset}
       className={cn(
-        "text-primary-text",
+        // 弧线跟随根节点的 currentColor（根默认 text-primary），
+        // 不再写死文字色变体，否则调用方在 className 上传的颜色永远不生效。
+        "text-current",
         isIndeterminate && "animate-spin",
         className,
       )}

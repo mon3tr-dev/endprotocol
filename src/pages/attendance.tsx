@@ -78,7 +78,7 @@ export default function AttendancePage() {
 
       {isLoading ? (
         <div className="flex items-center justify-center py-24">
-          <GlassProgressCircle isIndeterminate size="lg" aria-label="Loading" className="text-primary-text">
+          <GlassProgressCircle isIndeterminate size="lg" aria-label="Loading" className="text-primary">
             <GlassProgressCircle.Track>
               <GlassProgressCircle.TrackCircle />
               <GlassProgressCircle.FillCircle />

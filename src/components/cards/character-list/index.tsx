@@ -331,7 +331,7 @@ export default function CharacterListCard({
           isIndeterminate
           size="md"
           aria-label="Loading"
-          className="text-primary-text"
+          className="text-primary"
         >
           <GlassProgressCircle.Track>
             <GlassProgressCircle.TrackCircle />
