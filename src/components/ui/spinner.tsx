@@ -14,6 +14,10 @@ const colorMap = {
   primary: "text-primary",
 };
 
+/** viewBox 24 下的环：底圈与不定量弧共用这一套描边参数 */
+const RADIUS = 10;
+const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
+
 function Spinner({
   size = "sm",
   color = "current",
@@ -33,18 +37,26 @@ function Spinner({
         className="opacity-25"
         cx="12"
         cy="12"
-        r="10"
+        r={RADIUS}
         stroke="currentColor"
         strokeWidth="4"
       />
-      {/* 弧段必须与底圈落在同一条半径带上：底圈是 stroke(r=10, width=4)，
-          即半径 8→12。外弧取 r=12、内弧取 r=8 才能与它严格重合；
-          旧值 (外 10 / 内 6) 比底圈整整内缩了一个线宽，视觉上弧段脱离
-          底圈、看起来像偏心。 */}
-      <path
+      {/* 不定量弧与底圈共用 r / strokeWidth，并带圆端帽——与
+          GlassProgressCircle 的不定量态是同一族样式。
+          此前弧用 fill 扇形画（外弧 r=10 / 内弧 r=6）：既与底圈错开一个
+          线宽，两端又是径向切边，于是「首次加载的兜底环」和「页面内的
+          加载环」一个方头一个圆头。 */}
+      <circle
         className="opacity-90"
-        fill="currentColor"
-        d="M12 0a12 12 0 0 1 12 12h-4a8 8 0 0 0-8-8V0z"
+        cx="12"
+        cy="12"
+        r={RADIUS}
+        stroke="currentColor"
+        strokeWidth="4"
+        strokeLinecap="round"
+        strokeDasharray={CIRCUMFERENCE}
+        strokeDashoffset={CIRCUMFERENCE * 0.75}
+        transform="rotate(-90 12 12)"
       />
     </svg>
   );

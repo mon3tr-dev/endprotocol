@@ -47,7 +47,7 @@
 ## `src/components/account-switch-modal.tsx`
 **职责**：账户切换弹窗。支持搜索过滤、当前账户置顶高亮，点击卡片切换全局选中账户并广播变更事件。
 **导出**：默认导出 `AccountSwitchModal`
-**主要依赖**：`react`（`useState/useEffect/useMemo`）、`react-i18next`、`@/components/ui/glass`（`GlassCard`、`GlassInput`）、`@/components/custom-modal`（`CustomModal`、`CustomModalHeader`、`CustomModalBody`）、`@/components/icons`（`SearchIcon`）、`@/components/ui/account-avatar`（`AccountAvatar`）、`@/components/ui/empty-state`（`EmptyState`、`EmptyStateUserIcon`）、`@/components/ui/loading-block`（`SkeletonList`）、`@/types`（`resolveServerLabel`）、`@/utils/accountService`（`getAccounts`、`setSelectedAccount`、类型 `Account`）、`@/utils/logger`
+**主要依赖**：`react`（`useState/useEffect/useMemo`）、`react-i18next`、`@/components/ui/glass`（`GlassCard`、`GlassInput`、`GlassSpinner`）、`@/components/custom-modal`（`CustomModal`、`CustomModalHeader`、`CustomModalBody`）、`@/components/icons`（`SearchIcon`）、`@/components/ui/account-avatar`（`AccountAvatar`）、`@/components/ui/empty-state`（`EmptyState`、`EmptyStateUserIcon`）、`@/components/ui/loading-block`（`SkeletonList`）、`@/types`（`resolveServerLabel`）、`@/utils/accountService`（`getAccounts`、`setSelectedAccount`、类型 `Account`）、`@/utils/logger`
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
@@ -64,7 +64,7 @@
 - 无 `invoke` / `listen`；本组件内的账户读写全部经 `@/utils/accountService` 封装。
 - 事件：`listen`/监听 `window` `manualRefresh`（account-switch-modal.tsx:45）；派发 `window` `accountChanged`（account-switch-modal.tsx:91）。
 - i18n key：`account_switch.title`、`account_switch.search_placeholder`、`account_switch.no_accounts_found`、`account_switch.accounts_total`（带 `count` 插值）、`settings.account.skland_account`；未读 i18n 而用 `t(...)` + 硬编码的 `ACTIVE` 徽章（account-switch-modal.tsx:161）。
-- 卡片选中态用 `border-2 border-primary bg-primary-50 dark:bg-primary-900/20`，切换中显示 20px 旋转圈（account-switch-modal.tsx:176-178）。
+- 卡片选中态用 `border-2 border-primary bg-primary-50 dark:bg-primary-900/20`，切换中显示 `GlassSpinner size={20} color="primary"`（account-switch-modal.tsx:176；原先这里是 CSS `border` 环，缺口是方头，已统一为项目里的圆头弧指示器）。
 
 ## `src/components/add-card-modal.tsx`
 **职责**：仪表盘「添加卡片」弹窗。从卡片注册表读取可选卡片，支持名称搜索 + 标签多选过滤，选中后回调 `onAdd(cardType)`。

@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { GlassCard, GlassInput } from "@/components/ui/glass";
+import { GlassCard, GlassInput, GlassSpinner } from "@/components/ui/glass";
 import {
   CustomModal,
   CustomModalHeader,
@@ -173,9 +173,7 @@ export default function AccountSwitchModal({
                         </p>
                       )}
                     </div>
-                    {isSwitching && (
-                      <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-                    )}
+                    {isSwitching && <GlassSpinner size={20} color="primary" />}
                   </div>
                 </GlassCard>
               );

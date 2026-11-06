@@ -9,7 +9,7 @@
 
 **主要依赖**：
 - 项目内：`@/components/custom-titlebar`（`CustomTitlebar`）、`@/components/dashboard-sidebar`（`Sidebar`）、`@/components/in-app-browser`（`InAppBrowser`）、`@/components/game-action-panel`（`GameActionPanel`）、`@/components/game-sidebar-rail`（`GameSidebarRail`，游戏模式右侧官方社媒栏）、`@/stores/launcherMode`（模式、背景媒体与 `game_bg_mode` 的可订阅 store，含 `setGameBgMode`）、`@/stores/inAppBrowser`（`openInAppBrowser`/`suspendInAppBrowser`/`resumeInAppBrowser`）、`@/utils/launcherService`（`getNoticeContent`/`getBackgroundImage` 与 `GameChannel`/`BannerItem`/`AnnouncementItem`/`SidebarItem` 类型）、`@/utils/platform`（`isWindowsPlatform`）、`@/utils/startupProgress`（`trackStartupTask`）。
-- 项目内（续）：`@/components/ui/glass`（`GlassSpinner`，作为懒加载页面的 `Suspense` 兜底）、`@/utils/configService`（`getConfig`/`setConfig`，读写侧边栏折叠状态）。
+- 项目内（续）：`@/components/ui/glass`（`GlassProgressCircle`，作为懒加载页面的 `Suspense` 兜底——与页面自身的加载态用同一种环）、`@/utils/configService`（`getConfig`/`setConfig`，读写侧边栏折叠状态）。
 - 第三方：`react`（`useState`/`useEffect`/`useRef`/`Suspense`）、`react-router-dom`（`useLocation`）、`clsx`、`react-i18next`（`useTranslation`）、`morphicons/react`（`MorphIcon`）、`lucide`（`ChevronLeft`/`ChevronRight`/`Video`/`Image as ImageIcon`）。
 
 | 符号 | 位置 | 说明 |
@@ -49,7 +49,7 @@
   - 渐变磨砂层：`.frost-main frost-with-sidebar` 全屏覆盖层（`--frost-sidebar-w` 按折叠状态写入 `288px`/`64px`），纵向遮罩对应标题栏、横向遮罩对应侧边栏，两者取并集形成连通的 L 形强区；游戏模式下换成 `.frost-main frost-titlebar-only`（仅标题栏窄带，避免整屏 backdrop-filter 跟视频逐帧重算）。放在背景层之上、veil 之下、内容层之下。
   - 441-453 行：桌面端侧边栏——外层 `div` 宽度在 `w-72` 与 `w-[64px]` 间以 `transition-[width] duration-300 ease-out` 平滑过渡（`overflow-hidden` 裁剪），向 `<Sidebar collapsed={sidebarCollapsed} onToggleCollapsed={toggleSidebarCollapsed} />` 传入折叠状态与切换回调。
   - 455-468 行：移动端抽屉（`mobileOpen` 为真时渲染遮罩 + `Sidebar onNavigate={关闭}`）；抽屉内另挂 `.frost-main frost-drawer`（fixed 定位、仅横向遮罩）。
-  - 470-492 行：`<main>` 滚动容器，内部 `div` 带 `id="dashboard-main"`（509，仪表盘快照的截图基准：`tabSnapshotService` 以它的视口矩形计算截取区域）并以 `location.pathname` 为 key 强制路由切换时重挂载，其中 `<Suspense>` 包裹 `{children}`，懒加载页面 chunk 未就绪时以居中的 `GlassSpinner` 作为兜底（布局外壳保持挂载）。
+  - 470-492 行：`<main>` 滚动容器，内部 `div` 带 `id="dashboard-main"`（509，仪表盘快照的截图基准：`tabSnapshotService` 以它的视口矩形计算截取区域）并以 `location.pathname` 为 key 强制路由切换时重挂载，其中 `<Suspense>` 包裹 `{children}`，懒加载页面 chunk 未就绪时以居中的 `GlassProgressCircle`（不定量 lg）作为兜底（布局外壳保持挂载）。
   - 487-507 行：移动端右下角浮动菜单按钮（`lg:hidden`），点击 `setMobileOpen(true)`。
 - 552-675 行：背景模式切换器实现——触发区常量（552-554）、选项表 `BG_MODE_OPTIONS`（556-571）、`GameBackgroundSwitch`（577-675）：固定定位在 `top-12`（标题栏下方）居中，隐藏态 `-translate-y-2 scale-95 opacity-0 pointer-events-none`，显示态复位（`transition-all duration-300 ease-out` 浮出动画）；胶囊容器内为滑动主色指示块 + 两个图标按钮（`h-8 w-9`，`MorphIcon size=16`），激活图标使用 `text-primary-foreground`。
 

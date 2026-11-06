@@ -13,6 +13,7 @@ import {
   GlassModalCompound as GlassModal,
 } from "@/components/ui/modal";
 import { GlassButton } from "@/components/ui/button";
+import { GlassSpinner } from "@/components/ui/spinner";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   type GameChannel,
@@ -2602,7 +2603,7 @@ export function GameActionPanel() {
                   </div>
                   {scanning && (
                     <div className="flex items-center gap-2 mt-4 text-xs text-muted">
-                      <div className="w-4 h-4 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+                      <GlassSpinner size={16} color="primary" className="shrink-0" />
                       <span>{t("launcher.scanning_files")}</span>
                     </div>
                   )}

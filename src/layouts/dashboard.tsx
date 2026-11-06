@@ -3,7 +3,7 @@ import { useLocation } from "react-router-dom";
 import clsx from "clsx";
 import { CustomTitlebar } from "@/components/custom-titlebar";
 import { Sidebar } from "@/components/dashboard-sidebar";
-import { GlassSpinner } from "@/components/ui/glass";
+import { GlassProgressCircle } from "@/components/ui/glass";
 import { getConfig, setConfig } from "@/utils/configService";
 import {
   getLauncherMode,
@@ -513,7 +513,14 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
               <Suspense
                 fallback={
                   <div className="flex h-full min-h-[50vh] items-center justify-center">
-                    <GlassSpinner color="primary" size="lg" />
+                    {/* 路由懒加载兜底：与页面自身的加载态用同一种环，
+                        否则首次切换页面会先闪一个另一种样式的指示器。 */}
+                    <GlassProgressCircle isIndeterminate size="lg" aria-label="Loading">
+                      <GlassProgressCircle.Track>
+                        <GlassProgressCircle.TrackCircle />
+                        <GlassProgressCircle.FillCircle />
+                      </GlassProgressCircle.Track>
+                    </GlassProgressCircle>
                   </div>
                 }
               >

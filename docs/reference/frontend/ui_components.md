@@ -458,8 +458,9 @@
 | --- | --- | --- |
 | `GlassSpinnerProps` | spinner.tsx:3 | `size`（`sm 16 / md 24 / lg 32` 或数字，默认 `sm`）、`color`（`current/default/primary`，默认 `current`）、`className` |
 | `colorMap` | spinner.tsx:9 | color → text 类映射；`primary` 取原色 `text-primary`（描边不套用「文字版」变体） |
-| `Spinner` | spinner.tsx:17 | `animate-spin` + 底圈 25% 透明 + 90% 透明弧线，`aria-hidden`；弧的半径带与底圈严格重合——底圈是 `stroke(r=10, width=4)`（半径 8–12），弧取外 12 / 内 8（:44-48） |
-| `GlassSpinner` | spinner.tsx:53 | 别名（`GlassButton` 的 `isLoading` 使用） |
+| `RADIUS` / `CIRCUMFERENCE` | spinner.tsx:18 / :19 | viewBox 24 下的环参数（`r=10` 与周长），底圈与不定量弧共用 |
+| `Spinner` | spinner.tsx:21 | `animate-spin` + 底圈 25% 透明；不定量弧同样是 `stroke(r=10, strokeWidth=4)` 并带 `strokeLinecap="round"`、`strokeDashoffset` 取 3/4 周长（:49-60），与 `GlassProgressCircle` 的不定量态同族；`aria-hidden` |
+| `GlassSpinner` | spinner.tsx:65 | 别名（`GlassButton` 的 `isLoading` 使用） |
 
 ## `src/components/ui/status-badge.tsx`
 **职责**：账户同步状态徽标——把状态枚举映射为语义色 Chip。
