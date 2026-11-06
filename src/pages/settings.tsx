@@ -491,7 +491,7 @@ export default function SettingsPage() {
                     createPortal(
                       <div
                         ref={langDropdownMenuRef}
-                        className="lg-regular fixed z-[9999] overflow-y-auto rounded-xl border border-separator/60 animate-scale-in"
+                        className="lg-regular fixed z-[9999] rounded-xl border border-separator/60 animate-scale-in"
                         style={{
                           top: langDropdownPos.top,
                           left: langDropdownPos.left,
@@ -499,6 +499,8 @@ export default function SettingsPage() {
                         }}
                         onClick={(e) => e.stopPropagation()}
                       >
+                        {/* 玻璃宿主与滚动容器分层：::before 材质层随滚动容器一起滚走 */}
+                        <div className="max-h-72 overflow-y-auto rounded-xl">
                         <div className="py-1">
                           {languages.map((lang) => (
                             <button
@@ -522,6 +524,7 @@ export default function SettingsPage() {
                               )}
                             </button>
                           ))}
+                        </div>
                         </div>
                       </div>,
                       document.body,

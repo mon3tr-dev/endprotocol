@@ -1154,12 +1154,13 @@ export default function DeveloperPage() {
             </span>
           </div>
 
-          {/* Log entries */}
-          <div
-            ref={logContainerRef}
-            className="lg-material rounded-xl border border-separator/80 overflow-y-auto font-mono text-xs"
-            style={{ maxHeight: "480px" }}
-          >
+          {/* Log entries — 玻璃宿主与滚动容器分层：lg-material 的 ::before 材质层
+           * 是 abspos 子元素，宿主自己 overflow-y-auto 时会随日志一起滚走。 */}
+          <div className="lg-material rounded-xl border border-separator/80 font-mono text-xs">
+            <div
+              ref={logContainerRef}
+              className="max-h-[480px] overflow-y-auto rounded-xl"
+            >
             {filteredLogs.length === 0 ? (
               <div className="flex items-center justify-center h-24 text-muted/60">
                 {i18n.language === "zh" ? "暂无日志" : "No logs"}
@@ -1204,6 +1205,7 @@ export default function DeveloperPage() {
                 })}
               </div>
             )}
+            </div>
           </div>
         </GlassCard>
       </div>

@@ -142,7 +142,7 @@ function FloatSelect({
         createPortal(
           <div
             ref={dropdownRef}
-            className="lg-regular fixed z-[999] min-w-[120px] max-h-64 overflow-y-auto rounded-xl border border-separator/60  shadow-xl animate-scale-in"
+            className="lg-regular fixed z-[999] min-w-[120px] rounded-xl border border-separator/60  shadow-xl animate-scale-in"
             style={{
               top: dropdownPos.top,
               left: dropdownPos.left,
@@ -150,6 +150,8 @@ function FloatSelect({
             }}
             onClick={(e) => e.stopPropagation()}
           >
+            {/* 玻璃宿主与滚动容器分层：::before 材质层随滚动容器一起滚走 */}
+            <div className="max-h-64 overflow-y-auto rounded-xl">
             {options.map((opt) => {
               const active = opt.value === value;
               return (
@@ -173,6 +175,7 @@ function FloatSelect({
                 </button>
               );
             })}
+            </div>
           </div>,
           document.body,
         )}

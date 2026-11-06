@@ -112,17 +112,21 @@ function GlassSelect({
           <div
             ref={menuRef}
             className={cn(
-              "lg-regular fixed z-[9999] min-w-[150px] rounded-xl border border-separator/60 overflow-y-auto overflow-x-hidden",
+              "lg-regular fixed z-[9999] min-w-[150px] rounded-xl border border-separator/60",
               closing ? "animate-fade-out" : "animate-scale-in",
             )}
             style={{
               top: pos.top,
               left: pos.left,
               width: Math.max(150, pos.width || 0),
-              maxHeight: maxMenuHeight,
             }}
             onClick={(e) => e.stopPropagation()}
           >
+            {/* 玻璃宿主与滚动容器分层：::before 材质层随滚动容器一起滚走 */}
+            <div
+              className="overflow-y-auto overflow-x-hidden rounded-xl"
+              style={{ maxHeight: maxMenuHeight }}
+            >
             {options.map((opt) => {
               const active = opt.value === normalized;
               return (
@@ -147,6 +151,7 @@ function GlassSelect({
                 </button>
               );
             })}
+            </div>
           </div>,
           document.body,
         )}

@@ -1314,7 +1314,7 @@ export const Sidebar = ({
                 createPortal(
                   <div
                     ref={searchMenuRef}
-                    className="lg-regular fixed z-[9999] border border-separator/60 rounded-lg max-h-[400px] overflow-y-auto animate-scale-in"
+                    className="lg-regular fixed z-[9999] border border-separator/60 rounded-lg max-h-[400px] flex flex-col animate-scale-in"
                     style={{
                       top: searchMenuPos.top + 8,
                       left: searchMenuPos.left,
@@ -1322,6 +1322,9 @@ export const Sidebar = ({
                     }}
                     onClick={(e) => e.stopPropagation()}
                   >
+                    {/* 玻璃宿主与滚动容器分层：::before 材质层是 abspos 子元素，
+                     * 宿主自己滚动时毛玻璃会随内容一起滚走。 */}
+                    <div className="flex-1 min-h-0 overflow-y-auto rounded-t-lg">
                     {searchResults.length === 0 ? (
                       <div className="py-6 text-center">
                         <SearchIcon className="w-8 h-8 text-muted mx-auto mb-2 opacity-50" />
@@ -1422,9 +1425,10 @@ export const Sidebar = ({
                         ))}
                       </div>
                     )}
+                    </div>
 
                     {/* Footer with keyboard shortcuts */}
-                    <div className="border-t-2 border-separator px-3 py-2 flex items-center justify-between text-xs text-muted bg-default-50">
+                    <div className="shrink-0 border-t-2 border-separator px-3 py-2 flex items-center justify-between text-xs text-muted bg-default-50 rounded-b-lg">
                       <div className="flex items-center gap-2">
                         <span className="flex items-center gap-1">
                           <GlassKbd className="text-xs">↑</GlassKbd>

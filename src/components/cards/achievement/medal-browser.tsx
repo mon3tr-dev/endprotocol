@@ -188,24 +188,26 @@ export function MedalBrowser({
               )}
             </div>
             {globalQuery.trim() && (
-              <div className="absolute left-1.5 right-1.5 top-full z-20 max-h-72 overflow-y-auto rounded-lg border border-separator/70 lg-regular shadow-xl animate-scale-in">
-                {globalResults.length > 0 ? (
-                  globalResults.slice(0, 50).map((medal) => (
-                    <button
-                      key={medal.achievementData.id}
-                      type="button"
-                      onClick={() => handleLocate(medal)}
-                      className="w-full text-left px-3 py-1.5 rounded-md text-xs truncate text-foreground lg-hoverable-soft transition-colors duration-200"
-                      title={medal.achievementData.name}
-                    >
-                      {medal.achievementData.name}
-                    </button>
-                  ))
-                ) : (
-                  <p className="text-xs text-muted text-center py-2">
-                    {t("card:ach_no_medals")}
-                  </p>
-                )}
+              <div className="absolute left-1.5 right-1.5 top-full z-20 rounded-lg border border-separator/70 lg-regular shadow-xl animate-scale-in">
+                <div className="max-h-72 overflow-y-auto rounded-lg">
+                  {globalResults.length > 0 ? (
+                    globalResults.slice(0, 50).map((medal) => (
+                      <button
+                        key={medal.achievementData.id}
+                        type="button"
+                        onClick={() => handleLocate(medal)}
+                        className="w-full text-left px-3 py-1.5 rounded-md text-xs truncate text-foreground lg-hoverable-soft transition-colors duration-200"
+                        title={medal.achievementData.name}
+                      >
+                        {medal.achievementData.name}
+                      </button>
+                    ))
+                  ) : (
+                    <p className="text-xs text-muted text-center py-2">
+                      {t("card:ach_no_medals")}
+                    </p>
+                  )}
+                </div>
               </div>
             )}
           </div>
@@ -286,10 +288,14 @@ export function MedalBrowser({
             ))}
           </div>
 
-          <div
-            ref={medalListRef}
-            className="flex-1 overflow-y-auto space-y-1 min-h-[420px] pb-16 border border-separator/50 rounded-lg p-2 lg-material"
-          >
+          {/* 玻璃宿主与滚动容器必须分层：::before 材质层是宿主的 abspos 子元素，
+           * 宿主自己 overflow-y-auto 时它会随内容一起滚走（翻动时毛玻璃消失）。
+           * 外层只挂 lg-material，滚动放在内层。 */}
+          <div className="flex-1 min-h-[420px] flex flex-col border border-separator/50 rounded-lg lg-material">
+            <div
+              ref={medalListRef}
+              className="flex-1 min-h-0 overflow-y-auto rounded-lg space-y-1 p-2 pb-16"
+            >
             {filteredMedals.length === 0 ? (
               <div className="text-center text-muted py-12">
                 {t("card:ach_no_medals")}
@@ -372,6 +378,7 @@ export function MedalBrowser({
                 );
               })
             )}
+            </div>
           </div>
         </div>
       </div>

@@ -239,7 +239,7 @@
 | `.lg-control` | 340-359 | 功能层控件底（开关/复选/分页/圆钮）。**自身不写 `background`**——透明底由 `@layer components` 的 `:is(...)` 规则统一提供，见下条 |
 | `.lg-control.lg-solid` + `[aria-checked="true"]` / `[data-state="checked"]` | 约 551-578 | **实底玻璃**：`::before` 只保留边缘内高光、不铺填充。填充用 `background-color` 书写（**不可用 `background` 简写**）——简写不可过渡，会在铺上 `bg-primary` 的同一帧整块消失，开关/复选因此闪一下；`.lg-control::before` 自身带 `transition: background-color var(--lg-dur-base)` 负责淡出。主色/危险色按钮与选中态开关复选本身就是实色，若再叠一层 `--lg-fill-control`（深色约 84% 的 tint）会把 `bg-primary` 压成灰紫；配合 `--primary-foreground` 深色下取近黑，文字直接读不出。组件里凡是 `<玻璃类> + bg-primary/bg-danger` 的组合都必须加 `lg-solid` |
 | `.lg-field` | 361-396 | 功能层输入字段；`:is(input,textarea,select).lg-field` 替换元素直接铺实底并禁用模糊 |
-| `.lg-material` / `-sub` / `-row` | 399-427 | 内容层标准材质（卡片/列表/分区），与功能层共用同一套 blur/saturate |
+| `.lg-material` / `-sub` / `-row` | 399-427 | 内容层标准材质（卡片/列表/分区），与功能层共用同一套 blur/saturate。**滚动分层约束**：材质层 `::before` 是宿主的 `inset:0` abspos 子元素，会随滚动内容一起平移裁掉——玻璃宿主（`lg-regular/clear/control/field/material` 与冻结别名 `glass-surface*`）**自身禁止挂 `overflow-auto/scroll`**，需要滚动的容器必须拆成「外层挂玻璃类 + 内层 overflow-y-auto（同圆角）」两层（`overflow-hidden` 纯裁切不受限）。全站违规点已于蚀刻章修复时清零：medal-browser 章列表/搜索下拉、achievement-modal 条带、developer 日志、characters/settings/dashboard-sidebar 下拉、ui/select、card-context-menu、char-select-modal 下拉 |
 | `.lg-scrim` | 470-474 | 全屏遮罩（黑 35% + `blur(calc(--lg-blur * 0.4))`） |
 | `.dashboard-card-shell` | 438-467 | **仪表板卡片壳（唯一约束点）**：`:has(> div > .lg-material)` 检测到卡片根自带材质时退位为透明纯容器；始终负责圆角/裁切/阴影 |
 | `.lg-native` | 476-490 | 原生磨砂窗口层（托盘 Acrylic）：不叠 webview 模糊，只压渐变 |

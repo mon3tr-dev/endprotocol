@@ -576,25 +576,29 @@ export function AchievementModal({
                   </GlassButton>
                 </div>
 
+                {/* 玻璃宿主与滚动容器分层：::before 材质层是 abspos 子元素，
+                 * 宿主自己 overflow-x-auto 时会随内容横向滚走（拖动条时毛玻璃消失）。 */}
                 <div
                   data-drop-target="strip"
-                  className={`w-full overflow-x-auto scrollbar-hide min-h-[92px] flex items-center rounded-lg transition-all lg-material border border-separator/70 ${dragOverTarget?.type === "strip" ? "bg-primary/10 ring-2 ring-primary ring-offset-1" : ""}`}
+                  className={`w-full min-h-[92px] flex items-center rounded-lg transition-all lg-material border border-separator/70 ${dragOverTarget?.type === "strip" ? "bg-primary/10 ring-2 ring-primary ring-offset-1" : ""}`}
                 >
-                  {stripMedals.length > 0 ? (
-                    <div className="flex items-center gap-2 justify-start px-2 pb-1">
-                      {stripMedals.map((medal) => (
-                        <StripHex
-                          key={medal.achievementData.id}
-                          medal={medal}
-                          onPointerDown={handleDragStart}
-                        />
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-xs text-muted text-center w-full">
-                      {t("card:ach_no_medals")}
-                    </p>
-                  )}
+                  <div className="w-full overflow-x-auto scrollbar-hide rounded-lg">
+                    {stripMedals.length > 0 ? (
+                      <div className="flex items-center gap-2 justify-start px-2 pb-1">
+                        {stripMedals.map((medal) => (
+                          <StripHex
+                            key={medal.achievementData.id}
+                            medal={medal}
+                            onPointerDown={handleDragStart}
+                          />
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-muted text-center w-full">
+                        {t("card:ach_no_medals")}
+                      </p>
+                    )}
+                  </div>
                 </div>
               </div>
             )}

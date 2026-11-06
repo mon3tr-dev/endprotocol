@@ -198,7 +198,7 @@ function FloatSelect({
         createPortal(
           <div
             ref={dropdownRef}
-            className="fixed z-[999] min-w-[120px] max-h-64 overflow-y-auto rounded-xl border border-separator/60 bg-background glass-surface-strong shadow-xl animate-scale-in"
+            className="fixed z-[999] min-w-[120px] rounded-xl border border-separator/60 bg-background glass-surface-strong shadow-xl animate-scale-in"
             style={{
               top: dropdownPos.top,
               left: dropdownPos.left,
@@ -210,6 +210,9 @@ function FloatSelect({
               e.stopPropagation();
             }}
           >
+            {/* 玻璃宿主与滚动容器分层：::before 材质层是 abspos 子元素，
+             * 宿主自己 overflow-y-auto 时会随内容滚走（毛玻璃消失）。 */}
+            <div className="max-h-64 overflow-y-auto rounded-xl">
             {options.map((opt) => {
               const active = opt.value === value;
               return (
@@ -233,6 +236,7 @@ function FloatSelect({
                 </button>
               );
             })}
+            </div>
           </div>,
           portalTargetRef.current || document.body,
         )}

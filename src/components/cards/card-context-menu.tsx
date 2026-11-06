@@ -78,26 +78,30 @@ export function CardContextMenu({
   return createPortal(
     <div
       ref={menuRef}
-      className="lg-regular fixed z-[9999] min-w-[160px] max-w-[calc(100vw-16px)] max-h-[calc(100vh-16px)] overflow-y-auto border border-separator/60 rounded-xl py-1 animate-scale-in"
+      className="lg-regular fixed z-[9999] min-w-[160px] max-w-[calc(100vw-16px)] border border-separator/60 rounded-xl animate-scale-in"
       style={{ left: position.x, top: position.y }}
     >
-      {items.map((item) => (
-        <button
-          key={item.key}
-          type="button"
-          className={`mx-1 box-border w-[calc(100%-0.5rem)] cursor-pointer rounded-lg px-3 py-2 text-left text-sm transition-colors flex items-center gap-2 ${
-            item.danger
-              ? "text-danger-text hover:bg-danger/10"
-              : "context-item-normal"
-          }`}
-          onClick={() => {
-            item.onPress();
-            onClose();
-          }}
-        >
-          {item.label}
-        </button>
-      ))}
+      {/* 玻璃宿主与滚动容器分层：::before 材质层是 abspos 子元素，
+       * 宿主自己滚动时毛玻璃会随内容一起滚走。 */}
+      <div className="max-h-[calc(100vh-16px)] overflow-y-auto rounded-xl py-1">
+        {items.map((item) => (
+          <button
+            key={item.key}
+            type="button"
+            className={`mx-1 box-border w-[calc(100%-0.5rem)] cursor-pointer rounded-lg px-3 py-2 text-left text-sm transition-colors flex items-center gap-2 ${
+              item.danger
+                ? "text-danger-text hover:bg-danger/10"
+                : "context-item-normal"
+            }`}
+            onClick={() => {
+              item.onPress();
+              onClose();
+            }}
+          >
+            {item.label}
+          </button>
+        ))}
+      </div>
     </div>,
     document.body,
   );

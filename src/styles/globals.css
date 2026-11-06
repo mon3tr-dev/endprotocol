@@ -192,6 +192,13 @@
  *   backdrop-filter 一律放在 ::before（z-index:-1）上，宿主元素不持有；
  *   模糊半径是静态令牌，禁止运行时改写（旧 glass_clarity 因此移除）；
  *   禁止对 backdrop-filter 做 transition/animation。
+ *
+ * 滚动分层约束（蚀刻章列表「翻动时毛玻璃被一起滚走」的根因）：
+ *   材质层 ::before 是宿主的 inset:0 abspos 子元素，会随滚动容器的内容
+ *   一起平移并被裁剪——**玻璃宿主自身禁止直接挂 overflow-auto/scroll**。
+ *   需要滚动的地方分两层：外层挂 lg-*（宿主，负责材质/边框/圆角/高度），
+ *   内层 overflow-y-auto（滚动容器，同样 rounded 保证裁切圆角一致）。
+ *   overflow-hidden（纯裁切、不滚动）不受此限。
  * ================================================================== */
 
 :root {
