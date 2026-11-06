@@ -1507,13 +1507,28 @@ html[data-window-radius="self"] {
   animation-delay: 280ms;
 }
 
-/* Scrollbar — overlay floats on top of content, no layout space */
+/* Scrollbar — 全局隐藏；被 overlayScrollbar 接管的容器（data-ovs）
+ * hover 时浮出可拖动 thumb。宽度必须在这里恢复：thumb 的尺寸
+ * 继承自 ::-webkit-scrollbar，之前只给 hover 补了颜色、没补宽度，
+ * 导致 0 宽 thumb 永远不可见。scrollbar-width:none 在 Chromium 121+
+ * 下优先于 webkit 伪元素，data-ovs 需显式覆盖回 auto 才能让 8px 生效。 */
 * {
   scrollbar-width: none;
 }
 *::-webkit-scrollbar {
   width: 0;
   height: 0;
+}
+[data-ovs] {
+  scrollbar-width: auto;
+}
+[data-ovs]::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+[data-ovs]::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 4px;
 }
 [data-ovs]:hover::-webkit-scrollbar-thumb {
   background: rgba(80, 82, 90, 0.9);

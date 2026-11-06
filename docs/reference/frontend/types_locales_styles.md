@@ -196,7 +196,7 @@
 | 257-265 行 | Banner 轮播「翻页推动」动画：`@keyframes banner-push-in/out-left/right` 与 `.animate-banner-push-*` 工具类（dashboard 游戏模式底部宣传图使用） |
 | 267-283 行 | 页面转场（`.page-transition-enter/slide-up/scale-in`）与列表项级联动画 `.animate-list-item`（8 档 40ms 阶梯延迟） |
 | 285-287 行 | 减少动态效果偏好下关闭系统资源指标切换动画 |
-| 289-292 行 | 滚动条：全局隐藏（width:0），`[data-ovs]:hover` 时才显示悬浮 thumb |
+| 1510-1535 行 | 滚动条：全局隐藏（`scrollbar-width: none` + `::-webkit-scrollbar` 宽高 0）；被 `overlayScrollbar.ts` 接管的容器（`data-ovs`，`overflow-y: overlay`）显式恢复 `scrollbar-width: auto` 与 8px webkit 宽度，thumb 默认透明、hover 浮出灰色可拖动 |
 | 约 644-908 行 | **玻璃拟态工具类**（详见下表；底色与 `backdrop-filter` 均在 `::before` 独立层，定位上下文在 `@layer components`） |
 | 377-422 行 | 交互动效工具类：`.interactive-hover`、`.card-hover`、`.button-hover`、`.icon-hover`、`.nav-hover`、`.list-item-hover`、`.input-hover`、`.chip-hover`、`.switch-hover`、`.checkbox-hover`、`.modal-hover`、`.tooltip-hover`、`.dropdown-item-hover`、`.table-row-hover`、`.link-hover` |
 | 424-430 行 | 状态发光阴影：`.shadow-glow-success/danger/warning`（深色模式加强） |
