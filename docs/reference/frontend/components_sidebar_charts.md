@@ -156,7 +156,7 @@
    - `series.type: "line"`，`data: cumulative.points`（346），`showSymbol: false`、**`step: "end"`**（348，阶梯线，无 `smooth`）、渐变面积（351）。
    - `xAxis` value `0..maxX`，`maxX = max(1, maxInterval)`（303, 321-330），name「六星间隔（抽）/ 6★ interval (pulls)」（328）——横轴为数据轴，**不**强制刻度间隔，走 ECharts 自动刻度。
    - `yAxis` value `0..maxY`，`maxY = max(1, total)`（304），**`interval: tickIntervalFor(0, maxY)`（335）强制纵轴刻度密度（≤ 11 个）**、`minInterval: 1`（336），name「累计六星 / Cumulative 6★」（339）。`grid.top` 为 30（306）以让出轴名。
-   - `markLine`（352-363）：红色虚线 `xAxis: expectation`（362），label `位置 insideEndTop`（359）——含义为「间隔 ≤ 期望抽数」的分界，左侧高度即「期望内出的六星个数」。
+   - `markLine`（352-363）：红色虚线 `xAxis: expectation`（362），label `位置 insideEndTop`（359）——含义为「间隔 ≤ 期望抽数」的分界，左侧高度即「期望内出的六星个数」；**`animation: false`**（禁用标线生长动画：动画期间 label 被逐帧重定位到当前生长端，产生闪烁/重影，见 apache/echarts#20834；此开关独立于 series 动画，两处 markLine 均设置）。
    - tooltip `trigger: "axis"`，输出「N 抽内 / 六星: M」（316-319）。
 
 **渲染（379-415）**：`grid grid-cols-1 lg:grid-cols-3 gap-4` 内嵌三个 `GlassCard`，标题分别为「星级分布」、「各卡池六星间隔（期望 N 抽）」、「六星累计（按间隔）」；中间为单条连接所有卡池事件、数据点按卡池着色的折线图，右侧为间隔累积阶梯折线图。中间与右侧卡片均在 `intervals.length === 0` 时叠加「暂无六星记录」空态。

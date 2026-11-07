@@ -338,6 +338,10 @@ export default function GachaStatCharts({
           markLine: {
             symbol: "none",
             silent: true,
+            // 禁用标线入场动画：生长动画（shape.percent 0→1）期间 label 每帧被
+            // 重新定位到"当前生长端"，垂直线即线顶，逐帧大位移产生闪烁与重影
+            // （apache/echarts#20834，v6.1.0 仍未修复）。此开关独立于 series 动画。
+            animation: false,
             label: {
               formatter: expLabel,
               color: "#ef4444",
@@ -406,6 +410,8 @@ export default function GachaStatCharts({
           markLine: {
             symbol: "none",
             silent: true,
+            // 同上：禁用标线生长动画，避免"期望 35.5 抽"文字在动画期间闪烁/重影
+            animation: false,
             label: {
               formatter: `${isZh ? "期望" : "Expected"} ${expectation}${isZh ? " 抽" : " pulls"}`,
               color: "#ef4444",
