@@ -75,7 +75,7 @@ function Thumb({ className }: { className?: string }) {
         // 滑块：位移走 press 档 + spring——过冲收敛到 1.2 的弹性曲线，
         // 滑到位时带一点惯性回弹，而不是 glide 那样匀速抹平（更不会瞬移）。
         "pointer-events-none block h-5 w-5 translate-x-0.5 rounded-full bg-white",
-        "shadow-[0_1px_3px_rgba(0,0,0,0.22),inset_0_1px_0_rgba(255,255,255,0.75)]",
+        "shadow-[0_1px_3px_rgba(0,0,0,0.22),inset_0_1px_1px_var(--lg-edge-glint)]",
         "[transition:translate_var(--lg-dur-press)_var(--lg-ease-inertia),transform_var(--lg-dur-press)_var(--lg-ease-spring),scale_var(--lg-dur-press)_var(--lg-ease-spring)]",
         "group-data-[state=checked]:translate-x-[22px]",
         className,
@@ -95,7 +95,7 @@ const SwitchThumb = React.forwardRef<
     ref={ref}
     className={cn(
       "pointer-events-none block h-5 w-5 translate-x-0.5 rounded-full bg-white",
-      "shadow-[0_1px_3px_rgba(0,0,0,0.22),inset_0_1px_0_rgba(255,255,255,0.75)]",
+      "shadow-[0_1px_3px_rgba(0,0,0,0.22),inset_0_1px_1px_var(--lg-edge-glint)]",
       "[transition:translate_var(--lg-dur-press)_var(--lg-ease-spring),transform_var(--lg-dur-press)_var(--lg-ease-spring),scale_var(--lg-dur-press)_var(--lg-ease-spring)]",
       "data-[state=checked]:translate-x-[22px]",
       className,

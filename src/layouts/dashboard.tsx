@@ -643,7 +643,7 @@ function GameBackgroundSwitch({
       >
         <span
           aria-hidden="true"
-          className={`pointer-events-none absolute inset-y-1 left-1 w-9 rounded-full border border-white/30 bg-primary shadow-[inset_0_1px_0_rgba(255,255,255,0.28),0_1px_4px_rgba(0,0,0,0.25)] [transition:translate_var(--lg-dur-press)_var(--lg-ease-inertia)] ${
+          className={`pointer-events-none absolute inset-y-1 left-1 w-9 rounded-full border border-white/30 bg-primary shadow-[inset_0_1px_1px_var(--lg-edge-glint),0_1px_4px_rgba(0,0,0,0.25)] [transition:translate_var(--lg-dur-press)_var(--lg-ease-inertia)] ${
             mode === "image" ? "translate-x-9" : "translate-x-0"
           }`}
         />

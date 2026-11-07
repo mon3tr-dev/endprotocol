@@ -40,13 +40,13 @@ const buttonVariants = cva(
         // lg-solid：主色/危险色是实底，玻璃层只留边缘高光、不铺填充；否则
         // ::before 的 tint 会把实底压成灰紫，深色主题下近黑前景字直接读不出。
         primary:
-          "lg-control lg-solid bg-primary text-primary-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.28)] hover:bg-primary/90",
+          "lg-control lg-solid bg-primary text-primary-foreground shadow-[inset_0_1px_1px_var(--lg-edge-glint)] hover:bg-primary/90",
         secondary: "lg-control lg-glass-interactive text-foreground",
         tertiary: "bg-transparent text-foreground/85 hover:text-foreground",
         outline: "lg-control lg-field lg-glass-interactive border bg-transparent",
         ghost: "bg-transparent text-foreground/85 hover:text-foreground",
         danger:
-          "lg-control lg-solid bg-danger text-danger-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.22)] hover:bg-danger/90",
+          "lg-control lg-solid bg-danger text-danger-foreground shadow-[inset_0_1px_1px_var(--lg-edge-glint)] hover:bg-danger/90",
       },
       size: {
         sm: "h-8 px-3 text-xs gap-1.5 rounded-xl",

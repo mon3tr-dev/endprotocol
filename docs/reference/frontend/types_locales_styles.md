@@ -228,7 +228,7 @@
 | ① 材质基参数 `--lg-blur`(20px) / `--lg-saturate`(1.6) | 173-181 | **全应用唯一的模糊半径与饱和度**；此前 regular/clear/control/field/material 各写一个数（20/14/16/12/22），同名控件深浅不一 |
 | `--lg-tint-light` / `--lg-tint-dark` / `--lg-tint` | 179-181 | 玻璃底色调，`.dark` 下自动切到深色支 |
 | ② 密度 `--lg-density` + 倍率 `--lg-k-control/field/material` | 183-205 | 变体差异只剩“同一块玻璃的浓淡”：`control = density×0.90`、`field = ×1.08`、`material = ×0.87`；深色主题另行下调 `--lg-k-material`（0.64 → 46%）保持深色内容层不发灰。**原 `--lg-alpha-sheet`(94%/92%) 与 `--lg-fill-sheet` 已随 `.lg-sheet` 一并移除**（标题栏/侧边栏改为渐变磨砂，不再铺实底） |
-| ③ 边缘/阴影四档 `--lg-edge`、`--lg-edge-top`、`--lg-shadow-*` | 207-214 | 全部 theme 化（`.dark` 覆盖），`.lg-material` 与 `.dashboard-card-shell` 不再各自写 rgba |
+| ③ 边缘/阴影 `--lg-edge`、`--lg-edge-top`、`--lg-ring-edge`、`--lg-ring-edge-top`、`--lg-edge-layers`、`--lg-edge-glint`、`--lg-shadow-*` | 241-256 | 边缘高光为**柔光带**而非 1px 实线：`--lg-edge`（环边）与 `--lg-edge-top`（顶部提亮）是低不透明度半透明白（浅色 0.40/0.32，深色 0.16/0.12），叠在 backdrop 处理过的背景上、颜色随背景透出；`--lg-ring-edge`/`--lg-ring-edge-top` 定义带 blur（1px / 1.5px 带 -0.5px 扩散）的组合阴影，`--lg-edge-layers` 是两者的合并引用，各玻璃层 `::before` 只写 `box-shadow: var(--lg-edge-layers)`；`--lg-edge-glint`（0.24）供实底玻璃（primary/danger 按钮、开关滑块、标题栏拨杆）引用。全部 theme 化（`.dark` 覆盖），禁止再写回 `inset 0 0 0 1px` 硬边或组件内写死白色 rgba |
 | ④ 交互填充 `--lg-interactive-soft/-/strong`、`--lg-hairline`、`--lg-inset-alpha` | 216-225 | 玻璃上的 hover/选中/内嵌块；浅色压暗、深色提亮（旧 `hover:bg-white/10` 在浅色下几乎不可见） |
 | ⑤ 最终填充色 `--lg-fill-regular/-control/-field/-material/-clear/-media` | 227-236 | `color-mix(primary X%, tint / alpha)` —— 主题色一变全部玻璃同步变，无需逐处改色 |
 | ⑥ 媒体层 `--lg-media-tint` / `--lg-alpha-media` | 199-203 | 压在视频/壁纸上的 HUD（游戏模式）：文字恒为浅色，底色固定深色支，只让通透度随主题微调 |

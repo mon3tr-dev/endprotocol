@@ -1,4 +1,4 @@
-@import "tailwindcss";
+﻿@import "tailwindcss";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -238,9 +238,22 @@
   --lg-alpha-material-row: 30%;
   --lg-scrim-alpha: 0.35; /* clear 在亮背景的暗化层（HIG: ~35%） */
 
-  /* ---- ③ 边缘 1px 内高光 + 外阴影（四档，全部 theme 化） ---- */
-  --lg-edge: rgba(255, 255, 255, 0.55);
-  --lg-edge-top: rgba(255, 255, 255, 0.35);
+  /* ---- ③ 边缘 1px 内高光 + 外阴影（四档，全部 theme 化） ----
+   * 边缘高光不再是纯白实线（旧 0.55 一圈硬边看上去像贴了白色贴条），
+   * 改为低不透明度 + 1~2px blur 的柔光带：box-shadow 的 blur 让高光
+   * 内外各渗 1~2px，渐入渐出；半透明白叠在 backdrop-filter 处理过的
+   * 背景上，透过率越高边缘颜色越随背景变化（仍保高光方向性）。
+   * 深色主题下继续压暗，避免深色界面泛出灰白描边。 */
+  --lg-edge: rgba(255, 255, 255, 0.4);
+  --lg-edge-top: rgba(255, 255, 255, 0.32);
+  /* 组合阴影令牌：环边柔光带 + 顶部提亮各一处定义，玻璃层只引用。
+   * blur 档位刻意保守（1px 环 / 1.5px 顶），再大高光会晕进内容区。 */
+  --lg-ring-edge: inset 0 0 1px var(--lg-edge);
+  --lg-ring-edge-top: inset 0 1px 2.5px -0.5px var(--lg-edge-top);
+  --lg-edge-layers: var(--lg-ring-edge), var(--lg-ring-edge-top);
+  /* 实底玻璃（bg-primary/bg-danger 按钮、拨杆）顶光：颜色仍走令牌，
+   * 组件只引用不写死；blur 1px 让亮线柔和过渡。 */
+  --lg-edge-glint: rgba(255, 255, 255, 0.24);
   --lg-shadow-control: 0 1px 2px rgba(0, 0, 0, 0.08);
   --lg-shadow-regular:
     0 1px 2px rgba(0, 0, 0, 0.07), 0 8px 24px rgba(0, 0, 0, 0.1);
@@ -305,8 +318,18 @@
     0.3,
     1
   ); /* 淡入/缩放主力（收尾长，但起步爆发，勿用于纯位移） */
-  --lg-ease-glide: cubic-bezier(0.33, 1, 0.68, 1); /* 位移主力：起步平缓、无过冲 */
-  --lg-ease-spring: cubic-bezier(0.34, 1.2, 0.64, 1); /* 小元素弹性（hover/按压缩放） */
+  --lg-ease-glide: cubic-bezier(
+    0.33,
+    1,
+    0.68,
+    1
+  ); /* 位移主力：起步平缓、无过冲 */
+  --lg-ease-spring: cubic-bezier(
+    0.34,
+    1.2,
+    0.64,
+    1
+  ); /* 小元素弹性（hover/按压缩放） */
   /* 滑块/拨杆/指示器这类「一块东西滑到另一个位置」的位移：过冲给足，
    * 到位时明显回弹一次才有惯性。spring 的 1.2 只有约 4% 过冲，49px 的
    * 拨杆才弹 2px，肉眼等于没有。 */
@@ -356,7 +379,7 @@
   --lg-alpha-clear: 24%;
   --lg-media-alpha: 34%; /* 深色主题：媒体层比浅色更透 */
   --lg-scrim-alpha: 0.12; /* 深色媒体背景上暗化层减轻 */
-  --lg-edge: rgba(255, 255, 255, 0.2);
+  --lg-edge: rgba(255, 255, 255, 0.16);
   --lg-edge-top: rgba(255, 255, 255, 0.12);
   --lg-shadow-control: 0 1px 2px rgba(0, 0, 0, 0.4);
   --lg-shadow-regular:
@@ -399,9 +422,7 @@
     120px 120px,
     auto;
   backdrop-filter: blur(var(--lg-blur)) saturate(var(--lg-saturate));
-  box-shadow:
-    inset 0 0 0 1px var(--lg-edge),
-    inset 0 1px 0 var(--lg-edge-top);
+  box-shadow: var(--lg-edge-layers), var(--lg-shadow-regular);
 }
 
 /* ---- 功能层：clear（悬浮于照片/视频等视觉丰富背景） ---- */
@@ -417,7 +438,7 @@
   pointer-events: none;
   background: var(--lg-fill-clear);
   backdrop-filter: blur(var(--lg-blur)) saturate(var(--lg-saturate));
-  box-shadow: inset 0 0 0 1px var(--lg-edge);
+  box-shadow: var(--lg-ring-edge);
 }
 /* 独立暗化层：浅色 35% / 深色 12%（HIG 可读性兜底）；
  * 压在已知深色媒体上时可置 --lg-scrim-alpha: 0 关闭。
@@ -567,9 +588,7 @@
   background-color: var(--lg-fill-control);
   transition: background-color var(--lg-dur-base) var(--lg-ease-standard);
   backdrop-filter: blur(var(--lg-blur)) saturate(var(--lg-saturate));
-  box-shadow:
-    inset 0 0 0 1px var(--lg-edge),
-    inset 0 1px 0 var(--lg-edge-top);
+  box-shadow: var(--lg-edge-layers);
 }
 
 /* ---- 实底玻璃：控件本身就是实色（主色/危险色按钮、选中态开关键） ----
@@ -605,7 +624,7 @@
   pointer-events: none;
   background: var(--lg-fill-field);
   backdrop-filter: blur(var(--lg-blur)) saturate(var(--lg-saturate));
-  box-shadow: inset 0 1px 0 var(--lg-edge-top);
+  box-shadow: var(--lg-ring-edge-top);
 }
 /* <input>/<textarea>/<select> 是替换元素，::before 不渲染：
  * 直接铺更实的底色并禁用模糊（沿用旧实现验证过的 WebKit 规避）。 */
@@ -642,9 +661,7 @@
     120px 120px,
     auto;
   backdrop-filter: blur(var(--lg-blur)) saturate(var(--lg-saturate));
-  box-shadow:
-    inset 0 0 0 1px var(--lg-edge),
-    inset 0 1px 0 var(--lg-edge-top);
+  box-shadow: var(--lg-edge-layers);
 }
 
 /* 内容层的次级/行级底色：纯色叠加，无模糊（嵌套在 .lg-material 内） */
@@ -693,9 +710,7 @@
     120px 120px,
     auto;
   backdrop-filter: blur(var(--lg-blur)) saturate(var(--lg-saturate));
-  box-shadow:
-    inset 0 0 0 1px var(--lg-edge),
-    inset 0 1px 0 var(--lg-edge-top);
+  box-shadow: var(--lg-edge-layers);
 }
 /* 无原生磨砂平台：兜底层直接用不透明 surface，避免透出桌面 */
 html[data-window-effects="fallback"]
@@ -763,9 +778,7 @@ html[data-window="tray-panel"] body {
     120px 120px,
     auto;
   backdrop-filter: blur(var(--lg-blur)) saturate(var(--lg-saturate));
-  box-shadow:
-    inset 0 0 0 1px var(--lg-edge),
-    inset 0 1px 0 var(--lg-edge-top);
+  box-shadow: var(--lg-edge-layers);
 }
 
 /* 玻璃宿主需要定位上下文，负层级伪元素才不会漏进祖先层叠上下文。
@@ -867,9 +880,7 @@ html[data-window="tray-panel"] body {
     pointer-events: none;
     background: var(--lg-fill-media);
     backdrop-filter: blur(var(--lg-blur)) saturate(var(--lg-saturate));
-    box-shadow:
-      inset 0 0 0 1px var(--lg-edge),
-      inset 0 1px 0 var(--lg-edge-top);
+    box-shadow: var(--lg-edge-layers);
   }
   /* ---- 玻璃层交互提亮：hover / 按压（唯一实现） ----
    *
@@ -1072,9 +1083,7 @@ html[data-window-radius="self"] {
   pointer-events: none;
   background: var(--lg-fill-control);
   backdrop-filter: blur(var(--lg-blur)) saturate(var(--lg-saturate));
-  box-shadow:
-    inset 0 0 0 1px var(--lg-edge),
-    inset 0 1px 0 var(--lg-edge-top);
+  box-shadow: var(--lg-edge-layers);
 }
 
 .titlebar-mode-toggle::before {
@@ -1090,7 +1099,7 @@ html[data-window-radius="self"] {
   background: var(--primary);
   /* 只留顶部内高光，去掉 `0 1px 4px` 那圈外阴影：宿主不能裁剪（见下），
    * 外阴影会直接漏出胶囊外面糊成一圈灰边。 */
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28);
+  box-shadow: inset 0 1px 1px var(--lg-edge-glint);
   will-change: transform;
   /* 拨杆位移，三条约束缺一不可：
    * 1) 宿主**不加 overflow-hidden**——容器里有 backdrop-filter（::after 玻璃层），
