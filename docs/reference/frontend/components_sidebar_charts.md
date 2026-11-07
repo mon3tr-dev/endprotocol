@@ -123,14 +123,14 @@
 | `WEAPON_SIX_STAR_EXPECTATION` | gacha-stat-charts.tsx:8 | 武器六星期望 `25` 抽/个 |
 | `cssVar` | gacha-stat-charts.tsx:10 | 读 CSS 变量（与 pity 图重复） |
 | `tickIntervalFor` | gacha-stat-charts.tsx:20 | **刻度密度控制**：`max(1, ceil((max-min)/10))`，强制 `axis.interval` 使刻度数 ≤ 11（含首尾） |
-| `useEchart` | gacha-stat-charts.tsx:25 | Hook：监听 `themeChange` 产生 `themeTick`（27-31），`echarts.init` + `ResizeObserver`（35-47），返回 `{ setOption }`（49-54，`setOption(option, true)`） |
+| `useEchart` | gacha-stat-charts.tsx:45 | Hook：监听 `themeChange` 产生 `themeTick`（47-52），`echarts.init` + `ResizeObserver`（56-68），返回 `{ setOption, themeTick }`。**返回值必须保持稳定引用**（`useCallback` + `useMemo`，70-79）：它进了三张图的 `useEffect` 依赖数组，若每次渲染都返回新对象，任何一次重渲染都会重新执行 notMerge 的 `setOption(option, true)` 把入场动画从头重播；`themeTick` 留在依赖里以覆盖主题切换重建实例的场景 |
 | `useChronoRecords` | gacha-stat-charts.tsx:58 | 过滤当前分类的 `draw` 记录（64-68）并按 `Number(gachaTs)` **升序**（69）；`weapon`/`all` 不分类过滤，其余用 `poolKindOf` |
 | `poolKindOf` | gacha-stat-charts.tsx:75 | 与 pity 图同名同逻辑的重复实现 |
 | `useStarDistribution` | gacha-stat-charts.tsx:88 | 按 `rarity` 计数 → `{ total, series: [rarity, count][] }`，按稀有度降序（96） |
 | `calculateGachaSixStarIntervals` | `utils/gachaIntervals.ts` | 共享间隔算法；被统计卡片、保底图与统计图复用 |
 | `useCumulativeSix` | gacha-stat-charts.tsx:140 | **间隔累积曲线**：入参为 `GachaSixStarInterval[]`；取出间隔抽数并**升序排序**，起点 `[0,0]` 后逐个 push `[间隔, 序号+1]` → `{ points, total, maxInterval }`。`points` 语义：横轴 n 处纵轴 = 间隔 ≤ n 抽的六星个数 |
 | `RARITY_COLORS` | gacha-stat-charts.tsx:140 | 稀有度配色：6 `#ef4444`、5 `#ffd700`、4 `#a855f7`、3 `#94a3b8` |
-| `GachaStatCharts` | gacha-stat-charts.tsx:147 | 主组件，147-406 行 |
+| `GachaStatCharts` | gacha-stat-charts.tsx:171 | 主组件，约 171-496 行 |
 
 **Props（147-159）**：`records: GachaRecord[]`、`pools: Record<string, { poolType: string }>`、`category: GachaCategory`、`isWeapon: boolean`、`isZh: boolean`。
 
@@ -142,7 +142,7 @@
 - **间隔累积公式** `useCumulativeSix`（150-162）：取出共享算法的间隔抽数，升序排序后生成阶梯累积点。累积图汇总所有卡池的间隔，但每个间隔均先在所属卡池独立计算。
 - **星级占比** `useStarDistribution`（88-99）：Map 计数 + 总数，percent 在 219-223 计算为 `round(c/total*1000)/10`（保留 1 位小数）。
 
-**图表类型与配置**（三个容器均固定高 220px：376/383/396，库为 **ECharts**，各由一个 `useEchart` 实例驱动）：
+**图表类型与配置**（三个容器均固定高 220px，库为 **ECharts**，各由一个 `useEchart` 实例驱动；按需注册 `LineChart`/`PieChart`/`GridComponent`/`LegendComponent`/`MarkLineComponent`/`MarkPointComponent`/`TooltipComponent` + `CanvasRenderer`，16-26）：
 
 1. **星级分布环形图**（effect 180-228）
    - `series[0].type: "pie"`，`radius: ["45%","72%"]`、`center: ["50%","44%"]`、`avoidLabelOverlap`（206-208）；label `"{c} ({d}%)"`（209-214），`labelLine` 长度 8/6（215）。
@@ -150,19 +150,20 @@
    - tooltip `trigger: "item"`，formatter 输出名称与 `值 (百分比%)`（191-194）。
 2. **按卡池着色的六星间隔折线图**（effect 248-322）
    - 图表仅有一条 `series.type: "line"`，按六星事件时间顺序连接所有卡池的数据；x 为全局事件序号，y 为共享算法计算的间隔抽数。
-   - 数据点按所属卡池分别着色，图下方显示卡池颜色图例；tooltip 显示卡池名、该池六星序号及间隔。红色虚线 `yAxis: expectation` 标记期望抽数。
+   - 数据点按所属卡池分别着色，图下方显示卡池颜色图例；tooltip 显示卡池名、该池六星序号及间隔。红色虚线 `yAxis: expectation` 标记期望抽数；该标线**保留默认的入场生长动画**（`markLine` 不设 `animation: false`），「期望 N 抽」文字改由同 series 的 `markPoint`（静止 `symbolSize: 1` 透明圆点，`position: "top"`、`align: "right"`）承载。
    - `xAxis` 为 value，从第一次六星事件序号 1 起始（范围 `1..max(1, intervals.length)`），按事件数量设置刻度；`yAxis` 为间隔抽数。
 3. **六星间隔累积阶梯图**（effect 302-368）——标题「六星累计（按间隔） / Cumulative 6★ (by interval)」
    - `series.type: "line"`，`data: cumulative.points`（346），`showSymbol: false`、**`step: "end"`**（348，阶梯线，无 `smooth`）、渐变面积（351）。
    - `xAxis` value `0..maxX`，`maxX = max(1, maxInterval)`（303, 321-330），name「六星间隔（抽）/ 6★ interval (pulls)」（328）——横轴为数据轴，**不**强制刻度间隔，走 ECharts 自动刻度。
    - `yAxis` value `0..maxY`，`maxY = max(1, total)`（304），**`interval: tickIntervalFor(0, maxY)`（335）强制纵轴刻度密度（≤ 11 个）**、`minInterval: 1`（336），name「累计六星 / Cumulative 6★」（339）。`grid.top` 为 30（306）以让出轴名。
-   - `markLine`（352-363）：红色虚线 `xAxis: expectation`（362），label `位置 insideEndTop`（359）——含义为「间隔 ≤ 期望抽数」的分界，左侧高度即「期望内出的六星个数」；**`animation: false`**（禁用标线生长动画：动画期间 label 被逐帧重定位到当前生长端，产生闪烁/重影，见 apache/echarts#20834；此开关独立于 series 动画，两处 markLine 均设置）。
-   - tooltip `trigger: "axis"`，输出「N 抽内 / 六星: M」（316-319）。
+   - `markLine`：红色虚线 `xAxis: expectation`，含义为「间隔 ≤ 期望抽数」的分界，左侧高度即「期望内出的六星个数」。**标线保留默认的入场生长动画**（不设 `animation: false`：`MarkerModel.isAnimationEnabled` 未显式配置时取到 `"auto"`，即跟随 series 动画开启）。
+   - **期望文字不能挂在 `markLine.label` 上**：`Line#beforeUpdate` 每帧按 `shape.percent` 重算 label 的 `rotation` 与位置，且当 `toPos[0] < fromPos[0]` 时 `rotation` 会额外 `+ π`；垂直于 x 轴的标线在生长途中两端点横坐标带浮点噪声（实测 2000 个生长比例里有 28 次差出 `-2.8e-14`），文字于是绕线顶在**中心对称的两处位置之间逐帧跳变**——表现即闪烁 + 一份更浅的镜像副本（apache/echarts#20834，v6.1.0 未修）。故 `markLine.label.show: false`，文字改由**静止的 `markPoint`** 承载（`symbol: "circle"`、`symbolSize: 1`、`itemStyle.color: "transparent"`、`animation: false`、`label.position: "top"`，落在标线顶端），其位置由数据坐标 `[expectation, maxY]` 决定，不随生长动画移动；期望值超出轴范围时 markPoint 与标线一同被过滤，不会撑开坐标轴。
+   - tooltip `trigger: "axis"`，输出「N 抽内 / 六星: M」。
 
 **渲染（379-415）**：`grid grid-cols-1 lg:grid-cols-3 gap-4` 内嵌三个 `GlassCard`，标题分别为「星级分布」、「各卡池六星间隔（期望 N 抽）」、「六星累计（按间隔）」；中间为单条连接所有卡池事件、数据点按卡池着色的折线图，右侧为间隔累积阶梯折线图。中间与右侧卡片均在 `intervals.length === 0` 时叠加「暂无六星记录」空态。
 
 **备注**：
 - **invoke 命令**：0 个（未引入 `@tauri-apps/api/core`）。
-- **listen 事件**：无 Tauri `listen`；仅 `window.addEventListener("themeChange")`（gacha-stat-charts.tsx:29，在 `useEchart` 内）。
+- **listen 事件**：无 Tauri `listen`；仅 `window.addEventListener("themeChange")`（gacha-stat-charts.tsx:49，在 `useEchart` 内）。
 - **Props 清单**：`records`、`pools`、`category`、`isWeapon`、`isZh`。
-- **异常/注意点**：① 间隔计数按 `poolId` 分组，与保底图同口径；每池首个六星的间隔从该池保存记录中的第一抽计起，历史记录不完整时不代表账号全历史。赠送无六星时不计，赠送出六星时将本次赠送组截至六星的抽数计入事件。② “平均六星间隔”按同一批事件求均值，不再使用总抽数÷六星数。③ 累积折线按间隔升序汇总卡池数据，参考线位于 `xAxis: expectation`，表示间隔分界。④ 环形图未处理空数据空态（另两张卡片均有）。⑤ `poolKindOf`/`cssVar` 与 `gacha-pity-chart.tsx` 重复。
+- **异常/注意点**：① 间隔计数按 `poolId` 分组，与保底图同口径；每池首个六星的间隔从该池保存记录中的第一抽计起，历史记录不完整时不代表账号全历史。赠送无六星时不计，赠送出六星时将本次赠送组截至六星的抽数计入事件。② “平均六星间隔”按同一批事件求均值，不再使用总抽数÷六星数。③ 累积折线按间隔升序汇总卡池数据，参考线位于 `xAxis: expectation`，表示间隔分界；两张折线图的参考线都**保留生长动画**，而「期望 N 抽」文字一律由静止的 `markPoint` 承载（原因见 2/3 条，`markLine.label` 在生长动画期间会被逐帧重定位并在浮点噪声下翻转）。④ 环形图未处理空数据空态（另两张卡片均有）。⑤ `poolKindOf`/`cssVar` 与 `gacha-pity-chart.tsx` 重复。

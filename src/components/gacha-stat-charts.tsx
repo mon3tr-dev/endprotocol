@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as echarts from "echarts/core";
 import { LineChart, PieChart } from "echarts/charts";
 import {
   GridComponent,
   LegendComponent,
   MarkLineComponent,
+  MarkPointComponent,
   TooltipComponent,
 } from "echarts/components";
 import { CanvasRenderer } from "echarts/renderers";
@@ -19,6 +20,7 @@ echarts.use([
   GridComponent,
   LegendComponent,
   MarkLineComponent,
+  MarkPointComponent,
   TooltipComponent,
   CanvasRenderer,
 ]);
@@ -66,12 +68,16 @@ function useEchart(ref: React.RefObject<HTMLDivElement | null>) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ref, themeTick]);
 
-  return {
-    setOption(option: EChartsOption) {
-      const chart = chartRef.current;
-      if (chart) chart.setOption(option, true);
-    },
-  };
+  const setOption = useCallback((option: EChartsOption) => {
+    const chart = chartRef.current;
+    if (chart) chart.setOption(option, true);
+  }, []);
+
+  // 返回值必须是稳定引用：它进了三个图表的 useEffect 依赖数组，若每次渲染都返回新对象，
+  // 任何一次重渲染都会重新执行 notMerge 的 setOption，把整张图的入场动画从头重播一遍
+  // （标线反复从 0 生长 = 肉眼看到的闪烁）。themeTick 留在依赖里，保证主题切换
+  // 重建实例后调用方会重新下发 option。
+  return useMemo(() => ({ setOption, themeTick }), [setOption, themeTick]);
 }
 
 /** 按时间从旧到新排列当前分类的全部抽卡记录 */
@@ -338,18 +344,31 @@ export default function GachaStatCharts({
           markLine: {
             symbol: "none",
             silent: true,
-            // 禁用标线入场动画：生长动画（shape.percent 0→1）期间 label 每帧被
-            // 重新定位到"当前生长端"，垂直线即线顶，逐帧大位移产生闪烁与重影
-            // （apache/echarts#20834，v6.1.0 仍未修复）。此开关独立于 series 动画。
+            // 标线保留入场生长动画（shape.percent 0→1）；文字不能挂在它的 label 上：
+            // Line#beforeUpdate 每帧按生长比例把 label 重定位到"当前生长端"（水平线表现为
+            // 文字沿线滑动；垂直于 x 轴的标线还会因 toPos[0] < fromPos[0] 的浮点噪声
+            // 把 rotation 额外加 π，文字在中心对称的两处之间逐帧跳变 = 闪烁 + 一份更浅的
+            // 镜像副本，apache/echarts#20834，v6.1.0 未修）。文字改由静止的 markPoint 承载。
+            label: { show: false },
+            lineStyle: { color: "#ef4444", type: "dashed", width: 1 },
+            data: [{ yAxis: expectation }],
+          },
+          markPoint: {
+            silent: true,
             animation: false,
+            symbol: "circle",
+            symbolSize: 1,
+            itemStyle: { color: "transparent" },
             label: {
               formatter: expLabel,
               color: "#ef4444",
               fontSize: 10,
-              position: "insideEndTop",
+              position: "top",
+              distance: 4,
+              align: "right",
+              offset: [-5, -2],
             },
-            lineStyle: { color: "#ef4444", type: "dashed", width: 1 },
-            data: [{ yAxis: expectation }],
+            data: [{ name: "expectation", coord: [maxIndex, expectation] }],
           },
         },
       ],
@@ -360,6 +379,7 @@ export default function GachaStatCharts({
   useEffect(() => {
     const maxX = Math.max(1, cumulative.maxInterval);
     const maxY = Math.max(1, cumulative.total);
+    const expLabel = `${isZh ? "期望" : "Expected"} ${expectation}${isZh ? " 抽" : " pulls"}`;
     const cumOption: EChartsOption = {
       grid: { left: 8, right: 24, top: 30, bottom: 24, containLabel: true },
       tooltip: {
@@ -410,16 +430,26 @@ export default function GachaStatCharts({
           markLine: {
             symbol: "none",
             silent: true,
-            // 同上：禁用标线生长动画，避免"期望 35.5 抽"文字在动画期间闪烁/重影
-            animation: false,
-            label: {
-              formatter: `${isZh ? "期望" : "Expected"} ${expectation}${isZh ? " 抽" : " pulls"}`,
-              color: "#ef4444",
-              fontSize: 10,
-              position: "insideEndTop",
-            },
+            // 同上一张图：标线保留生长动画，文字改由静止的 markPoint 承载，
+            // 否则 label 会被 Line#beforeUpdate 逐帧拖到生长端并在浮点噪声下翻转。
+            label: { show: false },
             lineStyle: { color: "#ef4444", type: "dashed", width: 1 },
             data: [{ xAxis: expectation }],
+          },
+          markPoint: {
+            silent: true,
+            animation: false,
+            symbol: "circle",
+            symbolSize: 1,
+            itemStyle: { color: "transparent" },
+            label: {
+              formatter: expLabel,
+              color: "#ef4444",
+              fontSize: 10,
+              position: "top",
+              distance: 4,
+            },
+            data: [{ name: "expectation", coord: [expectation, maxY] }],
           },
         },
       ],
