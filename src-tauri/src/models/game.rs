@@ -197,13 +197,30 @@ pub struct ProxyResponse {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GetLatestGameRsp {
+    /// 0 = 无需更新，1 = 有新版本（整包）
+    #[serde(default)]
+    pub action: i32,
     pub version: String,
+    /// 服务端视角的客户端版本（与 `version` 同时下发）
+    #[serde(default)]
+    pub client_version: String,
+    /// 启动器维度的动作（是否需要先更新启动器）
+    #[serde(default)]
+    pub launcher_action: i32,
     #[serde(default)]
     pub pkg: Option<PkgInfo>,
+    /// 版本差量/整文件补丁包（`patch`）。
+    ///
+    /// 官方逆序结论（本机 Games.exe `ParseLatestGameJson` 字段解析顺序 + 线上响应实测）：
+    /// `cd_key` / `v2_*` / `patches` 都属于 **`patch` 对象**，`pkg` 里没有 `cd_key`。
+    /// 只有请求里带上本地版本、且服务端能给出相邻版本补丁时才有值。
+    #[serde(default)]
+    pub patch: Option<PatchInfo>,
     /// 预下载补丁包（`pre_patch`）。
     ///
     /// 官方只在正式发版前提供，且仅当请求里带上本地版本号时才会返回；
     /// 请求不带版本（如全新安装）时该字段为 null。
+    /// 注意：`pre_patch` **不含 `cd_key`**——密钥要等正式发版、`patch` 下发后才有。
     #[serde(default)]
     pub pre_patch: Option<PrePatch>,
 }
@@ -211,8 +228,73 @@ pub struct GetLatestGameRsp {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PkgInfo {
     pub file_path: String,
+    /// 历史形态兼容位。实测 `pkg` 响应里没有该键，官方真值在 `PatchInfo::cd_key`。
     #[serde(default, skip_serializing)]
     pub cd_key: Option<String>,
+}
+
+/// 版本补丁包（`get_latest_game_rsp.patch`）。
+///
+/// 官方客户端与 Games.exe 的实际用法（本机复现确认）：
+/// - `patches[]` 是 **WinZip AES（AE-2 / AES-256）加密的分卷 zip**，密码就是 `cd_key`（32 字符）；
+/// - `url` 是同一批内容的 **未加密整包 zip**（官方作为回退形态）；
+/// - 包内除游戏文件外还带 `game_files`（新版加密清单）、`package_files`（包内容 MD5 清单）、
+///   `delete_files.txt`（需要删除的相对路径清单）三个控制文件。
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct PatchInfo {
+    /// 补丁包解密密钥：既是 WinZip AES 分卷的 zip 密码，也是 `verify_files` 的密钥来源。
+    #[serde(default)]
+    pub cd_key: String,
+    /// 未加密的整补丁 zip（回退用，可直取）
+    #[serde(default)]
+    pub url: String,
+    #[serde(default)]
+    pub md5: String,
+    #[serde(default)]
+    pub package_size: String,
+    #[serde(default)]
+    pub total_size: String,
+    #[serde(default)]
+    pub file_id: String,
+    /// 加密分卷列表（`.zip.001`、`.zip.002` … 顺序拼接为一个 ZIP）
+    #[serde(default)]
+    pub patches: Vec<PatchPart>,
+    #[serde(default)]
+    pub v2_patch_info_url: String,
+    #[serde(default)]
+    pub v2_patch_info_md5: String,
+    #[serde(default)]
+    pub v2_patch_info_size: String,
+    #[serde(default)]
+    pub v2_verify_files_url: String,
+    #[serde(default)]
+    pub v2_verify_files_md5: String,
+    #[serde(default)]
+    pub v2_verify_files_size: String,
+    #[serde(default)]
+    pub v2_verify_category_list: Vec<String>,
+}
+
+impl PatchInfo {
+    /// `cd_key` 规范化为可直接使用的密钥（去空白，空串视为不可用）
+    pub fn normalized_cd_key(&self) -> Option<String> {
+        let key = self.cd_key.trim();
+        if key.is_empty() {
+            None
+        } else {
+            Some(key.to_string())
+        }
+    }
+
+    /// 分卷下载字节数之和；没有分卷时退回 `package_size`
+    pub fn total_bytes(&self) -> u64 {
+        let sum: u64 = self.patches.iter().map(|p| p.size()).sum();
+        if sum > 0 {
+            sum
+        } else {
+            self.package_size.parse().unwrap_or(0)
+        }
+    }
 }
 
 /// 预下载补丁包（`get_latest_game_rsp.pre_patch`）
@@ -284,6 +366,18 @@ pub struct RemotePackage {
     pub preload_total_bytes: u64,
     /// 预下载包解压后的总字节数
     pub preload_expanded_bytes: u64,
+    /// 服务端是否下发了版本补丁包（`patch`）
+    #[serde(default)]
+    pub has_patch: bool,
+    /// 补丁分卷列表（加密，顺序即拼接顺序）
+    #[serde(default)]
+    pub patch_parts: Vec<PatchPart>,
+    /// 补丁分卷下载字节数之和
+    #[serde(default)]
+    pub patch_total_bytes: u64,
+    /// 是否有未加密的整补丁包（`patch.url`）
+    #[serde(default)]
+    pub has_patch_whole: bool,
 }
 
 /// 下载进度

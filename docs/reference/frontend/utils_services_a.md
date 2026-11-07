@@ -385,6 +385,8 @@
 **导出**：类型 `GameChannel`、`GameStatus`、`ActiveOperation`、`RemotePackage`、`DownloadProgress`、`BackgroundMedia`、`LauncherResult`、`PayloadState`、`BannerItem`、`AnnouncementItem`、`LauncherNoticeContent`、`SidebarItem`、`FileScanResult`、`DiskSpace`、`GamePlaytime`、`LaunchExportOptions`、`SteamShortcutOptions`、`SteamShortcutDefaults`、`AddSteamShortcutResult`；函数 `checkGameStatus`、`installOrUpdate`、`verifyAndRepair`、`getProcessReadBytes`、`getRemoteVersion`、`getPayloadState`、`cancelDownload`、`preloadDownload`、`installPreload`、`resetDownloadCancel`、`hasDownloadCache`、`getBanners`、`getAnnouncements`、`getNoticeContent`、`getBackgroundImage`、`startGame`、`syncSilentLaunchConfig`、`restoreLaunchConfig`、`getGameLaunchCommand`、`createGameShortcut`、`getSteamShortcutDefaults`、`pickSteamIcon`、`pickSteamIconSource`、`extractSteamIcon`、`addSteamShortcut`、`browseFolder`、`checkExecutable`、`checkGameRunning`、`killGame`、`getGamePlaytime`、`detectChannel`、`scanInstallDir`、`getDiskSpace`、`switchChannel`、`cancelSwitch`、`cancelAll`、`onLauncherProgress`、`onProgress`、`onSwitchProgress`、`formatBytes`；常量 `CHANNEL_LABELS`、`ALL_CHANNELS`、`STAGE_LABELS`、`LAUNCH_TOKEN_KEYS`、`LAUNCH_WARNING_TITLE_KEYS`、`KILL_TOKEN_KEYS`；函数 `splitLaunchToken`（解析 `<token>: <detail>` 契约串）。
 **主要依赖**：`@tauri-apps/api/core` 的 `invoke`、`@tauri-apps/api/event` 的 `listen` / 类型 `UnlistenFn`。
 
+**类型备注**：`RemotePackage`（launcherService.ts:36）除 `version` / `resource_base_url` 外还带补丁与预下载信息：`has_patch`、`patch_total_bytes`、`has_patch_whole`、`preload_total_bytes`（后端 `RemotePackage` 另含 `preload_parts` / `patch_parts`，前端未用）。解密密钥 `cd_key` 只存在后端，不下发前端。
+
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
 | `checkGameStatus` | launcherService.ts:109 | invoke `launcher_check_status`，参数 `{channel, installPath}`，返回 `GameStatus`；无本地错误处理（错误上抛） |

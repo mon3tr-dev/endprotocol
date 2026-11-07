@@ -27,6 +27,78 @@ const INSTALL_STAGING_SUFFIX: &str = ".staging.resume";
 const INSTALL_STAGING_VERSION_SUFFIX: &str = ".staging.resume.version";
 /// 小文件复用前重新校验 MD5 的尺寸上限（大文件下载完成时已校验）
 const STAGED_REUSE_HASH_LIMIT: u64 = 16 * 1024 * 1024;
+/// 预下载分卷暂存目录的版本标记文件
+const PRELOAD_VERSION_MARKER: &str = ".preload_version";
+
+/// 补丁 / 预下载包内的**控制文件**：它们不是游戏文件，不能铺进安装目录。
+///
+/// 逆向依据（Games.exe）：
+/// - `CCopyGameFile` 构造函数用 `package_files` / `delete_files.txt` / `patch.json` 三个名字
+///   建立"跳过名单"（RVA `0x00278dc0`，紧邻 RVA `0x00277c50` 的 `delete_files.txt` 路径构造）；
+/// - 本机官方安装目录 `E:\Endfield Game` 实测只有 `game_files`，没有 `package_files` /
+///   `delete_files.txt` / `patch.json`。
+///
+/// `game_files` **不在**排除之列：它是游戏安装目录内的正式文件（官方实测保留）。
+const ARCHIVE_CONTROL_FILES: [&str; 3] = ["package_files", "delete_files.txt", "patch.json"];
+/// 包内"需要删除的旧文件"清单
+const ARCHIVE_DELETE_LIST: &str = "delete_files.txt";
+/// 差量补丁包（含 hpatch `_patch` 条目）的错误前缀：调用方据此回退到清单逐文件下载
+const ERR_DELTA_ARCHIVE: &str = "DELTA_ARCHIVE:";
+
+/// 判断解压产物中的相对路径是否为包内控制文件（只匹配包根下的那几个名字）
+fn is_archive_control_file(relative: &Path) -> bool {
+    if relative.components().count() != 1 {
+        return false;
+    }
+    let Some(name) = relative.to_str() else {
+        return false;
+    };
+    ARCHIVE_CONTROL_FILES
+        .iter()
+        .any(|control| name.eq_ignore_ascii_case(control))
+}
+
+/// 读取 `delete_files.txt` 内容：官方是"每行一个相对路径"的清单；
+/// 这里同时兼容 JSON 数组（`["a","b"]` 或 `[{"path":"a"}]`），两种都归一化为相对路径列表。
+fn parse_delete_list(content: &str) -> Vec<String> {
+    let trimmed = content.trim_start();
+    if trimmed.starts_with('[') || trimmed.starts_with('{') {
+        if let Ok(value) = serde_json::from_str::<serde_json::Value>(trimmed) {
+            let items = match value {
+                serde_json::Value::Array(items) => items,
+                other => vec![other],
+            };
+            let mut out = Vec::new();
+            for item in items {
+                match item {
+                    serde_json::Value::String(path) => out.push(path),
+                    serde_json::Value::Object(map) => {
+                        for key in ["path", "file", "name"] {
+                            if let Some(serde_json::Value::String(path)) = map.get(key) {
+                                out.push(path.clone());
+                                break;
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            if !out.is_empty() {
+                return out
+                    .into_iter()
+                    .map(|path| path.trim().replace('\\', "/"))
+                    .filter(|path| !path.is_empty())
+                    .collect();
+            }
+        }
+    }
+    content
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty() && !line.starts_with('#'))
+        .map(|line| line.replace('\\', "/"))
+        .collect()
+}
 
 pub fn cancel_download() {
     DOWNLOAD_CANCELLED.store(true, Ordering::SeqCst);
@@ -396,12 +468,43 @@ impl GameLauncherService {
             _ => (false, None, Vec::new(), 0, 0),
         };
 
-        let cd_key = pkg
-            .cd_key
-            .as_deref()
-            .map(str::trim)
-            .filter(|key| !key.is_empty())
-            .map(str::to_string);
+        // 版本补丁包（patch）：官方常规更新的主通道。
+        // patch.patches 是 WinZip AES-256 加密分卷，密码 = patch.cd_key；patch.url 是未加密整包。
+        let patch_info = game_rsp.patch.as_ref();
+        let patch_parts: Vec<PatchPart> = patch_info
+            .map(|p| {
+                p.patches
+                    .iter()
+                    .filter(|part| !part.url.is_empty())
+                    .cloned()
+                    .collect()
+            })
+            .unwrap_or_default();
+        if !patch_parts.is_empty() {
+            for part in &patch_parts {
+                if !part.url.starts_with("https://") {
+                    return Err(format!("Patch part URL must be HTTPS, got: {}", part.url));
+                }
+            }
+            tracing::info!(
+                "[api] patch: parts={}, download_bytes={}, whole_url={}",
+                patch_parts.len(),
+                patch_info.map(|p| p.total_bytes()).unwrap_or(0),
+                patch_info.map(|p| p.url.as_str()).unwrap_or("")
+            );
+        }
+
+        // 解密密钥：官方真值在 patch.cd_key（`pkg` 里没有该键，见 Games.exe ParseLatestGameJson）。
+        // 保留 pkg.cd_key 作为历史形态兜底。
+        let cd_key = patch_info
+            .and_then(|p| p.normalized_cd_key())
+            .or_else(|| {
+                pkg.cd_key
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|key| !key.is_empty())
+                    .map(str::to_string)
+            });
 
         Ok((
             RemotePackage {
@@ -412,6 +515,12 @@ impl GameLauncherService {
                 preload_parts,
                 preload_total_bytes,
                 preload_expanded_bytes,
+                has_patch: !patch_parts.is_empty(),
+                patch_parts,
+                patch_total_bytes: patch_info.map(|p| p.total_bytes()).unwrap_or(0),
+                has_patch_whole: patch_info
+                    .map(|p| !p.url.is_empty())
+                    .unwrap_or(false),
             },
             cd_key,
         ))
@@ -659,14 +768,14 @@ impl GameLauncherService {
         tracing::debug!("[manifest] Decrypted size: {} bytes", decrypted.len());
 
         // 解析 NDJSON（每行一个 JSON 对象）
-        let files = self.parse_manifest(&decrypted)?;
+        let files = Self::parse_manifest(&decrypted)?;
         tracing::info!("[manifest] Parsed {} files", files.len());
 
         Ok((files, manifest_sha256))
     }
 
     /// 解析解密后的清单文本（NDJSON 格式）
-    fn parse_manifest(&self, content: &str) -> Result<Vec<ManifestFile>, String> {
+    fn parse_manifest(content: &str) -> Result<Vec<ManifestFile>, String> {
         let mut files = Vec::new();
         let mut seen = std::collections::HashSet::new();
 
@@ -1039,12 +1148,73 @@ impl GameLauncherService {
             verified_bytes: 0,
         });
 
-        let remote = self.get_latest_package(channel, None).await?;
+        // 官方客户端始终上报本地版本：只有带上版本时服务端才会返回 `patch`（含 cd_key）
+        // 与 `pre_patch`。全新安装（无本地版本）时 `patch` 为 null，自动走清单逐文件路径。
+        let local_version = self.read_local_version(install_path).ok();
+        let (remote, patch_cd_key) = self
+            .get_latest_package_with_cd_key(channel, local_version.as_deref())
+            .await?;
         tracing::info!(
-            "[install] Remote version: {}, resource: {}",
+            "[install] Remote version: {}, resource: {}, patch_parts: {}, has_key: {}",
             remote.version,
-            remote.resource_base_url
+            remote.resource_base_url,
+            remote.patch_parts.len(),
+            patch_cd_key.is_some()
         );
+
+        // 1.5 补丁包优先：官方常规更新走"下载加密分卷 → 7zg 解压 → 覆盖/删除"，比按清单逐文件
+        // 下载省得多（实测 1.6.3→1.6.4 只需 3 MB 补丁包，而清单差异可达 GB 级）。
+        // 差量形态（含 hpatch `_patch` 条目）本实现不支持，检测到后回退清单路径。
+        if remote.has_patch && !remote.patch_parts.is_empty() {
+            match patch_cd_key.as_deref() {
+                Some(key) => {
+                    tracing::info!(
+                        "[install] Using patch archive: {} parts, {} bytes",
+                        remote.patch_parts.len(),
+                        remote.patch_total_bytes
+                    );
+                    match self
+                        .install_from_archive_parts(
+                            channel,
+                            install_path,
+                            &remote.patch_parts,
+                            key,
+                            0,
+                            progress_callback.clone(),
+                            max_concurrent,
+                            resume,
+                        )
+                        .await
+                    {
+                        Ok(version) => {
+                            progress_callback(DownloadProgress {
+                                stage: InstallStage::Completed.as_str().to_string(),
+                                ..Default::default()
+                            });
+                            return Ok(version);
+                        }
+                        Err(error) if error.starts_with(ERR_DELTA_ARCHIVE) => {
+                            tracing::warn!(
+                                "[install] Patch archive is delta-based (needs hpatch), falling back to manifest download: {}",
+                                error
+                            );
+                        }
+                        Err(error) => {
+                            progress_callback(DownloadProgress {
+                                stage: InstallStage::Error.as_str().to_string(),
+                                ..Default::default()
+                            });
+                            return Err(error);
+                        }
+                    }
+                }
+                None => {
+                    tracing::warn!(
+                        "[install] Server offered a patch archive without cd_key; falling back to manifest download"
+                    );
+                }
+            }
+        }
 
         // 2. 下载并解密清单
         tracing::info!("[install] Fetching manifest...");
@@ -1128,53 +1298,11 @@ impl GameLauncherService {
                 .map(|p| p.manifest.size.max(0) as u64)
                 .sum();
 
-            // Check for pre-downloaded files and reuse them
-            let preload_dir = self.preload_staging_dir(install_path);
-            let mut reused_count = 0usize;
-            let mut reused_bytes = 0u64;
-            if let Some(ref preload_path) = preload_dir {
-                tracing::info!("[install] Found preload staging dir: {}", preload_path);
-                for plan in &files_to_download {
-                    let preload_file = Path::new(preload_path).join(&plan.manifest.path);
-                    let dest = staging_path.join(&plan.manifest.path);
-                    if preload_file.exists() {
-                        if let Ok(meta) = fs::metadata(&preload_file) {
-                            if meta.len() as u64 == plan.manifest.size.max(0) as u64 {
-                                // Verify MD5
-                                if hg_crypto::verify_md5(
-                                    preload_file.to_str().unwrap_or(""),
-                                    &plan.manifest.md5,
-                                )
-                                .unwrap_or(false)
-                                {
-                                    if let Some(parent) = dest.parent() {
-                                        let _ = fs::create_dir_all(parent);
-                                    }
-                                    if fs::copy(&preload_file, &dest).is_ok() {
-                                        reused_count += 1;
-                                        reused_bytes += plan.manifest.size.max(0) as u64;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                if reused_count > 0 {
-                    tracing::info!(
-                        "[install] Reused {}/{} files from preload ({} bytes)",
-                        reused_count,
-                        files_to_download.len(),
-                        reused_bytes
-                    );
-                    // Remove reused files from download list
-                    files_to_download.retain(|plan| {
-                        let dest = staging_path.join(&plan.manifest.path);
-                        !dest.exists()
-                    });
-                    // Clean up preload staging after successful reuse
-                    self.cleanup_preload_staging(install_path);
-                }
-            }
+            // 预下载的产物是**加密分卷 zip**（官方 `predownload` 目录同理），不是清单里的
+            // 游戏文件，因此不能按 `manifest.path` 去复用（旧实现就是在这里恒不命中，导致
+            // 预下载流量白费）。分卷的复用发生在补丁包路径：按"同名 + MD5 一致"直接从
+            // 预下载暂存搬到补丁暂存（见 download_parts_to_staging / bUsePreDownloadZip 等价逻辑）。
+            let reused_bytes = 0u64;
 
             // 复用上次中断时已下载完成的暂存文件；未完成的分片计入已完成字节，
             // 下载时由 download_single_file 按 Range 续传。关闭续传时不复用。
@@ -2171,7 +2299,10 @@ impl GameLauncherService {
         ))
     }
 
-    /// Install an official preload patch, downloading it first when needed.
+    /// 安装官方预下载补丁：下载 `pre_patch` 分卷、解密解压并应用到安装目录。
+    ///
+    /// 与官方（Games.exe）一致：`pre_patch` 只负责**提前下载分卷**；真正"应用"必须拿到
+    /// `patch.cd_key`（`pre_patch` 对象里没有密钥字段），因此这里要求密钥非空。
     pub async fn install_preload(
         &self,
         channel: &GameChannel,
@@ -2188,103 +2319,63 @@ impl GameLauncherService {
         let (remote, cd_key) = self
             .get_latest_package_with_cd_key(channel, local_version.as_deref())
             .await?;
-        let preload_version = remote
-            .preload_version
-            .as_deref()
-            .filter(|version| !version.is_empty())
-            .ok_or_else(|| "No preload package available".to_string())?;
-        if !remote.has_preload || remote.preload_parts.is_empty() {
+
+        // 优先用 pre_patch 分卷；正式发版后 pre_patch 会被撤下，此时退回 patch 分卷
+        // （两者在官方客户端里走的是同一条"下载分卷→7zg 解压"链路）。
+        let (parts, expanded_bytes, target_version) = if remote.has_preload
+            && !remote.preload_parts.is_empty()
+        {
+            let version = remote
+                .preload_version
+                .clone()
+                .filter(|version| !version.is_empty())
+                .ok_or_else(|| "No preload package available".to_string())?;
+            (
+                remote.preload_parts.clone(),
+                remote.preload_expanded_bytes,
+                version,
+            )
+        } else if remote.has_patch && !remote.patch_parts.is_empty() {
+            (
+                remote.patch_parts.clone(),
+                0u64,
+                remote.version.clone(),
+            )
+        } else {
             return Err("No preload package available".to_string());
-        }
-        if local_version.as_deref() == Some(preload_version) {
+        };
+
+        if local_version.as_deref() == Some(target_version.as_str()) {
             return Err(format!(
                 "Preload version {} is already installed",
-                preload_version
+                target_version
             ));
         }
-        let cd_key = cd_key
-            .as_deref()
-            .ok_or_else(|| "Preload package cannot be installed: no decryption key".to_string())?
-            .to_string();
 
+        let cd_key = cd_key.ok_or_else(|| {
+            "Preload package cannot be installed: no decryption key (patch.cd_key)".to_string()
+        })?;
+
+        // 预下载阶段不要提前把"完成"态抛给前端，等整体应用成功后再发
         let download_progress = progress_callback.clone();
-        let preload_progress = Arc::new(move |progress: DownloadProgress| {
+        let inner_progress = Arc::new(move |progress: DownloadProgress| {
             if progress.stage != InstallStage::Completed.as_str() {
                 download_progress(progress);
             }
         });
 
-        let result = async {
-            self.preload_download(
+        let result = self
+            .install_from_archive_parts(
                 channel,
                 install_path,
-                preload_progress,
+                &parts,
+                &cd_key,
+                expanded_bytes,
+                inner_progress,
                 max_concurrent,
                 resume,
-                Some(remote.clone()),
             )
-            .await?;
-
-            let staging_dir = self
-                .preload_staging_dir(install_path)
-                .ok_or_else(|| "Preload staging directory disappeared".to_string())?;
-            if Self::preload_staging_version(&staging_dir).as_deref() != Some(preload_version) {
-                return Err("Preload staging version does not match the requested update".into());
-            }
-
-            let staging_path = PathBuf::from(&staging_dir);
-            // 分卷在 preload_download 阶段已逐卷按 MD5 校验（下载后校验、复用时复验），
-            // 安装时直接解压，不再重复全量校验；安装完成后由前端触发快速校验。
-            let part_paths = remote
-                .preload_parts
-                .iter()
-                .enumerate()
-                .map(|(index, part)| {
-                    staging_path.join(Self::preload_part_file_name(&part.url, index))
-                })
-                .collect::<Vec<_>>();
-
-            let extracted_dir = staging_path.join(".extracted");
-            if extracted_dir.exists() {
-                fs::remove_dir_all(&extracted_dir)
-                    .map_err(|e| format!("Remove previous extraction: {}", e))?;
-            }
-            fs::create_dir_all(&extracted_dir)
-                .map_err(|e| format!("Create extraction directory: {}", e))?;
-
-            let key_for_extract = cd_key.clone();
-            let extract_progress = progress_callback.clone();
-            let extracted_dir_for_task = extracted_dir.clone();
-            let expanded_bytes = remote.preload_expanded_bytes;
-            tokio::task::spawn_blocking(move || {
-                Self::extract_preload_archive(
-                    &part_paths,
-                    &key_for_extract,
-                    &extracted_dir_for_task,
-                    expanded_bytes,
-                    extract_progress,
-                )
-            })
-            .await
-            .map_err(|e| format!("Preload extraction task failed: {}", e))??;
-
-            self.apply_preload_files(&extracted_dir, Path::new(install_path), &progress_callback)?;
-
-            let installed_package = self.get_latest_package(channel, None).await?;
-            let (manifest, manifest_sha256) = self
-                .fetch_manifest(&installed_package.resource_base_url)
-                .await?;
-            self.save_payload_state(
-                channel,
-                &installed_package.version,
-                &manifest_sha256,
-                &manifest,
-            )?;
-            self.cleanup_preload_staging(install_path);
-
-            Ok(installed_package.version)
-        }
-        .await;
+            .await;
 
         match result {
             Ok(version) => {
@@ -2304,7 +2395,325 @@ impl GameLauncherService {
         }
     }
 
-    fn extract_preload_archive(
+    /// 核心链路：**加密分卷 → 解密解压 → 应用**（预下载安装与版本补丁共用）。
+    ///
+    /// 复现的官方行为：
+    /// - 分卷下载后逐卷 MD5 校验（官方 `Retry times` / 失败整卷重下）；
+    /// - 用 `7zg.exe x -y -o"…" "<分卷>" -p"<cd_key>"` 等价的解密解压（Games.exe `CDecompressAssist::Start`）；
+    /// - 解压产物先落暂存，再按"控制文件不落盘 + delete_files.txt 删除旧文件 + 原子替换"应用；
+    /// - 正式更新时会优先复用预下载暂存里同名同 MD5 的分卷（等价官方 `bUsePreDownloadZip`）。
+    #[allow(clippy::too_many_arguments)]
+    async fn install_from_archive_parts(
+        &self,
+        channel: &GameChannel,
+        install_path: &str,
+        parts: &[PatchPart],
+        cd_key: &str,
+        expanded_bytes: u64,
+        progress_callback: Arc<dyn Fn(DownloadProgress) + Send + Sync>,
+        max_concurrent: usize,
+        resume: bool,
+    ) -> Result<String, String> {
+        if parts.is_empty() {
+            return Err("No archive parts available".to_string());
+        }
+        CANCEL_CLEANUP_REQUESTED.store(false, Ordering::SeqCst);
+
+        let staging_path = PathBuf::from(format!("{}.staging.patch", install_path));
+        fs::create_dir_all(&staging_path).map_err(|e| format!("Create patch staging: {}", e))?;
+
+        // 可复用的分卷来源：所有预下载暂存目录（官方"预下载产物在正式更新时直接消费"）
+        let reuse_dirs = self.preload_staging_dirs(install_path);
+
+        let total_bytes: u64 = parts.iter().map(|part| part.size()).sum();
+        progress_callback(DownloadProgress {
+            downloaded: 0,
+            total: total_bytes,
+            stage: InstallStage::Downloading.as_str().to_string(),
+            current_file: None,
+            file_index: 0,
+            file_count: parts.len(),
+            verified_bytes: 0,
+        });
+
+        if let Err(error) = self
+            .download_parts_to_staging(
+                parts,
+                &staging_path,
+                &reuse_dirs,
+                max_concurrent,
+                resume,
+                &progress_callback,
+            )
+            .await
+        {
+            let cleanup_requested = CANCEL_CLEANUP_REQUESTED.load(Ordering::SeqCst);
+            if !resume || cleanup_requested {
+                let _ = fs::remove_dir_all(&staging_path);
+            }
+            return Err(error);
+        }
+
+        // 解压（解密在 zip 条目层完成）
+        let part_paths = parts
+            .iter()
+            .enumerate()
+            .map(|(index, part)| staging_path.join(Self::preload_part_file_name(&part.url, index)))
+            .collect::<Vec<_>>();
+        let extracted_dir = staging_path.join(".extracted");
+        if extracted_dir.exists() {
+            fs::remove_dir_all(&extracted_dir)
+                .map_err(|e| format!("Remove previous extraction: {}", e))?;
+        }
+        fs::create_dir_all(&extracted_dir)
+            .map_err(|e| format!("Create extraction directory: {}", e))?;
+
+        let key_for_extract = cd_key.to_string();
+        let extract_progress = progress_callback.clone();
+        let extracted_dir_for_task = extracted_dir.clone();
+        let extract_result = tokio::task::spawn_blocking(move || {
+            Self::extract_encrypted_archive(
+                &part_paths,
+                &key_for_extract,
+                &extracted_dir_for_task,
+                expanded_bytes,
+                extract_progress,
+            )
+        })
+        .await
+        .map_err(|e| format!("Archive extraction task failed: {}", e))?;
+
+        if let Err(error) = extract_result {
+            // 差量包：保留分卷（下次仍需复用），交给调用方回退
+            if !error.starts_with(ERR_DELTA_ARCHIVE) {
+                let _ = fs::remove_dir_all(&staging_path);
+            }
+            return Err(error);
+        }
+
+        // 解压产物自检：包内 `package_files` 是官方的"本包文件清单"，用它堵住"坏包铺进游戏目录"
+        match Self::verify_archive_package_files(&extracted_dir) {
+            Ok(0) => {}
+            Ok(checked) => tracing::info!(
+                "[archive] package_files self-check passed for {} file(s)",
+                checked
+            ),
+            Err(error) => {
+                let cleanup_requested = CANCEL_CLEANUP_REQUESTED.load(Ordering::SeqCst);
+                if !resume || cleanup_requested {
+                    let _ = fs::remove_dir_all(&staging_path);
+                }
+                return Err(error);
+            }
+        }
+
+        // 应用（控制文件不落盘 + delete_files.txt + 原子替换）
+        let apply_result = self.apply_extracted_files(
+            &extracted_dir,
+            Path::new(install_path),
+            &progress_callback,
+        );
+        if let Err(error) = apply_result {
+            let cleanup_requested = CANCEL_CLEANUP_REQUESTED.load(Ordering::SeqCst);
+            if !resume || cleanup_requested {
+                let _ = fs::remove_dir_all(&staging_path);
+            }
+            return Err(error);
+        }
+
+        // 用最新的服务端清单落盘状态。官方补丁/预下载包内自带 `game_files`（新版加密清单，
+        // 实测 md5 与远端 `files/game_files` 一致），优先用它，省一次清单下载。
+        let installed_package = self.get_latest_package(channel, None).await?;
+        let archive_manifest = Self::read_archive_manifest(&extracted_dir);
+        let (manifest, manifest_sha256) = match archive_manifest {
+            Some(pair) => {
+                tracing::info!(
+                    "[archive] Using manifest bundled in the archive ({} files)",
+                    pair.0.len()
+                );
+                pair
+            }
+            None => {
+                self.fetch_manifest(&installed_package.resource_base_url)
+                    .await?
+            }
+        };
+        self.save_payload_state(
+            channel,
+            &installed_package.version,
+            &manifest_sha256,
+            &manifest,
+        )?;
+
+        // 成功：清掉补丁暂存与预下载暂存，并把"预下载完成"标记复位
+        let _ = fs::remove_dir_all(&staging_path);
+        self.cleanup_preload_staging(install_path);
+        let _ = self.save_preload_state(channel, &installed_package.version, false);
+
+        tracing::info!(
+            "[archive] Applied patch archive: version={}, parts={}",
+            installed_package.version,
+            parts.len()
+        );
+        Ok(installed_package.version)
+    }
+
+    /// 下载分卷到指定暂存目录：已存在且 MD5 一致的跳过，能按"同名 + MD5"命中复用目录时直接搬过来。
+    async fn download_parts_to_staging(
+        &self,
+        parts: &[PatchPart],
+        staging_path: &Path,
+        reuse_dirs: &[PathBuf],
+        max_concurrent: usize,
+        resume: bool,
+        progress_callback: &Arc<dyn Fn(DownloadProgress) + Send + Sync>,
+    ) -> Result<(), String> {
+        let total_bytes: u64 = parts.iter().map(|part| part.size()).sum();
+        let downloaded_bytes = Arc::new(AtomicU64::new(0));
+        let finished_parts = Arc::new(AtomicUsize::new(0));
+        let semaphore = Arc::new(Semaphore::new(max_concurrent.clamp(1, 32)));
+        let mut join_set = tokio::task::JoinSet::new();
+
+        let progress_cb_bg = progress_callback.clone();
+        let db_bg = downloaded_bytes.clone();
+        let fp_bg = finished_parts.clone();
+        let part_count = parts.len();
+        let progress_handle = tokio::spawn(async move {
+            let mut interval = tokio::time::interval(Duration::from_millis(500));
+            loop {
+                interval.tick().await;
+                if DOWNLOAD_CANCELLED.load(Ordering::Relaxed) {
+                    break;
+                }
+                let db = db_bg.load(Ordering::Relaxed);
+                let fp = fp_bg.load(Ordering::Relaxed);
+                if (db >= total_bytes && total_bytes > 0) || fp >= part_count {
+                    break;
+                }
+                progress_cb_bg(DownloadProgress {
+                    downloaded: db,
+                    total: total_bytes,
+                    stage: InstallStage::Downloading.as_str().to_string(),
+                    current_file: None,
+                    file_index: fp,
+                    file_count: part_count,
+                    verified_bytes: 0,
+                });
+            }
+        });
+
+        for (index, part) in parts.iter().enumerate() {
+            let file_name = Self::preload_part_file_name(&part.url, index);
+            let dest = staging_path.join(&file_name);
+            let dest_str = dest.to_string_lossy().to_string();
+            let part_url = part.url.clone();
+            let part_md5 = part.md5.clone();
+            let part_size = part.size();
+            let reuse: Vec<PathBuf> = reuse_dirs.to_vec();
+            let sem = semaphore.clone();
+            let db = downloaded_bytes.clone();
+            let fp = finished_parts.clone();
+            let client = self.download_client.clone();
+
+            join_set.spawn(async move {
+                let _permit = match sem.acquire().await {
+                    Ok(permit) => permit,
+                    Err(_) => return Err("Download cancelled".to_string()),
+                };
+                if DOWNLOAD_CANCELLED.load(Ordering::Relaxed) {
+                    return Err("Download cancelled".to_string());
+                }
+
+                // 1) 本暂存目录里已有且完整
+                if Path::new(&dest_str).exists()
+                    && hg_crypto::verify_md5(&dest_str, &part_md5).unwrap_or(false)
+                {
+                    tracing::info!("[archive] Reusing staged part: {}", file_name);
+                    db.fetch_add(part_size, Ordering::Relaxed);
+                    fp.fetch_add(1, Ordering::Relaxed);
+                    return Ok(());
+                }
+
+                // 2) 复用预下载暂存里的同名分卷（内容寻址：同名 + MD5 一致）
+                for dir in &reuse {
+                    let candidate = dir.join(&file_name);
+                    if candidate == Path::new(&dest_str) || !candidate.is_file() {
+                        continue;
+                    }
+                    let candidate_str = candidate.to_string_lossy().to_string();
+                    if !hg_crypto::verify_md5(&candidate_str, &part_md5).unwrap_or(false) {
+                        continue;
+                    }
+                    if let Some(parent) = Path::new(&dest_str).parent() {
+                        let _ = fs::create_dir_all(parent);
+                    }
+                    let moved = fs::rename(&candidate, &dest_str).is_ok()
+                        || (fs::copy(&candidate, &dest_str).is_ok()
+                            && hg_crypto::verify_md5(&dest_str, &part_md5).unwrap_or(false));
+                    if moved {
+                        let _ = fs::remove_file(&candidate);
+                        tracing::info!(
+                            "[archive] Reused pre-downloaded part {} from {}",
+                            file_name,
+                            dir.display()
+                        );
+                        db.fetch_add(part_size, Ordering::Relaxed);
+                        fp.fetch_add(1, Ordering::Relaxed);
+                        return Ok(());
+                    }
+                }
+
+                // 3) 正常下载
+                let result = download_single_file(
+                    &client, &part_url, &dest_str, &part_md5, db, part_size, resume,
+                )
+                .await;
+
+                match result {
+                    Ok(()) => {
+                        fp.fetch_add(1, Ordering::Relaxed);
+                        Ok(())
+                    }
+                    Err(e) => {
+                        tracing::error!("[archive] Failed to download {}: {}", file_name, e);
+                        Err(e)
+                    }
+                }
+            });
+        }
+
+        let mut failures: Vec<String> = Vec::new();
+        while let Some(joined) = join_set.join_next().await {
+            match joined {
+                Ok(Ok(())) => {}
+                Ok(Err(e)) => failures.push(e),
+                Err(e) => failures.push(format!("Task failed: {}", e)),
+            }
+        }
+        let _ = progress_handle.await;
+
+        if DOWNLOAD_CANCELLED.load(Ordering::Relaxed) {
+            return Err("Download cancelled".to_string());
+        }
+        if !failures.is_empty() {
+            return Err(format!(
+                "{} of {} part(s) failed: {}",
+                failures.len(),
+                parts.len(),
+                failures.first().cloned().unwrap_or_default()
+            ));
+        }
+        Ok(())
+    }
+
+    /// 解压 WinZip AES 加密的分卷 zip（顺序拼接后解密），产物落到 `output_dir`。
+    ///
+    /// 差量形态检测：官方补丁包有两种内容形态——"最终文件包"（解压即用）与"差量包"
+    /// （条目形如 `vfs_files/vfs_patch/diff_<a>_<b>/xxx_patch`，必须由 hpatch 结合本地 base
+    /// 文件打补丁，见 Patch.exe / `CPatchCotroller::DoPatch`）。本实现不包含 hpatch，
+    /// 因此一旦发现差量条目就返回 `ERR_DELTA_ARCHIVE` 前缀的错误，交由调用方回退到
+    /// "清单逐文件下载"路径，绝不把 `_patch` 当游戏文件铺进安装目录。
+    fn extract_encrypted_archive(
         part_paths: &[PathBuf],
         cd_key: &str,
         output_dir: &Path,
@@ -2312,24 +2721,43 @@ impl GameLauncherService {
         progress_callback: Arc<dyn Fn(DownloadProgress) + Send + Sync>,
     ) -> Result<(), String> {
         let reader = MultipartZipReader::new(part_paths)
-            .map_err(|e| format!("Open preload archive parts: {}", e))?;
+            .map_err(|e| format!("Open archive parts: {}", e))?;
         let mut archive =
-            zip::ZipArchive::new(reader).map_err(|e| format!("Open preload archive: {}", e))?;
+            zip::ZipArchive::new(reader).map_err(|e| format!("Open archive: {}", e))?;
         let file_count = archive.len();
-        let mut total_bytes = 0u64;
 
+        // 第一遍：统计解压总量 + 差量形态检测
+        let mut total_bytes = 0u64;
+        let mut delta_entries = Vec::new();
         for index in 0..file_count {
+            let name = archive.name_for_index(index).unwrap_or("").to_string();
+            let normalized = name.replace('\\', "/").to_lowercase();
+            if normalized.ends_with("_patch") || normalized.contains("vfs_files/vfs_patch/") {
+                if delta_entries.len() < 5 {
+                    delta_entries.push(name.clone());
+                }
+                continue;
+            }
             let file = archive
                 .by_index_decrypt(index, cd_key.as_bytes())
-                .map_err(|e| format!("Decrypt preload archive entry: {}", e))?;
+                .map_err(|e| format!("Decrypt archive entry: {}", e))?;
             if !file.is_dir() {
                 total_bytes = total_bytes
                     .checked_add(file.size())
-                    .ok_or_else(|| "Preload archive is too large".to_string())?;
+                    .ok_or_else(|| "Archive is too large".to_string())?;
             }
         }
-        if expected_bytes > 0 {
-            total_bytes = total_bytes.max(expected_bytes);
+        if !delta_entries.is_empty() {
+            return Err(format!(
+                "{} archive contains hpatch delta entries (e.g. {}), which require Patch.exe",
+                ERR_DELTA_ARCHIVE,
+                delta_entries.join(", ")
+            ));
+        }
+        // `total_size` 只是服务端的"预留空间估计"（实测 1.66×~2.5×），仅在没有实际条目时兜底，
+        // 避免进度条分母虚高（见逆向文档 §6.3）。
+        if total_bytes == 0 {
+            total_bytes = expected_bytes;
         }
 
         let mut extracted_bytes = 0u64;
@@ -2339,25 +2767,25 @@ impl GameLauncherService {
 
         for index in 0..file_count {
             if DOWNLOAD_CANCELLED.load(Ordering::Relaxed) {
-                return Err("Preload installation cancelled".to_string());
+                return Err("Archive installation cancelled".to_string());
             }
             let entry_name = archive
                 .name_for_index(index)
-                .ok_or_else(|| "Invalid path in preload archive".to_string())?
+                .ok_or_else(|| "Invalid path in archive".to_string())?
                 .to_string();
             let safe_name = entry_name.trim_end_matches(['/', '\\']);
             GameLauncherService::validate_path(safe_name)?;
 
             let mut entry = archive
                 .by_index_decrypt(index, cd_key.as_bytes())
-                .map_err(|e| format!("Decrypt preload archive entry: {}", e))?;
+                .map_err(|e| format!("Decrypt archive entry: {}", e))?;
             let relative = entry
                 .enclosed_name()
-                .ok_or_else(|| format!("Unsafe path in preload archive: {}", entry_name))?
+                .ok_or_else(|| format!("Unsafe path in archive: {}", entry_name))?
                 .to_path_buf();
             let normalized = relative.to_string_lossy().replace('\\', "/").to_lowercase();
             if !seen_paths.insert(normalized) {
-                return Err(format!("Duplicate path in preload archive: {}", entry_name));
+                return Err(format!("Duplicate path in archive: {}", entry_name));
             }
 
             let destination = output_dir.join(relative);
@@ -2375,7 +2803,7 @@ impl GameLauncherService {
             let current_file = entry_name;
             loop {
                 if DOWNLOAD_CANCELLED.load(Ordering::Relaxed) {
-                    return Err("Preload installation cancelled".to_string());
+                    return Err("Archive installation cancelled".to_string());
                 }
                 let read = entry
                     .read(&mut buffer)
@@ -2401,80 +2829,239 @@ impl GameLauncherService {
         }
 
         if extracted_files == 0 {
-            return Err("Preload archive contains no installable files".to_string());
+            return Err("Archive contains no installable files".to_string());
         }
         Ok(())
     }
 
-    fn apply_preload_files(
+    /// 把解压产物应用到游戏安装目录。
+    ///
+    /// 与官方（Games.exe `CCopyGameFile`，RVA `0x00277c50` / `0x00278dc0`）对齐的三条规则：
+    /// 1. **包内控制文件不落盘**：`package_files` / `delete_files.txt` / `patch.json` 只用于驱动流程，
+    ///    实测官方安装目录里不存在它们（`game_files` 是正式文件，照常应用）；
+    /// 2. **按 `delete_files.txt` 删除旧文件**：官方会拼出 `<目录>\delete_files.txt` 并逐条删除；
+    /// 3. **原子替换**：先写 `<目标>.hgtmp`，校验长度后再 rename 覆盖，避免半写文件。
+    fn apply_extracted_files(
         &self,
         extracted_dir: &Path,
         install_dir: &Path,
         progress_callback: &Arc<dyn Fn(DownloadProgress) + Send + Sync>,
     ) -> Result<(), String> {
-        let files = WalkDir::new(extracted_dir)
+        let entries = WalkDir::new(extracted_dir)
             .into_iter()
             .map(|entry| entry.map_err(|e| format!("Read extracted files: {}", e)))
             .collect::<Result<Vec<_>, _>>()?
             .into_iter()
             .filter(|entry| entry.file_type().is_file())
             .collect::<Vec<_>>();
-        let total_bytes = files.iter().try_fold(0u64, |total, entry| {
+
+        let mut files: Vec<(PathBuf, PathBuf, u64)> = Vec::new();
+        for entry in &entries {
+            let relative = entry
+                .path()
+                .strip_prefix(extracted_dir)
+                .map_err(|e| format!("Resolve extracted file path: {}", e))?
+                .to_path_buf();
+            if is_archive_control_file(&relative) {
+                continue;
+            }
             let size = entry
                 .metadata()
                 .map_err(|e| format!("Read extracted file metadata: {}", e))?
                 .len();
-            total
-                .checked_add(size)
-                .ok_or_else(|| "Extracted preload is too large".to_string())
-        })?;
-        let mut copied_bytes = 0u64;
+            files.push((relative, entry.path().to_path_buf(), size));
+        }
 
-        for (index, entry) in files.iter().enumerate() {
+        let total_bytes: u64 = files.iter().map(|(_, _, size)| *size).sum();
+        let mut copied_bytes = 0u64;
+        let mut buffer = vec![0u8; 1024 * 1024];
+
+        for (index, (relative, source_path, size)) in files.iter().enumerate() {
             if DOWNLOAD_CANCELLED.load(Ordering::Relaxed) {
-                return Err("Preload installation cancelled".to_string());
+                return Err("Archive installation cancelled".to_string());
             }
-            let relative = entry
-                .path()
-                .strip_prefix(extracted_dir)
-                .map_err(|e| format!("Resolve extracted file path: {}", e))?;
             let destination = install_dir.join(relative);
             if let Some(parent) = destination.parent() {
                 fs::create_dir_all(parent)
                     .map_err(|e| format!("Create install directory: {}", e))?;
             }
+            // 原子替换：先写临时文件，落盘后 rename 覆盖目标
+            let temp_path = PathBuf::from(format!("{}.hgtmp", destination.display()));
+            let _ = fs::remove_file(&temp_path);
 
             let mut source =
-                File::open(entry.path()).map_err(|e| format!("Open extracted file: {}", e))?;
-            let mut output =
-                File::create(&destination).map_err(|e| format!("Apply extracted file: {}", e))?;
-            let mut buffer = vec![0u8; 1024 * 1024];
-            loop {
-                if DOWNLOAD_CANCELLED.load(Ordering::Relaxed) {
-                    return Err("Preload installation cancelled".to_string());
-                }
-                let read = source
-                    .read(&mut buffer)
-                    .map_err(|e| format!("Read extracted file: {}", e))?;
-                if read == 0 {
-                    break;
+                File::open(source_path).map_err(|e| format!("Open extracted file: {}", e))?;
+            {
+                let mut output = File::create(&temp_path)
+                    .map_err(|e| format!("Create install temp file: {}", e))?;
+                loop {
+                    if DOWNLOAD_CANCELLED.load(Ordering::Relaxed) {
+                        drop(output);
+                        let _ = fs::remove_file(&temp_path);
+                        return Err("Archive installation cancelled".to_string());
+                    }
+                    let read = source
+                        .read(&mut buffer)
+                        .map_err(|e| format!("Read extracted file: {}", e))?;
+                    if read == 0 {
+                        break;
+                    }
+                    output
+                        .write_all(&buffer[..read])
+                        .map_err(|e| format!("Write installed file: {}", e))?;
+                    copied_bytes = copied_bytes.saturating_add(read as u64);
+                    progress_callback(DownloadProgress {
+                        downloaded: copied_bytes,
+                        total: total_bytes,
+                        stage: InstallStage::Applying.as_str().to_string(),
+                        current_file: Some(relative.to_string_lossy().to_string()),
+                        file_index: index,
+                        file_count: files.len(),
+                        verified_bytes: 0,
+                    });
                 }
                 output
-                    .write_all(&buffer[..read])
-                    .map_err(|e| format!("Write installed file: {}", e))?;
-                copied_bytes = copied_bytes.saturating_add(read as u64);
-                progress_callback(DownloadProgress {
-                    downloaded: copied_bytes,
-                    total: total_bytes,
-                    stage: InstallStage::Applying.as_str().to_string(),
-                    current_file: Some(relative.to_string_lossy().to_string()),
-                    file_index: index,
-                    file_count: files.len(),
-                    verified_bytes: 0,
-                });
+                    .flush()
+                    .map_err(|e| format!("Flush installed file: {}", e))?;
+            }
+
+            let written = fs::metadata(&temp_path)
+                .map(|m| m.len())
+                .unwrap_or(u64::MAX);
+            if written != *size {
+                let _ = fs::remove_file(&temp_path);
+                return Err(format!(
+                    "Applied file size mismatch for {}: expected {}, got {}",
+                    relative.display(),
+                    size,
+                    written
+                ));
+            }
+            fs::rename(&temp_path, &destination)
+                .map_err(|e| format!("Replace installed file {}: {}", relative.display(), e))?;
+        }
+
+        self.remove_deleted_files(extracted_dir, install_dir)?;
+        Ok(())
+    }
+
+    /// 按包内 `delete_files.txt` 删除安装目录里的旧文件（官方 `CCopyGameFile` 的行为）
+    fn remove_deleted_files(&self, extracted_dir: &Path, install_dir: &Path) -> Result<(), String> {
+        let list_path = extracted_dir.join(ARCHIVE_DELETE_LIST);
+        if !list_path.is_file() {
+            return Ok(());
+        }
+        let content = match hg_crypto::decrypt_file_to_string(&list_path.to_string_lossy()) {
+            Ok(text) => text,
+            Err(_) => fs::read_to_string(&list_path)
+                .map_err(|e| format!("Read {}: {}", ARCHIVE_DELETE_LIST, e))?,
+        };
+        let mut removed = 0usize;
+        let mut skipped = 0usize;
+        for relative in parse_delete_list(&content) {
+            let relative = relative.trim_start_matches("./");
+            if Self::validate_path(relative).is_err() {
+                skipped += 1;
+                continue;
+            }
+            let target = install_dir.join(relative);
+            if target.is_file() {
+                match fs::remove_file(&target) {
+                    Ok(()) => removed += 1,
+                    Err(e) => tracing::warn!(
+                        "[apply] Failed to delete {}: {}",
+                        target.display(),
+                        e
+                    ),
+                }
+            } else if target.is_dir() {
+                skipped += 1;
             }
         }
+        if removed > 0 || skipped > 0 {
+            tracing::info!(
+                "[apply] delete_files.txt: removed={}, skipped={}",
+                removed,
+                skipped
+            );
+        }
         Ok(())
+    }
+
+    /// 读取包内自带的新版清单（`game_files`，固定 AES-256-CBC 加密的 NDJSON）。
+    ///
+    /// 官方补丁/预下载包都会带上它（与远端 `files/game_files` 内容一致）；解不开或解析失败时
+    /// 返回 `None`，由调用方回退到远端清单。
+    fn read_archive_manifest(extracted_dir: &Path) -> Option<(Vec<ManifestFile>, String)> {
+        let path = extracted_dir.join("game_files");
+        if !path.is_file() {
+            return None;
+        }
+        let bytes = fs::read(&path).ok()?;
+        let sha256 = hg_crypto::sha256_hex(&bytes);
+        let text = hg_crypto::decrypt_bytes_to_string(&bytes).ok()?;
+        match Self::parse_manifest(&text) {
+            Ok(files) if !files.is_empty() => Some((files, sha256)),
+            _ => None,
+        }
+    }
+
+    /// 用包内 `package_files` 校验解压产物。
+    ///
+    /// 逆向依据：官方补丁/预下载包内同时带 `game_files`（新版清单）与 `package_files`
+    /// （**本包文件清单**，同样是"固定 AES-256-CBC 加密的 NDJSON"；实测本机阿米娅安装目录
+    /// 里那份 510,176 字节 / 3115 条，解密后即 `{"path","md5","size"}` 行）。
+    /// 这里只校验"解压目录里确实存在"的条目：不匹配说明包本身损坏，宁可不铺；
+    /// 不在包内的条目（属其它分卷）直接跳过，避免误报。
+    fn verify_archive_package_files(extracted_dir: &Path) -> Result<usize, String> {
+        let path = extracted_dir.join("package_files");
+        if !path.is_file() {
+            return Ok(0);
+        }
+        let bytes = fs::read(&path).map_err(|e| format!("Read package_files: {}", e))?;
+        let text = match hg_crypto::decrypt_bytes_to_string(&bytes) {
+            Ok(text) => text,
+            // 少数形态可能是明文清单
+            Err(_) => {
+                fs::read_to_string(&path).map_err(|e| format!("Read package_files: {}", e))?
+            }
+        };
+        let entries = match Self::parse_manifest(&text) {
+            Ok(entries) => entries,
+            Err(error) => {
+                tracing::warn!(
+                    "[archive] package_files not parseable, skipping check: {}",
+                    error
+                );
+                return Ok(0);
+            }
+        };
+
+        let mut checked = 0usize;
+        let mut bad = 0usize;
+        let mut samples: Vec<String> = Vec::new();
+        for entry in &entries {
+            let candidate = extracted_dir.join(&entry.path);
+            if !candidate.is_file() {
+                continue;
+            }
+            checked += 1;
+            if !hg_crypto::verify_md5(&candidate.to_string_lossy(), &entry.md5).unwrap_or(false) {
+                bad += 1;
+                if samples.len() < 5 {
+                    samples.push(entry.path.clone());
+                }
+            }
+        }
+        if bad > 0 {
+            return Err(format!(
+                "Archive content failed package_files MD5 check: {} of {} checked file(s) mismatch, e.g. {}",
+                bad,
+                checked,
+                samples.join(", ")
+            ));
+        }
+        Ok(checked)
     }
 
     /// 从分卷 URL 推断本地文件名（去掉查询串）；文件名非法时回退为 part_###.zip
@@ -2488,42 +3075,63 @@ impl GameLauncherService {
         }
     }
 
-    /// 预下载暂存目录内的版本标记文件名
-    const PRELOAD_VERSION_MARKER: &'static str = ".preload_version";
+    /// 预下载暂存目录内的版本标记文件名（见模块级 `PRELOAD_VERSION_MARKER`）
 
     /// 新建预下载暂存目录并写入目标版本标记
     fn create_preload_staging(install_path: &str, version: &str) -> Result<PathBuf, String> {
         let dir = format!("{}.staging.preload.{}", install_path, uuid::Uuid::new_v4());
         let path = PathBuf::from(&dir);
         fs::create_dir_all(&path).map_err(|e| format!("Create staging dir: {}", e))?;
-        fs::write(path.join(Self::PRELOAD_VERSION_MARKER), version)
+        fs::write(path.join(PRELOAD_VERSION_MARKER), version)
             .map_err(|e| format!("Write preload marker: {}", e))?;
         Ok(path)
     }
 
     /// 读取预下载暂存目录记录的目标版本
     fn preload_staging_version(dir: &str) -> Option<String> {
-        let content = fs::read_to_string(Path::new(dir).join(Self::PRELOAD_VERSION_MARKER)).ok()?;
+        let content = fs::read_to_string(Path::new(dir).join(PRELOAD_VERSION_MARKER)).ok()?;
         Some(content.trim().to_string())
     }
 
-    /// 获取预下载 staging 目录路径
+    /// 获取预下载 staging 目录路径（最新的一个）
     fn preload_staging_dir(&self, install_path: &str) -> Option<String> {
-        let parent = Path::new(install_path).parent()?;
-        let stem = Path::new(install_path).file_name()?.to_str()?;
-        for entry in fs::read_dir(parent).ok()? {
-            let entry = entry.ok()?;
-            let name = entry.file_name().to_string_lossy().to_string();
-            if name.starts_with(&format!("{}.staging.preload.", stem)) {
-                return Some(entry.path().to_string_lossy().to_string());
-            }
-        }
-        None
+        self.preload_staging_dirs(install_path)
+            .into_iter()
+            .next()
+            .map(|path| path.to_string_lossy().to_string())
     }
 
-    /// 清理预下载 staging 目录
+    /// 列出全部预下载 staging 目录（可能残留多个版本，正式更新时都要作为复用来源）
+    fn preload_staging_dirs(&self, install_path: &str) -> Vec<PathBuf> {
+        let Some(parent) = Path::new(install_path).parent() else {
+            return Vec::new();
+        };
+        let Some(stem) = Path::new(install_path).file_name().and_then(|s| s.to_str()) else {
+            return Vec::new();
+        };
+        let prefix = format!("{}.staging.preload.", stem);
+        let mut dirs: Vec<(std::time::SystemTime, PathBuf)> = Vec::new();
+        if let Ok(entries) = fs::read_dir(parent) {
+            for entry in entries.flatten() {
+                let name = entry.file_name().to_string_lossy().to_string();
+                if !name.starts_with(&prefix) || !entry.path().is_dir() {
+                    continue;
+                }
+                let modified = entry
+                    .metadata()
+                    .and_then(|meta| meta.modified())
+                    .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
+                dirs.push((modified, entry.path()));
+            }
+        }
+        // 新到旧：优先复用最近一次预下载的产物
+        dirs.sort_by(|a, b| b.0.cmp(&a.0));
+        dirs.into_iter().map(|(_, path)| path).collect()
+    }
+
+    /// 清理全部预下载 staging 目录
     fn cleanup_preload_staging(&self, install_path: &str) {
-        if let Some(dir) = self.preload_staging_dir(install_path) {
+        for dir in self.preload_staging_dirs(install_path) {
             let _ = fs::remove_dir_all(dir);
         }
     }

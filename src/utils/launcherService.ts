@@ -36,6 +36,14 @@ export interface ActiveOperation {
 export interface RemotePackage {
   version: string;
   resource_base_url: string;
+  /** 服务端是否下发了版本补丁包（`patch`） */
+  has_patch: boolean;
+  /** 补丁分卷（加密）下载总字节数 */
+  patch_total_bytes: number;
+  /** 是否存在未加密的整补丁包（`patch.url`） */
+  has_patch_whole: boolean;
+  /** 预下载分卷需下载的总字节数 */
+  preload_total_bytes: number;
 }
 
 export interface DownloadProgress {
