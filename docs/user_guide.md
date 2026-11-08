@@ -75,7 +75,7 @@ Wiki 数据集成：词条目录、物品详情、升级材料解析、技能描
 
 ### 基本流程
 
-1. 在操作面板选择渠道（官服 / B 服 / 国际服 / Google Play），并指定安装目录——目录会被自动扫描并识别渠道
+1. 在操作面板选择渠道（《终末地》官服 / B 服 / 国际服 / Google Play，《明日方舟》官服 / B 服），并指定安装目录——目录会被自动扫描并识别渠道
 2. 若目录为空则执行**安装**；已有安装则检测版本并提供**更新**
 3. 可选操作：
    - **校验修复**：快速或完整校验，损坏文件自动重新下载
@@ -86,9 +86,9 @@ Wiki 数据集成：词条目录、物品详情、升级材料解析、技能描
 
 ### 渠道
 
-《终末地》四个渠道：官服（`official`）、B 服（`bilibili`）、国际服（`global`）、Google Play（`google_play`）；《明日方舟》两个渠道：官服（`arknights`）、B 服（`arknights_bilibili`），**不提供换服入口**（渠道差异不在安装清单里）。
+《终末地》四个渠道：官服（`official`）、B 服（`bilibili`）、国际服（`global`）、Google Play（`google_play`）；《明日方舟》两个渠道：官服（`arknights`）、B 服（`arknights_bilibili`）。两款游戏都支持换服，切换前会检查游戏进程并锁定安装目录。
 
-渠道自动识别依据安装目录中的标记文件（`PCGameSDK.dll`、`hgsdk.dll`、`gfsdk.dll`、`glextra.dll` 等）判定。
+渠道自动识别：《终末地》依据安装目录中的标记文件（`PCGameSDK.dll`、`hgsdk.dll`、`gfsdk.dll`、`glextra.dll` 等），《明日方舟》读取 `config.ini` 的 `channel`（`2` 为 B 服，其余为官服）。
 
 ---
 

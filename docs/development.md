@@ -173,7 +173,7 @@ cargo check        # 在 src-tauri/ 目录下运行（已有警告属预期）
 1. **同步版本号**：去掉标签的 `v` 前缀，写入 `package.json` 与 `src-tauri/tauri.conf.json`
 2. **判定通道**：版本号带后缀 → `preview`，否则 `stable`；并查找同通道的上一个标签
 3. **生成更新日志**：按 Conventional Commits 分类，写入 `CHANGELOG.md`
-4. **并行构建**：Node 24 + pnpm 10 + Rust stable，构建 Windows x64、Linux x64 AppImage、macOS Intel 与 Apple Silicon 安装包及签名 updater 包
+4. **并行构建**：Node 24 + pnpm 10 + Rust stable，Windows 与 Linux 作为独立 job 并行构建——Windows x64 出 NSIS 安装包，Linux x64（ubuntu-22.04，保证 glibc 兼容）出 AppImage，均含签名 updater 包
 5. **生成更新清单**：将各平台的 updater 包与 minisign 签名汇总到 Release 的 `latest.json`
 6. **发布**：先创建草稿 Release，再将其公开并标记是否为预发布
 
