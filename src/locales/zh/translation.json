@@ -743,6 +743,8 @@
     "verify_failed_title": "校验失败",
     "verify_failed_body": "文件校验过程中发生错误。",
     "downloading": "下载中...",
+    "downloading_percent": "下载中 {{percent}}%",
+    "remaining_time": "剩余 {{time}}",
     "paused": "已暂停",
     "resume": "继续下载",
     "select_channel": "选择区服",

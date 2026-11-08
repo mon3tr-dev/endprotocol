@@ -1,4 +1,4 @@
-﻿@import "tailwindcss";
+@import "tailwindcss";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -1331,6 +1331,31 @@ html[data-window-radius="self"] {
 }
 .animate-spin-slow {
   animation: spin-slow 2s linear infinite;
+}
+/* 下载按钮里的图标动效：托盘静止，箭头不断向下滑出、再从上方重新出现。
+ * 只对 SVG 内部的 <g> 做 transform + opacity——它没有玻璃层，也没有使用
+ * backdrop-filter 的后代，不受 .animate-scale-in 上方那条「opacity < 1 即成为
+ * backdrop root」约束影响。prefers-reduced-motion 下由全局规则压成静止帧。 */
+@keyframes launcher-download-arrow {
+  0% {
+    transform: translateY(-3px);
+    opacity: 0;
+  }
+  22% {
+    transform: translateY(-1px);
+    opacity: 1;
+  }
+  72% {
+    transform: translateY(2.5px);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(5px);
+    opacity: 0;
+  }
+}
+.launcher-download-arrow {
+  animation: launcher-download-arrow 1.15s ease-in-out infinite;
 }
 @keyframes pulse-soft {
   0%,

@@ -743,6 +743,8 @@
     "verify_failed_title": "Verification Failed",
     "verify_failed_body": "An error occurred during file verification.",
     "downloading": "Downloading...",
+    "downloading_percent": "Downloading {{percent}}%",
+    "remaining_time": "{{time}} left",
     "paused": "Paused",
     "resume": "Resume",
     "select_channel": "Select Channel",

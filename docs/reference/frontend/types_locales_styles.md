@@ -192,7 +192,7 @@
 | 约 762-790 行 | 文字对比度兜底：`.adaptive-contrast-text` 取 `--foreground`；`:is([class~="text-muted"], [class*="text-muted/"], text-gray-400/500/600)` 统一改为 `--muted`（**不再一律涂成 `--foreground`**，否则标题与次要信息同色、层级全丢）；`text-foreground/50`、`/60` 抬到 `--foreground`。**全局 `[class*="text-"]` 双向 text-shadow 已移除**（黑 55% + 白 65% 双层阴影会把中文小字号笔画染成灰边，形成「重影糊字」） |
 | 206-224 行 | `.titlebar-mode-toggle` 标题栏模式切换胶囊动画（`.is-game` 右移） |
 | 226-227 行 | `::selection` 选区配色 |
-| 229-255 行 | 动画 keyframes 与 `.animate-*` 工具类（含系统资源指标切换的 `.animate-resource-page`） |
+| 约 1250-1345 行 | 动画 keyframes 与 `.animate-*` 工具类（含系统资源指标切换的 `.animate-resource-page`、`fade-in` 系列、`spin-slow`，以及启动器下载按钮的 `.launcher-download-arrow`：只对 SVG 内部的 `<g>` 做 transform + opacity，不承载玻璃层也没有 backdrop-filter 后代，因此不受「opacity < 1 即成为 backdrop root」约束） |
 | 257-265 行 | Banner 轮播「翻页推动」动画：`@keyframes banner-push-in/out-left/right` 与 `.animate-banner-push-*` 工具类（dashboard 游戏模式底部宣传图使用） |
 | 267-283 行 | 页面转场（`.page-transition-enter/slide-up/scale-in`）与列表项级联动画 `.animate-list-item`（8 档 40ms 阶梯延迟） |
 | 285-287 行 | 减少动态效果偏好下关闭系统资源指标切换动画 |

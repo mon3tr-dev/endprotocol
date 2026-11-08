@@ -1,6 +1,6 @@
 # 游戏操作面板 game-action-panel.tsx — 功能参考
 
-> 逐行精读源码生成。行号基于当前工作区版本，仅用于快速定位。
+> 逐行精读源码生成。行号仅用于快速定位，可能滞后于当前代码（本文件已在多处漂移，例如 `ButtonProgressRing` 实际在 110 行），定位符号时请以符号名为准。
 
 **文件职责**：Windows 游戏启动器主操作面板，聚合「定位游戏目录 → 检测渠道 → 安装/更新/校验/修复/预载 → 启动/停止游戏 → 切换渠道」全流程，并提供下载进度浮层、确认对话框、磁盘空间预检、累计游戏运行时长徽章与设置入口。仅 Windows 的 dashboard 游戏模式会挂载该组件；Linux/macOS 不显示游戏入口。
 
@@ -16,7 +16,7 @@
 | --- | --- |
 | 1–47 | import：React 钩子（含 `ReactNode`）、Portal、i18n、UI 组件、launcherService 全量接口、messageStore、启动设置弹窗 |
 | 70–90 | 4 个 localStorage 键常量（70–73）+ 面板统一按钮风格常量 `PILL_BASE`/`PILL_INTERACTIVE`/`PILL_TEXT`（86–90：底色走 `.lg-media-chip` 玻璃 + `lg-hairline` 细边，文字白色系；交互态在 `PILL_INTERACTIVE` 上叠加 `lg-media-chip-interactive`（给媒体层胶囊设 1.08/0.94 两档提亮强度）+ `lg-glass-interactive`（把 brightness 加在 `::before` 玻璃层上）——**宿主不得带 `filter`**，否则按钮一悬停就从毛玻璃退化成半透明色，理由见 [types_locales_styles.md](types_locales_styles.md) 的「backdrop root 约束」） |
-| 62–247 | 本文件内部工具与子组件：`formatEta`(62)、`ButtonProgressRing`(72)、`ProgressFlyout`(114)、`DownloadProgressBody`(138)、`DiskSpaceBar`(183) || 248–342 | `GameActionPanel` 组件声明与 30+ 个 useState / useRef 初始化（含 `dx11` 状态，与设置页同步） |
+| 93–347 | 本文件内部工具与子组件：`formatEta`(93)、`ButtonProgressRing`(110)、`DownloadArrowIcon`(183，下载/安装中按钮里的「下落箭头」图标)、`ProgressFlyout`(211)、`DownloadProgressBody`(236)、`DiskSpaceBar`(284) || 349–3131 | `GameActionPanel` 组件声明与 30+ 个 useState / useRef 初始化（含 `dx11`、`carouselIndex` 状态，与设置页同步） |
 | 301–387 | 确认对话框状态、`activeOp`/`progress`/`preparing`/`switching`/`switchProgress`/`switchTarget` 派生值 |
 | 340–440 | 渠道持久化、状态查询 `checkStatus`、渠道自动检测 effect、静默刷新 `refreshStatus`、游戏运行 3 秒轮询；累计时长 5 秒轮询 `refreshPlaytime`（平滑补间见 `ElapsedTime`） |
 | 441–545 | 进度事件订阅 effect（下载/校验/预下载/切换速度计算、完成态清理） |
@@ -43,15 +43,17 @@
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
-| `STORAGE_KEY_INSTALL_PATH` | 47 | `"launcher_install_path"` |
-| `STORAGE_KEY_CHANNEL` | 48 | `"launcher_channel"` |
-| `STORAGE_KEY_SKIP_STOP_CONFIRM` | 49 | `"launcher_skip_stop_confirm"`，停止游戏不再确认 |
-| `STORAGE_KEY_CANCEL_BEHAVIOR` | 50 | `"launcher_cancel_behavior"`，取值 `"ask"｜"keep"｜"delete"` |
-| `formatEta` | 62–69 | 内部工具：剩余秒数 → `m:ss` / `h:mm:ss` |
-| `ProgressFlyout` | 72–94 | 内部组件：进度浮层外壳（`createPortal` + 玻璃样式 + 边界翻转），安装/校验/预下载共用 |
-| `DownloadProgressBody` | 96–139 | 内部组件：浮层里的下载型内容（已下载/总量、进度条、速度、剩余时间、当前文件） |
-| `DiskSpaceBar` | 141–204 | 内部组件：磁盘占用三色条（已用/需要下载/下载后剩余），安装确认与预下载确认共用 |
-| `GameActionPanel` | 206–2787 | 导出组件主体（无 props） |
+| `STORAGE_KEY_INSTALL_PATH` | 70 | `"launcher_install_path"` |
+| `STORAGE_KEY_CHANNEL` | 71 | `"launcher_channel"` |
+| `STORAGE_KEY_SKIP_STOP_CONFIRM` | 72 | `"launcher_skip_stop_confirm"`，停止游戏不再确认 |
+| `STORAGE_KEY_CANCEL_BEHAVIOR` | 73 | `"launcher_cancel_behavior"`，取值 `"ask"｜"keep"｜"delete"` |
+| `formatEta` | 93–100 | 内部工具：剩余秒数 → `m:ss` / `h:mm:ss` |
+| `ButtonProgressRing` | 110–181 | 内部组件：环绕主按钮/预下载按钮描边的百分比进度环，按按钮实测尺寸画胶囊路径（见「进度环形状」） |
+| `DownloadArrowIcon` | 183–209 | 内部组件：下载/安装中按钮里的图标——静止托盘 + 循环向下滑出的箭头（`.launcher-download-arrow`，定义在 `globals.css`） |
+| `ProgressFlyout` | 211–234 | 内部组件：进度浮层外壳（`createPortal` + 玻璃样式 + 边界翻转），安装/校验/预下载共用 |
+| `DownloadProgressBody` | 236–282 | 内部组件：浮层里的下载型内容（已下载/总量、进度条、速度、剩余时间、当前文件） |
+| `DiskSpaceBar` | 284–347 | 内部组件：磁盘占用三色条（已用/需要下载/下载后剩余），安装确认与预下载确认共用 |
+| `GameActionPanel` | 349–3131 | 导出组件主体（无 props） |
 | `checkStatus` | 173–196 | `useCallback`：查询游戏状态并置 `statusReady` |
 | `refreshStatus` | 241–252 | `useCallback`：静默刷新，供进度完成后调用 |
 | `checkRunning` | 259–266 | `useCallback`：查询游戏是否在运行 |
@@ -67,7 +69,8 @@
 | `handleUpdate` | 914–979 | 更新；优先安装官方补丁（`installPreload`）否则 `installOrUpdate`，两者均透传下载线程数与续传设置，成功后执行快速校验；失败分别提示更新或校验错误 |
 | `handleVerify` | 981–1004 | 完整校验（线程数取 `launcher_verify_threads`，默认 12） |
 | `handleQuickVerify` | 1006–1029 | 快速校验（`quick=true`） |
-| `handleCancel` | 1031–1040 | 取消当前下载/校验 |
+| `markDownloadCancelled` | 1254–1260 | `useCallback`：取消下载时立刻清按钮下载态（`cancellingRef=true`、`userCancelledRef=true`、`setLocalActiveOp(null)`、速度归零 + `speedRef` 重置）。`keep` / `delete` / 确认框三条取消路径统一走它，否则按钮会停在下滑的下载图标上 |
+| `handleCancel` | 1262–1267 | 取消当前下载/校验：`markDownloadCancelled()` → `cancelDownload(installPath)` → `refreshStatus()` |
 | `handlePreload` | 1042–1065 | 预下载官方预发布补丁分卷（**由确认框确认后调用**）：先置 `preloadProgress`（0/总量）并重置取消标志，调 `preloadDownload` 并透传下载线程数与续传设置；`finally` 清 `preloadProgress` + 刷新状态 |
 | `handlePreloadCancel` | 1067–1075 | 取消预下载（点「预下载中/取消预下载」按钮触发）：按「取消下载行为」决定保留/删除分卷，不动主按钮状态 |
 | `handlePreloadClick` | 1077–1087 | 点「预下载」按钮：拉取 `getDiskSpace` 并打开预下载确认框 |
@@ -93,7 +96,7 @@
 后端在 EndProtocol 运行期间统计游戏在线时长。前端 `refreshPlaytime`（549）挂载时调用并每 5 秒轮询 `getGamePlaytime`，写入 `playtime` 快照（`GamePlaytime {total_seconds, session_seconds, running}`，`total_seconds` 不含当前会话）；派生值 `playtimeTotal = total_seconds + session_seconds`（405–407）即快照时刻的累计总时长。展示由 `@/components/ui/elapsed-time` 的 `ElapsedTime` 承担：组件内部用 `requestAnimationFrame` 按真实流逝时间推算秒数，仅在跨越整秒时更新 state（避免每帧重渲染），并按位渲染 `h:mm:ss`，某一位变化时该位单独播放上滑淡入（`.elapsed-digit`，CSS 定义在 `src/styles/globals.css`），因此每秒是「一位平滑滚动」而非整串硬跳；新快照到达时以已展示秒数为下限重新锚定，**数字只会前进不会回退**；`prefers-reduced-motion` 下退化为逐秒切换。`handleKill`（1238）杀进程后同步刷新。徽章位于操作行内、开始游戏按钮左侧（`flyoutRef` 容器首个子元素），仅以时钟图标 + `ElapsedTime` 显示累计总时长文本（**无文字标签、不展示本次会话**），并随运行实时增长；仅 `isInstalled && playtime` 时渲染。`running` 传参取自 `gameRunning`（3 秒轮询的运行态），而非 `playtime.running`（5 秒轮询），以便启动/停止后更快切换补间。**已移除**旧的 `playtimeTick` 每秒整数自增与 `formatPlaytime` 文本格式化函数。
 
 **进度事件与速度计算（441–545）**
-`onLauncherProgress`：`stage === "preloading"` 时只写 `preloadProgress` 并用 `speedRef` 差分算预下载速度；其余事件先清 `preloadProgress`，再写入 `localActiveOp`（`downloading`/`repairing` 算下载速度、`verifying` 用 `getProcessReadBytes` 差分算校验速度、`completed`/`error` 清空并 500ms 后 `refreshStatus`）。`onSwitchProgress`：切换阶段同理。清理时解除两订阅。
+`onLauncherProgress`：`stage === "preloading"` 时只写 `preloadProgress` 并用 `speedRef` 差分算预下载速度；其余事件先清 `preloadProgress`，再写入 `localActiveOp`（`downloading`/`repairing` 算下载速度——采样窗口 1 秒并对窗口均值做指数平滑，见「速度采样与数字节流」、`verifying` 用 `getProcessReadBytes` 差分算校验速度、`completed`/`error` 清空并 500ms 后 `refreshStatus`）。`onSwitchProgress`：切换阶段同理（同样 1 秒窗口 + 平滑）。清理时解除两订阅。
 
 **定位与安装（590–717）**
 `handleLocate` 走 `browseFolder` + `detectChannel`；`handleInstall` 分三路：无路径 → 选目录后检测（有缓存弹 `resume-install`，检测失败弹渠道选择）、有路径但未检测到渠道 → 弹渠道选择、已检测 → 缓存续传或直接安装；`handleChannelSelected` 并行 `scanInstallDir` + `getDiskSpace`，失败则退回缓存判断流程。
@@ -120,8 +123,18 @@
 **下载取消策略（1288–1405, 2113–2455）**
 `launcher_cancel_behavior`：`keep` → 不带路径 `cancelDownload()`（保留文件）、`delete` → 带路径删除临时文件、`ask` → 弹 `cancel-download` 对话框（保留/删除两按钮）。预下载的取消按钮直接读同一设置（`keep` 保留分卷供续传，其余删除），不弹对话框。
 
+**取消后按钮状态（曾经的「下载停了、按钮还在下载中」）**：后端收到取消标志后要过一会儿才真正退出，期间仍会推来若干 `downloading` 事件。三条取消路径（`keep` / `delete` / 确认框的「保留」或「删除」）现在**都**先调用 `markDownloadCancelled()` 立刻清掉 `localActiveOp` 与速度——此前只有 `delete` 走 `handleCancel()` 清状态，`keep` 与确认框两条都只置 `cancellingRef` 就返回，按钮于是永远停在下载图标上。同时进度订阅的取消过滤改为「只挡进行中的事件」：`completed` / `error` 终态必须放进来复位 `cancellingRef` 并清状态，否则取消一次之后所有后续进度事件都会被永久吞掉（后端在取消时确实会 emit `error` 终态）。切换进度（`onSwitchProgress`）同理。
+
+**取消不该报成失败**：后端取消时 `install_or_update` 返回 `Err("Install cancelled")`，`handleUpdate` 原来会因此弹一条 urgent「更新失败」。现在 `markDownloadCancelled()` 同时把 `userCancelledRef` 置真（每次发起新任务——`startInstall` / `handleUpdate` / `handleVerify` / `handleQuickVerify` / `handlePreload`——开头复位为假），`handleUpdate` 的 `catch` 与 `!result.success` 两个分支、以及两个校验入口的「校验完成」消息都会据此跳过，用户自己点的取消不再产生错误提示。
+
 **主按钮与进度浮层**
 下载阶段主按钮周围显示从正上方开始顺时针环绕的百分比进度环；悬停取消下载或关闭游戏时，主按钮背景显示透明浅红。按钮 hover 时计算 `progressFlyoutPos`（另见按钮定位 effect）；浮层经 `ProgressFlyout`（`createPortal` 到 `document.body`）挂出，按 `preparing`/`isDownloading`/`isVerifying`/`isComparing`/`isRepairing`/`isApplying`/`switching` 分支渲染进度条、速度、ETA、当前文件与切换阶段文案（阶段 → 文案映射）。预下载**不进入**该浮层，而是用自己的浮层实例（同为 `ProgressFlyout`，锚在预下载按钮上）。
+
+**进度环形状**：进度环由 `ButtonProgressRing` 绘制，必须贴合按钮自身的胶囊轮廓。早期实现用 `preserveAspectRatio="none"` 的 `<ellipse>` 近似，椭圆被按按钮宽高非等比拉伸，越靠两端越向里收（44px 高、150px 宽的按钮在圆角起点处已内缩约 8px），画出来是一圈「橄榄形」、与按钮边缘对不上；现在组件用 `ResizeObserver` 量出 `svg`（`absolute inset-0`，即按钮 padding box）的实际尺寸，再按同一尺寸生成圆角矩形路径（`rx` = 高度一半即胶囊，笔画外沿留 1px 压在按钮 hairline 上），路径起点落在正上方中央，配合 `pathLength="100"` 归一化让 `strokeDashoffset = 100 - percent` 直接表示进度。按钮宽度会随文案变化（「安装中…」↔「取消下载」），尺寸变化时 `ResizeObserver` 触发重画。
+
+**下载中按钮的图标与文案轮播**：进度环保留，环**里面**的转圈图标换成 `DownloadArrowIcon`——`isDownloading`/`isApplying` 阶段不再用 `animate-spin`，改为静止托盘 + 箭头循环下落（`.launcher-download-arrow`：`translateY` 由 -3px 走到 5px 并在末段淡出，1.15s 无限循环；`prefers-reduced-motion` 下由全局规则压成静止帧），悬停时仍是 ✕（点击取消）。文案在 `isDownloading` 时轮播三段：`launcher.downloading_percent`（「下载中 N%」）／`formatBytes(speed)/s`（还没测出速度时 `—`）／`launcher.remaining_time`（「剩余 m:ss」，无速度或已下完时 `—`），每 2.8 秒推进一段（`carouselIndex` + `setInterval`）；悬停暂停轮播并显示 `launcher.cancel_download`。**按钮宽度锁定**：三段文案、悬停文案与四条「宽度探针」（`downloadCarouselProbes`：`下载中 100%`、`999.99 MB/s`、`剩余 99:59:59`、`取消下载`）全部以 `invisible` 叠在同一个 grid 格子里（`col-start-1 row-start-1`），按钮宽度就等于其中最宽的一条，因此切换段落或悬停时尺寸都不变。切段时靠 `animate-fade-in`（纯位移）重播表达过渡。新增 i18n 键：`launcher.downloading_percent`、`launcher.remaining_time`（zh/en 同步）。
+
+**速度采样与数字节流**：进度事件比人眼能读数字的频率高得多，直接跟着事件渲染会让速度和剩余时间一直乱跳。两层处理：① **速度**——采样窗口由 0.3 秒改为 **1 秒**，窗口均值再做一次指数平滑（`prev * 0.6 + instant * 0.4`），主进度（`stage === "downloading" | "repairing"`）与切服进度（`phase === "downloading"`）都走同一套；本地模拟（8 MB/s 带 ±30% 噪声、每 100ms 一个事件）里，稳态标准差由 0.86 MB/s 降到 0.34 MB/s，稳态极差由 3.7 MB/s 降到 1.2 MB/s，更新次数由 66 次/20s 降到 19 次/20s。② **按钮上的数字**——`buttonStatsRef` 在渲染期做 1 秒节流快照（只写 ref，不触发额外渲染），轮播三段文案（百分比、速度、剩余时间）都取这个快照，因此每个数字每秒最多变一次；进度环不走快照，仍按实时 `downloadPercent` 平滑推进。`markDownloadCancelled()` 会把 `speedRef` 一并重置，取消后重新下载不会带着旧窗口继续算。
 
 **菜单与设置入口（1882–2060）**
 汉堡按钮切换菜单浮层并即时 `hasDownloadCache` 刷新 `hasTempFiles`；菜单项：游戏设置（打开 `GameSettingsModal`，安装路径）、启动设置（直接打开独立的 `QuickLaunchModal`：静默启动命令 + 复制 + 创建快捷方式，以及再套一层 `SteamShortcutModal` 调整 Steam 条目参数）、校验完整性（`verify-confirm`）、快速校验、清理临时文件（`delete-temp`，需 `hasTempFiles`）、定位游戏。启动设置入口原先是最右侧的独立 ⚙ 按钮，现已并入该菜单；菜单里的校验/快速校验/清理项以 `busyWithDownload` 禁用（预下载进行中不可发起）。
@@ -159,7 +172,7 @@
    - `GameSettingsModal`：`initialPath: string`（初始安装路径）、`onClose: () => void`（关闭）、`onSave: (path: string) => void`（保存并触发状态刷新）。
    - `GameLaunchSettingsModal`：已从库中删除，「启动设置」入口直接挂 `QuickLaunchModal`（props 见 components_settings_panels.md）。
    - `GlassAlertDialog` / `GlassModal` / `GlassButton` 为其复合子组件提供的 `isOpen`、`onOpenChange`、`onPress`、`className`、`variant`、`status` 等 UI 属性。
-4. **状态管理要点**：全部为组件内 `useState`，无全局 store；`localActiveOp`（事件实时）优先于 `gameStatus.active_operation`（轮询）；`cancellingRef` 在取消期间屏蔽后续进度事件；游戏运行态 3 秒轮询，累计时长为 5 秒轮询 `getGamePlaytime`，两次快照之间的平滑补间由 `ElapsedTime` 组件内部 `requestAnimationFrame` 完成；持久化键为 `launcher_install_path`、`launcher_channel`、`launcher_skip_stop_confirm`、`launcher_cancel_behavior`，另直接读 `launcher_verify_threads`（691–694、716–719）；`confirmAction` 为五值联合（`cancel-download`｜`stop-game`｜`resume-install`｜`delete-temp`｜`verify-confirm`）；880–884 在渲染期间比较文案并 `setBtnLabelKey` 以驱动 `animate-fade-in`（该类现已纯位移、无淡入）。
+4. **状态管理要点**：全部为组件内 `useState`，无全局 store；`localActiveOp`（事件实时）优先于 `gameStatus.active_operation`（轮询）；`cancellingRef` 在取消期间屏蔽后续**进行中**的进度事件（`completed`/`error` 终态例外，它负责复位该标志并清掉按钮下载态，见「取消后按钮状态」）；`userCancelledRef` 标记「本次任务是用户主动取消的」，用于跳过「更新失败」「校验完成」这类误报（见「取消不该报成失败」）；游戏运行态 3 秒轮询，累计时长为 5 秒轮询 `getGamePlaytime`，两次快照之间的平滑补间由 `ElapsedTime` 组件内部 `requestAnimationFrame` 完成；持久化键为 `launcher_install_path`、`launcher_channel`、`launcher_skip_stop_confirm`、`launcher_cancel_behavior`，另直接读 `launcher_verify_threads`（691–694、716–719）；`confirmAction` 为五值联合（`cancel-download`｜`stop-game`｜`resume-install`｜`delete-temp`｜`verify-confirm`）；880–884 在渲染期间比较文案并 `setBtnLabelKey` 以驱动 `animate-fade-in`（该类现已纯位移、无淡入）。
 5. **异常/待关注**：
    - `handleQuickVerify` 依赖数组（734）缺 `formatVerifyResult`，而 `handleVerify`（709）包含，存在闭包过期风险。
    - 扫描结果 `download_bytes === 0` 时确认按钮文案为 `launcher.start_game`（2120）但实际执行 `startInstall(false)`（2101），文案与行为不符。

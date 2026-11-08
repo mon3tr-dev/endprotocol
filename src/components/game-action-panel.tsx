@@ -99,44 +99,110 @@ function formatEta(seconds: number): string {
     : `${m}:${String(s).padStart(2, "0")}`;
 }
 
-/** 环绕按钮描边显示下载进度，从按钮正上方开始顺时针绘制 */
+/** 环绕按钮描边显示下载进度，从按钮正上方开始顺时针绘制。
+ *
+ * 环必须贴着按钮的胶囊轮廓：`preserveAspectRatio="none"` 下的椭圆会被按
+ * 按钮宽高非等比拉伸，越靠两端越向里收（44px 高、150px 宽的按钮上，
+ * 圆角起点处就已内缩约 8px），画出来是一圈"橄榄形"，和按钮边缘对不上。
+ * 所以这里量出按钮实际尺寸，按同一尺寸画圆角矩形路径（rx = 高度一半即胶囊），
+ * 路径起点落在正上方中央，配合 `pathLength` 归一化让 `strokeDashoffset`
+ * 始终等于剩余百分比。 */
 function ButtonProgressRing({ progress }: { progress: number }) {
   const percent = Math.max(0, Math.min(100, progress));
+  const svgRef = useRef<SVGSVGElement>(null);
+  const [size, setSize] = useState({ w: 0, h: 0 });
+
+  // 按钮宽度随文案变化（「安装中…」↔「取消下载」），尺寸变了环要跟着重画
+  useLayoutEffect(() => {
+    const el = svgRef.current;
+    if (!el) return;
+    const measure = () => {
+      const { width, height } = el.getBoundingClientRect();
+      if (width <= 0 || height <= 0) return;
+      setSize((prev) =>
+        prev.w === width && prev.h === height ? prev : { w: width, h: height },
+      );
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  const w = size.w;
+  const h = size.h;
+  // 笔画外沿留 1px，正好压在按钮自身的 hairline 描边上
+  const inset = 1;
+  const r = Math.max(0, (h - inset * 2) / 2);
+  const d =
+    w > 0 && h > 0
+      ? `M ${w / 2} ${inset} L ${w - inset - r} ${inset} ` +
+        `A ${r} ${r} 0 0 1 ${w - inset - r} ${h - inset} ` +
+        `L ${inset + r} ${h - inset} ` +
+        `A ${r} ${r} 0 0 1 ${inset + r} ${inset} Z`
+      : "";
 
   return (
     <svg
+      ref={svgRef}
       aria-hidden="true"
       className="absolute inset-0 z-20 h-full w-full pointer-events-none text-primary"
-      viewBox="0 0 100 100"
-      preserveAspectRatio="none"
+      viewBox={`0 0 ${w || 100} ${h || 100}`}
     >
-      <ellipse
-        cx="50"
-        cy="50"
-        rx="48"
-        ry="48"
-        fill="none"
-        stroke="currentColor"
-        strokeOpacity="0.2"
-        strokeWidth="2"
-        vectorEffect="non-scaling-stroke"
-      />
-      <ellipse
-        cx="50"
-        cy="50"
-        rx="48"
-        ry="48"
-        fill="none"
-        stroke="currentColor"
+      {d && (
+        <>
+          <path
+            d={d}
+            fill="none"
+            stroke="currentColor"
+            strokeOpacity="0.2"
+            strokeWidth="2"
+          />
+          <path
+            d={d}
+            fill="none"
+            stroke="currentColor"
+            strokeLinecap="round"
+            strokeWidth="2"
+            pathLength="100"
+            strokeDasharray="100"
+            strokeDashoffset={100 - percent}
+            className="transition-[stroke-dashoffset] duration-300"
+          />
+        </>
+      )}
+    </svg>
+  );
+}
+
+/** 下载/安装中按钮里的图标：静止的托盘 + 循环向下滑出的箭头。
+ *
+ * 刻意不用 `animate-spin` 的转圈圈——转圈表达的是「在等一个说不清的时长」，
+ * 而下载/安装是「内容正落进来」，向下的箭头更贴切；箭头每轮滑到底部时淡出，
+ * 再从上方重新出现，看起来就是连续的「往下搬」。 */
+function DownloadArrowIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      aria-hidden="true"
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      viewBox="0 0 24 24"
+    >
+      <path
         strokeLinecap="round"
-        strokeWidth="2"
-        pathLength="100"
-        strokeDasharray="100"
-        strokeDashoffset={100 - percent}
-        transform="rotate(-90 50 50)"
-        className="transition-[stroke-dashoffset] duration-300"
-        vectorEffect="non-scaling-stroke"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M4 16.5v1a3 3 0 003 3h10a3 3 0 003-3v-1"
       />
+      <g className="launcher-download-arrow">
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={2}
+          d="M12 3.5v7M8.5 8 12 11.5 15.5 8"
+        />
+      </g>
     </svg>
   );
 }
@@ -341,6 +407,8 @@ export function GameActionPanel() {
   const [switchConfirmTarget, setSwitchConfirmTarget] =
     useState<GameChannel | null>(null);
   const [verifySpeed, setVerifySpeed] = useState(0);
+  /** 下载中按钮文案轮播的下标：0=进度 1=速度 2=剩余时间 */
+  const [carouselIndex, setCarouselIndex] = useState(0);
   const flyoutRef = useRef<HTMLDivElement>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
   const preloadBtnRef = useRef<HTMLButtonElement>(null);
@@ -360,6 +428,9 @@ export function GameActionPanel() {
     initialized: false,
   });
   const cancellingRef = useRef(false);
+  /** 本次任务是否由用户主动取消：取消后后端会返回失败（`Install cancelled`）
+   *  并 emit 一条 error 终态，前端据此跳过「更新失败」这类误报。每次发起新任务复位。 */
+  const userCancelledRef = useRef(false);
   const menuFlyoutRef = useRef<HTMLDivElement>(null);
 
   // Confirm dialog state
@@ -590,7 +661,11 @@ export function GameActionPanel() {
       }
       // 收到任何非预下载进度都表示预下载阶段已结束（后端操作串行，二者不会并发）
       setPreloadProgress(null);
-      if (cancellingRef.current) return;
+      // 取消期间挡掉残留的进行中事件，但 completed / error 是终态：必须放进来把
+      // 按钮上的下载态清干净并复位 `cancellingRef`，否则取消一次之后（例如后端在
+      // 某个检查点之前就退出、没等到前端主动清状态）所有后续进度事件都会被永久吞掉。
+      const terminal = p.stage === "completed" || p.stage === "error";
+      if (cancellingRef.current && !terminal) return;
 
       // Update localActiveOp so UI renders immediately
       const opType = p.stage === "verifying" ? "verifying" : "installing";
@@ -609,8 +684,14 @@ export function GameActionPanel() {
         const now = Date.now();
         const ref = speedRef.current;
         const dt = (now - ref.lastTime) / 1000;
-        if (dt > 0.3 && p.downloaded >= ref.lastBytes) {
-          setDownloadSpeed((p.downloaded - ref.lastBytes) / dt);
+        // 采样窗口取 1 秒（原来 0.3 秒），并对窗口均值再做一次指数平滑：
+        // 下载事件的密度远高于人能读数字的频率，瞬时速度每个事件都在抖，
+        // 按钮上的速度与剩余时间就会一直乱跳。
+        if (dt >= 1 && p.downloaded >= ref.lastBytes) {
+          const instant = (p.downloaded - ref.lastBytes) / dt;
+          setDownloadSpeed((prev) =>
+            prev > 0 ? prev * 0.6 + instant * 0.4 : instant,
+          );
           ref.lastBytes = p.downloaded;
           ref.lastTime = now;
         }
@@ -653,7 +734,9 @@ export function GameActionPanel() {
     });
 
     const unlistenSwitch = onSwitchProgress((p: any) => {
-      if (cancellingRef.current) return;
+      // 同主进度：取消期间只挡进行中的事件，终态要放进来复位 `cancellingRef`
+      const terminal = p.phase === "completed" || p.phase === "error";
+      if (cancellingRef.current && !terminal) return;
 
       // Update localActiveOp so UI renders immediately during switch
       setLocalActiveOp({
@@ -672,8 +755,12 @@ export function GameActionPanel() {
         const now = Date.now();
         const ref = speedRef.current;
         const dt = (now - ref.lastTime) / 1000;
-        if (dt > 0.3 && p.downloaded >= ref.lastBytes) {
-          setDownloadSpeed((p.downloaded - ref.lastBytes) / dt);
+        // 与主进度同一套：1 秒窗口 + 指数平滑，切换时的速度也一样别乱跳
+        if (dt >= 1 && p.downloaded >= ref.lastBytes) {
+          const instant = (p.downloaded - ref.lastBytes) / dt;
+          setDownloadSpeed((prev) =>
+            prev > 0 ? prev * 0.6 + instant * 0.4 : instant,
+          );
           ref.lastBytes = p.downloaded;
           ref.lastTime = now;
         }
@@ -749,6 +836,7 @@ export function GameActionPanel() {
         await cancelDownload(installPath);
       }
       cancellingRef.current = false;
+      userCancelledRef.current = false;
       await resetDownloadCancel();
       try {
         const result = await installOrUpdate(
@@ -1016,6 +1104,7 @@ export function GameActionPanel() {
   const handleUpdate = useCallback(async () => {
     if (!installPath) return;
     cancellingRef.current = false;
+    userCancelledRef.current = false;
     await resetDownloadCancel();
     let result: LauncherResult;
     try {
@@ -1033,22 +1122,27 @@ export function GameActionPanel() {
             readDownloadResume(),
           );
     } catch (error) {
-      addMessage({
-        type: "urgent",
-        title: t("launcher.update_failed_title"),
-        body: String(error),
-        tag: "update-error",
-      });
+      // 用户自己点的「取消下载」也会走到这里（后端返回 Install cancelled），不该报成失败
+      if (!userCancelledRef.current) {
+        addMessage({
+          type: "urgent",
+          title: t("launcher.update_failed_title"),
+          body: String(error),
+          tag: "update-error",
+        });
+      }
       refreshStatus();
       return;
     }
     if (!result.success) {
-      addMessage({
-        type: "urgent",
-        title: t("launcher.update_failed_title"),
-        body: result.message,
-        tag: "update-error",
-      });
+      if (!userCancelledRef.current) {
+        addMessage({
+          type: "urgent",
+          title: t("launcher.update_failed_title"),
+          body: result.message,
+          tag: "update-error",
+        });
+      }
       refreshStatus();
       return;
     }
@@ -1095,6 +1189,7 @@ export function GameActionPanel() {
     if (!installPath) return;
     setFlyoutOpen(false);
     cancellingRef.current = false;
+    userCancelledRef.current = false;
     await resetDownloadCancel();
     const threads = parseInt(
       localStorage.getItem("launcher_verify_threads") || "12",
@@ -1108,13 +1203,16 @@ export function GameActionPanel() {
         false,
         readDownloadResume(),
       );
-      const { type, body } = formatVerifyResult(result.message);
-      addMessage({
-        type,
-        title: t("launcher.verify_complete_title"),
-        body,
-        tag: "verify-result",
-      });
+      // 用户主动取消的校验不该弹「校验完成」
+      if (!userCancelledRef.current) {
+        const { type, body } = formatVerifyResult(result.message);
+        addMessage({
+          type,
+          title: t("launcher.verify_complete_title"),
+          body,
+          tag: "verify-result",
+        });
+      }
     } catch {
       // error handled by progress
     } finally {
@@ -1126,6 +1224,7 @@ export function GameActionPanel() {
     if (!installPath) return;
     setFlyoutOpen(false);
     cancellingRef.current = false;
+    userCancelledRef.current = false;
     await resetDownloadCancel();
     const threads = parseInt(
       localStorage.getItem("launcher_verify_threads") || "12",
@@ -1139,13 +1238,16 @@ export function GameActionPanel() {
         true,
         readDownloadResume(),
       );
-      const { type, body } = formatVerifyResult(result.message);
-      addMessage({
-        type,
-        title: t("launcher.verify_complete_title"),
-        body,
-        tag: "verify-result",
-      });
+      // 用户主动取消的校验不该弹「校验完成」
+      if (!userCancelledRef.current) {
+        const { type, body } = formatVerifyResult(result.message);
+        addMessage({
+          type,
+          title: t("launcher.verify_complete_title"),
+          body,
+          tag: "verify-result",
+        });
+      }
     } catch {
       // error handled by progress
     } finally {
@@ -1153,13 +1255,25 @@ export function GameActionPanel() {
     }
   }, [channel, installPath, checkStatus]);
 
-  const handleCancel = useCallback(async () => {
+  /** 取消/停止下载时立刻把按钮上的下载态收掉。
+   *
+   * 后端收到取消标志后还要过一会儿才真正退出，期间仍会推来若干 `downloading`
+   * 事件；这些残留事件由 `cancellingRef` 挡掉，所以界面不会被重新点亮。
+   * 之前只有「删除文件」那条路径清了 `localActiveOp`，「保留文件」和确认框里
+   * 选的取消都不清——按钮于是永远停在「下载中」。 */
+  const markDownloadCancelled = useCallback(() => {
     cancellingRef.current = true;
+    userCancelledRef.current = true;
     setLocalActiveOp(null);
     setDownloadSpeed(0);
+    speedRef.current = { lastBytes: 0, lastTime: Date.now() };
+  }, []);
+
+  const handleCancel = useCallback(async () => {
+    markDownloadCancelled();
     await cancelDownload(installPath);
     refreshStatus();
-  }, [installPath, refreshStatus]);
+  }, [installPath, markDownloadCancelled, refreshStatus]);
 
   // 预下载体积（提前声明：handlePreload 的依赖数组需要在渲染期就能取到）
   const preloadTotalBytes = gameStatus?.preload_total_bytes ?? 0;
@@ -1167,6 +1281,7 @@ export function GameActionPanel() {
   const handlePreload = useCallback(async () => {
     if (!installPath) return;
     cancellingRef.current = false;
+    userCancelledRef.current = false;
     await resetDownloadCancel();
     setPreloadProgress({
       downloaded: 0,
@@ -1290,6 +1405,63 @@ export function GameActionPanel() {
     switching;
   /** 是否有后端操作正在占用下载/校验通道（预下载期间禁止再发起安装/校验/切服） */
   const busyWithDownload = isActionRunning || preloading;
+
+  /** 按钮上那几个数字每秒才换一次：进度事件的密度远高于人眼能读的频率，
+   *  直接跟着事件走，速度与剩余时间会一直跳。这里在渲染期做一次 1 秒节流
+   *  （只写 ref，不触发额外渲染）。 */
+  const buttonStatsRef = useRef({
+    at: 0,
+    percent: 0,
+    speed: 0,
+    eta: null as number | null,
+  });
+  if (isDownloading && Date.now() - buttonStatsRef.current.at >= 1000) {
+    buttonStatsRef.current = {
+      at: Date.now(),
+      percent: Math.floor(downloadPercent),
+      speed: downloadSpeed,
+      eta:
+        progress && downloadSpeed > 0 && progress.total > progress.downloaded
+          ? Math.round((progress.total - progress.downloaded) / downloadSpeed)
+          : null,
+    };
+  }
+  const buttonStats = buttonStatsRef.current;
+
+  /** 下载中按钮轮播的三段文案：进度 / 速度 / 剩余时间（都取上面的每秒快照） */
+  const downloadCarouselItems: string[] = [
+    t("launcher.downloading_percent", { percent: buttonStats.percent }),
+    buttonStats.speed > 0
+      ? `${formatBytes(Math.round(buttonStats.speed))}/s`
+      : "—",
+    buttonStats.eta !== null
+      ? t("launcher.remaining_time", { time: formatEta(buttonStats.eta) })
+      : "—",
+  ];
+
+  /** 宽度探针：把轮播期间可能出现的每条文案都按「最长形态」量一遍，
+   * 按钮的宽度就锁在这些文案里最宽的一条上，三段来回切换时不再左右跳。 */
+  const downloadCarouselProbes = [
+    t("launcher.downloading_percent", { percent: 100 }),
+    `${formatBytes(999.99 * 1024 * 1024)}/s`,
+    t("launcher.remaining_time", { time: "99:59:59" }),
+    t("launcher.cancel_download"),
+  ];
+
+  // 下载中每 2.8 秒推进一段；悬停时停住（那时按钮显示「取消下载」），
+  // 下载结束后回到第一段，下次进入下载态从百分比起步
+  useEffect(() => {
+    if (!isDownloading) {
+      setCarouselIndex(0);
+      return;
+    }
+    if (btnHovered) return;
+    const id = window.setInterval(
+      () => setCarouselIndex((i) => (i + 1) % 3),
+      2800,
+    );
+    return () => window.clearInterval(id);
+  }, [isDownloading, btnHovered]);
 
   // Recalculate progress flyout position when button content changes (label width shift)
   useLayoutEffect(() => {
@@ -1460,6 +1632,10 @@ export function GameActionPanel() {
           </svg>
         );
       }
+      // 下载/安装阶段换成「向下落」的下载图标；准备/校验/比较/修复仍是转圈
+      if (isDownloading || isApplying) {
+        return <DownloadArrowIcon className="w-4 h-4 relative z-10" />;
+      }
       return (
         <svg
           className="w-4 h-4 animate-spin transition-transform duration-200 relative z-10"
@@ -1565,8 +1741,7 @@ export function GameActionPanel() {
       const behavior =
         localStorage.getItem(STORAGE_KEY_CANCEL_BEHAVIOR) || "ask";
       if (behavior === "keep") {
-        cancellingRef.current = true;
-        setDownloadSpeed(0);
+        markDownloadCancelled();
         cancelDownload(); // no path → keep files
         refreshStatus();
       } else if (behavior === "delete") {
@@ -1587,8 +1762,7 @@ export function GameActionPanel() {
   const handleConfirmAction = useCallback(
     (deleteFiles: boolean) => {
       if (confirmAction === "cancel-download") {
-        cancellingRef.current = true;
-        setDownloadSpeed(0);
+        markDownloadCancelled();
         if (deleteFiles) {
           cancelDownload(installPath);
         } else {
@@ -1620,6 +1794,7 @@ export function GameActionPanel() {
       checkStatus,
       startInstall,
       handleVerify,
+      markDownloadCancelled,
     ],
   );
 
@@ -1864,12 +2039,51 @@ export function GameActionPanel() {
             />
             {isDownloading && <ButtonProgressRing progress={downloadPercent} />}
             {getButtonIcon()}
-            <span
-              key={btnLabelKey}
-              className="whitespace-nowrap animate-fade-in relative z-10"
-            >
-              {getButtonLabel()}
-            </span>
+            {isDownloading ? (
+              /* 下载中：三段信息轮播（下载进度 / 速度 / 剩余时间）。
+               * 所有可能出现的文案都叠在同一个网格格子里，宽度取最宽的一条，
+               * 所以切换段落、悬停换成「取消下载」时按钮尺寸都不变。 */
+              <span className="relative z-10 grid place-items-center">
+                {downloadCarouselProbes.map((probe, i) => (
+                  <span
+                    key={`probe-${i}`}
+                    aria-hidden="true"
+                    className="col-start-1 row-start-1 whitespace-nowrap invisible"
+                  >
+                    {probe}
+                  </span>
+                ))}
+                {downloadCarouselItems.map((item, i) => {
+                  const active = !btnHovered && i === carouselIndex;
+                  return (
+                    <span
+                      key={`item-${i}`}
+                      aria-hidden={!active}
+                      className={`col-start-1 row-start-1 whitespace-nowrap ${
+                        active ? "animate-fade-in" : "invisible"
+                      }`}
+                    >
+                      {item}
+                    </span>
+                  );
+                })}
+                <span
+                  aria-hidden={!btnHovered}
+                  className={`col-start-1 row-start-1 whitespace-nowrap ${
+                    btnHovered ? "animate-fade-in" : "invisible"
+                  }`}
+                >
+                  {t("launcher.cancel_download")}
+                </span>
+              </span>
+            ) : (
+              <span
+                key={btnLabelKey}
+                className="whitespace-nowrap animate-fade-in relative z-10"
+              >
+                {getButtonLabel()}
+              </span>
+            )}
           </button>
 
           {/* DX11 快捷勾选：与设置页同步（方形复选框 + 文字，不加背景，悬浮于按钮下方并与左边缘对齐） */}
