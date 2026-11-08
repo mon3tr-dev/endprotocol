@@ -311,12 +311,10 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
         </div>
 
         {/*
-         * 渐变磨砂：游戏模式背景是视频，磨砂层必须限制在标题栏那条窄带内
-         * （整屏 backdrop-filter 会跟着视频每帧重算）。
-         * 放在背景之上、内容层之下，只增强标题栏那段的背景模糊。
+         * 游戏模式不铺磨砂层（数据模式才有 `.frost-main frost-with-sidebar`）：
+         * 这里的背景是视频，标题栏要的是背景本身的清晰度，而不是再叠一层
+         * backdrop-filter 把画面糊掉。
          */}
-        <div className="frost-main frost-titlebar-only" aria-hidden="true" />
-
         <CustomTitlebar />
 
         {/* Background mode switch — floats in near the top center */}

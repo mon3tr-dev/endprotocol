@@ -122,7 +122,7 @@
 | `resolveServerLabel()` (function) | index.ts:43 | 按 lang（zh 之外一律 en）解析服务器标签，未知值回退为原始 server 字符串 |
 
 ## `src/locales/zh/translation.json`
-**职责**：中文 i18n 资源，共 874 行、796 个叶子 key、20 个顶层命名空间。
+**职责**：中文 i18n 资源，共 873 行、795 个叶子 key、20 个顶层命名空间。
 **顶层命名空间清单**（这是重点，要完整列出）：
 
 | 命名空间/key 前缀 | 用途 | 大致行号 |
@@ -157,14 +157,14 @@
 | `messages.*` | 消息中心：相对时间（分钟/小时/天前）、展开收起、下载状态 | :427 |
 | `browser.*` | 内嵌浏览器工具栏：前进/后退/刷新/打开外部/关闭等（9 个 key） | :681 |
 | `tray.*` | 托盘悬浮面板：品牌标题、理智/每日活跃/每周事务/通行证标签、等级、已满/回满/下次回复、未选用户提示、显示主窗口/退出（13 个 key） | :660 |
-| `launcher.*` | 启动器：安装/更新/校验修复/渠道切换/预下载/预下载中/预下载确认/启动设置/磁盘与文件扫描等完整流程；含 `launcher.no_announcements`（公告空态，:800）；子分组 `launcher.sidebar.*`（游戏界面右侧官方社媒栏：标题/打开网页提示/仅支持扫码，:849）（本文件最大分组，144 个 key） | :707 |
+| `launcher.*` | 启动器：安装/更新/校验修复/渠道切换/预下载/预下载中/预下载确认/启动设置/磁盘与文件扫描等完整流程；含 `launcher.game_group_endfield` / `launcher.game_group_arknights`（标题栏与切换栏按当前游戏取名，:795-796）、`launcher.no_announcements`（公告空态，:799）；子分组 `launcher.sidebar.*`（游戏界面右侧官方社媒栏：标题/打开网页提示/仅支持扫码，:848）（本文件最大分组，143 个 key） | :707 |
 | `todo_page.*` | To-Do 页面：标题/描述、导入导出、新建/搜索列表、分组、空态等 | :644 |
 
-- **与 en/translation.json 的 key 差异**：无。经脚本对比，zh 与 en 叶子 key 均为 796 个，键集合完全一致（既无 zh 缺键也无 en 缺键），且两文件结构逐行对齐（行号一一对应）。
+- **与 en/translation.json 的 key 差异**：无。经脚本对比，zh 与 en 叶子 key 均为 795 个，键集合完全一致（既无 zh 缺键也无 en 缺键），且两文件结构逐行对齐（行号一一对应）。
 - **异常（两边共有）**：`settings.update` 内存在重复键 —— `latest_version` 同时出现于 :177 与 :187、`release_date` 同时出现于 :179 与 :188。JSON 解析时后者覆盖前者（zh 实际生效值为 :187 的“远端最新版本”、:188 的“发布日期”；en 同理）。建议后续合并为 `latest_version_remote` 之类的独立键。
 
 ## `src/locales/en/translation.json`
-**职责**：英文 i18n 资源，与 zh 文件同为 874 行、796 个叶子 key、20 个顶层命名空间，行号与 zh 完全对应（见上表）。
+**职责**：英文 i18n 资源，与 zh 文件同为 873 行、795 个叶子 key、20 个顶层命名空间，行号与 zh 完全对应（见上表）。
 - 主要差异仅在文案语言，个别本地化选择值得注意：`settings.characters.cultivation_talents` zh 为“基建技能”而 en 为 “O.M.V. Dijiang Skills”（帝江号相关译名）；`settings.logs.level_*` en 使用大写日志级别（DEBUG/INFO/WARN/ERROR），`source_frontend/source_backend` 缩写为 FE/BE。
 - 同样存在 `settings.update` 的 `latest_version` / `release_date` 重复键（:177/:187、:179/:188），与 zh 完全一致。
 
@@ -188,7 +188,7 @@
 | 238-261 行（规则在 258-261） | `html[data-window-radius="self"]` —— 无边框窗口的圆角兜底：仅 Linux（WebKitGTK）生效（Windows 交 DWM、macOS 交系统），用 `clip-path: inset(0 round 12px)` 挂在根元素上，而不是 `overflow:hidden`，因为后者裁不住 `fixed` 后代 |
 | 262-297 行 | `.dashboard-background` 固定背景层（背景图 + 三层渐变叠加 + blur） |
 | 约 730-755 行 | `.dashboard-veil` 壁纸压暗层：`fixed` 铺满、`background: var(--background)`、`opacity: var(--bg-veil-opacity)`。壁纸是任意图片且透明度可拉到 1、模糊可拉到 0，只靠薄玻璃挡不住，必须由这一层把整体亮度压下来，正文对比度才可控。浅色主题 0.45（白纱）、深色主题 0.68（深纱），由 `.dark` 覆盖。层级：`.dashboard-background`（壁纸）→ `.frost-main`（磨砂）→ `.dashboard-veil`（压暗）→ 内容层（z-10） |
-| 约 760 行 | `.titlebar-shell`（`z-index: 10`）——标题栏必须叠在 veil 之上；底色已由 `.lg-sheet` 实底改为渐变磨砂（见 `.frost-main`） |
+| 约 760 行 | `.titlebar-shell`（`z-index: 10`）——标题栏必须叠在 veil 之上；底色已由 `.lg-sheet` 实底改为渐变磨砂（见 `.frost-main`，**仅数据模式**；游戏模式不铺磨砂层，标题栏直接露出背景） |
 | 约 762-790 行 | 文字对比度兜底：`.adaptive-contrast-text` 取 `--foreground`；`:is([class~="text-muted"], [class*="text-muted/"], text-gray-400/500/600)` 统一改为 `--muted`（**不再一律涂成 `--foreground`**，否则标题与次要信息同色、层级全丢）；`text-foreground/50`、`/60` 抬到 `--foreground`。**全局 `[class*="text-"]` 双向 text-shadow 已移除**（黑 55% + 白 65% 双层阴影会把中文小字号笔画染成灰边，形成「重影糊字」） |
 | 206-224 行 | `.titlebar-mode-toggle` 标题栏模式切换胶囊动画（`.is-game` 右移） |
 | 226-227 行 | `::selection` 选区配色 |
@@ -235,7 +235,7 @@
 | `.lg-regular` | 285-305 | **功能层 regular**：控件/导航/浮层默认变体（blur/saturate/密度全部来自令牌）。**宿主类一律不在此处写 `position/z-index`**——非分层声明会压过 `@layer utilities` 的 Tailwind 定位工具类，导致 `lg-regular + fixed/absolute` 的浮层定位整体失效（历史 bug：消息 flyout、select 菜单、tooltip 全部错位）；定位上下文统一由 `@layer components` 的 `:is(...)` 规则供给 |
 | `.lg-clear` | 307-338 | **功能层 clear**：悬浮于照片/视频等丰富背景；`::after` 暗化层浅色 35% / 深色 12%（HIG 可读性兜底） |
 | `.lg-sheet` | — | **已移除**。标题栏/侧边栏原先用它铺近乎不透明的实底，现改为 `.frost-main` 渐变磨砂（无底色） |
-| `.frost-main` / `.frost-with-sidebar` / `.frost-titlebar-only` / `.frost-drawer` | 约 385-490 | **渐变磨砂层**（替代 `.lg-sheet`）：`backdrop-filter` + `mask-image` 的全屏覆盖层，模糊与遮罩同放 `::before`。纵向遮罩（标题栏：top→bottom 衰减）+ 横向遮罩（侧边栏：left→right 衰减）用 mask 多图层语法取并集，合成连通的 L 形强区——标题栏与侧边栏的磨砂连成一片，左上角无断裂。令牌 `--lg-frost-fade`(28px 衰减距离) / `--lg-frost-titlebar-h`(44px 标题栏本体高) / `--lg-frost-blur-delta`(12px 模糊增量)；衰减终点即用户设定的 `--bg-blur`。游戏模式用 `.frost-titlebar-only`（只留标题栏窄带，避免整屏 backdrop-filter 跟视频逐帧重算），移动端抽屉用 `.frost-drawer`（fixed 定位、仅横向遮罩） |
+| `.frost-main` / `.frost-with-sidebar` / `.frost-drawer` | 约 385-490 | **渐变磨砂层**（替代 `.lg-sheet`）：`backdrop-filter` + `mask-image` 的全屏覆盖层，模糊与遮罩同放 `::before`。纵向遮罩（标题栏：top→bottom 衰减）+ 横向遮罩（侧边栏：left→right 衰减）用 mask 多图层语法取并集，合成连通的 L 形强区——标题栏与侧边栏的磨砂连成一片，左上角无断裂。令牌 `--lg-frost-fade`(28px 衰减距离) / `--lg-frost-titlebar-h`(44px 标题栏本体高) / `--lg-frost-blur-delta`(12px 模糊增量)；衰减终点即用户设定的 `--bg-blur`。移动端抽屉用 `.frost-drawer`（fixed 定位、仅横向遮罩）。**游戏模式不铺磨砂层**（原 `.frost-titlebar-only` 已移除）：背景是视频，标题栏要的是背景本身的清晰度，不再叠 backdrop-filter |
 | `.lg-control` | 340-359 | 功能层控件底（开关/复选/分页/圆钮）。**自身不写 `background`**——透明底由 `@layer components` 的 `:is(...)` 规则统一提供，见下条 |
 | `.lg-control.lg-solid` + `[aria-checked="true"]` / `[data-state="checked"]` | 约 551-578 | **实底玻璃**：`::before` 只保留边缘内高光、不铺填充。填充用 `background-color` 书写（**不可用 `background` 简写**）——简写不可过渡，会在铺上 `bg-primary` 的同一帧整块消失，开关/复选因此闪一下；`.lg-control::before` 自身带 `transition: background-color var(--lg-dur-base)` 负责淡出。主色/危险色按钮与选中态开关复选本身就是实色，若再叠一层 `--lg-fill-control`（深色约 84% 的 tint）会把 `bg-primary` 压成灰紫；配合 `--primary-foreground` 深色下取近黑，文字直接读不出。组件里凡是 `<玻璃类> + bg-primary/bg-danger` 的组合都必须加 `lg-solid` |
 | `.lg-field` | 361-396 | 功能层输入字段；`:is(input,textarea,select).lg-field` 替换元素直接铺实底并禁用模糊 |

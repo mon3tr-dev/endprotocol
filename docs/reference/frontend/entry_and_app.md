@@ -255,6 +255,27 @@
 
 **备注**：三个 store 各自独立的 listeners 数组与 emit，互不干扰；localStorage 键名仅两枚：`launcher_view_mode`、`game_bg_mode`。
 
+## `src/stores/launcherGame.ts`
+**职责**：启动器里「当前选中的游戏」（终末地 / 明日方舟）这一维度的可订阅 store。选择结果持久化在 localStorage（键 `launcher_game`），供标题栏标题、左侧游戏切换栏、操作面板与安装路径/渠道/DX11 的按游戏分区配置共用。
+**导出**：`LauncherGame`（:9）、`DEFAULT_CHANNEL`（:15）、`gameOfChannel`（:21）、`ALL_GAMES`（:25）、`getActiveGame`（:46）、`setActiveGame`（:50）、`subscribeActiveGame`（:59）。
+**主要依赖**：`@/utils/launcherService`（`GameChannel` 类型，仅用于类型引用）、`localStorage`（浏览器原生）。
+
+| 符号 | 位置 | 说明 |
+| --- | --- | --- |
+| `LauncherGame` | launcherGame.ts:9 | `"endfield" \| "arknights"` |
+| `STORAGE_KEY` | launcherGame.ts:12 | `"launcher_game"` |
+| `DEFAULT_CHANNEL` | launcherGame.ts:15-18 | 每个游戏无记录时的默认渠道（终末地 `official`、明日方舟 `arknights`） |
+| `gameOfChannel` | launcherGame.ts:21-23 | 渠道 → 所属游戏（与 `launcherService.CHANNEL_GAME` 同源，避免循环依赖重复定义） |
+| `ALL_GAMES` | launcherGame.ts:25 | `["endfield", "arknights"]`，切换栏的渲染顺序 |
+| `normalize` | launcherGame.ts:27-30 | 非法值 → `null`（私有） |
+| `currentGame` 初始化 | launcherGame.ts:32-38 | 从 localStorage 读取并校验，异常回退 `"endfield"` |
+| `emit` | launcherGame.ts:42-44 | 通知全部监听者（私有） |
+| `getActiveGame` | launcherGame.ts:46-48 | 读当前游戏 |
+| `setActiveGame` | launcherGame.ts:50-57 | 相同值短路；写内存 + localStorage（try/catch）+ emit |
+| `subscribeActiveGame` | launcherGame.ts:59-64 | 注册/退订监听，返回退订函数 |
+
+**备注**：订阅方——`components/custom-titlebar.tsx`（游戏模式下标题栏标题显示当前游戏名）、`components/game-switch-rail.tsx`（左侧切换栏选中态）、`components/game-action-panel.tsx`（面板顶部游戏切换与配置分区）、`layouts/dashboard.tsx`（切游戏后重拉该游戏的渠道/公告/背景）。
+
 ## `src/cards/startup-service.ts`
 **职责**：卡片启动任务服务（单例对象）：登记各卡片类型的启动处理器、管理「自动签到用户」名单与「卡片—用户」映射（均持久化到配置服务），启动时并行跑签到任务并对外广播任务状态。
 **导出**：`CardStartupService`（startup-service.ts:25）。

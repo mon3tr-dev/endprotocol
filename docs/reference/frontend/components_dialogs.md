@@ -113,31 +113,32 @@
 ## `src/components/custom-titlebar.tsx`
 **职责**：自定义标题栏——包含品牌区、数据/游戏视图切换、通知铃铛与消息浮层、窗口最小化/最大化/关闭按钮，并挂载消息抽屉与关闭确认框。
 **导出**：`CustomTitlebar`
-**主要依赖**：`react`（`useState/useEffect/useRef`）、`react-dom`（`createPortal`）、`react-i18next`、`@tauri-apps/api/core`（`invoke`）、`@tauri-apps/api/window`（`getCurrentWindow`）、`@tauri-apps/api/event`（`listen`、`UnlistenFn`）、`@/components/ui/app-icon`（`MinimizeIcon`、`MaximizeIcon`、`RestoreIcon`、`CloseIcon`、`BellIcon`）、`@/components/app-info-drawer`、`@/components/close-confirm-dialog`、`@/utils/messageStore`（`getMessages`、`getUnreadCount`、`hasUrgentUnread`、`subscribeMessages`、`AppMessage`）、`@/components/message-card`、`@/utils/configService`（`getConfig`）、`@/utils/trayService`（`isTrayAvailable`）、`@/stores/launcherMode`（`getLauncherMode`、`setLauncherMode`、`subscribeLauncherMode`、`LauncherViewMode`）、`@/utils/platform`（`isWindowsPlatform`）、`@/utils/logger`、`@/components/ui/toggle-group`（`ToggleGroup`、`ToggleGroupItem`）
+**主要依赖**：`react`（`useState/useEffect/useRef`）、`react-dom`（`createPortal`）、`react-i18next`、`@tauri-apps/api/core`（`invoke`）、`@tauri-apps/api/window`（`getCurrentWindow`）、`@tauri-apps/api/event`（`listen`、`UnlistenFn`）、`@/components/ui/app-icon`（`MinimizeIcon`、`MaximizeIcon`、`RestoreIcon`、`CloseIcon`、`BellIcon`）、`@/components/app-info-drawer`、`@/components/close-confirm-dialog`、`@/utils/messageStore`（`getMessages`、`getUnreadCount`、`hasUrgentUnread`、`subscribeMessages`、`AppMessage`）、`@/components/message-card`、`@/utils/configService`（`getConfig`）、`@/utils/trayService`（`isTrayAvailable`）、`@/stores/launcherMode`（`getLauncherMode`、`setLauncherMode`、`subscribeLauncherMode`、`LauncherViewMode`）、`@/stores/launcherGame`（`getActiveGame`、`subscribeActiveGame`、`LauncherGame`）、`@/utils/platform`（`isWindowsPlatform`）、`@/utils/logger`、`@/components/ui/toggle-group`（`ToggleGroup`、`ToggleGroupItem`）
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
-| `CustomTitlebar` | custom-titlebar.tsx:36 | 组件主体，无 props |
-| 局部状态 | custom-titlebar.tsx:37-50 | `isMaximized`、`infoOpen`（消息抽屉）、`unreadCount`、`hasUrgent`、`showCloseConfirm`、`closeAction`（默认 `"ask"`）、`trayAvailable`（默认 `true`，由 `isTrayAvailable()` 回填）、`viewMode`（初值 `getLauncherMode()`）、`newMessage`（浮层消息）、`flyoutOpen`（默认 `true`）；refs：`seenMessageIds`（已展示过的消息 id Set，初始为启动时队列内全部 id）、`flyoutTimer` |
-| 消息订阅 effect | custom-titlebar.tsx:52-75 | `subscribeMessages`：仅在队首是**从未展示过的新消息**（`seenMessageIds` 中不存在）时弹出浮层并记录其 id；由于用 Set 判断「新增」，删除队首消息露出旧消息不会重复弹浮层。非进度型消息（`progress === undefined \|\| progress < 0`）5 秒后自动隐藏；浮层只保存消息 **id**，每次 store 变更都按 id 从 `getMessages()` 回填最新对象（否则 `updateMessage` 写入的进度停留在入队时的旧快照上，浮层进度条不动）；若当前正在展示的消息已被从队列移除，则立即收起浮层；同时刷新 `unreadCount`、`hasUrgent` |
-| 定时器清理 effect | custom-titlebar.tsx:77-82 | 卸载时 `clearTimeout(flyoutTimer.current)` |
-| 视图模式订阅 effect | custom-titlebar.tsx:84-88 | `subscribeLauncherMode(() => setViewMode(getLauncherMode()))` |
-| 关闭行为配置 effect | custom-titlebar.tsx:90-95 | `getConfig<string>("close_action")` → `setCloseAction(value ?? "ask")` |
-| 托盘可用性 effect | custom-titlebar.tsx:97-100 | `isTrayAvailable()` → `setTrayAvailable`；托盘不可用时关闭按钮直接 `app_quit`，并让 `CloseConfirmDialog` 隐藏「最小化到托盘」 |
-| `checkMaximizedState` | custom-titlebar.tsx:102-110 | `async`：`getCurrentWindow().isMaximized()` → `setIsMaximized`，异常记 `logger.error(..., "Titlebar")` |
-| 窗口事件 effect | custom-titlebar.tsx:112-130 | 先执行一次 `checkMaximizedState()`，再 `listen("tauri://resize")`（118 行）与 `listen("tauri://move")`（122 行）触发重新检查，清理时调用两个 `UnlistenFn` |
-| `handleMinimize` | custom-titlebar.tsx:132-138 | `await invoke("minimize_window")` |
-| `handleMaximize` | custom-titlebar.tsx:140-147 | `await invoke("toggle_maximize_window")`，100ms 后再 `checkMaximizedState()` 同步图标 |
-| `handleClose` | custom-titlebar.tsx:149-166 | 托盘不可用（`trayAvailable === false`）时直接 `invoke("app_quit")`；否则按 `closeAction` 分支：`"ask"` → `setShowCloseConfirm(true)`；`"minimize_to_tray"` → `invoke("minimize_to_tray")`；否则 `invoke("app_quit")` |
-| `handleConfirmClose` | custom-titlebar.tsx:168-183 | `(action: "close" \| "minimize_to_tray")`：`minimize_to_tray` 且托盘可用时 `invoke("minimize_to_tray")`，其余情况一律 `invoke("app_quit")`；之后重新 `getConfig("close_action")` 回写本地 `closeAction`（用户可能勾选了「记住」） |
-| 渲染块 | custom-titlebar.tsx:185-320 | `titlebar-shell h-11`（**不再挂 `lg-sheet` 实底**，改由布局层的 `.frost-main` 渐变磨砂负责底部过渡；拖动区用 `data-tauri-drag-region="deep"`，可点击元素由 Tauri `drag.js` 自动排除，需要禁止拖动的容器才写 `data-tauri-drag-region="false"`）：品牌区（`/app-icon.png` 链扣标 18×18 + 标题，`viewMode === "game"` 显示 `launcher.game_title`，否则 `ENDPROTOCOL`）→ `ToggleGroup` 视图切换（211-235，值 `"data"` / `"game"`，写入 `setLauncherMode`）→ 弹性占位 → 铃铛按钮（238-253，未读角标 `99+` 截断，`hasUrgent` 用 `bg-danger`）→ 新消息浮层（255-271，`createPortal(document.body)` + `fixed right-12 top-10 z-[10005]`，内嵌 `MessageCard compact`）→ 窗口三键（273-307）→ `<AppInfoDrawer>`（311）与 `<CloseConfirmDialog>`（312-317） |
+| `CustomTitlebar` | custom-titlebar.tsx:41 | 组件主体，无 props |
+| 局部状态 | custom-titlebar.tsx:43-63 | `isMaximized`、`infoOpen`（消息抽屉）、`unreadCount`、`hasUrgent`、`showCloseConfirm`、`closeAction`（默认 `"ask"`）、`trayAvailable`（默认 `true`，由 `isTrayAvailable()` 回填）、`viewMode`（初值 `getLauncherMode()`）、`activeGame`（初值 `getActiveGame()`，当前选中的游戏）、`newMessage`（浮层消息）、`flyoutOpen`（默认 `true`）；refs：`seenMessageIds`（已展示过的消息 id Set，初始为启动时队列内全部 id）、`flyoutTimer` |
+| 消息订阅 effect | custom-titlebar.tsx:65-88 | `subscribeMessages`：仅在队首是**从未展示过的新消息**（`seenMessageIds` 中不存在）时弹出浮层并记录其 id；由于用 Set 判断「新增」，删除队首消息露出旧消息不会重复弹浮层。非进度型消息（`progress === undefined \|\| progress < 0`）5 秒后自动隐藏；浮层只保存消息 **id**，每次 store 变更都按 id 从 `getMessages()` 回填最新对象（否则 `updateMessage` 写入的进度停留在入队时的旧快照上，浮层进度条不动）；若当前正在展示的消息已被从队列移除，则立即收起浮层；同时刷新 `unreadCount`、`hasUrgent` |
+| 定时器清理 effect | custom-titlebar.tsx:90-95 | 卸载时 `clearTimeout(flyoutTimer.current)` |
+| 视图模式订阅 effect | custom-titlebar.tsx:97-101 | `subscribeLauncherMode(() => setViewMode(getLauncherMode()))` |
+| 当前游戏订阅 effect | custom-titlebar.tsx:103-108 | `subscribeActiveGame(() => setActiveGame(getActiveGame()))`——游戏切换（左侧悬浮栏 / 操作面板）后标题栏标题跟着换成当前游戏 |
+| 关闭行为配置 effect | custom-titlebar.tsx:110-115 | `getConfig<string>("close_action")` → `setCloseAction(value ?? "ask")` |
+| 托盘可用性 effect | custom-titlebar.tsx:117-120 | `isTrayAvailable()` → `setTrayAvailable`；托盘不可用时关闭按钮直接 `app_quit`，并让 `CloseConfirmDialog` 隐藏「最小化到托盘」 |
+| `checkMaximizedState` | custom-titlebar.tsx:122-130 | `async`：`getCurrentWindow().isMaximized()` → `setIsMaximized`，异常记 `logger.error(..., "Titlebar")` |
+| 窗口事件 effect | custom-titlebar.tsx:132-150 | 先执行一次 `checkMaximizedState()`，再 `listen("tauri://resize")`（138 行）与 `listen("tauri://move")`（142 行）触发重新检查，清理时调用两个 `UnlistenFn` |
+| `handleMinimize` | custom-titlebar.tsx:152-158 | `await invoke("minimize_window")` |
+| `handleMaximize` | custom-titlebar.tsx:160-167 | `await invoke("toggle_maximize_window")`，100ms 后再 `checkMaximizedState()` 同步图标 |
+| `handleClose` | custom-titlebar.tsx:169-186 | 托盘不可用（`trayAvailable === false`）时直接 `invoke("app_quit")`；否则按 `closeAction` 分支：`"ask"` → `setShowCloseConfirm(true)`；`"minimize_to_tray"` → `invoke("minimize_to_tray")`；否则 `invoke("app_quit")` |
+| `handleConfirmClose` | custom-titlebar.tsx:188-203 | `(action: "close" \| "minimize_to_tray")`：`minimize_to_tray` 且托盘可用时 `invoke("minimize_to_tray")`，其余情况一律 `invoke("app_quit")`；之后重新 `getConfig("close_action")` 回写本地 `closeAction`（用户可能勾选了「记住」） |
+| 渲染块 | custom-titlebar.tsx:205-343 | `titlebar-shell h-11`（**不再挂 `lg-sheet` 实底**，数据模式由布局层的 `.frost-main` 渐变磨砂负责底部过渡，游戏模式不铺磨砂层；拖动区用 `data-tauri-drag-region="deep"`，可点击元素由 Tauri `drag.js` 自动排除，需要禁止拖动的容器才写 `data-tauri-drag-region="false"`）：品牌区（`/app-icon.png` 链扣标 18×18 + 标题，`viewMode === "game"` 显示 `launcher.game_group_${activeGame}`（**跟着当前选中的游戏走**），否则 `ENDPROTOCOL`）→ `ToggleGroup` 视图切换（234-258，值 `"data"` / `"game"`，写入 `setLauncherMode`）→ 弹性占位 → 铃铛按钮（261-276，未读角标 `99+` 截断，`hasUrgent` 用 `bg-danger`）→ 新消息浮层（278-294，`createPortal(document.body)` + `fixed right-12 top-10 z-[10005]`，内嵌 `MessageCard compact`）→ 窗口三键（296-330）→ `<AppInfoDrawer>`（334）与 `<CloseConfirmDialog>`（335-340） |
 
 **备注**：
-- **invoke 命令**：`minimize_window`（custom-titlebar.tsx:134）、`toggle_maximize_window`（142）、`minimize_to_tray`（159、171）、`app_quit`（153、161、173）。
-- **listen 事件**：`tauri://resize`（118）、`tauri://move`（122）。
-- 其它事件源：`subscribeMessages`、`subscribeLauncherMode`（均为前端 store 回调，非 Tauri event）。
+- **invoke 命令**：`minimize_window`（custom-titlebar.tsx:154）、`toggle_maximize_window`（162）、`minimize_to_tray`（179、191）、`app_quit`（173、181、193）。
+- **listen 事件**：`tauri://resize`（138）、`tauri://move`（142）。
+- 其它事件源：`subscribeMessages`、`subscribeLauncherMode`、`subscribeActiveGame`（均为前端 store 回调，非 Tauri event）。
 - 层级：标题栏 `titlebar-shell`；**消息浮层经 portal 渲染到 `document.body`、`fixed` + `z-[10005]`，高于任何 modal/抽屉/全屏遮罩（modal backdrop `z-[100]`~`z-[300]`、快选菜单 `z-[9999]`、取色器 `z-[10001]`），保证打开弹窗时依然可见**；抽屉 `z-[200]/[210]`（在 `AppInfoDrawer` 内）。
-- i18n key：`launcher.game_title`、`launcher.mode_data`、`launcher.mode_game`。
+- i18n key：`launcher.game_group_endfield` / `launcher.game_group_arknights`（游戏模式下按当前游戏取值）、`launcher.mode_data`、`launcher.mode_game`。
 - **玻璃材质一律走 `.titlebar-mode-toggle`（globals.css 定义）**：切换胶囊不再写 `bg-default-100/55` / `border-white/20`，玻璃底落在 `::after`（`::before` 被拨杆占用），与控制件 `.lg-control` 共用 `--lg-tint` / `--lg-alpha-control` / `--lg-blur` / `--lg-saturate`，随 theme 一起换深浅。铃铛与窗口三键的 hover 由 `.lg-hoverable` 提供，不再写 `hover:bg-white/10`。
 - 游戏模式切换仅在 Windows 显示；macOS/Linux 通过 `isWindowsPlatform()` 隐藏切换控件，模式 store 也会拒绝切换到游戏模式。
 - 关闭确认框文案本身无 i18n key（见 close-confirm-dialog 备注）。
@@ -365,6 +366,32 @@
 
 ---
 
+## `src/components/game-switch-rail.tsx`
+**职责**：游戏界面（dashboard 游戏模式）左侧的**游戏切换栏**：一根贴左边缘的常驻条，收起时只有一条窄把手，鼠标靠近左边缘即向右、向上下两侧生长成两枚游戏图标（终末地 / 明日方舟），鼠标离开立即收起。选中项带同轮廓的选中环，点击即切换 `launcherGame` store——标题栏标题、操作面板与该游戏的安装路径/渠道/DX11 配置随之整套换掉。
+**导出**：`GameSwitchRail`
+**主要依赖**：`react`（`useState/useEffect/useRef/useCallback`）、`react-dom`（`createPortal`）、`react-i18next`、`@/utils/launcherService`（`readGameInstallPath`）、`@/stores/launcherGame`（`ALL_GAMES`、`getActiveGame`、`setActiveGame`、`subscribeActiveGame`、`LauncherGame`）
+
+| 符号 | 位置 | 说明 |
+| --- | --- | --- |
+| `PROXIMITY_PX` / `PANEL_HOVER_PAD` / `VERTICAL_BAND_PX` / `TITLEBAR_SAFE_PX` | game-switch-rail.tsx:14/16/18/20 | 展开触发：距左边缘 110px 内、且指针在视口中线上下 150px 的竖向带内（避开标题栏，窗口再矮也不误弹）；命中判定对面板矩形外扩 10px（跨过图标与边缘之间的空隙） |
+| `CELL_PX` / `GAP_PX` / `PAD_PX` / `RAIL_WIDTH` / `RAIL_HEIGHT` / `HANDLE_WIDTH` / `HANDLE_HEIGHT` | game-switch-rail.tsx:23-30 | 展开量：图标 48px、间距 10px、内边距 10px → 条子 68×126；收起态为 10×56 的窄把手 |
+| `GAME_ICON` | game-switch-rail.tsx:33-36 | 每个游戏的图标（`public/games/endfield.png`、`public/games/arknights.png`） |
+| `SQUIRCLE_CLIP` | game-switch-rail.tsx:48-49 | 超椭圆轮廓 `clip-path`（72 段百分比折线）。用百分比而非 CSS `path()`——`path()` 里的长度都是 px、不随元素缩放，按 100×100 画的 path 套到 48px 盒子上只会露出左上角一小块 |
+| `GameSwitchRail` | game-switch-rail.tsx:67 | 组件主体。状态 `expanded`、`game`（当前选中的游戏）；refs `expandedRef`、`panelRef`（展开后的面板，参与命中判定） |
+| 游戏订阅 effect | game-switch-rail.tsx:74 | `subscribeActiveGame(() => setGame(getActiveGame()))` |
+| `expand` / `collapse` | game-switch-rail.tsx:76-86 | 幂等切换（各自先比对 `expandedRef`） |
+| 几何命中 effect | game-switch-rail.tsx:88-116 | 监听 window `mousemove`，**每次实时量** `panelRef` 矩形：命中面板（含 10px 外扩）即保持展开；否则若在左边缘 + 竖向带内则展开，都不满足则立即收起 |
+| 常驻条本体 | game-switch-rail.tsx:118-131 | portal 到 body，外层 `fixed left-0 top-1/2 z-30 -translate-y-1/2`，收起态 `pointer-events-none`；本体 `rounded-r-2xl border-l-0 lg-media-chip lg-hairline`，宽度/高度同时进退 |
+| 图标列 | game-switch-rail.tsx:143-208 | 挂 `inert={!expanded}`（收起时既不收指针也不进 Tab 序列）；每项 `48×48`，选中环与图标共用 `SQUIRCLE_CLIP`；图标整体 `scale(0.9)` 让选中环露成一圈；未选中降饱和（`opacity-70 grayscale-[0.7]`），悬停恢复；已安装的游戏在角上带一个绿色圆点（`readGameInstallPath` 非空） |
+
+**备注**：
+- 无 `invoke` / `listen`（只读写 localStorage 的 `launcher_game`）。
+- 一处 `createPortal(..., document.body)`，外层 `z-30`（低于 `InAppBrowser` 的 `z-40`）。
+- i18n key：`launcher.select_game_title`（组标签）、`launcher.game_group_endfield` / `launcher.game_group_arknights`（按钮文案，与标题栏同源）、`launcher.game_not_configured_hint`（未配置游戏的 title 追加提示）。
+- 竖向带判定刻意不用「相对当前矩形 ±150px」，而是相对**视口中线**——条子与中线同心，窗口再矮也不会因为条子贴近标题栏而误展开。
+
+---
+
 ## 覆盖清单与横向要点
 
 | 文件 | 行数 | 导出符号 |
@@ -374,7 +401,7 @@
 | account-switch-modal.tsx | 196 | 默认 `AccountSwitchModal` |
 | add-card-modal.tsx | 234 | `AddCardModal` |
 | app-info-drawer.tsx | 71 | `AppInfoDrawer` |
-| custom-titlebar.tsx | 324 | `CustomTitlebar` |
+| custom-titlebar.tsx | 343 | `CustomTitlebar` |
 | role-select-modal.tsx | 182 | 默认 `RoleSelectModal` |
 | tab-editor-modal.tsx | 244 | `TabEditorModal` |
 | tab-selector.tsx | 207 | `TabSelector` |
@@ -385,10 +412,11 @@
 | navbar.tsx | 93 | `Navbar` |
 | message-card.tsx | 201 | `MessageCard` |
 | game-sidebar-rail.tsx | 313 | `GameSidebarRail`、`GameSidebarRailProps` |
+| game-switch-rail.tsx | 213 | `GameSwitchRail` |
 
 **invoke 命令汇总**：`minimize_window`、`toggle_maximize_window`、`minimize_to_tray`、`app_quit`（custom-titlebar）；`save_selected_roles`（role-select-modal）；`capture_screen`、`finish_screen_pick`（screen-color-picker）。
 
-**listen 事件汇总**：`tauri://resize`、`tauri://move`（均在 custom-titlebar.tsx:103/107）。
+**listen 事件汇总**：`tauri://resize`、`tauri://move`（均在 custom-titlebar.tsx:138/142）。
 
 **window 自定义事件**：监听 `manualRefresh`、派发 `accountChanged`（account-switch-modal）；`messageStore` 另派发 `messagesChanged`（本批文件未直接监听）。
 

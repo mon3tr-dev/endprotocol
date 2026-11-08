@@ -484,6 +484,10 @@
  *     实时改写（运行时改写模糊半径会触发 WebKitGTK 重合成 bug）。
  *     效果：标题栏处模糊 = 壁纸自身的 --bg-blur + 增量，向外渐弱到
  *     用户设定的 --bg-blur（标题栏下方 / 侧边栏右侧）。
+ *
+ * 只用于**数据模式**（壁纸背景）：游戏模式的背景是视频，标题栏要的是背景
+ * 本身的清晰度，不铺这层磨砂（原先的游戏模式窄带 .frost-titlebar-only
+ * 已移除）。
  * ------------------------------------------------------------------ */
 .frost-main {
   position: absolute;
@@ -540,13 +544,6 @@
       transparent calc(var(--frost-sidebar-w) + var(--lg-frost-fade))
     );
 }
-/* 游戏模式：背景是视频，整屏 backdrop-filter 会跟着每帧重算，
- * 因此只保留标题栏那条窄带（无侧边栏遮罩层）。 */
-.frost-titlebar-only {
-  bottom: auto;
-  height: calc(var(--lg-frost-titlebar-h) + var(--lg-frost-fade));
-}
-
 /* 移动端抽屉：fixed 全高容器，只需要侧边栏的横向遮罩。
  * 遮罩写在自己的 ::before 上，覆盖掉 .frost-main 的纵向遮罩。 */
 .frost-drawer {
@@ -1022,7 +1019,8 @@ html[data-window-radius="self"] {
 }
 
 /* 标题栏是页面骨架的一部分：它压在壁纸上、直接承载窗口标题，
- * z 必须高于 veil；底色改为渐变磨砂（见 .frost-main）。 */
+ * z 必须高于 veil；数据模式的底色是渐变磨砂（见 .frost-main），
+ * 游戏模式不铺磨砂层，标题栏直接露出背景。 */
 .titlebar-shell {
   z-index: 10;
 }

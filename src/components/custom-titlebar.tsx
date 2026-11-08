@@ -29,6 +29,11 @@ import {
   subscribeLauncherMode,
   type LauncherViewMode,
 } from "@/stores/launcherMode";
+import {
+  getActiveGame,
+  subscribeActiveGame,
+  type LauncherGame,
+} from "@/stores/launcherGame";
 import logger from "@/utils/logger";
 import { isWindowsPlatform } from "@/utils/platform";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
@@ -43,6 +48,14 @@ export const CustomTitlebar = () => {
   const [closeAction, setCloseAction] = useState<string>("ask");
   const [trayAvailable, setTrayAvailable] = useState(true);
   const [viewMode, setViewMode] = useState<LauncherViewMode>(getLauncherMode);
+  /**
+   * 当前选中的游戏（终末地 / 明日方舟）。
+   *
+   * 游戏模式下标题栏要显示**当前游戏**的名字，而不是写死一个：游戏切换
+   * （左侧悬浮栏 / 操作面板）改的是 `launcherGame` store，标题栏必须跟着走，
+   * 否则会出现「面板里已经是明日方舟、标题还写着终末地」的错位。
+   */
+  const [activeGame, setActiveGame] = useState<LauncherGame>(getActiveGame);
   const supportsLauncher = isWindowsPlatform();
   const [newMessage, setNewMessage] = useState<AppMessage | null>(null);
   const [flyoutOpen, setFlyoutOpen] = useState(true);
@@ -84,6 +97,13 @@ export const CustomTitlebar = () => {
   useEffect(() => {
     return subscribeLauncherMode(() => {
       setViewMode(getLauncherMode());
+    });
+  }, []);
+
+  // 当前游戏变化 → 标题栏标题跟着换
+  useEffect(() => {
+    return subscribeActiveGame(() => {
+      setActiveGame(getActiveGame());
     });
   }, []);
 
@@ -205,7 +225,9 @@ export const CustomTitlebar = () => {
               className="h-[18px] w-[18px] shrink-0 select-none"
             />
             <h1 className="adaptive-contrast-text text-sm font-bold tracking-widest">
-              {viewMode === "game" ? t("launcher.game_title") : "ENDPROTOCOL"}
+              {viewMode === "game"
+                ? t(`launcher.game_group_${activeGame}`)
+                : "ENDPROTOCOL"}
             </h1>
           </div>
 
