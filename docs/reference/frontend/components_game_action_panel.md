@@ -43,10 +43,8 @@
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
-| `STORAGE_KEY_INSTALL_PATH` | 70 | `"launcher_install_path"` |
-| `STORAGE_KEY_CHANNEL` | 71 | `"launcher_channel"` |
-| `STORAGE_KEY_SKIP_STOP_CONFIRM` | 72 | `"launcher_skip_stop_confirm"`，停止游戏不再确认 |
-| `STORAGE_KEY_CANCEL_BEHAVIOR` | 73 | `"launcher_cancel_behavior"`，取值 `"ask"｜"keep"｜"delete"` |
+| `STORAGE_BASE_CHANNEL` | 89 | `"launcher_channel"`（渠道的分区键；安装路径的分区键交给 `launcherService.persistInstallPath` / `persistDetectedInstall`） |
+| `STORAGE_KEY_SKIP_STOP_CONFIRM` | 90 | `"launcher_skip_stop_confirm"`，停止游戏不再确认 |
 | `formatEta` | 93–100 | 内部工具：剩余秒数 → `m:ss` / `h:mm:ss` |
 | `ButtonProgressRing` | 110–181 | 内部组件：环绕主按钮/预下载按钮描边的百分比进度环，按按钮实测尺寸画胶囊路径（见「进度环形状」） |
 | `DownloadArrowIcon` | 183–209 | 内部组件：下载/安装中按钮里的图标——静止托盘 + 循环向下滑出的箭头（`.launcher-download-arrow`，定义在 `globals.css`） |
@@ -90,7 +88,18 @@
 4 个 localStorage 键常量 + 统一按钮风格常量 `PILL_BASE`/`PILL_INTERACTIVE`/`PILL_TEXT`（86–90，面板内所有胶囊按钮共用，与预下载按钮及左下 banner 同为 `.lg-media-chip` 玻璃层；运行/切换态的 `border-danger`/`text-danger` 用 `!` 强制覆盖基类）；状态包括：`channel`、`gameStatus`、`localActiveOp`、`installPath`、`detectedChannel`、`detecting`、`statusReady`、`flyoutOpen`、`hasTempFiles`、`settingsOpen`、`launchSettingsOpen`、`gameRunning`、`btnHovered`、`btnLabelKey`、`preloadProgress`、`downloadSpeed`、`channelSelectOpen`、`pendingInstallPath`、`scanResult`、`scanOpen`、`scanning`、`diskSpace`、`switchOpen`、`switchConfirmTarget`、`verifySpeed`、`progressFlyoutPos`、`menuFlyoutPos`、`confirmAction`、`confirmCheckbox`、`playtime`；refs：`prevBtnLabelRef`、`flyoutRef`、`btnRef`、`hamburgerRef`、`speedRef`、`verifySpeedRef`、`cancellingRef`、`menuFlyoutRef`。派生值 `activeOp`（132，本地事件优先于轮询值）、`progress`（133–147）、`preparing`（148）、`switching`（151）、`switchProgress`（152–164）、`switchTarget`（165）；安装相关派生值 `isInstalled`/`hasUpdate`/`hasPreload`/`preloadCompleted`（782–785）、`preloadTotalBytes`（744，提前声明供 `handlePreload` 依赖数组使用）、`preloading`/`preloadPercent`（787–795）、`busyWithDownload = isActionRunning || preloading`（811，用于禁用渠道徽章与菜单项）。
 
 **状态查询与渠道自动检测（168–272）**
-渠道写入 localStorage（168–170）；挂载时经 `restoreLaunchConfig` 从 app config 反向回灌 `launcher_install_path`/`launcher_channel` 到 localStorage 与 state（仅挂载一次，路径需存在才写——修复静默命令行启动后从托盘打开完整版时游戏面板显示「定位游戏」的问题）；`checkStatus` 触发 effect（254–256）；`detectChannel` effect（199–238，带取消标记与缓存命中短路，检测到不同渠道时回写 state 与 localStorage）；`checkGameRunning` 每 3 秒轮询（268–272）。
+渠道写入 localStorage（168–170，**只写属于当前游戏的渠道**：`CHANNEL_GAME[channel] !== game` 时跳过，否则会把外来的渠道塞进本分区）；挂载时经 `restoreLaunchConfig` 从 app config 反向回灌 `launcher_install_path`/`launcher_channel` 到 localStorage 与 state（仅挂载一次，路径需存在才写——修复静默命令行启动后从托盘打开完整版时游戏面板显示「定位游戏」的问题；**回灌的渠道必须属于当前游戏**才采用）；`checkStatus` 触发 effect（254–256）；`detectChannel` effect（199–238，**每次都实打实问后端一遍，不用「路径 + 渠道」的本地缓存短路**）；`checkGameRunning` 每 3 秒轮询（268–272）。
+
+**渠道识别的正确性约束（目录与渠道必须同属一个游戏）**
+两个游戏的安装路径与渠道各存一份（`launcher_install_path[_arknights]` / `launcher_channel[_arknights]`）。分区里存的是「路径 + 渠道」一对，**两者必须指向同一个游戏**：错位时后端 `check_status` 拿错渠道去拼 exe 名（`Endfield.exe` / `Arknights.exe`），`is_installed` 恒为 false，界面就一直显示「安装游戏」而不会显示「启动游戏」。
+
+三处曾经会让这一对错位，现在都被堵住：
+
+1. **自动检测 effect 不再用缓存短路**（原来 `cachedPath === installPath && cachedChannel !== null` 就直接采用缓存渠道，根本不问后端）。缓存里的渠道可能属于另一个游戏，也可能目录早换了而缓存没更新——两种情况都会让渠道永久错位。现在每次都调 `detectChannel` 重新识别。
+2. **`detectedChannel` 不再由缓存初始化**：它的含义是「这个目录**识别出来**是哪个渠道」，与「上次用哪个渠道」（缓存）不是一回事。切游戏时也只置 `null`，由上面的 effect 重新识别。
+3. **落盘统一走 `launcherService.persistDetectedInstall` / `persistInstallPath`**：按**渠道的归属游戏**写分区（不是「面板当前看的那个游戏」），同时清掉另一个分区里指向同一目录的旧路径与那个「不属于自己」的渠道；localStorage 与后端 `app_config.json` 双写（后端那一份是静默启动 / 快捷方式的真正依据，只改 localStorage 会被下次启动的 `restoreLaunchConfig` 搬回旧值）。识别出的渠道属于另一个游戏时，调用方顺带 `setActiveGame(owner)` 把当前游戏切过去。
+
+`handleLocate` / `handleInstall` / `handleStart`（选目录后的识别）与 `handleChannelSelected`（渠道选择框）都走同一条落盘路径；`handleConfirmSwitch`（换服）同理。`restoreLaunchConfig` 与 `syncSilentLaunchConfig` 各自再加一道「渠道属于该游戏」的校验，挡住外来渠道在配置往返中混进分区。
 
 **累计游戏运行时长（401–407, 549–561, 1664–1676）**
 后端在 EndProtocol 运行期间统计游戏在线时长。前端 `refreshPlaytime`（549）挂载时调用并每 5 秒轮询 `getGamePlaytime`，写入 `playtime` 快照（`GamePlaytime {total_seconds, session_seconds, running}`，`total_seconds` 不含当前会话）；派生值 `playtimeTotal = total_seconds + session_seconds`（405–407）即快照时刻的累计总时长。展示由 `@/components/ui/elapsed-time` 的 `ElapsedTime` 承担：组件内部用 `requestAnimationFrame` 按真实流逝时间推算秒数，仅在跨越整秒时更新 state（避免每帧重渲染），并按位渲染 `h:mm:ss`，某一位变化时该位单独播放上滑淡入（`.elapsed-digit`，CSS 定义在 `src/styles/globals.css`），因此每秒是「一位平滑滚动」而非整串硬跳；新快照到达时以已展示秒数为下限重新锚定，**数字只会前进不会回退**；`prefers-reduced-motion` 下退化为逐秒切换。`handleKill`（1238）杀进程后同步刷新。徽章位于操作行内、开始游戏按钮左侧（`flyoutRef` 容器首个子元素），仅以时钟图标 + `ElapsedTime` 显示累计总时长文本（**无文字标签、不展示本次会话**），并随运行实时增长；仅 `isInstalled && playtime` 时渲染。`running` 传参取自 `gameRunning`（3 秒轮询的运行态），而非 `playtime.running`（5 秒轮询），以便启动/停止后更快切换补间。**已移除**旧的 `playtimeTick` 每秒整数自增与 `formatPlaytime` 文本格式化函数。
@@ -172,10 +181,10 @@
    - `GameSettingsModal`：`initialPath: string`（初始安装路径）、`onClose: () => void`（关闭）、`onSave: (path: string) => void`（保存并触发状态刷新）。
    - `GameLaunchSettingsModal`：已从库中删除，「启动设置」入口直接挂 `QuickLaunchModal`（props 见 components_settings_panels.md）。
    - `GlassAlertDialog` / `GlassModal` / `GlassButton` 为其复合子组件提供的 `isOpen`、`onOpenChange`、`onPress`、`className`、`variant`、`status` 等 UI 属性。
-4. **状态管理要点**：全部为组件内 `useState`，无全局 store；`localActiveOp`（事件实时）优先于 `gameStatus.active_operation`（轮询）；`cancellingRef` 在取消期间屏蔽后续**进行中**的进度事件（`completed`/`error` 终态例外，它负责复位该标志并清掉按钮下载态，见「取消后按钮状态」）；`userCancelledRef` 标记「本次任务是用户主动取消的」，用于跳过「更新失败」「校验完成」这类误报（见「取消不该报成失败」）；游戏运行态 3 秒轮询，累计时长为 5 秒轮询 `getGamePlaytime`，两次快照之间的平滑补间由 `ElapsedTime` 组件内部 `requestAnimationFrame` 完成；持久化键为 `launcher_install_path`、`launcher_channel`、`launcher_skip_stop_confirm`、`launcher_cancel_behavior`，另直接读 `launcher_verify_threads`（691–694、716–719）；`confirmAction` 为五值联合（`cancel-download`｜`stop-game`｜`resume-install`｜`delete-temp`｜`verify-confirm`）；880–884 在渲染期间比较文案并 `setBtnLabelKey` 以驱动 `animate-fade-in`（该类现已纯位移、无淡入）。
+4. **状态管理要点**：全部为组件内 `useState`，无全局 store；`localActiveOp`（事件实时）优先于 `gameStatus.active_operation`（轮询）；`cancellingRef` 在取消期间屏蔽后续**进行中**的进度事件（`completed`/`error` 终态例外，它负责复位该标志并清掉按钮下载态，见「取消后按钮状态」）；`userCancelledRef` 标记「本次任务是用户主动取消的」，用于跳过「更新失败」「校验完成」这类误报（见「取消不该报成失败」）；游戏运行态 3 秒轮询，累计时长为 5 秒轮询 `getGamePlaytime`，两次快照之间的平滑补间由 `ElapsedTime` 组件内部 `requestAnimationFrame` 完成；持久化键为 `launcher_install_path[_arknights]`、`launcher_channel[_arknights]`、`launcher_skip_stop_confirm`、`launcher_cancel_behavior[_arknights]`，另直接读 `launcher_verify_threads[_arknights]`（691–694、716–719）；`confirmAction` 为五值联合（`cancel-download`｜`stop-game`｜`resume-install`｜`delete-temp`｜`verify-confirm`）；880–884 在渲染期间比较文案并 `setBtnLabelKey` 以驱动 `animate-fade-in`（该类现已纯位移、无淡入）。安装路径与渠道的写入一律经 `launcherService.persistInstallPath` / `persistDetectedInstall`（localStorage + 后端 config 双写、按渠道归属游戏分区），本文件不再直接拼分区键。
 5. **异常/待关注**：
    - `handleQuickVerify` 依赖数组（734）缺 `formatVerifyResult`，而 `handleVerify`（709）包含，存在闭包过期风险。
    - 扫描结果 `download_bytes === 0` 时确认按钮文案为 `launcher.start_game`（2120）但实际执行 `startInstall(false)`（2101），文案与行为不符。
-   - 渠道检测 effect（210–249）读取 `channel`（235）但依赖数组仅 `[installPath]`。
+   - 渠道检测 effect 依赖数组已改为 `[installPath, game]`（原先只有 `[installPath]`，读 `channel` 却没登记依赖）。
    - 保留多处 `console.log` 调试输出（190–205、580–601）。
    - 本文件**不含**公告/Banner/背景图逻辑（`getBanners`/`getAnnouncements`/`getBackgroundImage` 在 `launcherService` 中存在但未被本组件引入），相关功能位于其他页面组件。

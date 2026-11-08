@@ -353,7 +353,11 @@ export async function startGame(
   });
 }
 
-/** 把前端 localStorage 里两个游戏的启动配置同步到后端（静默启动 / 快捷方式读后端）。 */
+/** 把前端 localStorage 里两个游戏的启动配置同步到后端（静默启动 / 快捷方式读后端）。
+ *
+ * 渠道必须**属于该游戏**才同步：把别的游戏的渠道写进这个分区，
+ * 静默启动就会拿错渠道去拼 exe 路径，界面也会一直判不出「已安装」。
+ */
 export async function syncSilentLaunchConfig(): Promise<void> {
   for (const game of GAME_ORDER) {
     const installPath = localStorage.getItem(
@@ -369,7 +373,7 @@ export async function syncSilentLaunchConfig(): Promise<void> {
         value: installPath,
       });
     }
-    if (channel) {
+    if (channel && CHANNEL_GAME[channel as GameChannel] === game) {
       await invoke("set_config", {
         key: gameConfigKey("launcher_channel", game),
         value: channel,
@@ -384,7 +388,12 @@ export async function syncSilentLaunchConfig(): Promise<void> {
   }
 }
 
-/** 后端配置回灌 localStorage（按游戏逐个回灌）。 */
+/** 后端配置回灌 localStorage（按游戏逐个回灌）。
+ *
+ * 渠道必须**属于该游戏**才回灌：分区里的渠道要是被别的游戏写过，拿它去查状态
+ * 就会用错的 exe 名（`Arknights.exe` / `Endfield.exe`）判安装，
+ * `is_installed` 恒为 false，界面一直要求下载游戏。
+ */
 export async function restoreLaunchConfig(): Promise<void> {
   try {
     for (const game of GAME_ORDER) {
@@ -400,7 +409,7 @@ export async function restoreLaunchConfig(): Promise<void> {
       const channel = await invoke<string | null>("get_config", {
         key: gameConfigKey("launcher_channel", game),
       });
-      if (channel) {
+      if (channel && CHANNEL_GAME[channel as GameChannel] === game) {
         localStorage.setItem(
           gameConfigKey("launcher_channel", game),
           channel,
@@ -701,6 +710,88 @@ export function readGameChannel(game: LauncherGame): GameChannel {
     }
   } catch {}
   return DEFAULT_CHANNEL[game];
+}
+
+/**
+ * 把「某个安装目录 + 检测出的渠道」记到**渠道所属游戏**的分区里。
+ *
+ * 两个游戏的安装路径与渠道各存一份（`launcher_install_path[_arknights]` /
+ * `launcher_channel[_arknights]`），所以识别出渠道时必须按渠道的归属游戏落盘，
+ * 不能落到"当前面板正在看的那个游戏"上 —— 后者会让某个分区存着
+ * 「A 游戏的目录 + B 游戏的渠道」这种对不上的组合，读回时按归属校验会把渠道丢掉，
+ * 于是「已安装」永远判不出来，界面一直要求下载游戏。
+ *
+ * 同时把**另一个**分区里指向同一目录的旧记录清掉：那个目录只属于一个游戏，
+ * 留着会让另一个游戏也以为装在同一个目录里，两边互相覆盖对方的配置。
+ *
+ * localStorage 与后端 config（`app_config.json`）都要写：后端那一份是静默启动、
+ * 快捷方式的真正依据，只改 localStorage 的话，下次启动 `restoreLaunchConfig`
+ * 又会把写歪的路径搬回来。
+ *
+ * 返回该渠道所属的游戏，供调用方同步当前游戏的选择。
+ */
+export async function persistDetectedInstall(
+  installPath: string,
+  detected: GameChannel,
+): Promise<LauncherGame> {
+  const owner = CHANNEL_GAME[detected];
+  const other: LauncherGame = owner === "endfield" ? "arknights" : "endfield";
+  try {
+    localStorage.setItem(
+      gameConfigKey("launcher_install_path", owner),
+      installPath,
+    );
+    localStorage.setItem(gameConfigKey("launcher_channel", owner), detected);
+    // 另一个分区若也指着这个目录，说明之前识别错游戏时写歪了：清掉它的路径，
+    // 避免两个游戏抢同一个目录。它分区里那个「不属于自己」的渠道也要一起清，
+    // 免得下次读回时又是一对错位的组合。
+    if (readGameInstallPath(other) === installPath) {
+      localStorage.removeItem(gameConfigKey("launcher_install_path", other));
+      await invoke("remove_config", {
+        key: gameConfigKey("launcher_install_path", other),
+      });
+      const otherChannel = localStorage.getItem(
+        gameConfigKey("launcher_channel", other),
+      ) as GameChannel | null;
+      if (otherChannel && CHANNEL_GAME[otherChannel] !== other) {
+        localStorage.removeItem(gameConfigKey("launcher_channel", other));
+        await invoke("remove_config", {
+          key: gameConfigKey("launcher_channel", other),
+        });
+      }
+    }
+  } catch {}
+  await invoke("set_config", {
+    key: gameConfigKey("launcher_install_path", owner),
+    value: installPath,
+  });
+  await invoke("set_config", {
+    key: gameConfigKey("launcher_channel", owner),
+    value: detected,
+  });
+  return owner;
+}
+
+/**
+ * 只记安装目录，不动渠道。
+ *
+ * 用于「目录已选好、但还没识别出渠道」（例如游戏还没装）的情况：路径仍要留在
+ * 当前游戏的分区里，重启后还在；但渠道留给用户选，不去动别的游戏的记录。
+ */
+export async function persistInstallPath(
+  installPath: string,
+  game: LauncherGame,
+): Promise<void> {
+  try {
+    localStorage.setItem(
+      gameConfigKey("launcher_install_path", game),
+      installPath,
+    );
+  } catch {}
+  await invoke("set_config", {
+    key: gameConfigKey("launcher_install_path", game),
+    value: installPath,
+  });
 }
 
 /**

@@ -54,6 +54,8 @@ import {
   GAME_CHANNELS,
   GAME_ORDER,
   gameConfigKey,
+  persistDetectedInstall,
+  persistInstallPath,
   readGameChannel,
   readGameInstallPath,
   switchableChannels,
@@ -83,8 +85,8 @@ import {
 import { SettingsDivider } from "@/components/ui/settings-row";
 import { ElapsedTime } from "@/components/ui/elapsed-time";
 
-/** 这两个键实际按游戏分区：终末地 `launcher_*`，明日方舟 `launcher_*_arknights`。 */
-const STORAGE_BASE_INSTALL_PATH = "launcher_install_path";
+/** 渠道键按游戏分区：终末地 `launcher_channel`，明日方舟 `launcher_channel_arknights`。
+ *  安装路径的分区键由 `launcherService.persistInstallPath` / `persistDetectedInstall` 统一处理。 */
 const STORAGE_BASE_CHANNEL = "launcher_channel";
 const STORAGE_KEY_SKIP_STOP_CONFIRM = "launcher_skip_stop_confirm";
 
@@ -383,10 +385,9 @@ export function GameActionPanel() {
     readGameInstallPath(getActiveGame()),
   );
   const [detectedChannel, setDetectedChannel] = useState<GameChannel | null>(
-    () => {
-      const savedPath = readGameInstallPath(getActiveGame());
-      return savedPath ? readGameChannel(getActiveGame()) : null;
-    },
+    // 初始值不给渠道：缓存里的渠道未必是"这个目录识别出来的渠道"，
+    // 真正的识别交给下面的自动检测 effect。
+    () => null,
   );
   const [detecting, setDetecting] = useState(false);
   const [statusReady, setStatusReady] = useState(false);
@@ -506,11 +507,22 @@ export function GameActionPanel() {
     ? playtime.total_seconds + playtime.session_seconds
     : 0;
 
+  // 渠道写进**当前游戏**的分区。只写属于当前游戏的渠道：把外来的渠道塞进来
+  // 会让这个分区彻底对不上（路径是别的游戏的、渠道是本游戏的），
+  // 读回时按归属校验又会把渠道丢掉、退回默认值，于是「已安装」永远判不出来，
+  // 界面就一直要求下载游戏。
   useEffect(() => {
+    if (CHANNEL_GAME[channel] !== game) return;
     localStorage.setItem(gameConfigKey(STORAGE_BASE_CHANNEL, game), channel);
   }, [channel, game]);
 
   // 切换游戏：把安装路径 / 渠道换成该游戏自己那一份，并清掉上一个游戏的派生状态。
+  //
+  // 这里**不**把缓存渠道当成"已识别"：`detectedChannel` 是"这个目录认出来是哪个渠道"
+  // 的结论，而缓存渠道只是"上次用哪个渠道"。两者混为一谈就会把别的游戏的渠道
+  // 带进当前游戏，`check_status` 用它去判 `Arknights.exe` / `Endfield.exe`，
+  // `is_installed` 恒为 false，界面一直要求下载游戏。
+  // 真正的识别交给下面的自动检测 effect（每次都问后端）。
   useEffect(() => {
     return subscribeActiveGame(() => {
       const next = getActiveGame();
@@ -520,7 +532,7 @@ export function GameActionPanel() {
         const nextChannel = readGameChannel(next);
         setInstallPath(nextPath);
         setChannel(nextChannel);
-        setDetectedChannel(nextPath ? nextChannel : null);
+        setDetectedChannel(null);
         setGameStatus(null);
         setLocalActiveOp(null);
         setPreloadProgress(null);
@@ -535,6 +547,9 @@ export function GameActionPanel() {
   // 后端 config 才是启动游戏的真正依据（静默启动、快捷方式都直接读它）；
   // WebView 的 localStorage 可能因换构建产物或清缓存丢失，这里把后端值回灌一次，
   // 避免托盘打开完整版后游戏面板误显示「定位游戏」。两个游戏的键各自回灌。
+  //
+  // 回灌的渠道必须属于当前游戏：分区里的渠道要是被别的游戏写过，
+  // 拿它去查状态就会用错的 exe 名判安装，`is_installed` 恒为 false。
   useEffect(() => {
     let cancelled = false;
     void restoreLaunchConfig().then(() => {
@@ -545,12 +560,13 @@ export function GameActionPanel() {
       }
       const backendChannel = localStorage.getItem(
         gameConfigKey(STORAGE_BASE_CHANNEL, game),
-      );
+      ) as GameChannel | null;
       if (
         backendChannel &&
-        ALL_CHANNELS.includes(backendChannel as GameChannel)
+        ALL_CHANNELS.includes(backendChannel) &&
+        CHANNEL_GAME[backendChannel] === game
       ) {
-        setChannel(backendChannel as GameChannel);
+        setChannel(backendChannel);
       }
     });
     return () => {
@@ -586,35 +602,33 @@ export function GameActionPanel() {
     }
   }, [channel, installPath]);
 
-  // Auto-detect channel from install path
+  // 从安装目录自动识别渠道。
+  //
+  // 这里**不能**用「路径 + 渠道的本地缓存」短路：缓存里的渠道可能属于另一个游戏
+  // （例如终末地分区里存着 `arknights_bilibili`），或者目录被换过而缓存没更新。
+  // 一旦缓存被当成识别结果，渠道就永远错位，`check_status` 用错误的渠道去判
+  // `Arknights.exe` / `Endfield.exe`，`is_installed` 恒为 false，
+  // 界面就一直要求下载游戏。每次都实打实问后端一遍。
   useEffect(() => {
     if (!installPath) {
       setDetectedChannel(null);
       return;
     }
     let cancelled = false;
-    const cachedPath = readGameInstallPath(game);
-    const cachedChannel = localStorage.getItem(
-      gameConfigKey(STORAGE_BASE_CHANNEL, game),
-    ) as GameChannel | null;
-    const hasCachedDetection =
-      cachedPath === installPath && cachedChannel !== null;
-    if (hasCachedDetection) {
-      setDetectedChannel(cachedChannel);
-      setDetecting(false);
-      return () => {
-        cancelled = true;
-      };
-    }
     setDetectedChannel(null);
     setDetecting(true);
     detectChannel(installPath)
-      .then((detected) => {
+      .then(async (detected) => {
         if (cancelled) return;
         setDetectedChannel(detected);
-        if (detected && detected !== channel) {
+        if (detected) {
+          // 落盘到渠道**所属游戏**的分区；面板当前看的游戏若不是它，跟着切过去。
+          const owner = await persistDetectedInstall(installPath, detected);
+          if (cancelled) return;
+          if (owner !== game) {
+            setActiveGame(owner);
+          }
           setChannel(detected);
-          localStorage.setItem(gameConfigKey(STORAGE_BASE_CHANNEL, game), detected);
         }
       })
       .catch(() => {
@@ -626,7 +640,7 @@ export function GameActionPanel() {
     return () => {
       cancelled = true;
     };
-  }, [installPath]);
+  }, [installPath, game]);
 
   // Silent status refresh — used by progress listener
   const refreshStatus = useCallback(async () => {
@@ -854,17 +868,19 @@ export function GameActionPanel() {
     const selected = await browseFolder();
     if (selected) {
       setInstallPath(selected);
-      localStorage.setItem(gameConfigKey(STORAGE_BASE_INSTALL_PATH, game), selected);
+      // 目录先落到当前游戏的分区；识别出渠道后会改写到渠道所属的分区。
+      await persistInstallPath(selected, game);
       setDetecting(true);
       try {
         const detected = await detectChannel(selected);
         if (detected) {
           setDetectedChannel(detected);
           setChannel(detected);
-          localStorage.setItem(
-            gameConfigKey(STORAGE_BASE_CHANNEL, game),
-            detected,
-          );
+          // 落盘到渠道所属游戏的分区（目录与渠道必须同一个游戏）。
+          const owner = await persistDetectedInstall(selected, detected);
+          if (owner !== game) {
+            setActiveGame(owner);
+          }
         }
       } catch {
         // detection failed, leave channel as-is
@@ -912,20 +928,19 @@ export function GameActionPanel() {
       const selected = await browseFolder();
       if (selected) {
         setInstallPath(selected);
-        localStorage.setItem(
-          gameConfigKey(STORAGE_BASE_INSTALL_PATH, game),
-          selected,
-        );
+        // 目录先落到当前游戏的分区；识别出渠道后会改写到渠道所属的分区。
+        await persistInstallPath(selected, game);
         setDetecting(true);
         try {
           const detected = await detectChannel(selected);
           if (detected) {
             setDetectedChannel(detected);
             setChannel(detected);
-            localStorage.setItem(
-              gameConfigKey(STORAGE_BASE_CHANNEL, game),
-              detected,
-            );
+            // 落盘到渠道所属游戏的分区（目录与渠道必须同一个游戏）。
+            const owner = await persistDetectedInstall(selected, detected);
+            if (owner !== game) {
+              setActiveGame(owner);
+            }
             // Channel detected, check for cache and install
             const hasCache = await hasDownloadCache(selected);
             if (hasCache) {
@@ -977,10 +992,9 @@ export function GameActionPanel() {
       }
       setChannel(selectedChannel);
       setDetectedChannel(selectedChannel);
-      localStorage.setItem(
-        gameConfigKey(STORAGE_BASE_CHANNEL, ownerGame ?? game),
-        selectedChannel,
-      );
+      // 目录与渠道一起落盘到渠道所属游戏的分区：切过去之后面板读回来的
+      // 就是同一个目录，不会又变回上一个游戏的旧路径。
+      await persistDetectedInstall(path, selectedChannel);
 
       // Scan existing files before installing
       setScanning(true);
@@ -1045,7 +1059,8 @@ export function GameActionPanel() {
       console.log("[switch] switchChannel completed OK");
       setChannel(targetChannel);
       setDetectedChannel(targetChannel);
-      localStorage.setItem(gameConfigKey(STORAGE_BASE_CHANNEL, game), targetChannel);
+      // 换服只在终末地内部发生，但仍旧按渠道归属落盘，别写错分区。
+      await persistDetectedInstall(installPath, targetChannel);
       console.log("[switch] States reset, calling checkStatus...");
       checkStatus()
         .then(() => {
@@ -1070,20 +1085,19 @@ export function GameActionPanel() {
       const selected = await browseFolder();
       if (selected) {
         setInstallPath(selected);
-        localStorage.setItem(
-          gameConfigKey(STORAGE_BASE_INSTALL_PATH, game),
-          selected,
-        );
+        // 目录先落到当前游戏的分区；识别出渠道后会改写到渠道所属的分区。
+        await persistInstallPath(selected, game);
         setDetecting(true);
         try {
           const detected = await detectChannel(selected);
           if (detected) {
             setDetectedChannel(detected);
             setChannel(detected);
-            localStorage.setItem(
-            gameConfigKey(STORAGE_BASE_CHANNEL, game),
-            detected,
-          );
+            // 落盘到渠道所属游戏的分区（目录与渠道必须同一个游戏）。
+            const owner = await persistDetectedInstall(selected, detected);
+            if (owner !== game) {
+              setActiveGame(owner);
+            }
           }
         } catch {
           // detection failed
@@ -2678,7 +2692,9 @@ export function GameActionPanel() {
           onClose={() => setSettingsOpen(false)}
           onSave={(path) => {
             setInstallPath(path);
-            localStorage.setItem(gameConfigKey(STORAGE_BASE_INSTALL_PATH, game), path);
+            // 目录先落到当前游戏的分区；下面的自动检测会按识别出的渠道
+            // 把它改写到渠道所属游戏的分区。
+            void persistInstallPath(path, game);
             setSettingsOpen(false);
             checkStatus();
           }}
