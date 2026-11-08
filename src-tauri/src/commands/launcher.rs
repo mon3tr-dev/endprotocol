@@ -3,7 +3,6 @@ use std::os::windows::process::CommandExt;
 use std::sync::Arc;
 use std::sync::Mutex as StdMutex;
 use tauri::Emitter;
-use tokio::sync::Mutex;
 
 use crate::models::game::*;
 use crate::services::config_service::ConfigService;
@@ -28,6 +27,21 @@ fn launched_by_steam() -> bool {
         .any(|name| std::env::var_os(name).is_some())
 }
 
+/// 长任务写闸：安装/更新、校验修复、预下载、切服执行前都要先拿到它。
+///
+/// 启动器服务不再被一把外层 `Mutex<GameLauncherService>` 锁住——那把锁会让一次
+/// 几十分钟的下载把公告、背景图、状态查询全部堵死（前端刷新后启动流程正好要取
+/// 公告和背景图，于是卡在「正在加载初始数据…」）。这里用容量 1 的信号量，只保证
+/// 「会写安装目录」的任务彼此不并发，permit 随函数结束自动释放。
+async fn acquire_write_gate(
+    svc: &Arc<GameLauncherService>,
+) -> Result<tokio::sync::OwnedSemaphorePermit, String> {
+    svc.write_gate()
+        .acquire_owned()
+        .await
+        .map_err(|e| format!("launcher write gate unavailable: {e}"))
+}
+
 /// Return the process-level bytes read counter used by Task Manager's disk rate.
 #[tauri::command]
 pub fn launcher_get_process_read_bytes() -> Result<u64, String> {
@@ -49,7 +63,7 @@ pub fn launcher_get_process_read_bytes() -> Result<u64, String> {
 /// 获取游戏安装状态
 #[tauri::command]
 pub async fn launcher_check_status(
-    service: tauri::State<'_, Arc<Mutex<GameLauncherService>>>,
+    service: tauri::State<'_, Arc<GameLauncherService>>,
     channel: String,
     install_path: String,
 ) -> Result<GameStatus, String> {
@@ -60,7 +74,7 @@ pub async fn launcher_check_status(
     );
     let ch = parse_channel(&channel)?;
     tracing::info!("[cmd] check_status acquiring lock...");
-    let svc = service.lock().await;
+    let svc = service.inner();
     tracing::info!("[cmd] check_status lock acquired, calling check_status...");
     let result = svc.check_status(&ch, &install_path).await;
     tracing::info!("[cmd] check_status returned: {:?}", result.is_ok());
@@ -71,7 +85,7 @@ pub async fn launcher_check_status(
 #[tauri::command]
 pub async fn launcher_install_or_update(
     app: tauri::AppHandle,
-    service: tauri::State<'_, Arc<Mutex<GameLauncherService>>>,
+    service: tauri::State<'_, Arc<GameLauncherService>>,
     channel: String,
     install_path: String,
     max_concurrent: Option<usize>,
@@ -83,7 +97,8 @@ pub async fn launcher_install_or_update(
         install_path
     );
     let ch = parse_channel(&channel)?;
-    let svc = service.lock().await;
+    let svc = service.inner();
+    let _write = acquire_write_gate(svc).await?;
 
     let app_handle = app.clone();
     let progress_cb = Arc::new(move |progress: DownloadProgress| {
@@ -134,7 +149,7 @@ pub async fn launcher_install_or_update(
 #[tauri::command]
 pub async fn launcher_verify_and_repair(
     app: tauri::AppHandle,
-    service: tauri::State<'_, Arc<Mutex<GameLauncherService>>>,
+    service: tauri::State<'_, Arc<GameLauncherService>>,
     channel: String,
     install_path: String,
     max_concurrent: Option<usize>,
@@ -142,7 +157,8 @@ pub async fn launcher_verify_and_repair(
     resume: Option<bool>,
 ) -> Result<LauncherResult, String> {
     let ch = parse_channel(&channel)?;
-    let svc = service.lock().await;
+    let svc = service.inner();
+    let _write = acquire_write_gate(svc).await?;
 
     tracing::info!(
         "[launcher] verify_and_repair called: channel={:?}, max_concurrent={:?}, quick={:?}, install_path={}",
@@ -192,11 +208,11 @@ pub async fn launcher_verify_and_repair(
 /// 获取远程版本信息
 #[tauri::command]
 pub async fn launcher_get_remote_version(
-    service: tauri::State<'_, Arc<Mutex<GameLauncherService>>>,
+    service: tauri::State<'_, Arc<GameLauncherService>>,
     channel: String,
 ) -> Result<RemotePackage, String> {
     let ch = parse_channel(&channel)?;
-    let svc = service.lock().await;
+    let svc = service.inner();
     svc.get_latest_package(&ch, None).await
 }
 
@@ -204,14 +220,15 @@ pub async fn launcher_get_remote_version(
 #[tauri::command]
 pub async fn launcher_preload_download(
     app: tauri::AppHandle,
-    service: tauri::State<'_, Arc<Mutex<GameLauncherService>>>,
+    service: tauri::State<'_, Arc<GameLauncherService>>,
     channel: String,
     install_path: String,
     max_concurrent: Option<usize>,
     resume: Option<bool>,
 ) -> Result<LauncherResult, String> {
     let ch = parse_channel(&channel)?;
-    let svc = service.lock().await;
+    let svc = service.inner();
+    let _write = acquire_write_gate(svc).await?;
 
     let app_handle = app.clone();
     let progress_cb = Arc::new(move |progress: DownloadProgress| {
@@ -248,14 +265,15 @@ pub async fn launcher_preload_download(
 #[tauri::command]
 pub async fn launcher_install_preload(
     app: tauri::AppHandle,
-    service: tauri::State<'_, Arc<Mutex<GameLauncherService>>>,
+    service: tauri::State<'_, Arc<GameLauncherService>>,
     channel: String,
     install_path: String,
     max_concurrent: Option<usize>,
     resume: Option<bool>,
 ) -> Result<LauncherResult, String> {
     let ch = parse_channel(&channel)?;
-    let svc = service.lock().await;
+    let svc = service.inner();
+    let _write = acquire_write_gate(svc).await?;
 
     let app_handle = app.clone();
     let progress_cb = Arc::new(move |progress: DownloadProgress| {
@@ -290,11 +308,11 @@ pub async fn launcher_install_preload(
 /// 获取 payload 状态（上次安装/更新的版本信息）
 #[tauri::command]
 pub async fn launcher_get_payload_state(
-    service: tauri::State<'_, Arc<Mutex<GameLauncherService>>>,
+    service: tauri::State<'_, Arc<GameLauncherService>>,
     channel: String,
 ) -> Result<Option<PayloadState>, String> {
     let ch = parse_channel(&channel)?;
-    let svc = service.lock().await;
+    let svc = service.inner();
     Ok(svc.get_payload_state(&ch).await)
 }
 
@@ -353,44 +371,44 @@ pub async fn launcher_decrypt_file(file_path: String) -> Result<String, String> 
 /// 获取 Banner 列表
 #[tauri::command]
 pub async fn launcher_get_banners(
-    service: tauri::State<'_, Arc<Mutex<GameLauncherService>>>,
+    service: tauri::State<'_, Arc<GameLauncherService>>,
     channel: String,
 ) -> Result<Vec<BannerItem>, String> {
     let ch = parse_channel(&channel)?;
-    let svc = service.lock().await;
+    let svc = service.inner();
     svc.get_banners(&ch).await
 }
 
 /// 获取公告列表
 #[tauri::command]
 pub async fn launcher_get_announcements(
-    service: tauri::State<'_, Arc<Mutex<GameLauncherService>>>,
+    service: tauri::State<'_, Arc<GameLauncherService>>,
     channel: String,
 ) -> Result<Vec<AnnouncementItem>, String> {
     let ch = parse_channel(&channel)?;
-    let svc = service.lock().await;
+    let svc = service.inner();
     svc.get_announcements(&ch).await
 }
 
 /// 获取启动器公告内容（Banner + 公告 + 右侧栏合并）
 #[tauri::command]
 pub async fn launcher_get_notice_content(
-    service: tauri::State<'_, Arc<Mutex<GameLauncherService>>>,
+    service: tauri::State<'_, Arc<GameLauncherService>>,
     channel: String,
 ) -> Result<LauncherNoticeContent, String> {
     let ch = parse_channel(&channel)?;
-    let svc = service.lock().await;
+    let svc = service.inner();
     svc.get_notice_content(&ch).await
 }
 
 /// 获取启动器背景媒体 URL
 #[tauri::command]
 pub async fn launcher_get_background_image(
-    service: tauri::State<'_, Arc<Mutex<GameLauncherService>>>,
+    service: tauri::State<'_, Arc<GameLauncherService>>,
     channel: String,
 ) -> Result<Option<BackgroundMedia>, String> {
     let ch = parse_channel(&channel)?;
-    let svc = service.lock().await;
+    let svc = service.inner();
     svc.get_background_image(&ch).await
 }
 
@@ -685,12 +703,12 @@ pub async fn launcher_get_disk_space(path: String) -> Result<DiskSpace, String> 
 /// 扫描安装目录，检查已有文件的完整性
 #[tauri::command]
 pub async fn launcher_scan_install_dir(
-    service: tauri::State<'_, Arc<Mutex<GameLauncherService>>>,
+    service: tauri::State<'_, Arc<GameLauncherService>>,
     channel: String,
     install_path: String,
 ) -> Result<FileScanResult, String> {
     let ch = parse_channel(&channel)?;
-    let svc = service.lock().await;
+    let svc = service.inner();
     svc.scan_install_dir(&ch, &install_path).await
 }
 
@@ -814,7 +832,7 @@ pub async fn launcher_kill_game(channel: String) -> Result<bool, String> {
 /// 切换游戏渠道
 #[tauri::command]
 pub async fn launcher_switch_channel(
-    service: tauri::State<'_, Arc<Mutex<GameLauncherService>>>,
+    service: tauri::State<'_, Arc<GameLauncherService>>,
     from_channel: String,
     to_channel: String,
     install_path: String,
@@ -828,7 +846,8 @@ pub async fn launcher_switch_channel(
     );
     let from = parse_channel(&from_channel)?;
     let to = parse_channel(&to_channel)?;
-    let svc = service.lock().await;
+    let svc = service.inner();
+    let _write = acquire_write_gate(svc).await?;
     svc.switch_channel(&from, &to, &install_path, app).await
 }
 

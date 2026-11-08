@@ -6,7 +6,7 @@
 
 **文件职责**：游戏启动器后端核心服务，负责远程版本检查、文件清单下载解密、安装/更新（补丁包优先 + 并发下载 + 断点续传 + MD5 校验 + 暂存原子应用）、完整性校验与修复、预下载（preload）与补丁包应用、渠道切换（5 阶段带回滚）、Banner/公告/背景媒体获取，并维护全局下载/切换取消标志与「活跃操作」状态。
 
-**状态注册方式**：`lib.rs:211-212` 创建 `Arc<tokio::sync::Mutex<GameLauncherService>>` 并 `app.manage(...)` 注入 Tauri State；所有 command（`commands/launcher.rs`）以 `tauri::State<'_, Arc<Mutex<GameLauncherService>>>` 取用，并在整段操作期间持有锁（因此 command 层天然串行）。取消类接口（`cancel_download` 等）是模块级自由函数，command 直接调用，不取锁。
+**状态注册方式**：`lib.rs:379` 创建 `Arc<GameLauncherService>` 并 `app.manage(...)` 注入 Tauri State；command（`commands/launcher.rs`）以 `tauri::State<'_, Arc<GameLauncherService>>` 直接取用。服务**不再被一把外层锁包住**：内部可变状态只有 `active_operation: Arc<Mutex<Option<ActiveOperation>>>`，全部方法都只需 `&self`，所以读写命令可以并发。历史上这里用 `Arc<tokio::sync::Mutex<GameLauncherService>>` 并把锁握满整段操作，于是一次几十分钟的下载会把公告、背景图、状态查询全部堵在锁上——前端刷新后启动流程的任务里正好有公告和背景图，于是卡死在「正在加载初始数据…」。需要互斥的只剩「会写安装目录」的长任务：`launcher_install_or_update` / `launcher_verify_and_repair` / `launcher_preload_download` / `launcher_install_preload` / `launcher_switch_channel` 先经 `commands/launcher.rs` 的 `acquire_write_gate(svc)` 取得 `write_gate`（容量 1 的 `Semaphore`）permit，permit 随函数结束自动释放；取消类接口（`cancel_download` 等）是模块级自由函数，command 直接调用，不取锁。
 
 **主要依赖**：`reqwest::Client`（API 超时 30s、下载客户端连接 30s/读 120s，UA `EndProtocol/0.1.0`）；`futures_util::StreamExt`（字节流）；`tokio::sync::{Mutex, Semaphore}` + `tokio::task::JoinSet`（并发下载/校验）；`walkdir::WalkDir`（目录遍历）；`zip::ZipArchive` + 自定义 `MultipartZipReader`（多分卷 ZIP 解密解压）；`tauri::Emitter`（事件 emit）；`crate::models::game::*`（全部数据结构，定义在 `models/game.rs`）；`crate::utils::capture`（`send`/`send_stream`，网络录制包装）；`crate::utils::hg_crypto`（AES-256-CBC 解密、MD5/SHA-256）；`crate::utils::paths::app_data_dir()`；`uuid::Uuid`、`chrono`、`serde_json`、`tracing`。
 
@@ -69,6 +69,7 @@
 | `http_client` | `reqwest::Client` | 通用 API 客户端，超时 30s，UA `EndProtocol/0.1.0` |
 | `download_client` | `reqwest::Client` | 下载客户端：连接超时 30s、读超时 120s、不设总超时（支持大文件） |
 | `active_operation` | `Arc<Mutex<Option<ActiveOperation>>>` | 当前活跃操作快照；仅 `switch_channel` 会写入/清空 |
+| `write_gate` | `Arc<Semaphore>`（容量 1） | 只串行化「会写安装目录」的长任务：command 层 `acquire_write_gate` 取 permit 后再调用 `install_or_update` / `verify_and_repair` / `preload_download` / `install_preload` / `switch_channel`。**不再**用外层 `Mutex<GameLauncherService>` 把整个服务锁住——那会让下载堵死公告/背景图/状态查询 |
 
 ### 模块级静态与常量
 
@@ -125,8 +126,9 @@
 | 方法 | 位置 | 说明（输入 → 做什么 → 输出） |
 | --- | --- | --- |
 | `MultipartZipReader::new` / `Read::read` / `Seek::seek` | L213-306 | 将多个分卷文件作为一个可随机读取的 ZIP 输入流，无需拼接出完整归档副本 |
-| `pub fn new` | L310-330 | 无输入 → 构造 API 客户端、下载客户端与空 `active_operation` → `Self` |
-| `pub async fn has_active_operation` | L332-334 | 无输入 → 读锁判断 `active_operation.is_some()` → `bool` |
+| `pub fn new` | L315-336 | 无输入 → 构造 API 客户端、下载客户端、空 `active_operation` 与容量 1 的 `write_gate` → `Self` |
+| `pub fn write_gate` | L340-342 | 无输入 → 克隆 `Arc<Semaphore>`，供命令层串行化写安装目录的长任务 |
+| `pub async fn has_active_operation` | L344-346 | 无输入 → 读锁判断 `active_operation.is_some()` → `bool` |
 | `pub async fn set_active_operation` | L336-338 | 输入 `Option<ActiveOperation>` → 覆盖写入 → 无返回 |
 | `pub async fn get_active_operation` | L340-342 | 无输入 → 克隆当前活跃操作 → `Option<ActiveOperation>` |
 | `pub async fn get_latest_package` | L351-359 | 输入 channel 与可选本地版本 → 请求 `get_latest_game` 并只返回公开 `RemotePackage`（密钥不暴露给前端） |

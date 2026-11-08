@@ -90,7 +90,7 @@
 | `Arc<std::sync::Mutex<ConfigService>>` | lib.rs:248 | 全局配置（JSON 文件 + 内存缓存），完整/驻守模式共用 |
 | `Arc<GachaService>` | lib.rs:266 | 抽卡记录服务（持有 AppHandle） |
 | `Arc<tokio::sync::Mutex<AccountService>>` | lib.rs:284 | 账户服务（异步方法，tokio 锁） |
-| `Arc<tokio::sync::Mutex<GameLauncherService>>` | lib.rs:288 | 游戏启动器服务（仅完整模式） |
+| `Arc<GameLauncherService>` | lib.rs:379 | 游戏启动器服务（仅完整模式）；内部 `active_operation` 自带 `Arc<Mutex<…>>`，无外层锁，写安装目录的长任务由内部 `write_gate`（容量 1 信号量）串行 |
 | `Arc<std::sync::Mutex<SystemResourceService>>` | lib.rs:293 | 系统资源采集服务（仅完整模式） |
 
 > 未 manage 的依赖服务：`SklandService`、`AvatarCacheService`、`NetworkService`，仅在 setup 内部传递。

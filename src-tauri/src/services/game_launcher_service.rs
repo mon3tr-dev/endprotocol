@@ -304,6 +304,11 @@ pub struct GameLauncherService {
     http_client: Client,
     download_client: Client,
     active_operation: Arc<Mutex<Option<ActiveOperation>>>,
+    /// 只串行化「会写安装目录」的长任务（安装/更新、校验修复、预下载、切服）。
+    /// 整个服务此前被 `Arc<Mutex<GameLauncherService>>` 包着，而安装一跑就是几十分钟，
+    /// 期间公告、背景图、状态查询全部排队等锁——前端刷新后启动流程的任务里就有
+    /// 公告和背景图，于是卡死在「正在加载初始数据…」。
+    write_gate: Arc<Semaphore>,
 }
 
 impl GameLauncherService {
@@ -326,7 +331,14 @@ impl GameLauncherService {
             http_client,
             download_client,
             active_operation: Arc::new(Mutex::new(None)),
+            write_gate: Arc::new(Semaphore::new(1)),
         }
+    }
+
+    /// 取「会写安装目录」的长任务闸门（容量 1）。命令层先 acquire 到 permit 再执行，
+    /// 保证安装/校验/预下载/切服彼此不并发，同时不再堵住只读命令。
+    pub fn write_gate(&self) -> Arc<Semaphore> {
+        self.write_gate.clone()
     }
 
     pub async fn has_active_operation(&self) -> bool {

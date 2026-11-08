@@ -153,7 +153,16 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
         }),
     ]);
 
-    void trackStartupTask(initialData);
+    // 公告与背景图不是关键路径：后端命令迟迟不返回时（下载长时间占用服务、接口卡住）
+    // 也不能把启动流程一起拖死——超时先放行 splash，数据到了再各自 setState 补上。
+    void trackStartupTask(
+      Promise.race([
+        initialData,
+        new Promise<void>((resolve) => {
+          setTimeout(resolve, 8000);
+        }),
+      ]),
+    );
   }, [channel]);
 
   // Banner auto-rotate (paused on hover)

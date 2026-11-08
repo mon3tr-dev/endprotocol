@@ -375,8 +375,9 @@ pub fn run() {
             let timer_service = managed_service.clone();
             app.manage(managed_service);
 
-            // 初始化游戏启动器服务
-            let game_launcher_service = Arc::new(Mutex::new(GameLauncherService::new()));
+            // 初始化游戏启动器服务（内部状态自带 Arc/Mutex，长任务另有 write_gate 串行，
+            // 不再用一把外层锁把整个服务锁住——下载期间公告/背景/状态查询仍要能返回）
+            let game_launcher_service = Arc::new(GameLauncherService::new());
             app.manage(game_launcher_service);
 
             // 初始化系统资源采集服务（CPU/内存/磁盘/网络/GPU）

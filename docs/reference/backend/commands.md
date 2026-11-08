@@ -73,7 +73,7 @@
 | `save_background_image` | commands/image.rs:152 | `data: String`（base64/dataURL） | `Result<String, String>` | `paths::backgrounds_dir`、清空目录、`base64` 解码、写 `bg.webp` |
 | `delete_background_image` | commands/image.rs:190 | 无 | `Result<(), String>` | `paths::backgrounds_dir` + 删除目录下全部文件 |
 | `launcher_get_process_read_bytes` | commands/launcher.rs:13 | 无 | `Result<u64, String>` | Win32 `GetProcessIoCounters`（非 Windows 返回 0） |
-| `launcher_check_status` | commands/launcher.rs:31 | `service: State<Arc<Mutex<GameLauncherService>>>`、`channel: String`、`install_path: String` | `Result<GameStatus, String>` | 本地 `parse_channel`、`GameLauncherService::check_status` |
+| `launcher_check_status` | commands/launcher.rs:51 | `service: State<Arc<GameLauncherService>>`、`channel: String`、`install_path: String` | `Result<GameStatus, String>` | 本地 `parse_channel`、`GameLauncherService::check_status`；只读命令，下载期间不再排队等锁 |
 | `launcher_install_or_update` | commands/launcher.rs:59 | `app: AppHandle`、`service`、`channel`、`install_path`、`max_concurrent: Option<usize>`（默认 8）、`resume: Option<bool>`（默认 true） | `Result<LauncherResult, String>` | `GameLauncherService::install_or_update`，按线程数并发下载、可断点续传，进度回调 emit `launcher-progress` |
 | `launcher_verify_and_repair` | commands/launcher.rs:122 | `app`、`service`、`channel`、`install_path`、`max_concurrent: Option<usize>`、`quick: Option<bool>`、`resume: Option<bool>`（默认 true） | `Result<LauncherResult, String>` | `GameLauncherService::verify_and_repair`，emit `launcher-progress`；失败时额外发出 `error` 终态事件 |
 | `launcher_get_remote_version` | commands/launcher.rs:179 | `service`、`channel` | `Result<RemotePackage, String>` | `GameLauncherService::get_latest_package` |
@@ -570,7 +570,7 @@
 ---
 
 ## `src-tauri/src/commands/launcher.rs`
-**职责**：游戏启动器（下载/校验/渠道切换/启动进程）的 IPC 层（759 行 / 27 个命令）。多数命令持有 `State<Arc<tokio::sync::Mutex<GameLauncherService>>>`；涉及渠道的先经 `parse_channel` 把字符串转成 `GameChannel` 枚举；耗时操作通过回调 emit `launcher-progress` 事件推送进度。
+**职责**：游戏启动器（下载/校验/渠道切换/启动进程）的 IPC 层（846 行 / 27 个命令）。命令以 `State<Arc<GameLauncherService>>` 直接取服务——服务**不再**被一把外层 `Mutex` 包住；会写安装目录的长任务（`launcher_install_or_update`、`launcher_verify_and_repair`、`launcher_preload_download`、`launcher_install_preload`、`launcher_switch_channel`）先经 `acquire_write_gate` 取得 `write_gate`（容量 1 的 `Semaphore`）permit 再执行，其余命令（公告/背景图/状态查询/扫描）不再被下载堵住。涉及渠道的先经 `parse_channel` 把字符串转成 `GameChannel` 枚举；耗时操作通过回调 emit `launcher-progress` 事件推送进度。
 
 ### 内部结构
 - 1-9：导入（`models::game::*`、`GameLauncherService`、`Emitter`、`utils::official_launcher`）。
@@ -931,5 +931,5 @@
 - 命令总数：**137**（account 24、launcher 28、capture 7、gacha 7、tray 8、updater 9、image 6、config 8、proxy 6、window 6、card_config 3、attendance 2、color_picker 2、logs 2、system_resource 1、browser 5、diagnostics 6、startup 7；`mod.rs` 0。源码 141 处注解，`capture_screen`/`finish_screen_pick`/`run_installer`/`save_tab_snapshot` 各含一对 `cfg` 门控版本，按名去重计）。
 - 事件 emit：`launcher-progress`（launcher.rs）、`download-progress`（updater.rs）。
 - 关键配置键：`account_token_*`（含 `cred`/`token`/`u8token`/`roles[]`）、`selected_account_id`、`card_settings.{card_id}`、`tray_user_info`、`proxy_config`（代理设置，写入后同步刷新全局代理缓存），以及前端侧的 `system_resource_defaults` / `todo_lists` / `todo_defaults`（经 config 命令读写）；相关本地文件：`gacha_avatar_map.json`、`total.json`、`backgrounds/bg.webp`。
-- 主要状态（managed state）：`Arc<std::sync::Mutex<ConfigService>>`（config/tray/proxy 直接用）、`Arc<tokio::sync::Mutex<AccountService>>`（account/attendance/card_config/gacha）、`Arc<GachaService>`、`Arc<Mutex<GameLauncherService>>`、`Arc<std::sync::Mutex<SystemResourceService>>`（见 `lib.rs` 的 `setup`）。
+- 主要状态（managed state）：`Arc<std::sync::Mutex<ConfigService>>`（config/tray/proxy 直接用）、`Arc<tokio::sync::Mutex<AccountService>>`（account/attendance/card_config/gacha）、`Arc<GachaService>`、`Arc<GameLauncherService>`（无外层锁，长任务由内部 `write_gate` 串行）、`Arc<std::sync::Mutex<SystemResourceService>>`（见 `lib.rs` 的 `setup`）。
 

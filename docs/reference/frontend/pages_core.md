@@ -32,7 +32,7 @@
 - 94-104 行：订阅 `subscribeLauncherBgMedia` 与 `subscribeGameBgMode`，同步 `bgMedia`、`bgMediaMode`。
 - 106-108 行：`channel` 变化时写回 localStorage（当前等价于挂载时写一次）。
 - 111-124 行：读取配置 `sidebar_rail_collapsed` 初始化 `sidebarCollapsed`；`toggleSidebarCollapsed()` 切换该状态并 `setConfig("sidebar_rail_collapsed", next)` 持久化。
-- 126-158 行：**核心数据拉取**（依赖 `[channel]`）：`getBackgroundImage(channel)` 成功则 `setLauncherBgMedia(...)`、失败置 `null`；`getNoticeContent(channel)` 成功则写入 `banners`/`announcements`/`sidebars`（含 console 日志，`sidebars` 缺失时回落空数组），失败清空三者；两项请求共同计入启动 Splash 初始任务。
+- 126-158 行：**核心数据拉取**（依赖 `[channel]`）：`getBackgroundImage(channel)` 成功则 `setLauncherBgMedia(...)`、失败置 `null`；`getNoticeContent(channel)` 成功则写入 `banners`/`announcements`/`sidebars`（含 console 日志，`sidebars` 缺失时回落空数组），失败清空三者；两项请求共同计入启动 Splash 初始任务，但**包了一层 8 秒 `Promise.race` 超时**——公告与背景图不是关键路径，后端命令迟迟不返回时也要放行 splash（数据到了再各自 setState 补上），避免启动流程被单个挂起的 invoke 拖死。
 - 160-167 行：Banner 自动轮播，`setInterval` 5000ms，`banners.length <= 1` 或 `bannerHovered` 时不启动。
 - 169-185 行：轮播「推动」动画 effect——`bannerIndex` 变化时按 `bannerIndex === (prev + 1) % len` 判定 `bannerDir`（`1` 向右推、`-1` 向左推），把前一索引写入 `outgoingBanner` 并在 400ms 后清空；列表重载而索引未变时清掉残留离场图。
 - 187-194 行：预加载全部 banner 图片（`new Image()`），避免翻页动画首帧闪白。
