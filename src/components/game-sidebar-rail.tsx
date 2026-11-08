@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { Headset, Share2 } from "lucide";
@@ -82,9 +82,14 @@ export function GameSidebarRail({ items }: GameSidebarRailProps) {
   const railRef = useRef<HTMLDivElement | null>(null);
   const flyoutRef = useRef<HTMLDivElement | null>(null);
 
-  const visibleItems = items.filter(
-    (item) =>
-      !HIDDEN_MEDIA.has(item.media) && item.display_type !== "DisplayType_GRID",
+  const visibleItems = useMemo(
+    () =>
+      items.filter(
+        (item) =>
+          !HIDDEN_MEDIA.has(item.media) &&
+          item.display_type !== "DisplayType_GRID",
+      ),
+    [items],
   );
 
   const expand = useCallback(() => {
@@ -141,7 +146,13 @@ export function GameSidebarRail({ items }: GameSidebarRailProps) {
   const handleItemEnter = useCallback(
     (index: number, element: HTMLElement | null) => {
       setHoveredIndex(index);
-      if (!element) return;
+      // 没有二维码的条目不弹浮层（方舟的 Skland / Weibo / B站 / TapTap / 小红书、
+      // 客服都是这一类）——它们只有跳转链接，浮层里没有可展示的东西。
+      const item = visibleItems[index];
+      if (!element || !item?.qr_url) {
+        setFlyout(null);
+        return;
+      }
       const rect = element.getBoundingClientRect();
       setFlyout({
         right: window.innerWidth - rect.left + 8,
@@ -154,7 +165,7 @@ export function GameSidebarRail({ items }: GameSidebarRailProps) {
         ),
       });
     },
-    [],
+    [visibleItems],
   );
 
   if (visibleItems.length === 0) return null;
@@ -271,10 +282,11 @@ export function GameSidebarRail({ items }: GameSidebarRailProps) {
       )}
 
       {/* 二维码浮层：单独 portal 到 body（避开常驻条的 transform 与 overflow 裁剪），
-          纯展示层不吃指针事件，命中判定由上面的几何测量负责 */}
+          纯展示层不吃指针事件，命中判定由上面的几何测量负责。
+          只有带二维码的条目才会进来（见 handleItemEnter）。 */}
       {expanded &&
         flyout &&
-        hoveredItem &&
+        hoveredItem?.qr_url &&
         createPortal(
           <div
             ref={flyoutRef}
@@ -282,24 +294,16 @@ export function GameSidebarRail({ items }: GameSidebarRailProps) {
             style={{ right: flyout.right, bottom: flyout.bottom }}
           >
             <div className="lg-media-chip lg-hairline flex w-max max-w-[260px] flex-col items-center gap-1.5 rounded-xl p-3">
-              {hoveredItem.qr_url ? (
-                <img
-                  src={hoveredItem.qr_url}
-                  alt={hoveredTip}
-                  className="h-36 w-36 rounded-lg bg-white object-contain p-1"
-                  draggable={false}
-                  onError={(e) => {
-                    (e.target as HTMLImageElement).style.display = "none";
-                  }}
-                />
-              ) : (
-                <div className="flex h-14 min-w-[120px] items-center justify-center px-2 text-center text-xs text-white/70">
-                  {hoveredTip}
-                </div>
-              )}
-              {hoveredItem.qr_url && (
-                <span className="text-[11px] text-white/70">{hoveredTip}</span>
-              )}
+              <img
+                src={hoveredItem.qr_url}
+                alt={hoveredTip}
+                className="h-36 w-36 rounded-lg bg-white object-contain p-1"
+                draggable={false}
+                onError={(e) => {
+                  (e.target as HTMLImageElement).style.display = "none";
+                }}
+              />
+              <span className="text-[11px] text-white/70">{hoveredTip}</span>
               {hoveredItem.jump_url && (
                 <span className="text-[10px] text-white/40">
                   {t("launcher.sidebar.open_hint", "点击打开网页")}

@@ -334,9 +334,9 @@
 ---
 
 ## `src/components/game-sidebar-rail.tsx`
-**职责**：游戏界面（dashboard 游戏模式）右侧的官方社媒栏。形态是一根贴右边缘的**常驻条**（只有左侧圆角）：收起时仅一个浮标大小，鼠标靠近右边缘即向左、向上下两侧生长成一列渠道图标，鼠标离开**立即**收起（无关闭按钮、无防抖延迟）；悬停图标在左侧浮出该渠道二维码，点击用内嵌浏览器打开官方页面。数据来自启动器 `get_sidebar` 接口（由 `layouts/dashboard.tsx` 传入）。
+**职责**：游戏界面（dashboard 游戏模式）右侧的官方社媒栏。形态是一根贴右边缘的**常驻条**（只有左侧圆角）：收起时仅一个浮标大小，鼠标靠近右边缘即向左、向上下两侧生长成一列渠道图标，鼠标离开**立即**收起（无关闭按钮、无防抖延迟）；悬停**带二维码**的图标在左侧浮出该渠道二维码，点击用内嵌浏览器打开官方页面。数据来自启动器 `get_sidebar` 接口（由 `layouts/dashboard.tsx` 传入）。
 **导出**：`GameSidebarRail`、`GameSidebarRailProps`
-**主要依赖**：`react`（`useState/useEffect/useRef/useCallback`）、`react-dom`（`createPortal`）、`react-i18next`、`morphicons/react`（`MorphIcon`）、`lucide`（`Share2`、`Headset`）、`@/stores/inAppBrowser`（`openInAppBrowser`）、`@/utils/launcherService`（仅 `SidebarItem` 类型）
+**主要依赖**：`react`（`useState/useEffect/useRef/useCallback/useMemo`）、`react-dom`（`createPortal`）、`react-i18next`、`morphicons/react`（`MorphIcon`）、`lucide`（`Share2`、`Headset`）、`@/stores/inAppBrowser`（`openInAppBrowser`）、`@/utils/launcherService`（仅 `SidebarItem` 类型）
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
@@ -347,20 +347,21 @@
 | `FlyoutAnchor` | game-sidebar-rail.tsx:45 | 二维码浮层的视口定位 `{ right, bottom }` |
 | `GameSidebarRailProps` | game-sidebar-rail.tsx:50 | `items: SidebarItem[]` |
 | `GameSidebarRail` | game-sidebar-rail.tsx:75 | 组件主体。状态 `expanded`、`hoveredIndex`、`flyout`；refs `expandedRef`、`railRef`（常驻条）、`flyoutRef`（二维码浮层，参与命中判定） |
-| `expand` / `collapse` | game-sidebar-rail.tsx:90/96 | 幂等切换（各自先比对 `expandedRef`）；`collapse` 同时清空 `hoveredIndex` 与 `flyout` |
-| 几何命中 effect | game-sidebar-rail.tsx:103-138 | 监听 window `mousemove`，**每次实时量** `railRef` / `flyoutRef` 矩形：命中任一（条含 6px 外扩）即保持展开；否则若在右边缘 + 竖向带内则展开，都不满足则**立即收起**。不挂 DOM 事件、不用定时器，所以回缩无延迟，动画途中也不会读到过期矩形 |
-| `handleItemEnter` | game-sidebar-rail.tsx:141-158 | 按悬停项的**视口矩形**算浮层位置（`right = innerWidth - rect.left + 8`，`bottom` 夹在视口内），并记录 `hoveredIndex`。列表项**没有** `onMouseLeave`：换项靠新项的 enter 覆盖，离开条靠几何收起，浮标额外用 `onMouseEnter` 清掉 `hoveredIndex`（否则停在分隔线/内边距上会残留上一张二维码） |
-| `cell` | game-sidebar-rail.tsx:170 | 收起 `h-8 w-8`、展开 `h-9 w-9`：图标与内边距同步变大，条子向左生长 |
-| 常驻条本体 | game-sidebar-rail.tsx:174-274 | portal 到 body，外层 `fixed right-0 top-1/2 z-30 -translate-y-1/2`；本体 `rounded-l-2xl border-r-0 overflow-hidden`，收起 `p-1 bg-black/45`、展开 `p-1.5 bg-black/55` |
-| 图标列 | game-sidebar-rail.tsx:187-256 | `grid-template-rows: 0fr → 1fr` 做高度动画（内层 `min-h-0` + 外层裁剪），opacity 同步换内容；按钮 `h-[22px] w-[22px]` 图标统一尺寸；`jump_url` 为空（如微信公众号）时不可点击并在 title 追加「仅支持扫码」；不可点击的条目仍会触发悬停并弹出二维码飞出层；末尾分隔线随高度一起被裁掉 |
-| 浮标按钮 | game-sidebar-rail.tsx:258-274 | 常驻在条的底端、固定 `h-8 w-8`，`MorphIcon Share2 size=15`；无关闭按钮，点击仅作手动切换 |
-| 二维码浮层 | game-sidebar-rail.tsx:277-311 | **单独 portal 到 body**（不能挂在常驻条里：既会被 `overflow-hidden` 裁掉，也会因常驻条带 `transform` 而使 `position: fixed` 退化为相对该祖先定位）；`pointer-events-none` 纯展示层，保持展开的能力由上面的几何命中提供；`qr_url` 图片 `h-36 w-36` 白底，加载失败时隐藏图片并退回说明文案 + 「点击打开网页」 |
+| `visibleItems` | game-sidebar-rail.tsx:85-92 | `useMemo` 过滤掉 `HIDDEN_MEDIA` 与 `DisplayType_GRID` 的条目。用 `useMemo` 是因为 `handleItemEnter` 依赖它——每次渲染新建数组会让回调每帧重建 |
+| `expand` / `collapse` | game-sidebar-rail.tsx:95/101 | 幂等切换（各自先比对 `expandedRef`）；`collapse` 同时清空 `hoveredIndex` 与 `flyout` |
+| 几何命中 effect | game-sidebar-rail.tsx:109-143 | 监听 window `mousemove`，**每次实时量** `railRef` / `flyoutRef` 矩形：命中任一（条含 6px 外扩）即保持展开；否则若在右边缘 + 竖向带内则展开，都不满足则**立即收起**。不挂 DOM 事件、不用定时器，所以回缩无延迟，动画途中也不会读到过期矩形 |
+| `handleItemEnter` | game-sidebar-rail.tsx:146-169 | 按悬停项的**视口矩形**算浮层位置（`right = innerWidth - rect.left + 8`，`bottom` 夹在视口内），并记录 `hoveredIndex`。**没有二维码的条目直接 `setFlyout(null)`，不弹浮层**——实测方舟官服 7 个条目里只有抖音有 `qr_url`，森空岛 / 微博 / B站 / TapTap / 小红书 / 客服都只有跳转链接，浮层里没有可展示的东西。列表项**没有** `onMouseLeave`：换项靠新项的 enter 覆盖，离开条靠几何收起，浮标额外用 `onMouseEnter` 清掉 `hoveredIndex`（否则停在分隔线/内边距上会残留上一张二维码） |
+| `cell` | game-sidebar-rail.tsx:181 | 收起 `h-8 w-8`、展开 `h-9 w-9`：图标与内边距同步变大，条子向左生长 |
+| 常驻条本体 | game-sidebar-rail.tsx:185-280 | portal 到 body，外层 `fixed right-0 top-1/2 z-30 -translate-y-1/2`；本体 `rounded-l-2xl border-r-0 overflow-hidden`，收起 `p-1 bg-black/45`、展开 `p-1.5 bg-black/55` |
+| 图标列 | game-sidebar-rail.tsx:198-267 | `grid-template-rows: 0fr → 1fr` 做高度动画（内层 `min-h-0` + 外层裁剪），opacity 同步换内容；按钮 `h-[22px] w-[22px]` 图标统一尺寸；`jump_url` 为空（如微信公众号）时不可点击并在 title 追加「仅支持扫码」；末尾分隔线随高度一起被裁掉 |
+| 浮标按钮 | game-sidebar-rail.tsx:268-284 | 常驻在条的底端、固定 `h-8 w-8`，`MorphIcon Share2 size=15`；无关闭按钮，点击仅作手动切换 |
+| 二维码浮层 | game-sidebar-rail.tsx:285-320 | **单独 portal 到 body**（不能挂在常驻条里：既会被 `overflow-hidden` 裁掉，也会因常驻条带 `transform` 而使 `position: fixed` 退化为相对该祖先定位）；`pointer-events-none` 纯展示层，保持展开的能力由上面的几何命中提供；**渲染条件带 `hoveredItem?.qr_url`**（无二维码不渲染）。`qr_url` 图片 `h-36 w-36` 白底，加载失败时隐藏图片 |
 
 **备注**：
 - 无 `invoke` / `listen`。两处 `createPortal(..., document.body)`，外层 `z-30`（低于 `InAppBrowser` 的 `z-40`，浏览器打开时整条栏被覆盖）。
 - 整层在收起态为 `pointer-events-none`，不遮挡标题栏右上角的窗口控制按钮。
 - i18n key：`launcher.sidebar.title`、`launcher.sidebar.open_hint`、`launcher.sidebar.scan_only`（均带中文兜底）。
-- 二维码图片直接用官方 CDN 地址（`pic.url`），加载失败时隐藏图片并显示说明文案，不做本地缓存。
+- 二维码图片直接用官方 CDN 地址（`pic.url`），加载失败时隐藏图片，不做本地缓存。
 
 ---
 
