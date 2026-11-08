@@ -25,28 +25,32 @@
 **内部结构**：
 - 1-52 行：导入与常量（`STORAGE_KEY_CHANNEL` 已随「按游戏分区」改造移除，渠道改由 `readGameChannel(game)` 读 `launcher_channel[_arknights]`）。
 - 54 行：旧键名注释（仅用于把历史选择迁移到按游戏分区的键上）。
-- 60-83 行：组件声明与全部状态：`location`(useLocation)、`mobileOpen`（移动端抽屉开关）、`sidebarCollapsed`（桌面端侧边栏折叠为窄轨，初始 `false`）、`viewMode`（初始 `getLauncherMode()`）、`bgMedia`（`LauncherBgMedia | null`，初始 `getLauncherBgMedia`）、`bgMediaMode`（`GameBgMode`，初始 `getGameBgMode`）、`activeGame`（当前选中的游戏，初始 `getActiveGame()`）、`channel`（按游戏分区读取的 `GameChannel`，初始 `readGameChannel(getActiveGame())`）、`banners`/`announcements`（公告数据）、`sidebars`（右侧栏社媒条目，77 行）、`bannerIndex`（轮播索引）、`bannerHovered`（悬停暂停轮播）、`bannerPrevIndexRef`/`bannerDir`/`outgoingBanner`（翻页「推动」动画：前一索引 ref、方向 `1|-1`、离场图索引）、`announcementTab`（公告分类标签索引）。
-- 85-89 行：`subscribeLauncherMode` 订阅 → 同步 `viewMode`。
-- 91-100 行：`prevModeRef` + effect：`game → data` 调用 `suspendInAppBrowser()`，`data → game` 调用 `resumeInAppBrowser()`（模式切换时暂停/恢复内嵌浏览器）。
-- 102-112 行：订阅 `subscribeLauncherBgMedia` 与 `subscribeGameBgMode`，同步 `bgMedia`、`bgMediaMode`。
-- 114-121 行：订阅 `subscribeActiveGame` → 切游戏时同步 `activeGame` 与该游戏的 `channel`（公告/背景随之重拉）。
-- 123-129 行：`channel` 变化时若跨了游戏，把游戏选择也跟上（`setActiveGame(owner)`）。
-- 132-136 行：读取配置 `sidebar_rail_collapsed` 初始化 `sidebarCollapsed`。
-- 138-145 行：`toggleSidebarCollapsed()` 切换该状态并 `setConfig("sidebar_rail_collapsed", next)` 持久化。
-- 147-187 行：**核心数据拉取**（依赖 `[channel]`）：`getBackgroundImage(channel)` 成功则 `setLauncherBgMedia(...)`、失败置 `null`；`getNoticeContent(channel)` 成功则写入 `banners`/`announcements`/`sidebars`（含 console 日志，`sidebars` 缺失时回落空数组），失败清空三者；两项请求共同计入启动 Splash 初始任务，但**包了一层 8 秒 `Promise.race` 超时**——公告与背景图不是关键路径，后端命令迟迟不返回时也要放行 splash（数据到了再各自 setState 补上），避免启动流程被单个挂起的 invoke 拖死。
-- 190-197 行：Banner 自动轮播，`setInterval` 5000ms，`banners.length <= 1` 或 `bannerHovered` 时不启动。
-- 199-215 行：轮播「推动」动画 effect——`bannerIndex` 变化时按 `bannerIndex === (prev + 1) % len` 判定 `bannerDir`（`1` 向右推、`-1` 向左推），把前一索引写入 `outgoingBanner` 并在 400ms 后清空；列表重载而索引未变时清掉残留离场图。
-- 217-226 行：预加载全部 banner 图片（`new Image()`），避免翻页动画首帧闪白。
-- 228-233 行：**换游戏后的下标夹取**——`bannerIndex` 与 `announcementTab` 都可能因列表变短而越界（终末地 9 个 banner / 3 个公告分类，明日方舟 8 个 / 2 个），越界时夹回 0。少了这一步，渲染 `banners[bannerIndex].image_url` 会读到 `undefined` 导致整块面板白屏。
-- 236-240 行：卸载时 `setLauncherBgMedia(null)` 清理背景。
-- 242-250 行：派生值：`isGameMode`、`announcementCategories`（去重分类）、`activeAnnouncementCategory`、`filteredAnnouncements`（按当前分类过滤）。
-- 252-262 行：换游戏后公告分类数会变（终末地 3 类、明日方舟 2 类），选中的下标可能越界，越界时夹回第一个。
+- 60-83 行：组件声明与全部状态：`location`(useLocation)、`mobileOpen`（移动端抽屉开关）、`sidebarCollapsed`（桌面端侧边栏折叠为窄轨，初始 `false`）、`viewMode`（初始 `getLauncherMode()`）、`bgMediaMode`（初始 `getGameBgMode`）、`activeGame`（当前选中的游戏，初始 `getActiveGame()`）、`channel`（按游戏分区读取的 `GameChannel`，初始 `readGameChannel(getActiveGame())`）。
+- 95-118 行：**整页推移**的状态：`push`（`PushState`：出栈页 / 入栈页 / 方向）、`pushProgress`（动画进度 0→1）、`pushRafRef`（rAF 句柄）、`pushProgressRef`。
+- 120-167 行：`runPush(from, to, direction)`——rAF 驱动的推移动画（460ms，缓动与 `--lg-ease-emphasized` 一致）。**用 rAF 而不是 CSS transition**：两页的位置都由同一个进度算出来，CSS 要写两套 keyframes 且难以保证严格同步（一边先到、一边后到就穿帮了）。
+- 169-181 行：`subscribeLauncherMode` 订阅 → 同步 `viewMode`；`prevModeRef` + effect 处理 `game ⇄ data` 的内嵌浏览器暂停/恢复。
+- 193-204 行：订阅 `subscribeGameBgMode`，同步 `bgMediaMode`。
+- 206-236 行：订阅 `subscribeActiveGame` → 切游戏时同步 `activeGame` 与该游戏的 `channel`，并触发**整页推移**：先看新页数据在不在缓存里（`getCachedPageData`），在就直接推，不在就等 `fetchPageData` 拉完再推（等的时候旧页还留在原地，不会出现「新页一片空白」）。
+- 238-241 行：`prefetchOtherGame(activeGame)`——预取另一个游戏的数据，第一次切过去时不用等网络。
+- 243-249 行：`channel` 变化时若跨了游戏，把游戏选择也跟上（`setActiveGame(owner)`）。
+- 251-264 行：读取配置 `sidebar_rail_collapsed` 初始化 `sidebarCollapsed`；`toggleSidebarCollapsed()` 切换并持久化。
+- 266-272 行：卸载时 `setLauncherBgMedia(null)` 清理背景。
+- 278-330 行：**页面层**（`pages`，`useMemo`）——推移期间渲染哪几页、每页的位移与数据。非推移时只有当前页；推移时是出栈页 + 入栈页两页，各自带着自己的背景与数据。
+
+**游戏切换：整页推移**：
+切游戏时不是「各处淡入淡出」，而是**两页同时在场、整页推移**：
+- 往下切（《终末地》→《明日方舟》）：新页从下方进入，把旧页往上方推出视口。
+- 往上切：方向相反。
+- 每页是一个绝对定位的整屏容器（`transform: translateY(...)`），背景、横幅、公告、操作面板、标题栏品牌区都在这一页里，跟着一起被推走。
+- **只动 transform，不做淡入**：元素 opacity < 1 会让它成为 backdrop root，自身与后代的 backdrop-filter 当场失效，玻璃退化成半透明色块（globals.css「动效系统」的硬约束）。
+- **数据必须先于动画到位**：后台拉公告/背景要走 HTTP，耗时不可控，所以按游戏缓存 + 预取另一个游戏（见 `components/game-page.tsx`）。
+
+**标题栏拆两半**（避免重复窗口按钮）：标题栏整条渲染两份会出现**重复的窗口控制按钮**，整条只渲染一份则品牌区（游戏名）不会跟着页面走。所以 `TitlebarBrand` 随页面走（两页各一份，`brandOnly`），`TitlebarControls`（铃铛 + 窗口三键）固定在右上角（只一份，`controlsOnly`）。
+
 - 264-492 行：**GAME MODE 分支**：
-  - 265-273 行：背景源选择——`bgMediaMode === "video"` 且有 `video_url` 用视频，否则用 `image_url ?? video_url`。
-  - 275-311 行：固定全屏背景（`<video autoPlay loop muted playsInline>`，或图片分支用 CSS 背景层：`background-size: cover` + `background-position: center` + `background-repeat: no-repeat`，即保持原始宽高比、取 `max(W/w, H/h)` 等比缩放到恰好完全覆盖视口、不留空白，溢出的长边方向居中裁掉；再叠加渐变遮罩；无资源时使用 CSS 渐变占位）。
-  - 313-332 行：`CustomTitlebar`（318）、顶部中央背景模式悬浮切换器（320-323，仅 `bgMedia` 非空时挂载 `GameBackgroundSwitch`）、`InAppBrowser`（326，`z-40`，覆盖切换器与右侧栏）、`GameSwitchRail`（329，左侧贴边游戏切换栏，悬停展开）、`GameSidebarRail`（332，游戏模式右侧官方社媒栏，`items={sidebars}`，`z-30`）。**游戏模式不挂磨砂层**：背景是视频，标题栏保持背景本身清晰（原先的 `.frost-main frost-titlebar-only` 已移除）。
-  - 335-490 行：内容层（`z-10`）：底部左侧「Banner + 公告」玻璃盒（342-482 行）与右侧 `GameActionPanel`（484-487 行）。
-    - 342-482 行：Banner 轮播 + 公告玻璃盒——翻页时离场图（350-362 行，绝对定位）向反方向推走（`.animate-banner-push-out-left/right`），入场图（364-386 行，`z-[1]`）从对应方向推入（`.animate-banner-push-in-right/left`）；点击 `jump_url` 走 `openInAppBrowser`，`onError` 隐藏图片；图片悬停时 `group-hover:scale-[1.08]` + `transition-transform duration-300` 缩放。悬停显示左右箭头（388-414 行，环形取模翻页）；底部圆点指示器（416-430 行）。公告区分类 Tab（437-457 行，`setAnnouncementTab`）+ 列表（458-476 行，`slice(0, 6)` 只显示 6 条，点击条目 `openInAppBrowser(item.jump_url)`）；无分类时显示 “No announcements”（478-480 行，i18n 键 `launcher.no_announcements`）。
+  - 296-305 行：标题栏右侧区（`controlsOnly`）——固定不动，不跟页面走。
+  - 307-... 行：**页面层**（`pages.map`）：每页一个 `absolute inset-0` 容器，`transform` 为该页当前的位移、`zIndex` 出栈页 0 / 入栈页 1；页内含全屏背景（`<video autoPlay loop muted playsInline>`，或图片分支用 CSS 背景层：`background-size: cover` + `background-position: center` + `background-repeat: no-repeat`，即保持原始宽高比、取 `max(W/w, H/h)` 等比缩放到恰好完全覆盖视口、不留空白，溢出的长边方向居中裁掉；再叠加渐变遮罩；无资源时使用 CSS 渐变占位）、标题栏品牌区（`brandOnly`）、背景模式切换器、`InAppBrowser`（`z-40`）、`GameSwitchRail`（左侧贴边游戏切换栏）、`GamePageContent`（右侧社媒栏 + 底部横幅公告盒 + 操作面板）。
+  - **游戏模式不挂磨砂层**：背景是视频，标题栏保持背景本身清晰（原先的 `.frost-main frost-titlebar-only` 已移除）。
 - 494-609 行：**DATA MODE 分支**（默认业务界面）：
   - 497 行：`dashboard-background` 背景层；515 行：`CustomTitlebar`。
   - 渐变磨砂层：`.frost-main frost-with-sidebar` 全屏覆盖层（504-512 行，`--frost-sidebar-w` 按折叠状态写入 `288px`/`64px`），纵向遮罩对应标题栏、横向遮罩对应侧边栏，两者取并集形成连通的 L 形强区；**游戏模式不再铺磨砂层**（原先的 `.frost-main frost-titlebar-only` 已移除，标题栏直接露出背景视频）。放在背景层之上、veil 之下、内容层之下。

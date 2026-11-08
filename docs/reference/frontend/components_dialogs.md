@@ -111,18 +111,23 @@
 - 由 `CustomTitlebar` 的铃铛按钮控制开关（custom-titlebar.tsx:240）。
 
 ## `src/components/custom-titlebar.tsx`
-**职责**：自定义标题栏——包含品牌区、数据/游戏视图切换、通知铃铛与消息浮层、窗口最小化/最大化/关闭按钮，并挂载消息抽屉与关闭确认框。
-**导出**：`CustomTitlebar`
-**主要依赖**：`react`（`useState/useEffect/useRef`）、`react-dom`（`createPortal`）、`react-i18next`、`@tauri-apps/api/core`（`invoke`）、`@tauri-apps/api/window`（`getCurrentWindow`）、`@tauri-apps/api/event`（`listen`、`UnlistenFn`）、`@/components/ui/app-icon`（`MinimizeIcon`、`MaximizeIcon`、`RestoreIcon`、`CloseIcon`、`BellIcon`）、`@/components/app-info-drawer`、`@/components/close-confirm-dialog`、`@/utils/messageStore`（`getMessages`、`getUnreadCount`、`hasUrgentUnread`、`subscribeMessages`、`AppMessage`）、`@/components/message-card`、`@/utils/configService`（`getConfig`）、`@/utils/trayService`（`isTrayAvailable`）、`@/stores/launcherMode`（`getLauncherMode`、`setLauncherMode`、`subscribeLauncherMode`、`LauncherViewMode`）、`@/stores/launcherGame`（`getActiveGame`、`subscribeActiveGame`、`LauncherGame`）、`@/utils/platform`（`isWindowsPlatform`）、`@/utils/logger`、`@/components/ui/toggle-group`（`ToggleGroup`、`ToggleGroupItem`）
+**职责**：自定义标题栏——包含品牌区、数据/游戏视图切换、通知铃铛与消息浮层、窗口最小化/最大化/关闭按钮，并挂载消息抽屉与关闭确认框。拆成**品牌区**与**右侧区**两块，以便整页推移时品牌区随页面走、右侧区固定不动。
+**导出**：`CustomTitlebar`、`TitlebarBrand`、`TitlebarControls`
+**主要依赖**：`react`（`useState/useEffect/useRef/useCallback`）、`react-dom`（`createPortal`）、`react-i18next`、`@tauri-apps/api/core`（`invoke`）、`@tauri-apps/api/window`（`getCurrentWindow`）、`@tauri-apps/api/event`（`listen`）、`@/components/ui/app-icon`（`MinimizeIcon`、`MaximizeIcon`、`RestoreIcon`、`CloseIcon`、`BellIcon`）、`@/components/app-info-drawer`、`@/components/close-confirm-dialog`、`@/utils/messageStore`（`getMessages`、`getUnreadCount`、`hasUrgentUnread`、`subscribeMessages`、`AppMessage`）、`@/components/message-card`、`@/utils/configService`（`getConfig`）、`@/utils/trayService`（`isTrayAvailable`）、`@/stores/launcherMode`（`getLauncherMode`、`setLauncherMode`、`subscribeLauncherMode`、`LauncherViewMode`）、`@/stores/launcherGame`（`getActiveGame`、`subscribeActiveGame`、`getGameSwitchSeq`、`getGameSwitchDirection`、`LauncherGame`）、`@/utils/platform`（`isWindowsPlatform`）、`@/utils/logger`、`@/components/ui/toggle-group`（`ToggleGroup`、`ToggleGroupItem`）、`@/hooks/useSwitchTransition`
+
+**为什么拆两块**：切游戏走**整页推移**（旧页与新页同时在场）。标题栏若整条渲染两份，会出现**重复的窗口控制按钮**；若整条只渲染一份，品牌区（游戏名）又不会跟着页面被推走。所以：品牌区随页面走（两页各一份，`brandOnly`），右侧区（铃铛 + 窗口三键）固定在右上角（只一份，`controlsOnly`）。
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
-| `CustomTitlebar` | custom-titlebar.tsx:41 | 组件主体，无 props |
-| 局部状态 | custom-titlebar.tsx:43-63 | `isMaximized`、`infoOpen`（消息抽屉）、`unreadCount`、`hasUrgent`、`showCloseConfirm`、`closeAction`（默认 `"ask"`）、`trayAvailable`（默认 `true`，由 `isTrayAvailable()` 回填）、`viewMode`（初值 `getLauncherMode()`）、`activeGame`（初值 `getActiveGame()`，当前选中的游戏）、`newMessage`（浮层消息）、`flyoutOpen`（默认 `true`）；refs：`seenMessageIds`（已展示过的消息 id Set，初始为启动时队列内全部 id）、`flyoutTimer` |
-| 消息订阅 effect | custom-titlebar.tsx:65-88 | `subscribeMessages`：仅在队首是**从未展示过的新消息**（`seenMessageIds` 中不存在）时弹出浮层并记录其 id；由于用 Set 判断「新增」，删除队首消息露出旧消息不会重复弹浮层。非进度型消息（`progress === undefined \|\| progress < 0`）5 秒后自动隐藏；浮层只保存消息 **id**，每次 store 变更都按 id 从 `getMessages()` 回填最新对象（否则 `updateMessage` 写入的进度停留在入队时的旧快照上，浮层进度条不动）；若当前正在展示的消息已被从队列移除，则立即收起浮层；同时刷新 `unreadCount`、`hasUrgent` |
+| `TitlebarBrand` | custom-titlebar.tsx:44 | 品牌区：应用图标 + 游戏标题 + 数据/游戏模式切换。props `game?: LauncherGame`（传了就钉死在那个游戏上，整页推移时旧页要显示旧游戏名；不传则跟随 store）。游戏名换游戏时经 `useSwitchTransition` 播一小段位移（只动 transform，不动 opacity——后者会让元素成为 backdrop root，毁掉自身与后代的玻璃） |
+| `TitlebarControls` | custom-titlebar.tsx:180 | 右侧区：通知铃铛（含未读角标）+ 消息浮层（`createPortal(document.body)`）+ 窗口三键 + `<AppInfoDrawer>` + `<CloseConfirmDialog>`。**只渲染一份** |
+| `CustomTitlebar` | custom-titlebar.tsx:366 | 组合两者。props `game?`（钉住游戏）、`brandOnly?`（只渲染品牌区）、`controlsOnly?`（只渲染右侧区）、`className?`（外层 class） |
+| 局部状态 | — | `TitlebarBrand`：`viewMode`、`followedGame`、`gameSwitch`（`{seq, direction}`）；`TitlebarControls`：`isMaximized`、`infoOpen`、`unreadCount`、`hasUrgent`、`showCloseConfirm`、`closeAction`（默认 `"ask"`）、`trayAvailable`（默认 `true`，由 `isTrayAvailable()` 回填）、`newMessage`、`flyoutOpen`（默认 `true`）；refs：`seenMessageIds`（已展示过的消息 id Set，初始为启动时队列内全部 id）、`flyoutTimer` |
+| 消息订阅 effect | — | `subscribeMessages`：仅在队首是**从未展示过的新消息**（`seenMessageIds` 中不存在）时弹出浮层并记录其 id；由于用 Set 判断「新增」，删除队首消息露出旧消息不会重复弹浮层。非进度型消息（`progress === undefined \|\| progress < 0`）5 秒后自动隐藏；浮层只保存消息 **id**，每次 store 变更都按 id 从 `getMessages()` 回填最新对象（否则 `updateMessage` 写入的进度停留在入队时的旧快照上，浮层进度条不动）；若当前正在展示的消息已被从队列移除，则立即收起浮层；同时刷新 `unreadCount`、`hasUrgent` |
 | 定时器清理 effect | custom-titlebar.tsx:90-95 | 卸载时 `clearTimeout(flyoutTimer.current)` |
 | 视图模式订阅 effect | custom-titlebar.tsx:97-101 | `subscribeLauncherMode(() => setViewMode(getLauncherMode()))` |
-| 当前游戏订阅 effect | custom-titlebar.tsx:103-108 | `subscribeActiveGame(() => setActiveGame(getActiveGame()))`——游戏切换（左侧悬浮栏 / 操作面板）后标题栏标题跟着换成当前游戏 |
+| 当前游戏订阅 effect | custom-titlebar.tsx:103-113 | `subscribeActiveGame(() => { setActiveGame(getActiveGame()); setGameSwitch({seq, direction}) })`——游戏切换（左侧悬浮栏 / 操作面板）后标题栏标题跟着换成当前游戏，并记下**本次切换的序号与方向**（`getGameSwitchSeq()` / `getGameSwitchDirection()`），供标题名的推入动画使用（只看 `activeGame` 分不出「刚切过」与「本来就是这个游戏」） |
+| 标题推入动画 | custom-titlebar.tsx:64-71 | `useSwitchTransition(gameSwitch.seq, gameSwitch.direction)` → `titleRef`；切游戏时游戏名从切换方向的反侧滑入落位（只动 transform，不动 opacity——后者会让元素成为 backdrop root，毁掉自身与后代的玻璃） |
 | 关闭行为配置 effect | custom-titlebar.tsx:110-115 | `getConfig<string>("close_action")` → `setCloseAction(value ?? "ask")` |
 | 托盘可用性 effect | custom-titlebar.tsx:117-120 | `isTrayAvailable()` → `setTrayAvailable`；托盘不可用时关闭按钮直接 `app_quit`，并让 `CloseConfirmDialog` 隐藏「最小化到托盘」 |
 | `checkMaximizedState` | custom-titlebar.tsx:122-130 | `async`：`getCurrentWindow().isMaximized()` → `setIsMaximized`，异常记 `logger.error(..., "Titlebar")` |
@@ -131,7 +136,7 @@
 | `handleMaximize` | custom-titlebar.tsx:160-167 | `await invoke("toggle_maximize_window")`，100ms 后再 `checkMaximizedState()` 同步图标 |
 | `handleClose` | custom-titlebar.tsx:169-186 | 托盘不可用（`trayAvailable === false`）时直接 `invoke("app_quit")`；否则按 `closeAction` 分支：`"ask"` → `setShowCloseConfirm(true)`；`"minimize_to_tray"` → `invoke("minimize_to_tray")`；否则 `invoke("app_quit")` |
 | `handleConfirmClose` | custom-titlebar.tsx:188-203 | `(action: "close" \| "minimize_to_tray")`：`minimize_to_tray` 且托盘可用时 `invoke("minimize_to_tray")`，其余情况一律 `invoke("app_quit")`；之后重新 `getConfig("close_action")` 回写本地 `closeAction`（用户可能勾选了「记住」） |
-| 渲染块 | custom-titlebar.tsx:205-343 | `titlebar-shell h-11`（**不再挂 `lg-sheet` 实底**，数据模式由布局层的 `.frost-main` 渐变磨砂负责底部过渡，游戏模式不铺磨砂层；拖动区用 `data-tauri-drag-region="deep"`，可点击元素由 Tauri `drag.js` 自动排除，需要禁止拖动的容器才写 `data-tauri-drag-region="false"`）：品牌区（`/app-icon.png` 链扣标 18×18 + 标题，`viewMode === "game"` 显示 `launcher.game_group_${activeGame}`（**跟着当前选中的游戏走**），否则 `ENDPROTOCOL`）→ `ToggleGroup` 视图切换（234-258，值 `"data"` / `"game"`，写入 `setLauncherMode`）→ 弹性占位 → 铃铛按钮（261-276，未读角标 `99+` 截断，`hasUrgent` 用 `bg-danger`）→ 新消息浮层（278-294，`createPortal(document.body)` + `fixed right-12 top-10 z-[10005]`，内嵌 `MessageCard compact`）→ 窗口三键（296-330）→ `<AppInfoDrawer>`（334）与 `<CloseConfirmDialog>`（335-340） |
+| 渲染块 | custom-titlebar.tsx:205-343 | `titlebar-shell h-11`（**不再挂 `lg-sheet` 实底**，数据模式由布局层的 `.frost-main` 渐变磨砂负责底部过渡，游戏模式不铺磨砂层；拖动区用 `data-tauri-drag-region="deep"`，可点击元素由 Tauri `drag.js` 自动排除，需要禁止拖动的容器才写 `data-tauri-drag-region="false"`）：品牌区（`/app-icon.png` 链扣标 18×18 + 标题，`viewMode === "game"` 显示 `launcher.game_group_${activeGame}`（**跟着当前选中的游戏走**，切游戏时由 `titleRef` 的 WAAPI 动画滑入），否则 `ENDPROTOCOL`）→ `ToggleGroup` 视图切换（234-258，值 `"data"` / `"game"`，写入 `setLauncherMode`）→ 弹性占位 → 铃铛按钮（261-276，未读角标 `99+` 截断，`hasUrgent` 用 `bg-danger`）→ 新消息浮层（278-294，`createPortal(document.body)` + `fixed right-12 top-10 z-[10005]`，内嵌 `MessageCard compact`）→ 窗口三键（296-330）→ `<AppInfoDrawer>`（334）与 `<CloseConfirmDialog>`（335-340） |
 
 **备注**：
 - **invoke 命令**：`minimize_window`（custom-titlebar.tsx:154）、`toggle_maximize_window`（162）、`minimize_to_tray`（179、191）、`app_quit`（173、181、193）。
@@ -392,6 +397,29 @@
 
 ---
 
+## `src/components/game-page.tsx`
+**职责**：游戏模式下的**「一页」**——某个游戏（终末地 / 明日方舟）的完整内容层（右侧官方社媒栏 + 底部横幅公告盒 + 操作面板）。切游戏走**整页推移**（旧页与新页同时在场、各自被推走），所以每一页必须持有自己的数据，不能共用一份 state。
+**导出**：`GamePageContent`、`EMPTY_PAGE_DATA`、`fetchPageData`、`getCachedPageData`、`prefetchOtherGame`；类型 `GamePageData`、`GamePageProps`
+**主要依赖**：`react`、`@/utils/launcherService`（`getNoticeContent`、`getBackgroundImage`、`readGameChannel`、类型 `BannerItem`/`AnnouncementItem`/`SidebarItem`）、`@/stores/launcherGame`（`LauncherGame`）、`@/components/game-action-panel`、`@/components/game-sidebar-rail`
+
+| 符号 | 位置 | 说明 |
+| --- | --- | --- |
+| `GamePageData`（接口） | game-page.tsx:22 | 一个游戏的页面数据：`background`（`{image_url, video_url}`）、`banners`、`announcements`、`sidebars` |
+| `EMPTY_PAGE_DATA` | game-page.tsx:28 | 空数据（还没拉到、或拉取失败） |
+| `pageCache` | game-page.tsx:35 | **模块级**缓存：按游戏存一份，跨切换保留。切回去时不用重新拉 |
+| `inflight` | game-page.tsx:38 | 正在进行的拉取，避免同一游戏并发拉两次 |
+| `getCachedPageData` | game-page.tsx:42 | 读缓存（无则 `undefined`） |
+| `fetchPageData` | game-page.tsx:48 | 拉某游戏的数据并写入缓存；已在拉或已拉到直接返回（**切换动画不能等网络**） |
+| `prefetchOtherGame` | game-page.tsx:72 | 预取另一个游戏的数据：第一次切过去时不用等网络，推移动画立刻就能播 |
+| `GamePageContent` | game-page.tsx:120 | 页面内容层。props `game`、`data`。内部自持横幅轮播状态（`bannerIndex`/`bannerHovered`/`bannerDir`/`outgoingBanner`/`bannerPrevRef`）与公告分类状态（`announcementTab`）——**每页独立**，推移时两页各转各的 |
+
+**备注**：
+- **数据必须先于动画到位**：后端拉公告/背景要走 HTTP，耗时不可控。所以切游戏时先看缓存：有就直接开始推移；没有就等拉完再推（等的时候旧页还留在原地，用户看到的是「新页推上来」，而不是「旧页没了、新页一片空白」）。
+- **横幅「推动」动画的判据用 URL 而不是下标**：换游戏时整组横幅被换掉，下标可能没变（两个游戏都从第 0 张开始）但内容全变了，只看下标会漏掉这种情况，新旧横幅会硬碰硬地闪一下。离场图存**对象** `{url, index}` 而不是下标——旧横幅已不在新列表里，按下标回查会取到新游戏的第一条（错的图）。
+- 页面层**不含背景**：背景由 `layouts/dashboard.tsx` 的页面层统一渲染，避免两层背景互相穿插。
+
+---
+
 ## 覆盖清单与横向要点
 
 | 文件 | 行数 | 导出符号 |
@@ -401,7 +429,8 @@
 | account-switch-modal.tsx | 196 | 默认 `AccountSwitchModal` |
 | add-card-modal.tsx | 234 | `AddCardModal` |
 | app-info-drawer.tsx | 71 | `AppInfoDrawer` |
-| custom-titlebar.tsx | 343 | `CustomTitlebar` |
+| custom-titlebar.tsx | 419 | `CustomTitlebar`、`TitlebarBrand`、`TitlebarControls` |
+| game-page.tsx | 268 | `GamePageContent`、`EMPTY_PAGE_DATA`、`fetchPageData`、`getCachedPageData`、`prefetchOtherGame` |
 | role-select-modal.tsx | 182 | 默认 `RoleSelectModal` |
 | tab-editor-modal.tsx | 244 | `TabEditorModal` |
 | tab-selector.tsx | 207 | `TabSelector` |

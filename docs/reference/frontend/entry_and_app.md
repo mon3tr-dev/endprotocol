@@ -184,6 +184,22 @@
 - 与折叠/主题切换解耦：这些重渲染不改变 `keys` 顺序，effect 只更新记录，不打断进行中的动画。
 - 测量的是重排后的最终布局（transform 不影响 rect 的 top/left 记录策略：记录在 layout 阶段读取，包含未播完动画的当前视觉位置，因此连续快速换位从当前位置续接）。
 
+## `src/hooks/useSwitchTransition.ts`
+**职责**：切换过渡 Hook——每次 `seq` 变化时让元素播放一次位移动画（用于切游戏时页面各处的平滑过渡：底部内容排、标题栏游戏名）。
+**导出**：`useSwitchTransition`（useSwitchTransition.ts:17）。
+**主要依赖**：`react`（useEffect/useRef）、浏览器原生 `Element.animate`（Web Animations API）与 `window.matchMedia`。
+
+| 符号 | 位置 | 说明 |
+| --- | --- | --- |
+| `useSwitchTransition` | useSwitchTransition.ts:17 | 参数 `(seq: number, direction: 1 \| -1, shiftToken = "--lg-shift-2")`，返回 `RefObject<T \| null>`。`seq` 变化时对元素播一次 `translateY(direction * shift) → translateY(0)`；时长取 `--lg-dur-slow`、缓动取 `--lg-ease-emphasized`、位移取 `shiftToken` 指向的令牌（都从 `getComputedStyle` 读，动效系统仍是唯一真相）。`seq === 0`（初次挂载，未切过）不播；`prefers-reduced-motion: reduce` 时不播 |
+
+**备注**：
+- **为什么用 Web Animations API 而不是「CSS 动画类 + 换 key 重建」**：换 key 会把整棵子树重建——面板的 state 丢失、进度事件要从头订阅、滚动位置归零；而这里只想让**已经在页面上的**元素动一下。`element.animate()` 每次调用都产生新的动画对象，天然支持重播，不需要靠换 key 逼浏览器重新应用样式。
+- **只动 transform，不动 opacity**：元素 opacity < 1 会让它成为 backdrop root，其自身与后代的 backdrop-filter 当场失效，玻璃退化成半透明色块（globals.css「动效系统」里的硬约束）。
+- `fill: "backwards"`：动画开始前保持首帧，结束后不保留终态（`forwards` 会让元素永久带着动画属性）。
+- `prefers-reduced-motion` 必须自行判断：globals.css 里那条全局 `animation-duration: 80ms !important` 只覆盖 CSS 动画与过渡，**管不到 Web Animations API**（它不产生 CSS `animation-duration`）。
+- 使用点：`layouts/dashboard.tsx` 的底部内容排（`contentRowRef`）、`components/custom-titlebar.tsx` 的游戏名（`titleRef`）；序号与方向来自 `stores/launcherGame.ts` 的 `getGameSwitchSeq()` / `getGameSwitchDirection()`。
+
 ## `src/hooks/useLongPressDrag.ts`
 **职责**：可复用的「长按进入编辑态并随后开始拖拽」Hook：长按期间按 40ms 步进显示进度环，达到时长后触发回调并置位待拖拽标志，提供取消与模拟 pointerdown 的接口。
 **导出**：`useLongPressDrag`（useLongPressDrag.ts:23）。
@@ -256,8 +272,8 @@
 **备注**：三个 store 各自独立的 listeners 数组与 emit，互不干扰；localStorage 键名仅两枚：`launcher_view_mode`、`game_bg_mode`。
 
 ## `src/stores/launcherGame.ts`
-**职责**：启动器里「当前选中的游戏」（终末地 / 明日方舟）这一维度的可订阅 store。选择结果持久化在 localStorage（键 `launcher_game`），供标题栏标题、左侧游戏切换栏、操作面板与安装路径/渠道/DX11 的按游戏分区配置共用。
-**导出**：`LauncherGame`（:9）、`DEFAULT_CHANNEL`（:15）、`gameOfChannel`（:21）、`ALL_GAMES`（:25）、`getActiveGame`（:46）、`setActiveGame`（:50）、`subscribeActiveGame`（:59）。
+**职责**：启动器里「当前选中的游戏」（终末地 / 明日方舟）这一维度的可订阅 store。选择结果持久化在 localStorage（键 `launcher_game`），供标题栏标题、左侧游戏切换栏、操作面板与安装路径/渠道/DX11 的按游戏分区配置共用。同时对外提供**本次切换的序号与方向**，供界面播切换过渡动画。
+**导出**：`LauncherGame`（:9）、`DEFAULT_CHANNEL`（:15）、`gameOfChannel`（:21）、`ALL_GAMES`（:25）、`GameSwitchDirection`（type）、`getActiveGame`、`setActiveGame`、`subscribeActiveGame`、`getGameSwitchSeq`、`getGameSwitchDirection`。
 **主要依赖**：`@/utils/launcherService`（`GameChannel` 类型，仅用于类型引用）、`localStorage`（浏览器原生）。
 
 | 符号 | 位置 | 说明 |
@@ -269,12 +285,16 @@
 | `ALL_GAMES` | launcherGame.ts:25 | `["endfield", "arknights"]`，切换栏的渲染顺序 |
 | `normalize` | launcherGame.ts:27-30 | 非法值 → `null`（私有） |
 | `currentGame` 初始化 | launcherGame.ts:32-38 | 从 localStorage 读取并校验，异常回退 `"endfield"` |
-| `emit` | launcherGame.ts:42-44 | 通知全部监听者（私有） |
-| `getActiveGame` | launcherGame.ts:46-48 | 读当前游戏 |
-| `setActiveGame` | launcherGame.ts:50-57 | 相同值短路；写内存 + localStorage（try/catch）+ emit |
-| `subscribeActiveGame` | launcherGame.ts:59-64 | 注册/退订监听，返回退订函数 |
+| `GameSwitchDirection` | launcherGame.ts:42 | `1 \| -1`：`1` = 往下切（终末地 → 明日方舟），`-1` = 往上切 |
+| `switchSeq` / `switchDirection` | launcherGame.ts:50-51 | 本次切换的序号（每次自增）与方向（私有） |
+| `emit` | launcherGame.ts:53-55 | 通知全部监听者（私有） |
+| `getActiveGame` | launcherGame.ts:57-59 | 读当前游戏 |
+| `setActiveGame` | launcherGame.ts:61-72 | 相同值短路；**先算方向（按切换栏里的上下次序）与序号（自增）**，再写内存 + localStorage（try/catch）+ emit |
+| `subscribeActiveGame` | launcherGame.ts:74-79 | 注册/退订监听，返回退订函数 |
+| `getGameSwitchSeq` | launcherGame.ts:81-83 | 本次切换的序号。界面靠它判断「是不是刚切过游戏」——单看 `activeGame` 分不出「切过一次」与「本来就是这个游戏」，过渡动画就无从触发；也不能拿它当 React `key`（那会把整棵子树重建，玻璃层与滚动位置都跟着丢） |
+| `getGameSwitchDirection` | launcherGame.ts:85-87 | 本次切换的方向，界面据此决定新内容往哪个方向让位 |
 
-**备注**：订阅方——`components/custom-titlebar.tsx`（游戏模式下标题栏标题显示当前游戏名）、`components/game-switch-rail.tsx`（左侧切换栏选中态）、`components/game-action-panel.tsx`（面板顶部游戏切换与配置分区）、`layouts/dashboard.tsx`（切游戏后重拉该游戏的渠道/公告/背景）。
+**备注**：订阅方——`components/custom-titlebar.tsx`（游戏模式下标题栏标题显示当前游戏名 + 标题推入动画）、`components/game-switch-rail.tsx`（左侧切换栏选中态）、`components/game-action-panel.tsx`（面板顶部游戏切换与配置分区）、`layouts/dashboard.tsx`（切游戏后重拉该游戏的渠道/公告/背景 + 页面过渡动画）。
 
 ## `src/cards/startup-service.ts`
 **职责**：卡片启动任务服务（单例对象）：登记各卡片类型的启动处理器、管理「自动签到用户」名单与「卡片—用户」映射（均持久化到配置服务），启动时并行跑签到任务并对外广播任务状态。

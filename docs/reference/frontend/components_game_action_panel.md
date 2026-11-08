@@ -4,7 +4,7 @@
 
 **文件职责**：Windows 游戏启动器主操作面板，聚合「定位游戏目录 → 检测渠道 → 安装/更新/校验/修复/预载 → 启动/停止游戏 → 切换渠道」全流程，并提供下载进度浮层、确认对话框、磁盘空间预检、累计游戏运行时长徽章与设置入口。仅 Windows 的 dashboard 游戏模式会挂载该组件；Linux/macOS 不显示游戏入口。渠道列表同时承载《明日方舟：终末地》与《明日方舟》，按 `GAME_ORDER` / `GAME_CHANNELS` 分组渲染。
 
-**导出**：`GameActionPanel`（无 props 的函数组件，行 52）。
+**导出**：`GameActionPanel`（接受可选 props `game`，见下）；类型 `GameActionPanelProps`。
 
 **主要依赖**：
 - 项目内：`@/components/ui/modal`（`GlassAlertDialogCompound`、`GlassModalCompound`）、`@/components/ui/button`（`GlassButton`）、`@/components/ui/elapsed-time`（`ElapsedTime`，累计时长平滑显示）、`@/utils/launcherService`（全部 Tauri 后端调用与事件订阅的封装）、`@/utils/messageStore`（`addMessage`）、`@/components/game-launch-settings`（`QuickLaunchModal`、`GameLaunchSettingsFields`、`readDownloadThreads`、`readDownloadResume`、`readDx11`、`setDx11Setting`、`GAME_LAUNCH_SYNC_EVENT`）、`@/components/ui/settings-row`（`SettingsDivider`）。
@@ -51,7 +51,8 @@
 | `ProgressFlyout` | 211–234 | 内部组件：进度浮层外壳（`createPortal` + 玻璃样式 + 边界翻转），安装/校验/预下载共用 |
 | `DownloadProgressBody` | 236–282 | 内部组件：浮层里的下载型内容（已下载/总量、进度条、速度、剩余时间、当前文件） |
 | `DiskSpaceBar` | 284–347 | 内部组件：磁盘占用三色条（已用/需要下载/下载后剩余），安装确认与预下载确认共用 |
-| `GameActionPanel` | 349–3131 | 导出组件主体（无 props） |
+| `GameActionPanel` | 349–3131 | 导出组件主体。props `{ game?: LauncherGame }`：传了就**钉死**在那个游戏上（整页推移时旧页要显示旧游戏的安装状态），不传则跟随全局 store 变化 |
+| `GameActionPanelProps` | — | `{ game?: LauncherGame }` |
 | `checkStatus` | 173–196 | `useCallback`：查询游戏状态并置 `statusReady` |
 | `refreshStatus` | 241–252 | `useCallback`：静默刷新，供进度完成后调用 |
 | `checkRunning` | 259–266 | `useCallback`：查询游戏是否在运行 |
@@ -75,7 +76,7 @@
 | `updatePreloadFlyoutPos` | 1089–1101 | 依 `preloadBtnRef` 计算预下载进度浮层坐标（与主按钮同一套边界处理） |
 | `handleKill` | 1221–1236 | 调 `killGame` 杀掉游戏进程后 `checkRunning` + `refreshPlaytime` 刷新运行态与时长；**失败不再静默**：`killGame` reject 时按 `<token>: <detail>`（token 见 `KILL_TOKEN_KEYS`）弹 `launcher.stop_failed_title` 消息（tag `stop-error`），说明需要管理员授权（`cancelled`）或进程被反作弊保护（`kill_failed`） |
 | `handleToggleDx11` | 1147–1152 | 方形复选框点击处理：写入本地 `dx11` 状态并经 `setDx11Setting` 同步到 localStorage + `launcher_dx11` 后端配置，并派发 `GAME_LAUNCH_SYNC_EVENT` 让设置页实时同步 |
-| `getButtonLabel` | 1050–1075 | 依状态返回主按钮文案（hover 时切为取消类文案；预下载不参与） |
+| `getButtonLabel` | 1050–1080 | 依状态返回主按钮文案（hover 时切为取消类文案；预下载不参与）。**状态还没查到时返回 `launcher.checking`（「检查状态中...」）而不是「安装游戏」**：`is_installed` 的默认值是 false，切换游戏后重新查状态的那一百多毫秒里，按钮会先闪一下「安装游戏」再跳回「启动游戏」 |
 | `getButtonIcon` | 1084–1254 | 依状态返回 SVG 图标（旋转/暂停/下载/刷新/播放） |
 | `handleButtonClick` | 1256–1299 | 主按钮统一分发：取消切换/停止/取消校验/取消下载/安装/更新/启动 |
 | `handleConfirmAction` | 1301–1373 | 确认对话框回调，按 5 种 `confirmAction` 分支执行 |
@@ -177,7 +178,7 @@
    - `launcher_cancel_switch`（1062）
 2. **listen 事件名**：`launcher-progress`（`onLauncherProgress`，286）；`launcher://switch-progress`（`onSwitchProgress`，357）。`launcherService` 中的 `launcher://progress`（`onProgress`）本文件**未使用**。
 3. **props 清单**：
-   - `GameActionPanel()`：无 props。
+   - `GameActionPanel()`：props `{ game?: LauncherGame }`。传了 `game`（整页推移中的某一页）时**不跟随 store 变化** —— 否则新页一切换，旧页的面板也跟着换，两页就显示同一个游戏了。
    - `GameSettingsModal`：`initialPath: string`（初始安装路径）、`onClose: () => void`（关闭）、`onSave: (path: string) => void`（保存并触发状态刷新）。
    - `GameLaunchSettingsModal`：已从库中删除，「启动设置」入口直接挂 `QuickLaunchModal`（props 见 components_settings_panels.md）。
    - `GlassAlertDialog` / `GlassModal` / `GlassButton` 为其复合子组件提供的 `isOpen`、`onOpenChange`、`onPress`、`className`、`variant`、`status` 等 UI 属性。

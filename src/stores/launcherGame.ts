@@ -39,6 +39,23 @@ let currentGame: LauncherGame = (() => {
 
 let listeners: Array<() => void> = [];
 
+/** 切换方向：1 = 往下切（终末地 → 明日方舟），-1 = 往上切。 */
+export type GameSwitchDirection = 1 | -1;
+
+/**
+ * 本次切换的序号与方向。
+ *
+ * 序号每次切换自增：界面靠它判断「是不是刚切过游戏」——单看 `activeGame`
+ * 分不出「切过一次」与「本来就是这个游戏」，过渡动画就无从触发
+ * （也不能靠 activeGame 当 key，那会把整棵子树重建，
+ *  玻璃层与滚动位置都会跟着丢）。
+ *
+ * 方向由两个游戏在切换栏里的上下次序决定（切换栏自上而下是终末地、
+ * 明日方舟），界面据此决定新内容往哪个方向让位。
+ */
+let switchSeq = 0;
+let switchDirection: GameSwitchDirection = 1;
+
 function emit() {
   listeners.forEach((fn) => fn());
 }
@@ -49,11 +66,24 @@ export function getActiveGame(): LauncherGame {
 
 export function setActiveGame(game: LauncherGame) {
   if (currentGame === game) return;
+  // 切换栏里终末地在上、明日方舟在下：往下切为 1，往上切为 -1。
+  switchDirection = game === "arknights" ? 1 : -1;
+  switchSeq += 1;
   currentGame = game;
   try {
     localStorage.setItem(STORAGE_KEY, game);
   } catch {}
   emit();
+}
+
+/** 本次切换的序号（每次切换自增，用于触发一次性过渡动画）。 */
+export function getGameSwitchSeq(): number {
+  return switchSeq;
+}
+
+/** 本次切换的方向（1 = 往下切，-1 = 往上切）。 */
+export function getGameSwitchDirection(): GameSwitchDirection {
+  return switchDirection;
 }
 
 export function subscribeActiveGame(fn: () => void): () => void {

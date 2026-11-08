@@ -364,7 +364,20 @@ function DiskSpaceBar({
   );
 }
 
-export function GameActionPanel() {
+export interface GameActionPanelProps {
+  /**
+   * 面板要显示哪个游戏。
+   *
+   * 切换游戏时做的是**整页推移**：旧页与新页同时在画面上，各自的面板
+   * 必须显示各自游戏的安装状态 —— 所以这里允许把面板「钉」在某个游戏上，
+   * 不跟随全局 store 变化。
+   *
+   * 不传时跟随全局 store（普通用法）。
+   */
+  game?: LauncherGame;
+}
+
+export function GameActionPanel({ game: pinnedGame }: GameActionPanelProps = {}) {
   const { t, i18n } = useTranslation();
   const lang = i18n.language === "zh" ? "zh" : "en";
   /**
@@ -372,17 +385,21 @@ export function GameActionPanel() {
    *
    * 面板顶部有游戏切换；每切换一次，安装路径、渠道、DX11 等全部换成该游戏自己那一份
    * （键名由 `gameConfigKey` / `scopedKey` 派生），两个游戏的配置互不覆盖。
+   *
+   * 传了 `pinnedGame`（整页推移中的旧页）时钉死在那个游戏上，
+   * 不再跟随 store —— 否则新页一订阅就把旧页的面板也换掉了。
    */
-  const [game, setGame] = useState<LauncherGame>(getActiveGame);
+  const [followedGame, setFollowedGame] = useState<LauncherGame>(getActiveGame);
+  const game = pinnedGame ?? followedGame;
   const [channel, setChannel] = useState<GameChannel>(() =>
-    readGameChannel(getActiveGame()),
+    readGameChannel(pinnedGame ?? getActiveGame()),
   );
   const [gameStatus, setGameStatus] = useState<GameStatus | null>(null);
   const [localActiveOp, setLocalActiveOp] = useState<ActiveOperation | null>(
     null,
   );
   const [installPath, setInstallPath] = useState(() =>
-    readGameInstallPath(getActiveGame()),
+    readGameInstallPath(pinnedGame ?? getActiveGame()),
   );
   const [detectedChannel, setDetectedChannel] = useState<GameChannel | null>(
     // 初始值不给渠道：缓存里的渠道未必是"这个目录识别出来的渠道"，
@@ -396,7 +413,9 @@ export function GameActionPanel() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [quickLaunchOpen, setQuickLaunchOpen] = useState(false);
   const [gameRunning, setGameRunning] = useState(false);
-  const [dx11, setDx11] = useState(() => readDx11(getActiveGame()));
+  const [dx11, setDx11] = useState(() =>
+    readDx11(pinnedGame ?? getActiveGame()),
+  );
   const [playtime, setPlaytime] = useState<GamePlaytime | null>(null);
   const [btnHovered, setBtnHovered] = useState(false);
   const [btnLabelKey, setBtnLabelKey] = useState(0);
@@ -525,8 +544,11 @@ export function GameActionPanel() {
   // 真正的识别交给下面的自动检测 effect（每次都问后端）。
   useEffect(() => {
     return subscribeActiveGame(() => {
+      // 钉在某个游戏上时（整页推移中的旧页）不跟随 store 变化，
+      // 否则新页一切换，旧页的面板也跟着换，两页就显示同一个游戏了。
+      if (pinnedGame) return;
       const next = getActiveGame();
-      setGame((previous) => {
+      setFollowedGame((previous) => {
         if (previous === next) return previous;
         const nextPath = readGameInstallPath(next);
         const nextChannel = readGameChannel(next);
@@ -542,7 +564,7 @@ export function GameActionPanel() {
         return next;
       });
     });
-  }, []);
+  }, [pinnedGame]);
 
   // 后端 config 才是启动游戏的真正依据（静默启动、快捷方式都直接读它）；
   // WebView 的 localStorage 可能因换构建产物或清缓存丢失，这里把后端值回灌一次，
@@ -1581,6 +1603,10 @@ export function GameActionPanel() {
       return btnHovered ? t("launcher.cancel_switch") : t("launcher.switching");
     if (gameRunning)
       return btnHovered ? t("launcher.stop") : t("launcher.running");
+    // 状态还没查到时**不能**报「安装游戏」：`is_installed` 的默认值是 false，
+    // 切换游戏后重新查状态的那一百多毫秒里，按钮会先闪一下「安装游戏」、
+    // 再跳回「启动游戏」。这里如实说「检查状态中」。
+    if (!statusReady) return t("launcher.checking");
     if (!installPath) return t("launcher.locate_game");
     if (preparing)
       return btnHovered ? t("launcher.cancel_verify") : t("launcher.preparing");

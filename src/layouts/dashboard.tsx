@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, Suspense } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo, Suspense } from "react";
 import { useLocation } from "react-router-dom";
 import clsx from "clsx";
 import { CustomTitlebar } from "@/components/custom-titlebar";
@@ -8,9 +8,7 @@ import { getConfig, setConfig } from "@/utils/configService";
 import {
   getLauncherMode,
   subscribeLauncherMode,
-  getLauncherBgMedia,
   setLauncherBgMedia,
-  subscribeLauncherBgMedia,
   getGameBgMode,
   setGameBgMode,
   subscribeGameBgMode,
@@ -18,38 +16,33 @@ import {
   type GameBgMode,
 } from "@/stores/launcherMode";
 import {
-  openInAppBrowser,
   suspendInAppBrowser,
   resumeInAppBrowser,
 } from "@/stores/inAppBrowser";
 import { InAppBrowser } from "@/components/in-app-browser";
-import { GameActionPanel } from "@/components/game-action-panel";
-import { GameSidebarRail } from "@/components/game-sidebar-rail";
 import { GameSwitchRail } from "@/components/game-switch-rail";
 import { useTranslation } from "react-i18next";
 import { MorphIcon } from "morphicons/react";
-import {
-  ChevronLeft,
-  ChevronRight,
-  Image as ImageIcon,
-  Video,
-} from "lucide";
-import { trackStartupTask } from "@/utils/startupProgress";
+import { Image as ImageIcon, Video } from "lucide";
 import {
   type GameChannel,
-  type BannerItem,
-  type AnnouncementItem,
-  type SidebarItem,
   CHANNEL_GAME,
-  getNoticeContent,
-  getBackgroundImage,
   readGameChannel,
 } from "@/utils/launcherService";
 import {
   getActiveGame,
   subscribeActiveGame,
+  getGameSwitchDirection,
+  type LauncherGame,
 } from "@/stores/launcherGame";
-import { isWindowsPlatform } from "@/utils/platform";
+import {
+  GamePageContent,
+  EMPTY_PAGE_DATA,
+  fetchPageData,
+  getCachedPageData,
+  prefetchOtherGame,
+  type GamePageData,
+} from "@/components/game-page";
 
 /** 旧键名：仅用于把历史选择迁移到按游戏分区的键上（见下方 channel effect）。 */
 
@@ -57,30 +50,118 @@ interface DashboardLayoutProps {
   children: React.ReactNode;
 }
 
+/**
+ * 推移中的页面状态。
+ *
+ * `direction` 与 `stores/launcherGame` 的一致：`1` = 往下切（终末地 → 明日方舟），
+ * `-1` = 往上切。`progress` 是动画进度（0 = 起始，1 = 结束）。
+ */
+interface PushState {
+  from: LauncherGame;
+  to: LauncherGame;
+  direction: 1 | -1;
+  progress: number;
+}
+
+/** 渲染中的一个页面层 */
+interface PageLayer {
+  game: LauncherGame;
+  /** 垂直位移（CSS transform 值） */
+  offset: string;
+  /** 是否是正在进入的新页（层级更高） */
+  enter: boolean;
+  data: GamePageData;
+  /** 该页的背景资源（原始形态，交给背景模式切换器用） */
+  background: LauncherBgMedia | null;
+  /** 按当前背景模式解析出来的实际要显示的资源 */
+  backgroundSrc: { src: string; showVideo: boolean } | null;
+}
+
 export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const location = useLocation();
-  const { t } = useTranslation();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [viewMode, setViewMode] = useState(getLauncherMode);
-  const [bgMedia, setBgMedia] = useState<LauncherBgMedia | null>(
-    getLauncherBgMedia,
-  );
   const [bgMediaMode, setBgMediaMode] = useState<GameBgMode>(getGameBgMode);
   // 公告 / 背景图 / 横幅都跟着"当前游戏"走：切换游戏后重新拉该游戏的内容。
   const [activeGame, setActiveGame] = useState(getActiveGame);
+  /**
+   * 当前游戏的 ref 镜像。
+   *
+   * 切游戏的订阅 effect **只订阅一次**（依赖数组为空），靠这个 ref 记住
+   * 「切换前是哪个游戏」——用 state 的话每次切换都会重订阅 store，
+   * 时序上会漏掉事件。
+   */
+  const activeGameRef = useRef(activeGame);
   const [channel, setChannel] = useState<GameChannel>(() =>
     readGameChannel(getActiveGame()),
   );
-  const [banners, setBanners] = useState<BannerItem[]>([]);
-  const [announcements, setAnnouncements] = useState<AnnouncementItem[]>([]);
-  const [sidebars, setSidebars] = useState<SidebarItem[]>([]);
-  const [bannerIndex, setBannerIndex] = useState(0);
-  const [bannerHovered, setBannerHovered] = useState(false);
-  const bannerPrevIndexRef = useRef(0);
-  const [bannerDir, setBannerDir] = useState<1 | -1>(1);
-  const [outgoingBanner, setOutgoingBanner] = useState<number | null>(null);
-  const [announcementTab, setAnnouncementTab] = useState(0);
+
+  // ========== 游戏切换：整页推移 ==========
+  //
+  // 往下切（《终末地》→《明日方舟》）：新页从下方进入，把旧页往上方推出视口。
+  // 往上切则相反：新页从上方进入，把旧页往下方推出。
+  //
+  // 两页同时在场，所以每一页都得带自己的数据（背景/横幅/公告/侧边栏）。
+  // 数据提前拉好（见 game-page.tsx 的预取），否则新页推上来是空白。
+
+  /** 推移期间显示的页面层（出栈页 + 入栈页）；非推移期间只有当前页 */
+  const [push, setPush] = useState<PushState | null>(null);
+  /** 推移动画的实时进度（0 = 起始，1 = 结束），用 rAF 驱动 */
+  const pushProgressRef = useRef(0);
+  const pushRafRef = useRef<number | null>(null);
+  /** 推移进度变化时更新 state（节流到每帧一次） */
+  const [pushProgress, setPushProgress] = useState(0);
+
+  // 推移动画：出栈页与入栈页各自沿 Y 轴移动一整屏。
+  //
+  // 用 rAF 驱动而不是 CSS transition —— 因为两页的位置都由同一个进度算出来，
+  // CSS 要写两套 keyframes 且难以保证严格同步（一边先到、一边后到就穿帮了）。
+  //
+  // 进度用 `--lg-ease-emphasized` 的曲线（起步爆发、收尾长），位移一整屏。
+  const runPush = useCallback(
+    (from: LauncherGame, to: LauncherGame, direction: 1 | -1) => {
+      if (pushRafRef.current) cancelAnimationFrame(pushRafRef.current);
+
+      const duration = 460;
+      const start = performance.now();
+      // 缓动与 globals.css 的 --lg-ease-emphasized 一致（cubic-bezier(0.16,1,0.3,1)）
+      const ease = (t: number) => 1 - Math.pow(1 - t, 3);
+
+      setPush({
+        from,
+        to,
+        direction,
+        progress: 0,
+      });
+      pushProgressRef.current = 0;
+
+      const step = (now: number) => {
+        const t = Math.min(1, (now - start) / duration);
+        const eased = ease(t);
+        pushProgressRef.current = eased;
+        setPushProgress(eased);
+        if (t < 1) {
+          pushRafRef.current = requestAnimationFrame(step);
+        } else {
+          pushRafRef.current = null;
+          // 推移结束：只留新页
+          setPush(null);
+          setPushProgress(0);
+        }
+      };
+      pushRafRef.current = requestAnimationFrame(step);
+    },
+    [],
+  );
+
+  // 卸载时停掉动画帧
+  useEffect(
+    () => () => {
+      if (pushRafRef.current) cancelAnimationFrame(pushRafRef.current);
+    },
+    [],
+  );
 
   useEffect(() => {
     return subscribeLauncherMode(() => {
@@ -100,25 +181,48 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   }, [viewMode]);
 
   useEffect(() => {
-    return subscribeLauncherBgMedia(() => {
-      setBgMedia(getLauncherBgMedia());
-    });
-  }, []);
-
-  useEffect(() => {
     return subscribeGameBgMode(() => {
       setBgMediaMode(getGameBgMode());
     });
   }, []);
 
   // 切换游戏时，把 dashboard 的渠道与背景/公告一起换到该游戏。
+  //
+  // effect **只订阅一次**（依赖数组为空）：当前游戏用 ref 记录。
+  // 若把 `activeGame` 放进依赖，每次切换都会退订并重新订阅 store ——
+  // 而 `setActiveGame(next)` 触发的正是这次重订阅，时序上会漏掉事件，
+  // 表现为「切回去时没有推移动画」。
   useEffect(() => {
     return subscribeActiveGame(() => {
       const next = getActiveGame();
+      const prev = activeGameRef.current;
+      if (prev === next) return;
+      activeGameRef.current = next;
       setActiveGame(next);
       setChannel(readGameChannel(next));
+
+      const direction = getGameSwitchDirection();
+
+      // 整页推移：旧页往 direction 的反方向退出，新页从 direction 方向进来。
+      //
+      // 先确保新页的数据在手（没有数据的话新页推上来是空白）：
+      // 缓存里有就直接推，没有就等拉完再推 —— 等的时候旧页还留在原地，
+      // 用户看到的是「新页从下面推上来」，而不是「旧页没了、新页空白」。
+      const cached = getCachedPageData(next);
+      if (cached) {
+        runPush(prev, next, direction);
+      } else {
+        void fetchPageData(next).then(() => {
+          runPush(prev, next, direction);
+        });
+      }
     });
-  }, []);
+  }, [runPush]);
+
+  // 预取另一个游戏的数据：第一次切过去时不用等网络，推移动画立刻就能播。
+  useEffect(() => {
+    prefetchOtherGame(activeGame);
+  }, [activeGame]);
 
   // 渠道变化（切游戏 / 换服）时，若跨了游戏，把游戏选择也跟上。
   useEffect(() => {
@@ -143,94 +247,6 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     });
   };
 
-  // Fetch background + banners when channel changes
-  useEffect(() => {
-    if (!isWindowsPlatform()) return;
-    const initialData = Promise.all([
-      getBackgroundImage(channel)
-        .then(setLauncherBgMedia)
-        .catch(() => setLauncherBgMedia(null)),
-
-      getNoticeContent(channel)
-        .then((content) => {
-          console.log(
-            "[Dashboard] Notices loaded:",
-            content.banners.length,
-            "banners,",
-            content.announcements.length,
-            "announcements,",
-            content.sidebars?.length ?? 0,
-            "sidebars",
-          );
-          setBanners(content.banners);
-          setAnnouncements(content.announcements);
-          setSidebars(content.sidebars ?? []);
-        })
-        .catch((e) => {
-          console.error("[Dashboard] Failed to load notices:", e);
-          setBanners([]);
-          setAnnouncements([]);
-          setSidebars([]);
-        }),
-    ]);
-
-    // 公告与背景图不是关键路径：后端命令迟迟不返回时（下载长时间占用服务、接口卡住）
-    // 也不能把启动流程一起拖死——超时先放行 splash，数据到了再各自 setState 补上。
-    void trackStartupTask(
-      Promise.race([
-        initialData,
-        new Promise<void>((resolve) => {
-          setTimeout(resolve, 8000);
-        }),
-      ]),
-    );
-  }, [channel]);
-
-  // Banner auto-rotate (paused on hover)
-  useEffect(() => {
-    if (banners.length <= 1 || bannerHovered) return;
-    const timer = setInterval(() => {
-      setBannerIndex((i) => (i + 1) % banners.length);
-    }, 5000);
-    return () => clearInterval(timer);
-  }, [banners.length, bannerHovered]);
-
-  // Derive push direction + keep the outgoing banner mounted for the transition
-  useEffect(() => {
-    const prev = bannerPrevIndexRef.current;
-    if (prev === bannerIndex) {
-      // List reloaded without navigating (e.g. channel switch): drop any stale clone.
-      setOutgoingBanner(null);
-      return;
-    }
-    const len = banners.length;
-    // Wrap-around (last -> first) counts as "next"; anything else that is not
-    // the immediate successor slides in from the left.
-    setBannerDir(len > 1 && bannerIndex === (prev + 1) % len ? 1 : -1);
-    setOutgoingBanner(prev);
-    bannerPrevIndexRef.current = bannerIndex;
-    const timer = setTimeout(() => setOutgoingBanner(null), 400);
-    return () => clearTimeout(timer);
-  }, [bannerIndex, banners.length]);
-
-  // Preload banner images so the push transition never flashes a blank frame
-  useEffect(() => {
-    banners.forEach((b) => {
-      if (!b.image_url) return;
-      const img = new Image();
-      img.src = b.image_url;
-    });
-  }, [banners]);
-
-  // 换游戏/换渠道后 banner 列表长度会变（终末地 9 条、明日方舟 8 条），
-  // 轮播下标可能停在越界位置 —— 渲染时直接取 banners[bannerIndex] 会读到
-  // undefined，整个面板白屏。这里把下标夹回合法范围。
-  useEffect(() => {
-    setBannerIndex((i) => {
-      if (banners.length === 0) return 0;
-      return i >= banners.length ? 0 : i;
-    });
-  }, [banners.length]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -240,253 +256,156 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   }, []);
 
   const isGameMode = viewMode === "game";
-  const announcementCategories = [
-    ...new Set(announcements.map((a) => a.category)),
-  ];
-  const activeAnnouncementCategory =
-    announcementCategories[announcementTab] || announcementCategories[0];
-  const filteredAnnouncements = announcements.filter(
-    (a) => a.category === activeAnnouncementCategory,
-  );
 
-  // 换游戏后公告分类数会变（终末地 3 类、明日方舟 2 类），选中的下标可能越界，
-  // 那样页签一个都不高亮。越界时夹回第一个。
-  useEffect(() => {
-    setAnnouncementTab((i) =>
-      announcementCategories.length === 0
-        ? 0
-        : i >= announcementCategories.length
-          ? 0
-          : i,
-    );
-  }, [announcementCategories.length]);
+  // ========== 页面层（整页推移用） ==========
+  //
+  // 推移期间要同时渲染两页：出栈页（旧游戏）与入栈页（新游戏）。
+  // 每页的背景来自它自己的数据，所以两页的画面互不干扰。
+  const pages = useMemo<PageLayer[]>(() => {
+    const makePage = (
+      game: LauncherGame,
+      offset: string,
+      enter: boolean,
+    ): PageLayer => {
+      const media = getCachedPageData(game)?.background ?? null;
+      const videoSrc =
+        media && bgMediaMode === "video" ? media.video_url : null;
+      const src =
+        typeof videoSrc === "string" && videoSrc.length > 0
+          ? videoSrc
+          : (media?.image_url ?? media?.video_url ?? null);
+      return {
+        game,
+        offset,
+        enter,
+        data: getCachedPageData(game) ?? EMPTY_PAGE_DATA,
+        background: media,
+        backgroundSrc:
+          typeof src === "string" && src.length > 0
+            ? { src, showVideo: src === videoSrc }
+            : null,
+      };
+    };
+
+    if (push) {
+      const { from, to, direction } = push;
+      // 往下切（direction = 1）：新页从下方进来，旧页往上方走
+      // 往上切（direction = -1）：新页从上方进来，旧页往下方走
+      //
+      // 位移用 `vh` 而不是 `%`：`%` 的基准是元素自身高度，而页面层是
+      // `absolute inset-0`（高度跟随父容器）。父容器一旦因为内容塌陷或
+      // 布局异常而比视口矮，推移距离就会跟着缩水 —— 动画变成"抖一下"。
+      // `vh` 直接以视口为基准，与实际观感一致。
+      const enterOffset = direction * 100;
+      const exitOffset = -direction * 100;
+      return [
+        makePage(from, `translateY(${exitOffset * pushProgress}vh)`, false),
+        makePage(to, `translateY(${enterOffset * (1 - pushProgress)}vh)`, true),
+      ];
+    }
+
+    return [makePage(activeGame, "translateY(0vh)", true)];
+  }, [push, pushProgress, activeGame, bgMediaMode]);
 
   // ========== GAME MODE ==========
   if (isGameMode) {
-    const bgVideoSrc =
-      bgMedia && bgMediaMode === "video" ? bgMedia.video_url : null;
-    const bgImageSrc = bgMedia
-      ? (bgMedia.image_url ?? bgMedia.video_url)
-      : null;
-    const showVideo =
-      typeof bgVideoSrc === "string" && bgVideoSrc.length > 0;
-    const bgSrc = showVideo ? bgVideoSrc : bgImageSrc;
-
     return (
       <div className="relative flex flex-col h-screen">
-        {/* Full-bleed background */}
-        <div className="fixed inset-0 z-0">
-          {bgSrc ? (
-            <>
-              {showVideo ? (
-                <video
-                  src={bgSrc}
-                  autoPlay
-                  loop
-                  muted
-                  playsInline
-                  className="w-full h-full object-cover"
-                />
-              ) : (
-                // 图片背景规则（等价 CSS object-fit/background-size: cover）：
-                // 保持原始宽高比，取 max(W/w, H/h) 等比缩放，使缩放后的宽和高都
-                // ≥ 容器，从而完全覆盖、不留空白；溢出的一边（长边方向）居中裁掉。
-                <div
-                  role="img"
-                  aria-label="Background"
-                  className="w-full h-full"
-                  style={{
-                    backgroundImage: `url("${bgSrc}")`,
-                    backgroundRepeat: "no-repeat",
-                    backgroundPosition: "center",
-                    backgroundSize: "cover",
-                  }}
-                />
-              )}
-              <div className="absolute inset-0 bg-gradient-to-t from-background/50 via-transparent to-background/10" />
-            </>
-          ) : (
-            <div className="w-full h-full bg-gradient-to-br from-primary/10 via-background to-background" />
-          )}
+        {/*
+         * 标题栏拆成两半：
+         *  - **品牌区**（图标 + 游戏名 + 数据/游戏模式切换）在页面层里，两页各一份，
+         *    跟着页面一起被推走；
+         *  - **右侧区**（铃铛 + 窗口控制按钮）只渲染一份，放在页面层之外 ——
+         *    两份会出现重复的窗口按钮。
+         *
+         * 右侧区这一份是固定不动的：它不跟页面走，推移时始终停在右上角。
+         */}
+        <div className="absolute inset-0 z-20 flex flex-col pointer-events-none">
+          <div className="pointer-events-auto">
+            <CustomTitlebar
+              brandOnly={false}
+              className="relative z-10"
+              controlsOnly
+            />
+          </div>
         </div>
 
         {/*
-         * 游戏模式不铺磨砂层（数据模式才有 `.frost-main frost-with-sidebar`）：
-         * 这里的背景是视频，标题栏要的是背景本身的清晰度，而不是再叠一层
-         * backdrop-filter 把画面糊掉。
+         * 整页推移：切换游戏时**两页同时在场**。
+         *
+         * 往下切（《明日方舟》）：新页从下方进入，把旧页往上方推出视口；
+         * 往上切（《终末地》）：新页从上方进入，把旧页往下方推出视口。
+         *
+         * 所以这里渲染的是「页面层」而不是「当前页」——
+         * `pages` 里是推移期间要显示的两页（出栈页 + 入栈页），
+         * 各自带着自己的背景、横幅、公告与操作面板。
          */}
-        <CustomTitlebar />
-
-        {/* Background mode switch — floats in near the top center */}
-        {bgMedia && (
-          <GameBackgroundSwitch mode={bgMediaMode} media={bgMedia} />
-        )}
-
-        {/* In-app browser overlay — 全屏覆盖（含标题栏），自带窗口控制 */}
-        <InAppBrowser />
-
-        {/* 左侧游戏切换：贴左边缘，鼠标靠近才展开（终末地 / 明日方舟） */}
-        <GameSwitchRail />
-
-        {/* 右侧官方社媒栏：收起为浮标，靠近右边缘展开，悬停出二维码 */}
-        <GameSidebarRail items={sidebars} />
-
-        {/* Content layer */}
-        <div className="relative z-10 flex-1 flex flex-col p-4 lg:p-8">
-          {/* Spacer */}
-          <div className="flex-1" />
-
-          {/* Bottom: banner/announcements (left) + game action (right) */}
-          <div className="flex items-end justify-between gap-4">
-            {/* Banner + announcements box */}
-            <div className="lg-media-chip lg-hairline flex items-stretch h-40 max-w-2xl flex-1 min-w-0 rounded-xl overflow-hidden">
-              {/* Banner — left side, 4px margin top/left/bottom, auto width by aspect ratio */}
-              {banners.length > 0 && (
-                <div
-                  className="relative shrink-0 my-1 ml-1 flex items-center group overflow-hidden rounded-lg"
-                  onMouseEnter={() => setBannerHovered(true)}
-                  onMouseLeave={() => setBannerHovered(false)}
-                >
-                  {/* Outgoing banner — pushed out to the opposite side */}
-                  {outgoingBanner !== null && banners[outgoingBanner] && (
-                    <img
-                      key={`banner-out-${outgoingBanner}`}
-                      src={banners[outgoingBanner].image_url}
-                      alt=""
-                      aria-hidden="true"
-                      className={`absolute inset-y-0 left-0 h-full w-auto object-contain rounded-lg pointer-events-none ${
-                        bannerDir === 1
-                          ? "animate-banner-push-out-left"
-                          : "animate-banner-push-out-right"
-                      }`}
+        {pages.map((page) => (
+          <div
+            key={page.game}
+            className="absolute inset-0 flex flex-col"
+            style={{
+              // 出栈页推出去、入栈页推进来；两者都用整屏位移，不做淡入
+              // （淡入会让玻璃宿主变成 backdrop root，玻璃当场失效）。
+              transform: page.offset,
+              willChange: "transform",
+              zIndex: page.enter ? 1 : 0,
+            }}
+          >
+            {/* Full-bleed background */}
+            <div className="fixed inset-0 z-0">
+              {page.backgroundSrc ? (
+                <>
+                  {page.backgroundSrc.showVideo ? (
+                    <video
+                      src={page.backgroundSrc.src}
+                      autoPlay
+                      loop
+                      muted
+                      playsInline
+                      className="w-full h-full object-cover"
                     />
-                  )}
-
-                  {/* Incoming banner — slides in, then zooms on hover */}
-                  <div
-                    key={`banner-in-${bannerIndex}`}
-                    className={`relative z-[1] h-full flex items-center ${
-                      outgoingBanner !== null
-                        ? bannerDir === 1
-                          ? "animate-banner-push-in-right"
-                          : "animate-banner-push-in-left"
-                        : ""
-                    }`}
-                  >
-                    <img
-                      src={banners[bannerIndex].image_url}
-                      alt="Banner"
-                      className="h-full w-auto object-contain rounded-lg cursor-pointer transition-transform duration-300 ease-out group-hover:scale-[1.08]"
-                      onClick={() => {
-                        const url = banners[bannerIndex].jump_url;
-                        if (url) openInAppBrowser(url);
-                      }}
-                      onError={(e) => {
-                        (e.target as HTMLImageElement).style.display = "none";
+                  ) : (
+                    // 图片背景规则（等价 CSS object-fit/background-size: cover）：
+                    // 保持原始宽高比，取 max(W/w, H/h) 等比缩放，使缩放后的宽和高都
+                    // ≥ 容器，从而完全覆盖、不留空白；溢出的一边（长边方向）居中裁掉。
+                    <div
+                      role="img"
+                      aria-label="Background"
+                      className="w-full h-full"
+                      style={{
+                        backgroundImage: `url("${page.backgroundSrc.src}")`,
+                        backgroundRepeat: "no-repeat",
+                        backgroundPosition: "center",
+                        backgroundSize: "cover",
                       }}
                     />
-                  </div>
-
-                  {/* Left / Right arrows — visible on hover */}
-                  {banners.length > 1 && bannerHovered && (
-                    <>
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setBannerIndex(
-                            (i) => (i - 1 + banners.length) % banners.length,
-                          );
-                        }}
-                        className="absolute left-0.5 top-1/2 -translate-y-1/2 w-5 h-14 flex items-center justify-center rounded-full bg-black/50 text-white/80 hover:bg-black/70 hover:text-white transition-colors cursor-pointer z-10"
-                      >
-                        <MorphIcon icon={ChevronLeft} size={16} aria-hidden />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setBannerIndex((i) => (i + 1) % banners.length);
-                        }}
-                        className="absolute right-0.5 top-1/2 -translate-y-1/2 w-5 h-14 flex items-center justify-center rounded-full bg-black/50 text-white/80 hover:bg-black/70 hover:text-white transition-colors cursor-pointer z-10"
-                      >
-                        <MorphIcon icon={ChevronRight} size={16} aria-hidden />
-                      </button>
-                    </>
                   )}
-
-                  {/* Dots */}
-                  {banners.length > 1 && (
-                    <div className="absolute bottom-0 left-1/2 -translate-x-1/2 flex gap-1 z-10">
-                      {banners.map((_, i) => (
-                        <button
-                          key={i}
-                          type="button"
-                          className={`w-1.5 h-1.5 rounded-full transition-all cursor-pointer ${
-                            i === bannerIndex ? "bg-white w-3" : "bg-white/40"
-                          }`}
-                          onClick={() => setBannerIndex(i)}
-                        />
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Announcements — right side */}
-              {announcementCategories.length > 0 ? (
-                <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-                  {/* Tabs */}
-                  <div className="flex items-center gap-0 px-3 pt-2 shrink-0">
-                    {announcementCategories.map((cat, i) => (
-                      <button
-                        key={cat}
-                        type="button"
-                        onClick={() => setAnnouncementTab(i)}
-                        className={`px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer ${
-                          i === announcementTab
-                            ? "text-white border-b-2 border-white"
-                            : "text-white/50 hover:text-white/80"
-                        }`}
-                      >
-                        {cat}
-                      </button>
-                    ))}
-                  </div>
-
-                  {/* List */}
-                  <div className="flex-1 px-3 pb-2 pt-1 space-y-0.5 overflow-y-auto">
-                    {filteredAnnouncements.slice(0, 6).map((item, i) => (
-                      <div
-                        key={i}
-                        className="flex items-center justify-between py-1.5 px-1 rounded-lg lg-hoverable-soft transition-colors cursor-pointer"
-                        onClick={() => {
-                          if (item.jump_url) openInAppBrowser(item.jump_url);
-                        }}
-                      >
-                        <span className="text-xs text-white/80 truncate mr-2">
-                          {item.title}
-                        </span>
-                        <span className="text-[10px] text-white/40 shrink-0">
-                          {item.date}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
+                  <div className="absolute inset-0 bg-gradient-to-t from-background/50 via-transparent to-background/10" />
+                </>
               ) : (
-                <div className="flex-1 flex items-center justify-center text-xs text-white/30">
-                  {t("launcher.no_announcements")}
-                </div>
+                <div className="w-full h-full bg-gradient-to-br from-primary/10 via-background to-background" />
               )}
             </div>
 
-            {/* Game action panel — right side */}
-            <div className="shrink-0 self-end mb-2">
-              <GameActionPanel />
-            </div>
+            {/* 标题栏品牌区：随页面一起被推走 */}
+            <CustomTitlebar game={page.game} brandOnly className="relative z-10" />
+
+            {/* Background mode switch — floats in near the top center */}
+            {page.background && (
+              <GameBackgroundSwitch mode={bgMediaMode} media={page.background} />
+            )}
+
+            {/* In-app browser overlay — 全屏覆盖（含标题栏），自带窗口控制 */}
+            <InAppBrowser />
+
+            {/* 左侧游戏切换：贴左边缘，鼠标靠近才展开（终末地 / 明日方舟） */}
+            <GameSwitchRail />
+
+            {/* 页面内容：右侧社媒栏 + 底部横幅公告 + 操作面板 */}
+            <GamePageContent game={page.game} data={page.data} />
           </div>
-        </div>
+        ))}
       </div>
     );
   }
