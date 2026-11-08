@@ -1,4 +1,4 @@
-﻿#[cfg(target_os = "windows")]
+#[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
 use std::sync::Arc;
 use std::sync::Mutex as StdMutex;
@@ -576,6 +576,9 @@ pub(crate) async fn launch_game(
     // æ³¨æ„ä¸¤ä¸ªæ¸¸æˆçš„ exe manifest éƒ½æ˜¯ `requireAdministrator`ï¼ˆå®žæµ‹ RT_MANIFESTï¼‰ï¼Œ
     // æ‰€ä»¥ `direct_launch` çš„ ShellExecute ä»ä¼šå¼¹ UAC â€”â€” ä¸Žã€Œæ‰¾ä¸åˆ°å®˜æ–¹å¯åŠ¨å™¨æ—¶ç»ˆæœ«åœ°çš„
     // å›žé€€è·¯å¾„ã€å®Œå…¨ä¸€è‡´ã€‚
+    // 分支里用到的 `direct_launch` / `launched_by_steam` / `process_is_elevated` 都是 Windows 专属，
+    // 非 Windows 平台跳过这条快路径，落到下方通用 spawn 逻辑。
+    #[cfg(target_os = "windows")]
     if ch.is_arknights() {
         let _ = crate::utils::process::terminate_processes(exe_name);
         tracing::info!("[launcher] {exe_name} launched directly (no parent-process check)");
