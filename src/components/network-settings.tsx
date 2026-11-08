@@ -16,6 +16,7 @@ import {
   LoadingIcon,
 } from "@/components/ui/app-icon";
 import { SettingsDivider } from "@/components/ui/settings-row";
+import { pushGlobalAlert } from "@/components/ui/global-alert";
 import { isTauri } from "@tauri-apps/api/core";
 import type { ProxyConfig, ProxyType } from "@/utils/proxyService";
 import {
@@ -206,7 +207,7 @@ export function NetworkSettings() {
     setAutoDetecting(false);
 
     if (!result.ok) {
-      showNotice({ tone: "danger", text: t("settings.network.proxy_auto_detect_failed") });
+      pushGlobalAlert("danger", t("settings.network.proxy_auto_detect_failed"));
       logError(`[NetworkSettings] auto detect failed: ${result.error}`, "Settings");
       return;
     }
@@ -214,14 +215,15 @@ export function NetworkSettings() {
     const next = result.value;
     setConfig(next);
     await persist(next, { silent: true });
-    showNotice({
-      tone: "success",
-      text: t("settings.network.proxy_auto_detected", {
+    // 嗅探成功用全局 message 提示（顶部 toast），避免表单内 notice 被展开区域裁切。
+    pushGlobalAlert(
+      "success",
+      t("settings.network.proxy_auto_detected", {
         type: next.type,
         host: next.host,
         port: next.port,
       }),
-    });
+    );
   };
 
   const handleTest = async () => {
@@ -254,11 +256,19 @@ export function NetworkSettings() {
   };
 
   const handleReset = async () => {
-    const next = { ...DEFAULT_PROXY_CONFIG, type: config.type, port: DEFAULT_PROXY_PORT[config.type] };
+    // 重置清空所有代理内容（主机/端口/认证/排除/远程 DNS），
+    // 只保留当前协议类型并回退到该协议的默认端口；
+    // 不自动改变「使用代理」开关的当前状态。
+    const next = normalizeProxyConfig({
+      ...DEFAULT_PROXY_CONFIG,
+      enabled: config.enabled,
+      type: config.type,
+      port: DEFAULT_PROXY_PORT[config.type],
+    });
     setConfig(next);
     setPacUrl("");
     await persist(next, { silent: true });
-    showNotice({ tone: "success", text: t("settings.network.proxy_saved") });
+    showNotice({ tone: "success", text: t("settings.network.proxy_reset_done") });
   };
 
   const handleSave = async () => {

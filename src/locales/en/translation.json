@@ -216,7 +216,9 @@
       "proxy_import_system_desc": "Read the proxy currently configured in Windows",
       "proxy_pac_notice": "Your system uses an automatic configuration script (PAC), which cannot be imported. Enter the proxy manually.",
       "proxy_test": "Test Connection",
-      "proxy_testing": "Testing…"
+      "proxy_testing": "Testing…",
+      "proxy_auto_detect": "Auto Detect",
+      "proxy_auto_detect_desc": "Auto detect common local proxy client ports (HTTP and SOCKS5) and configure"
     },
     "network": {
       "title": "Network",
@@ -230,10 +232,9 @@
       "proxy_invalid_port": "Port must be between 1 and 65535",
       "proxy_test_ok": "Connected (HTTP {{status}}, {{ms}} ms)",
       "proxy_test_failed": "Connection failed",
-      "proxy_auto_detect": "Auto Detect",
-      "proxy_auto_detect_desc": "Auto detect common local proxy ports and configure",
       "proxy_auto_detected": "Auto configured {{type}} proxy: {{host}}:{{port}}",
       "proxy_auto_detect_failed": "No available local proxy found",
+      "proxy_reset_done": "Proxy settings reset",
       "proxy_enable_warning_title": "Enable Proxy Warning",
       "proxy_enable_warning_body": "Enabling proxy will route all requests through the proxy, which may cause some APIs to be unavailable. Please confirm the proxy address is correct.",
       "proxy_enable_dont_show": "Don't show again"

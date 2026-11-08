@@ -216,7 +216,9 @@
       "proxy_import_system_desc": "读取 Windows 当前已配置的代理",
       "proxy_pac_notice": "系统使用了自动配置脚本（PAC），无法直接读取，请手动填写代理地址。",
       "proxy_test": "测试连接",
-      "proxy_testing": "测试中…"
+      "proxy_testing": "测试中…",
+      "proxy_auto_detect": "自动嗅探",
+      "proxy_auto_detect_desc": "自动探测本地常用代理客户端端口并配置（支持 HTTP 与 SOCKS5）"
     },
     "network": {
       "title": "网络",
@@ -230,10 +232,9 @@
       "proxy_invalid_port": "端口需在 1-65535 之间",
       "proxy_test_ok": "连接成功（HTTP {{status}}，{{ms}} ms）",
       "proxy_test_failed": "连接失败",
-      "proxy_auto_detect": "自动嗅探",
-      "proxy_auto_detect_desc": "自动探测本地常用代理端口并配置",
       "proxy_auto_detected": "已自动配置 {{type}} 代理：{{host}}:{{port}}",
       "proxy_auto_detect_failed": "未发现可用的本地代理",
+      "proxy_reset_done": "已重置代理设置",
       "proxy_enable_warning_title": "启用代理提醒",
       "proxy_enable_warning_body": "启用代理后，所有请求将通过代理发送，可能导致部分 API 无法访问。请确认代理地址正确。",
       "proxy_enable_dont_show": "不再提示"

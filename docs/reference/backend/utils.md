@@ -94,18 +94,20 @@
 | `credentials(config)`（私有） | proxy.rs:98-115 | 用户名非空才返回认证对（密码缺省补空串），否则 `(None, None)` |
 | `from_config(config) -> Option<Proxy>` | proxy.rs:122-154 | `Proxy::all(server)`；有用户名时 `basic_auth`。记录排除列表（`no_proxy` 由 `http_client::set_global_proxy_config` 写入环境变量）。URL 非法时 `log_warn!` 并返回 `None`（请求降级为直连而不是报错） |
 | `test_connection(config, url, timeout_secs)` | proxy.rs:155-182 | 异步探测：用代理建 client → GET `url` → 返回 `TestConnectionResult`；未启用/主机为空 → `AppError::ValidationError`，请求失败 → `AppError::NetworkError`；超时夹取 1-60 秒 |
-| `auto_detect_proxy()` | proxy.rs:189-274 | 异步嗅探：按顺序探测本地常用代理端口（HTTP 8080/7890/1080，SOCKS5 1080/1081），每个端口用 3 秒超时发起连通性测试，首个成功的即返回 `ProxyConfigValue`；全部失败则返回错误 |
-| `struct ProxyConfigValue` | proxy.rs:270-282 | `enabled`/`proxy_type`/`host`/`port`/`username`/`password`/`remote_dns`/`exclude`；`Serialize` 供前端 |
-| `struct TestConnectionResult` | proxy.rs:283-289 | `status: u16`、`duration_ms: u64`；`Serialize` 供前端 |
-| `struct SystemProxyInfo` | proxy.rs:292-305 | `enabled`/`proxy_type`/`host`/`port`/`username`/`password`/`pac_url`/`from_env`；`Serialize + Deserialize` |
-| `read_system_proxy()` | proxy.rs:323-333 | Windows 先读注册表，取不到再读环境变量，最后返回全空的 `none()` |
-| `env_proxy()`（私有） | proxy.rs:336-354 | 依次尝试 `HTTPS_PROXY`/`https_proxy`/`HTTP_PROXY`/`http_proxy`/`ALL_PROXY`/`all_proxy`，命中后 `from_env=true` |
-| `parse_proxy_url(raw)`（私有） | proxy.rs:357-400 | 解析 `scheme://[user:pass@]host[:port]`；`socks*` scheme → `proxy_type="socks5"`；缺省端口 http 8080 / socks5 1080 |
-| `split_host_port(authority)`（私有） | proxy.rs:403-426 | 拆分 host 与可选端口，支持 IPv6 字面量 `[::1]:1080`；非数字后缀整体视作 host |
-| `windows_registry_proxy()`（私有，`cfg(windows)`） | proxy.rs:431-467 | 读 `HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings`：`ProxyEnable`(DWORD)、`ProxyServer`、`AutoConfigURL`、`ProxyOverride`；未启用或无 `ProxyServer` 时返回 `enabled:false` 并带上 `pac_url` |
-| `pick_proxy_entry(server)`（私有，`cfg(windows)`） | proxy.rs:470-494 | 处理 `http=host:port;https=host:port` 与单一 `host:port` 两种写法，优先 `https` 条目 |
-| `wide` / `read_raw_value` / `read_dword` / `read_string`（私有，`cfg(windows)`） | proxy.rs:497-575 | 注册表读取工具（UTF-16 路径、64KB 上限、`REG_SZ`/`REG_EXPAND_SZ`/`REG_DWORD`） |
-| `mod tests` | proxy.rs:577-633 | 4 个单测：HTTP 配置、SOCKS5+认证、禁用/空主机、系统代理 URL 解析 |
+| `struct ProbeCandidate`（私有） | proxy.rs:184-193 | 自动嗅探的候选端口参数：`proxy_type`/`host`/`port`/`urls`（探测 URL 列表） |
+| `PROBE_URLS`（私有常量） | proxy.rs:195-198 | 嗅探探测目标：`https://www.gstatic.com/generate_204` 与 `http://www.baidu.com/`（后者保证代理无出墙能力时仍可被识别） |
+| `auto_detect_proxy()` | proxy.rs:206-305 | 异步嗅探：按顺序探测本地常用代理端口（HTTP 7890/8080/10809/8888/8118/1080，SOCKS5 10808/7891/1080/1081/7890/8080），每个候选对每个探测 URL 用 3 秒超时发起连通性测试，首个成功的即返回 `ProxyConfigValue`；全部失败则返回错误 |
+| `struct ProxyConfigValue` | proxy.rs:307-318 | `enabled`/`proxy_type`/`host`/`port`/`username`/`password`/`remote_dns`/`exclude`；`Serialize` 供前端 |
+| `struct TestConnectionResult` | proxy.rs:320-326 | `status: u16`、`duration_ms: u64`；`Serialize` 供前端 |
+| `struct SystemProxyInfo` | proxy.rs:329-343 | `enabled`/`proxy_type`/`host`/`port`/`username`/`password`/`pac_url`/`from_env`；`Serialize + Deserialize` |
+| `read_system_proxy()` | proxy.rs:361-366 | Windows 先读注册表，取不到再读环境变量，最后返回全空的 `none()` |
+| `env_proxy()`（私有） | proxy.rs:373-387 | 依次尝试 `HTTPS_PROXY`/`https_proxy`/`HTTP_PROXY`/`http_proxy`/`ALL_PROXY`/`all_proxy`，命中后 `from_env=true` |
+| `parse_proxy_url(raw)`（私有） | proxy.rs:394-435 | 解析 `scheme://[user:pass@]host[:port]`；`socks*` scheme → `proxy_type="socks5"`；缺省端口 http 8080 / socks5 1080 |
+| `split_host_port(authority)`（私有） | proxy.rs:440-460 | 拆分 host 与可选端口，支持 IPv6 字面量 `[::1]:1080`；非数字后缀整体视作 host |
+| `windows_registry_proxy()`（私有，`cfg(windows)`） | proxy.rs:465-511 | 读 `HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings`：`ProxyEnable`(DWORD)、`ProxyServer`、`AutoConfigURL`、`ProxyOverride`；未启用或无 `ProxyServer` 时返回 `enabled:false` 并带上 `pac_url` |
+| `pick_proxy_entry(server)`（私有，`cfg(windows)`） | proxy.rs:516-537 | 处理 `http=host:port;https=host:port` 与单一 `host:port` 两种写法，优先 `https` 条目 |
+| `wide` / `read_raw_value` / `read_dword` / `read_string`（私有，`cfg(windows)`） | proxy.rs:542-617 | 注册表读取工具（UTF-16 路径、64KB 上限、`REG_SZ`/`REG_EXPAND_SZ`/`REG_DWORD`） |
+| `mod tests` | proxy.rs:624-680 | 4 个单测：HTTP 配置、SOCKS5+认证、禁用/空主机、系统代理 URL 解析 |
 
 **备注**：
 - **reqwest 需要 `socks` feature 才能构造 `socks5://` / `socks5h://` 代理**——`Cargo.toml` 中的 `reqwest` 依赖已加上 `"socks"`。

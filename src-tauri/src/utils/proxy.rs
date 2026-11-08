@@ -182,24 +182,61 @@ pub async fn test_connection(
     })
 }
 
+/// 单个候选端口的探测参数。
+struct ProbeCandidate {
+    proxy_type: &'static str,
+    host: &'static str,
+    port: u16,
+    /// 探测 URL（直连可达的 URL 也可用来验证代理转发链路）。
+    urls: &'static [&'static str],
+}
+
+/// 探测目标：gstatic 204 是标准连通性检查；百度国内直连可达，
+/// 代理即使无法出墙，只要能转发请求同样会被识别为可用。
+const PROBE_URLS: &[&str] = &[
+    "https://www.gstatic.com/generate_204",
+    "http://www.baidu.com/",
+];
+
 /// 自动嗅探本地常用代理端口，返回首个可用的配置。
 ///
-/// 按顺序探测常见端口（HTTP 8080/7890/1080，SOCKS5 1080/1081），
-/// 每个端口都用短超时发起一次连通性测试，首个成功的即返回。
+/// 覆盖常见代理客户端的默认端口（Clash 7890/7891、v2rayN 10808/10809、
+/// Shadowsocks 1080、通用 HTTP 8080/8118/8888 等）；HTTP 与 SOCKS5 两种协议
+/// 都会在这些端口上尝试，每个端口用短超时探测，首个成功的即返回。
 pub async fn auto_detect_proxy() -> Result<ProxyConfigValue, AppError> {
     use tokio::time::timeout;
 
-    let candidates: Vec<(&'static str, &'static str, u16)> = vec![
-        ("http", "127.0.0.1", 8080),
-        ("http", "127.0.0.1", 7890),
-        ("http", "127.0.0.1", 1080),
-        ("socks5", "127.0.0.1", 1080),
-        ("socks5", "127.0.0.1", 1081),
-    ];
+    let candidates: Vec<ProbeCandidate> = [
+        // HTTP 代理常见端口
+        (7890, "http", PROBE_URLS),
+        (8080, "http", PROBE_URLS),
+        (10809, "http", PROBE_URLS),
+        (8888, "http", PROBE_URLS),
+        (8118, "http", PROBE_URLS),
+        (1080, "http", PROBE_URLS),
+        // SOCKS5 代理常见端口
+        (10808, "socks5", PROBE_URLS),
+        (7891, "socks5", PROBE_URLS),
+        (1080, "socks5", PROBE_URLS),
+        (1081, "socks5", PROBE_URLS),
+        (7890, "socks5", PROBE_URLS),
+        (8080, "socks5", PROBE_URLS),
+    ]
+    .into_iter()
+    .map(|(port, proxy_type, urls)| ProbeCandidate {
+        proxy_type,
+        host: "127.0.0.1",
+        port,
+        urls,
+    })
+    .collect();
 
     let mut last_err: Option<AppError> = None;
 
-    for (scheme, host, port) in candidates {
+    for candidate in candidates {
+        let scheme = candidate.proxy_type;
+        let host = candidate.host;
+        let port = candidate.port;
         let config = serde_json::json!({
             "enabled": true,
             "type": scheme,
@@ -230,32 +267,33 @@ pub async fn auto_detect_proxy() -> Result<ProxyConfigValue, AppError> {
             }
         };
 
-        match timeout(Duration::from_secs(3), client.get("https://www.gstatic.com/generate_204").send()).await {
-            Ok(Ok(resp)) if resp.status().is_success() => {
-                log_debug!("[proxy] auto-detect: {}://{}:{} available", scheme, host, port);
-                return Ok(ProxyConfigValue {
-                    enabled: true,
-                    proxy_type: scheme.to_string(),
-                    host: host.to_string(),
-                    port,
-                    username: String::new(),
-                    password: String::new(),
-                    remote_dns: false,
-                    exclude: String::new(),
-                });
-            }
-            Ok(Ok(resp)) => {
-                log_debug!("[proxy] auto-detect: {}://{}:{} returned {}", scheme, host, port, resp.status());
-            }
-            Ok(Err(e)) => {
-                log_debug!("[proxy] auto-detect: {}://{}:{} failed: {}", scheme, host, port, e);
-                last_err = Some(AppError::NetworkError {
-                    message: format!("{}://{}:{} connection failed: {}", scheme, host, port, e),
-                });
-            }
-            Err(_) => {
-                log_debug!("[proxy] auto-detect: {}://{}:{} timeout", scheme, host, port);
-                continue;
+        for url in candidate.urls.iter().copied() {
+            match timeout(Duration::from_secs(3), client.get(url).send()).await {
+                Ok(Ok(resp)) if resp.status().is_success() => {
+                    log_debug!("[proxy] auto-detect: {}://{}:{} available via {}", scheme, host, port, url);
+                    return Ok(ProxyConfigValue {
+                        enabled: true,
+                        proxy_type: scheme.to_string(),
+                        host: host.to_string(),
+                        port,
+                        username: String::new(),
+                        password: String::new(),
+                        remote_dns: false,
+                        exclude: String::new(),
+                    });
+                }
+                Ok(Ok(resp)) => {
+                    log_debug!("[proxy] auto-detect: {}://{}:{} returned {} via {}", scheme, host, port, resp.status(), url);
+                }
+                Ok(Err(e)) => {
+                    log_debug!("[proxy] auto-detect: {}://{}:{} failed: {}", scheme, host, port, e);
+                    last_err = Some(AppError::NetworkError {
+                        message: format!("{}://{}:{} connection failed: {}", scheme, host, port, e),
+                    });
+                }
+                Err(_) => {
+                    log_debug!("[proxy] auto-detect: {}://{}:{} timeout", scheme, host, port);
+                }
             }
         }
     }

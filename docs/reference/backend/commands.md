@@ -932,8 +932,8 @@
 - 逻辑：`config` 为空时回退已保存的 `proxy_config`；`utils::proxy::test_connection(&config, &url, 15)`，默认探测 `https://www.gstatic.com/generate_204`，能收到任何 HTTP 响应即视为代理可用。
 
 ### `auto_detect_proxy`
-- 位置：proxy.rs:57（async）；参数：无；返回：`Result<ProxyConfigValue, String>`（`{enabled, proxy_type, host, port, username, password, remote_dns, exclude}`）。
-- 逻辑：`utils::proxy::auto_detect_proxy()`：按顺序探测本地常用代理端口（HTTP 8080/7890/1080，SOCKS5 1080/1081），每个端口用 3 秒超时发起连通性测试，首个成功的即返回配置；全部失败则返回错误。
+- 位置：proxy.rs:58（async）；参数：无；返回：`Result<ProxyConfigValue, String>`（`{enabled, proxy_type, host, port, username, password, remote_dns, exclude}`）。
+- 逻辑：`utils::proxy::auto_detect_proxy()`：按顺序探测本地常用代理端口（HTTP 7890/8080/10809/8888/8118/1080，SOCKS5 10808/7891/1080/1081/7890/8080），每个端口对 gstatic 204 与百度两个 URL 用 3 秒超时发起连通性测试（任一 URL 有成功响应即认为该代理可用），首个成功的即返回配置；全部失败则返回错误。
 
 ---
 

@@ -1,4 +1,4 @@
-﻿# 设置面板与系统集成组件 — 文件功能参考
+# 设置面板与系统集成组件 — 文件功能参考
 
 > 逐文件精读源码生成。行号基于当前工作区版本，仅用于快速定位。
 
@@ -28,9 +28,9 @@
 - 133-143 行：`handleToggle`——**开启时若未勾选「不再提示」则弹警告并暂停落盘**；关闭时直接静默落盘。
 - 145-149 行：`confirmEnable`——勾选「不再提示」、关闭警告、正式落盘 `enabled: true`。
 - 151-192 行：`handleImportSystem`——`readSystemProxy()`；禁用/空主机时提示「未找到代理」，PAC 脚本时把 `pac_url` 展示给用户；成功则填入表单并落盘。
-- 194-216 行：`handleAutoDetect`——`autoDetectProxy()` 嗅探本地常用端口，成功填充协议/主机/端口并落盘。
+- 194-216 行：`handleAutoDetect`——`autoDetectProxy()` 嗅探本地常用端口，成功填充协议/主机/端口并落盘；**结果用 `pushGlobalAlert` 全局 message（顶部 toast）提示**（成功 `success`、失败 `danger`），不走表单内 notice。
 - 218-245 行：`handleTest`——先校验主机/端口，再 `testProxyConnection(config)`，成功提示状态码与耗时。
-- 247-253 行：`handleReset`——回到默认值（保留当前协议与其默认端口）并落盘。
+- 247-263 行：`handleReset`——清空全部代理内容（主机/端口/认证/排除/远程 DNS），只保留当前协议并回退到该协议默认端口；**保持 `enabled`「使用代理」开关的当前状态不变**（不自动开启也不自动关闭）。落盘并提示 `proxy_reset_done`。
 - 255-267 行：`handleSave`——启用状态下校验主机/端口后 `normalizeProxyConfig` 落盘。
 - 269-275 行：`protocolOptions`（HTTP / SOCKS5，文案复用 `settings.general.proxy_type_*`）。
 - 277-298 行：`loading` 时的骨架屏。
@@ -42,7 +42,7 @@
 - **配置键**：`proxy_config`（结构 `{enabled, type, host, port, username, password, remoteDns, exclude}`，由后端 `ConfigService` 持久化；保存后同步刷新后端全局代理缓存并把 `exclude` 写入 `no_proxy`，后续所有 HTTP 请求即时生效）。
 - **自动保存**：主机/端口/协议/排除主机/认证/远程 DNS 的每次变更都会在 500ms 后静默落盘；「保存」按钮保留给需要显式确认的场景。
 - **i18n key 前缀**：`settings.network.title/desc`（卡标题，在 settings.tsx）与 `settings.network.proxy_*`（`saved`/`save_failed`/`import_*`/`invalid_*`/`test_*`/`auto_detect*`/`enable_warning_title`/`enable_warning_body`/`enable_dont_show`）；控件文案在 `settings.general.proxy_*`（`proxy_enable*`/`proxy_protocol*`/`proxy_type_*`/`proxy_host*`/`proxy_port*`/`proxy_exclude*`/`proxy_auth*`/`proxy_username*`/`proxy_password*`/`proxy_remote_dns*`/`proxy_socks5_only`/`proxy_import_system*`/`proxy_import_action`/`proxy_auto_detect`/`proxy_pac_notice`/`proxy_test*`）、`common.save`/`common.reset`/`common.cancel`/`common.confirm`。
-- **无 window 事件、无 emit/listen**；反馈只走组件内 `notice`。
+- **无 window 事件、无 emit/listen**；一般反馈走组件内 `notice`，自动嗅探的结果走全局 `pushGlobalAlert`（`@/components/ui/global-alert`）。
 - **必填/可选标注**：协议、主机、端口标注「必选/必填」；排除主机、用户名、密码标注「可选」；远程 DNS 带「仅 SOCKS5」徽标且选中 SOCKS5 时才出现。
 - **「不再提示」的作用域**：当前为组件内状态，页面刷新后重置（如需永久记忆应改为写入配置键）。
 
