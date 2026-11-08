@@ -76,7 +76,6 @@ import {
   GAME_LAUNCH_SYNC_EVENT,
 } from "@/components/game-launch-settings";
 import {
-  ALL_GAMES,
   getActiveGame,
   setActiveGame,
   subscribeActiveGame,
@@ -1855,53 +1854,8 @@ export function GameActionPanel() {
     ],
   );
 
-  /** 游戏切换分段控件：两个游戏各自保存安装路径 / 渠道 / 设置，切换即换整套配置。 */
-  const gameSwitch = (
-    <div className="flex items-center gap-2">
-      <div
-        className="flex items-center gap-1 rounded-full p-[3px] lg-inset"
-        role="tablist"
-        aria-label={t("launcher.select_game_title")}
-      >
-        {ALL_GAMES.map((candidate) => {
-          const active = candidate === game;
-          const hasInstall = Boolean(readGameInstallPath(candidate));
-          return (
-            <button
-              key={candidate}
-              type="button"
-              role="tab"
-              aria-selected={active}
-              onClick={() => {
-                if (candidate === game) return;
-                setActiveGame(candidate);
-              }}
-              className={`relative rounded-full px-3 h-6 text-xs font-medium transition-colors cursor-pointer ${
-                active
-                  ? "bg-primary/25 text-primary-text"
-                  : "text-muted lg-hoverable"
-              }`}
-            >
-              {t(`launcher.game_group_${candidate}`)}
-              {hasInstall && (
-                <span
-                  className={`ml-1 inline-block h-1 w-1 rounded-full align-middle ${
-                    active ? "bg-primary-text" : "bg-emerald-400/70"
-                  }`}
-                />
-              )}
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-
   return (
     <>
-      {/* 游戏切换：终末地 / 明日方舟，各自一套安装路径与设置 */}
-      <div className="mb-3">{gameSwitch}</div>
-
       {/* 右上角状态栏：服务器/渠道指示 */}
       {installPath && (isInstalled || (detecting && !detectedChannel)) && (
         <div className="absolute right-4 top-4 z-20 lg:right-8 lg:top-8 flex flex-col items-end gap-2">

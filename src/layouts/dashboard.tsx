@@ -25,6 +25,7 @@ import {
 import { InAppBrowser } from "@/components/in-app-browser";
 import { GameActionPanel } from "@/components/game-action-panel";
 import { GameSidebarRail } from "@/components/game-sidebar-rail";
+import { GameSwitchRail } from "@/components/game-switch-rail";
 import { useTranslation } from "react-i18next";
 import { MorphIcon } from "morphicons/react";
 import {
@@ -302,6 +303,9 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
 
         {/* In-app browser overlay — 全屏覆盖（含标题栏），自带窗口控制 */}
         <InAppBrowser />
+
+        {/* 左侧游戏切换：贴左边缘，鼠标靠近才展开（终末地 / 明日方舟） */}
+        <GameSwitchRail />
 
         {/* 右侧官方社媒栏：收起为浮标，靠近右边缘展开，悬停出二维码 */}
         <GameSidebarRail items={sidebars} />
