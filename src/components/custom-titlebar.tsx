@@ -417,12 +417,18 @@ export const CustomTitlebar = ({
        * 按钮等可点击元素由 Tauri 的 drag.js 自动排除，无需再逐个标 no-drag。
        */}
       <div
-        className="relative flex h-full items-center pl-5 pr-2"
+        className={`relative flex h-full items-center pr-2 ${
+          controlsOnly ? "" : "pl-5"
+        }`}
         data-tauri-drag-region="deep"
       >
         {controlsOnly ? null : <TitlebarBrand game={game} />}
 
-        <div className="flex-1" data-tauri-drag-region="deep" />
+        {/* 整页推移时右侧区只占自身宽度、贴右放置，不需要这个拖拽伸展条：
+            它会把左边页面层品牌区（模式拨杆）的点击吃成拖拽。 */}
+        {brandOnly ? null : !controlsOnly && (
+          <div className="flex-1" data-tauri-drag-region="deep" />
+        )}
         {brandOnly ? null : <TitlebarControls />}
       </div>
     </div>

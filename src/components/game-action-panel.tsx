@@ -107,6 +107,26 @@ const PILL_INTERACTIVE =
   "lg-media-chip-interactive lg-glass-interactive cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed";
 const PILL_TEXT = "text-xs font-medium text-white/80";
 
+/** 目录占用错误（后端 `LOCKED_BY:进程名 (PID n)|…`）→ 可读正文；其余原样返回。
+ *  模块级纯函数（不依赖组件状态，只接收现成的 `t`）：曾经是组件内的
+ *  useCallback，被定义在 `handleConfirmSwitch` 之后，而依赖数组在**渲染期**
+ *  求值，TDZ 直接崩掉整个面板（Cannot access 'formatDirLockError' before
+ *  initialization）。提升到模块层后与声明顺序无关。 */
+function formatDirLockError(
+  error: unknown,
+  t: (key: string, opts?: Record<string, unknown>) => string,
+): string {
+  const raw = String(error);
+  if (!raw.includes("LOCKED_BY:")) return raw;
+  const payload = raw.split("LOCKED_BY:")[1]?.split("\n")[0] ?? "";
+  const processes = payload
+    .split("|")
+    .map((p) => p.trim())
+    .filter(Boolean);
+  if (processes.length === 0) return raw;
+  return t("launcher.dir_locked_by", { processes: processes.join("\n") });
+}
+
 /** 剩余时间秒数 → `m:ss` / `h:mm:ss` */
 function formatEta(seconds: number): string {
   const h = Math.floor(seconds / 3600);
@@ -225,7 +245,13 @@ function DownloadArrowIcon({ className }: { className?: string }) {
   );
 }
 
-/** 进度浮层外壳（固定 portal，安装/校验/预下载共用同一外观） */
+/** 进度浮层外壳（固定 portal，安装/校验/预下载共用同一外观）
+ *
+ * 材质用 `.lg-media-chip`（媒体层：深 tint 固定、不随主题变），不能用
+ * `.lg-regular`——后者浅色主题下是半透白底，而浮层内容（DownloadProgressBody、
+ * 切换阶段文案）全是写死的 `text-white/*` 白字设计，浅色模式下白字压白底
+ * 直接看不清。浮层永远压在游戏壁纸/视频上，与时间胶囊、「取消切换」按钮同属
+ * 游戏 HUD，就该用同一套媒体层材质：无论主题深浅、壁纸亮暗都是深底白字。 */
 function ProgressFlyout({
   pos,
   children,
@@ -235,7 +261,7 @@ function ProgressFlyout({
 }) {
   return createPortal(
     <div
-      className="fixed z-[200] lg-regular w-64 rounded-xl border border-separator/70 shadow-2xl px-4 py-3 pointer-events-none"
+      className="fixed z-[200] lg-media-chip lg-hairline border w-64 rounded-xl shadow-2xl px-4 py-3 pointer-events-none"
       style={{
         left: pos.x,
         top: pos.y,
@@ -518,6 +544,13 @@ export function GameActionPanel({ game: pinnedGame }: GameActionPanelProps = {})
       : null;
   const switchTarget =
     (switchProgress?.to_channel as GameChannel | null) ?? null;
+  /** 切换中的按钮边缘进度环：downloading 阶段 = 字节比；backing_up / moving
+   *  阶段后端把 file_index/file_count 复用进 downloaded/total 字段，同样直接算；
+   *  fetching / comparing 阶段 total 为 0 → 0%（描不出可见弧线，等同无环）。 */
+  const switchPercent =
+    switchProgress && switchProgress.total > 0
+      ? Math.min(100, (switchProgress.downloaded / switchProgress.total) * 100)
+      : 0;
 
   // 总秒数 = 后端累计总数 + 当前会话已运行秒数（快照时刻的值）。
   // 两次快照之间的平滑推进由 <ElapsedTime> 内部按真实经过时间补间完成，
@@ -1058,6 +1091,23 @@ export function GameActionPanel({ game: pinnedGame }: GameActionPanelProps = {})
     if (!installPath || !detectedChannel || !switchConfirmTarget) return;
     const targetChannel = switchConfirmTarget;
     setSwitchConfirmTarget(null);
+    // 换服前确认游戏没在运行：同一游戏各渠道的进程名相同（官/B 服都是
+    // Arknights.exe），查当前渠道即可代表目标渠道。被占用时 Phase 4 会拿到
+    // os error 32，这里提前拦住并给出可读提示。
+    try {
+      const running = await checkGameRunning(detectedChannel);
+      if (running) {
+        addMessage({
+          type: "warn",
+          title: t("launcher.switch_failed"),
+          body: t("launcher.switch_game_running"),
+          tag: "switch-error",
+        });
+        return;
+      }
+    } catch {
+      // 检测失败不拦截，后端 Phase 0 还有同一道预检兜底
+    }
     if (btnRef.current) {
       const r = btnRef.current.getBoundingClientRect();
       const fw = 256;
@@ -1081,7 +1131,7 @@ export function GameActionPanel({ game: pinnedGame }: GameActionPanelProps = {})
       console.log("[switch] switchChannel completed OK");
       setChannel(targetChannel);
       setDetectedChannel(targetChannel);
-      // 换服只在终末地内部发生，但仍旧按渠道归属落盘，别写错分区。
+      // 换服只在同一游戏内发生，但仍旧按渠道归属落盘，别写错分区。
       await persistDetectedInstall(installPath, targetChannel);
       console.log("[switch] States reset, calling checkStatus...");
       checkStatus()
@@ -1096,11 +1146,11 @@ export function GameActionPanel({ game: pinnedGame }: GameActionPanelProps = {})
       addMessage({
         type: "urgent",
         title: t("launcher.switch_failed"),
-        body: String(err),
+        body: formatDirLockError(err, t),
         tag: "switch-error",
       });
     }
-  }, [installPath, detectedChannel, switchConfirmTarget, checkStatus, t]);
+  }, [installPath, detectedChannel, switchConfirmTarget, checkStatus, checkGameRunning, t]);
 
   const handleStart = useCallback(async () => {
     if (!installPath) {
@@ -1229,7 +1279,7 @@ export function GameActionPanel({ game: pinnedGame }: GameActionPanelProps = {})
         addMessage({
           type: "urgent",
           title: t("launcher.update_failed_title"),
-          body: String(error),
+          body: formatDirLockError(error, t),
           tag: "update-error",
         });
       }
@@ -1241,7 +1291,7 @@ export function GameActionPanel({ game: pinnedGame }: GameActionPanelProps = {})
         addMessage({
           type: "urgent",
           title: t("launcher.update_failed_title"),
-          body: result.message,
+          body: formatDirLockError(result.message, t),
           tag: "update-error",
         });
       }
@@ -1309,12 +1359,19 @@ export function GameActionPanel({ game: pinnedGame }: GameActionPanelProps = {})
           tag: "verify-result",
         });
       }
-    } catch {
-      // error handled by progress
+    } catch (error) {
+      // 目录占用等前置失败不会发过任何进度事件（错误不经 progress 通道），
+      // 必须在这里显式提示，否则校验像被无声吞掉
+      addMessage({
+        type: "urgent",
+        title: t("launcher.verify_failed_title"),
+        body: formatDirLockError(error, t),
+        tag: "verify-error",
+      });
     } finally {
       checkStatus();
     }
-  }, [channel, game, installPath, checkStatus, formatVerifyResult]);
+  }, [channel, game, installPath, checkStatus, formatVerifyResult, t]);
 
   const handleQuickVerify = useCallback(async () => {
     if (!installPath) return;
@@ -1392,14 +1449,22 @@ export function GameActionPanel({ game: pinnedGame }: GameActionPanelProps = {})
         readDownloadThreads(game),
         readDownloadResume(game),
       );
-    } catch {
-      // error handled by progress
+    } catch (error) {
+      // 用户主动取消不提示；目录占用等前置失败没有进度事件，需要显式弹出
+      if (!userCancelledRef.current) {
+        addMessage({
+          type: "urgent",
+          title: t("launcher.update_failed_title"),
+          body: formatDirLockError(error, t),
+          tag: "update-error",
+        });
+      }
     } finally {
       cancellingRef.current = false;
       setPreloadProgress(null);
       refreshStatus();
     }
-  }, [channel, game, installPath, preloadTotalBytes, refreshStatus]);
+  }, [channel, game, installPath, preloadTotalBytes, refreshStatus, t]);
 
   // 取消预下载（点预下载按钮触发）：只停预下载，不影响主按钮状态
   const handlePreloadCancel = useCallback(async () => {
@@ -1480,6 +1545,21 @@ export function GameActionPanel({ game: pinnedGame }: GameActionPanelProps = {})
   const downloadPercent =
     progress && progress.total > 0
       ? Math.min(100, (progress.downloaded / progress.total) * 100)
+      : 0;
+  /** 安装/校验/修复通用的按钮边缘进度环。分子按阶段取：
+   *  - verifying / repairing：进度在 `verified_bytes`（`downloaded` 恒为 0）；
+   *  - downloading / applying（解压+应用）：`downloaded/total`；
+   *  - checking / comparing：`total` 为 0 → 无可见弧线（快速阶段，只有淡轨道）。 */
+  const stagePercent =
+    progress && progress.total > 0
+      ? Math.min(
+          100,
+          ((progress.stage === "verifying" || progress.stage === "repairing"
+            ? progress.verified_bytes
+            : progress.downloaded) /
+            progress.total) *
+            100,
+        )
       : 0;
   const isDownloading = progress?.stage === "downloading";
   const isVerifying = progress?.stage === "verifying";
@@ -2143,7 +2223,18 @@ export function GameActionPanel({ game: pinnedGame }: GameActionPanelProps = {})
                   : "opacity-0"
               }`}
             />
-            {isDownloading && <ButtonProgressRing progress={downloadPercent} />}
+            {/* 长操作都描按钮边缘进度环：下载、解压应用、校验、修复、切服。
+                checking/comparing 的 total 为 0，环退化为淡轨道（无弧线），
+                正好提示「在忙、但还没有可计量的进度」。 */}
+            {(isDownloading ||
+              isApplying ||
+              isVerifying ||
+              isRepairing ||
+              isComparing ||
+              isChecking) && (
+              <ButtonProgressRing progress={stagePercent} />
+            )}
+            {switching && <ButtonProgressRing progress={switchPercent} />}
             {getButtonIcon()}
             {isDownloading ? (
               /* 下载中：三段信息轮播（下载进度 / 速度 / 剩余时间）。

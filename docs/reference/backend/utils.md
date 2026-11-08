@@ -452,6 +452,20 @@
 
 ---
 
+## `src-tauri/src/utils/dir_lock.rs`
+**职责**：安装目录占用检测与持有锁（Windows 专用，非 Windows 退化为空实现）。回答两个问题：任务开始**前**目录里有没有进程锁着关键文件（游戏本体、杀软扫描、索引工具…）——有的话直接拒绝并报出**是谁**，不等到写盘阶段才甩一个匿名的 os error 32；任务进行**中**由我们自己独占打开关键文件持有句柄（`DirLock`，drop 释放），后来的进程打不开、无法再产生新占用。占用检测走 **Restart Manager API**（`rstrtmgr`，资源监视器「哪个进程锁住了文件」同款），一次报出锁定文件的全部进程（PID + 友好名 + exe 路径）。
+**导出**：`LockingProcess`（`pid`/`name`/`path`，serde 可序列化）、`DirOccupancy`（`locked`/`processes`）、`check_files(files) -> DirOccupancy`、`acquire_lock(files) -> Result<DirLock, String>`、`DirLock`（`acquire_empty()` 空锁占位；`unsafe impl Send`——owned HANDLE 无线程亲和性）、`sample_critical_files(install_path, exe_name, data_dir_name) -> Vec<PathBuf>`（抽样：exe + `xlua.dll`/`globalgamemanagers`/`boot.config` + `hgdownloadsdk.dll`/`U8SDK.dll`/`hgsdk.dll`，只返回存在的）。
+**主要依赖**：`windows-sys`（`Win32_System_RestartManager`：`RmStartSession`/`RmRegisterResources`/`RmGetList`/`RmEndSession`；`Win32_Storage_FileSystem`：`CreateFileW` 独占打开；`Win32_System_Threading`：`QueryFullProcessImageNameW` 取 exe 路径）。
+| 符号 | 说明 |
+| --- | --- |
+| `check_files` | 开 RM 会话 → 登记文件 → `RmGetList`（`ERROR_MORE_DATA` 时倍增缓冲重试）→ 按 PID 去重；会话失败记 warn 返回空（调用方兜底：真写失败时报 os error 32） |
+| `acquire_lock` | 逐文件 `CreateFileW(dwShareMode=0)`（读权限、不共享）——文件不存在跳过、存在却打不开则关闭已拿句柄并报错（带文件路径，多为别人先占了）；句柄存 `DirLock`，drop 全关 |
+| `mod tests` | 2 个端到端单测：起一个独占持锁 20s 的 PowerShell → `check_files` 报出该进程（断言 `path` 含 powershell——RM 报的是友好名 "Windows PowerShell 5.1" 而非 exe 名）、被占用时 `acquire_lock` 失败且错误含文件名、kill 后 `acquire_lock` 成功；空闲文件报 `locked=false` 且 `acquire_lock` 成功 |
+
+**备注**：调用方是 `commands/launcher.rs` 的 `check_and_lock_install_dir`（spawn_blocking 包装）——`launcher_install_or_update` / `launcher_verify_and_repair` / `launcher_install_preload` / `launcher_switch_channel` 四个写安装目录的命令在 `acquire_write_gate` 之后调用它；`launcher_preload_download` 只写独立暂存目录、不碰游戏文件，**不做**检测（游戏可边玩边预下载）。被占用时的错误以 `LOCKED_BY:进程名 (PID n)|…` 前缀返回，前端 `formatDirLockError` 解析为可读 message。
+
+---
+
 ## `src-tauri/src/utils/steam.rs`
 **职责**：Steam 第三方游戏（非 Steam 快捷方式）注入与 Overlay 权限辅助（Windows 专用，约 800 行，含二进制 VDF 单元测试）。直接读写当前账户的 `userdata/<accountId>/config/shortcuts.vdf`（二进制 VDF）：按显示名匹配已有条目，命中则更新、否则追加。显示名、图标与启动选项全部由调用方传入（见 `SteamShortcut`）。另外提供「以管理员身份运行」`.lnk` 的创建与改写，以及「开始」菜单 Steam 快捷方式的发现。
 **导出**：`TYPE_OBJECT`、`SteamShortcut`、`add_shortcut`、`steam_root`、`create_elevated_shortcut`、`find_start_menu_steam_shortcuts`、`elevate_shortcuts`；私有：`VdfValue`、`ShortcutsFile`、`upsert_shortcut`、`field_string`、`set_string`、`set_i32`、`next_entry_index`、`steam_app_id`、`parse_shortcuts`、`encode_shortcuts`、`write_value`、`write_cstring`、`Parser`、`write_atomically`、`collect_steam_shortcuts`、`mark_shortcut_as_admin`、`run_powershell`、`powershell_literal`、`find_steam_root`、`read_registry_string`、`wide`、`find_shortcuts_file`、`modified_time`（注册表/路径/快捷方式相关均仅 Windows）。

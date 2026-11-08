@@ -121,7 +121,7 @@
 | --- | --- | --- |
 | `TitlebarBrand` | custom-titlebar.tsx:44 | 品牌区：应用图标 + 游戏标题 + 数据/游戏模式切换。props `game?: LauncherGame`（传了就钉死在那个游戏上，整页推移时旧页要显示旧游戏名；不传则跟随 store）。游戏名换游戏时经 `useSwitchTransition` 播一小段位移（只动 transform，不动 opacity——后者会让元素成为 backdrop root，毁掉自身与后代的玻璃） |
 | `TitlebarControls` | custom-titlebar.tsx:180 | 右侧区：通知铃铛（含未读角标）+ 消息浮层（`createPortal(document.body)`）+ 窗口三键 + `<AppInfoDrawer>` + `<CloseConfirmDialog>`。**只渲染一份** |
-| `CustomTitlebar` | custom-titlebar.tsx:366 | 组合两者。props `game?`（钉住游戏）、`brandOnly?`（只渲染品牌区）、`controlsOnly?`（只渲染右侧区）、`className?`（外层 class） |
+| `CustomTitlebar` | custom-titlebar.tsx:366 | 组合两者。props `game?`（钉住游戏）、`brandOnly?`（只渲染品牌区）、`controlsOnly?`（只渲染右侧区）、`className?`（外层 class）。`controlsOnly` 时不渲染 pl-5 左内边距与拖拽伸展条：右侧区贴右只占自身宽度，否则整宽的 drag region 会盖住页面层品牌区（模式拨杆点不动） |
 | 局部状态 | — | `TitlebarBrand`：`viewMode`、`followedGame`、`gameSwitch`（`{seq, direction}`）；`TitlebarControls`：`isMaximized`、`infoOpen`、`unreadCount`、`hasUrgent`、`showCloseConfirm`、`closeAction`（默认 `"ask"`）、`trayAvailable`（默认 `true`，由 `isTrayAvailable()` 回填）、`newMessage`、`flyoutOpen`（默认 `true`）；refs：`seenMessageIds`（已展示过的消息 id Set，初始为启动时队列内全部 id）、`flyoutTimer` |
 | 消息订阅 effect | — | `subscribeMessages`：仅在队首是**从未展示过的新消息**（`seenMessageIds` 中不存在）时弹出浮层并记录其 id；由于用 Set 判断「新增」，删除队首消息露出旧消息不会重复弹浮层。非进度型消息（`progress === undefined \|\| progress < 0`）5 秒后自动隐藏；浮层只保存消息 **id**，每次 store 变更都按 id 从 `getMessages()` 回填最新对象（否则 `updateMessage` 写入的进度停留在入队时的旧快照上，浮层进度条不动）；若当前正在展示的消息已被从队列移除，则立即收起浮层；同时刷新 `unreadCount`、`hasUrgent` |
 | 定时器清理 effect | custom-titlebar.tsx:90-95 | 卸载时 `clearTimeout(flyoutTimer.current)` |
@@ -411,7 +411,7 @@
 | `getCachedPageData` | game-page.tsx:42 | 读缓存（无则 `undefined`） |
 | `fetchPageData` | game-page.tsx:48 | 拉某游戏的数据并写入缓存；已在拉或已拉到直接返回（**切换动画不能等网络**） |
 | `prefetchOtherGame` | game-page.tsx:72 | 预取另一个游戏的数据：第一次切过去时不用等网络，推移动画立刻就能播 |
-| `GamePageContent` | game-page.tsx:120 | 页面内容层。props `game`、`data`。内部自持横幅轮播状态（`bannerIndex`/`bannerHovered`/`bannerDir`/`outgoingBanner`/`bannerPrevRef`）与公告分类状态（`announcementTab`）——**每页独立**，推移时两页各转各的 |
+| `GamePageContent` | game-page.tsx:120 | 页面内容层。props `game`、`data`。内部自持横幅轮播状态（`bannerIndex`/`bannerHovered`/`bannerDir`/`outgoingBanner`/`bannerPrevRef`）与公告分类状态（`announcementTab`）——**每页独立**，推移时两页各转各的。横幅多于 1 张时悬停浮现**翻页键**：左右渐变箭头（`createMorphIcon(ChevronLeft/Right)`——lucide 包导出的是图标节点数组不是组件，直接 JSX 渲染会报 "got: array"，必须经 morph 封装）+ 底部页点（当前页加宽高亮），手动翻页直接 `setBannerIndex`，复用 URL 判据的「推动」动画 |
 
 **备注**：
 - **数据必须先于动画到位**：后端拉公告/背景要走 HTTP，耗时不可控。所以切游戏时先看缓存：有就直接开始推移；没有就等拉完再推（等的时候旧页还留在原地，用户看到的是「新页推上来」，而不是「旧页没了、新页一片空白」）。

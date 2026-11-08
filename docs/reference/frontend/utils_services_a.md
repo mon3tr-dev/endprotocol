@@ -395,7 +395,7 @@
 - `persistInstallPath(installPath, game)` — 只记目录、不动渠道，用于「目录已选好但还没识别出渠道」（游戏还没装）的情况；同样两边都写。
 - `syncSilentLaunchConfig` / `restoreLaunchConfig` — 同步与回灌时都校验「渠道属于该游戏」，不匹配就跳过，避免把外来渠道带进分区。
 
-**渠道分组**：`GameChannel` 同时承载两个游戏——`official` / `bilibili` / `global` / `google_play` 属《明日方舟：终末地》，`arknights` / `arknights_bilibili` 属《明日方舟》。`GAME_CHANNELS`（按游戏分组）、`GAME_ORDER`（展示顺序）、`CHANNEL_GAME`（渠道 → 游戏）、`CHANNEL_SHORT`（圆形徽标文字）供界面分组渲染；`switchableChannels(from)` 只对终末地返回候选渠道，明日方舟返回空表（渠道差异不在清单里，用同一套换服逻辑会留下半套渠道文件，所以界面不提供换服入口）。
+**渠道分组**：`GameChannel` 同时承载两个游戏——`official` / `bilibili` / `global` / `google_play` 属《明日方舟：终末地》，`arknights` / `arknights_bilibili` 属《明日方舟》。`GAME_CHANNELS`（按游戏分组）、`GAME_ORDER`（展示顺序）、`CHANNEL_GAME`（渠道 → 游戏）、`CHANNEL_SHORT`（圆形徽标文字）供界面分组渲染；`switchableChannels(from)` 返回同游戏内除当前渠道外的全部候选（两个游戏都支持换服：实测 2026-11-08，渠道差异都完整落在各自清单里，明日方舟官↔B 约 706 MB diff）。
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |

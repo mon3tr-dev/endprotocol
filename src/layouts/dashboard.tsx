@@ -224,6 +224,18 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     prefetchOtherGame(activeGame);
   }, [activeGame]);
 
+  // 初次进入（F5 刷新 / 应用启动）：页面数据缓存是模块级 Map，刷新后为空，
+  // 而上面的预取只拉「另一个游戏」——当前游戏没人拉，背景与公告就一直空着
+  // （切一次游戏触发订阅里的 fetch 才恢复）。挂载时补拉当前游戏，完成后
+  // bump 版本号让页面层（pages useMemo）重算出有数据的页。
+  const [pageDataVersion, setPageDataVersion] = useState(0);
+  useEffect(() => {
+    if (getCachedPageData(activeGame)) return;
+    void fetchPageData(activeGame).then(() => {
+      setPageDataVersion((v) => v + 1);
+    });
+  }, [activeGame, pageDataVersion]);
+
   // 渠道变化（切游戏 / 换服）时，若跨了游戏，把游戏选择也跟上。
   useEffect(() => {
     const owner = CHANNEL_GAME[channel];
@@ -305,7 +317,9 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     }
 
     return [makePage(activeGame, "translateY(0vh)", true)];
-  }, [push, pushProgress, activeGame, bgMediaMode]);
+    // `pageDataVersion`：初次拉到页面数据后 bump，让这里重算出带背景/公告的页
+    // （缓存此时是模块级 Map，读取不进依赖，必须有这个版本号触发）。
+  }, [push, pushProgress, activeGame, bgMediaMode, pageDataVersion]);
 
   // ========== GAME MODE ==========
   if (isGameMode) {
@@ -321,7 +335,9 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
          * 右侧区这一份是固定不动的：它不跟页面走，推移时始终停在右上角。
          */}
         <div className="absolute inset-0 z-20 flex flex-col pointer-events-none">
-          <div className="pointer-events-auto">
+          {/* 只占右侧控件自身宽度：整宽覆盖层会带着 drag region 盖住页面层里的
+              品牌区（数据/游戏模式拨杆），点拨杆全被这层劫持成拖拽。 */}
+          <div className="pointer-events-auto self-end">
             <CustomTitlebar
               brandOnly={false}
               className="relative z-10"

@@ -2,6 +2,7 @@ pub mod api_health;
 pub mod capture;
 pub mod crash;
 pub mod diagnostics;
+pub mod dir_lock;
 pub mod error;
 pub mod game_icon;
 pub mod game_playtime;

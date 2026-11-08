@@ -157,7 +157,7 @@
 | `messages.*` | 消息中心：相对时间（分钟/小时/天前）、展开收起、下载状态 | :427 |
 | `browser.*` | 内嵌浏览器工具栏：前进/后退/刷新/打开外部/关闭等（9 个 key） | :681 |
 | `tray.*` | 托盘悬浮面板：品牌标题、理智/每日活跃/每周事务/通行证标签、等级、已满/回满/下次回复、未选用户提示、显示主窗口/退出（13 个 key） | :660 |
-| `launcher.*` | 启动器：安装/更新/校验修复/渠道切换/预下载/预下载中/预下载确认/启动设置/磁盘与文件扫描等完整流程；含 `launcher.game_group_endfield` / `launcher.game_group_arknights`（标题栏与切换栏按当前游戏取名，:795-796）、`launcher.no_announcements`（公告空态，:799）；子分组 `launcher.sidebar.*`（游戏界面右侧官方社媒栏：标题/打开网页提示/仅支持扫码，:848）（本文件最大分组，143 个 key） | :707 |
+| `launcher.*` | 启动器：安装/更新/校验修复/渠道切换/预下载/预下载中/预下载确认/启动设置/磁盘与文件扫描等完整流程；含 `launcher.game_group_endfield` / `launcher.game_group_arknights`（标题栏与切换栏按当前游戏取名，:795-796）、`launcher.no_announcements`（公告空态，:799）、`launcher.switch_channel_account_warning`（换服账号不互通提示，:815）、`launcher.switch_game_running`（游戏运行中禁止换服提示，:818）、`launcher.dir_locked_by`（安装目录被占用提示，body 列出占用进程，:819）、`launcher.prev_banner` / `launcher.next_banner` / `launcher.banner_page`（横幅翻页键 aria 标签，:820-822）；子分组 `launcher.sidebar.*`（游戏界面右侧官方社媒栏：标题/打开网页提示/仅支持扫码，:848）（本文件最大分组，143 个 key） | :707 |
 | `todo_page.*` | To-Do 页面：标题/描述、导入导出、新建/搜索列表、分组、空态等 | :644 |
 
 - **与 en/translation.json 的 key 差异**：无。经脚本对比，zh 与 en 叶子 key 均为 795 个，键集合完全一致（既无 zh 缺键也无 en 缺键），且两文件结构逐行对齐（行号一一对应）。

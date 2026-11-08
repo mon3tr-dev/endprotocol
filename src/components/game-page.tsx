@@ -1,4 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
+import { createMorphIcon } from "@/components/morph-icon";
+import { ChevronLeft, ChevronRight } from "lucide";
+
+/** lucide 导出的是图标节点数据（数组）而不是 React 组件，
+ *  直接 JSX 渲染会报 "Element type ... got: array"——必须经 morph 封装成组件。 */
+const ChevronLeftIcon = createMorphIcon(ChevronLeft);
+const ChevronRightIcon = createMorphIcon(ChevronRight);
 import {
   type BannerItem,
   type AnnouncementItem,
@@ -102,6 +110,7 @@ export interface GamePageProps {
  * 单个游戏页的内容层（不含背景 —— 背景由外层统一管理，避免两层背景互相穿插）。
  */
 export function GamePageContent({ game, data }: GamePageProps) {
+  const { t } = useTranslation();
   const [bannerIndex, setBannerIndex] = useState(0);
   const [bannerHovered, setBannerHovered] = useState(false);
   const [announcementTab, setAnnouncementTab] = useState(0);
@@ -233,6 +242,53 @@ export function GamePageContent({ game, data }: GamePageProps) {
                     }}
                   />
                 </div>
+
+                {/* 翻页键：悬停浮现的左右箭头 + 底部页点。
+                    绝对定位贴在容器两缘（容器宽度由图片撑开，箭头不参与布局）；
+                    手动翻页复用上面的「推动」动画——setBannerIndex 一变，
+                    URL 判据 effect 自动把旧图往相反方向推出去。 */}
+                {banners.length > 1 && (
+                  <>
+                    <button
+                      type="button"
+                      aria-label={t("launcher.prev_banner")}
+                      onClick={() =>
+                        setBannerIndex(
+                          (i) => (i - 1 + banners.length) % banners.length,
+                        )
+                      }
+                      className="absolute inset-y-0 left-0 z-[2] flex w-7 items-center justify-center rounded-l-lg bg-gradient-to-r from-black/45 to-transparent text-white/85 opacity-0 transition-opacity duration-200 group-hover:opacity-100 hover:text-white cursor-pointer"
+                    >
+                      <ChevronLeftIcon className="w-4 h-4" />
+                    </button>
+                    <button
+                      type="button"
+                      aria-label={t("launcher.next_banner")}
+                      onClick={() =>
+                        setBannerIndex((i) => (i + 1) % banners.length)
+                      }
+                      className="absolute inset-y-0 right-0 z-[2] flex w-7 items-center justify-center rounded-r-lg bg-gradient-to-l from-black/45 to-transparent text-white/85 opacity-0 transition-opacity duration-200 group-hover:opacity-100 hover:text-white cursor-pointer"
+                    >
+                      <ChevronRightIcon className="w-4 h-4" />
+                    </button>
+                    {/* 页点：底部居中，悬停浮现；当前页加宽高亮 */}
+                    <div className="absolute bottom-1 left-1/2 z-[2] flex -translate-x-1/2 items-center gap-1 rounded-full bg-black/40 px-1.5 py-1 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+                      {banners.map((_, i) => (
+                        <button
+                          key={`banner-dot-${i}`}
+                          type="button"
+                          aria-label={t("launcher.banner_page", { page: i + 1 })}
+                          onClick={() => setBannerIndex(i)}
+                          className={`h-1.5 rounded-full transition-all duration-200 cursor-pointer ${
+                            i === bannerIndex
+                              ? "w-3 bg-white"
+                              : "w-1.5 bg-white/45 hover:bg-white/70"
+                          }`}
+                        />
+                      ))}
+                    </div>
+                  </>
+                )}
               </div>
             )}
 

@@ -1,4 +1,4 @@
-#[cfg(target_os = "windows")]
+﻿#[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
 use std::sync::Arc;
 use std::sync::Mutex as StdMutex;
@@ -10,12 +10,12 @@ use crate::services::game_launcher_service::GameLauncherService;
 use crate::utils::game_playtime::GamePlaytime;
 use crate::utils::official_launcher::{LaunchError, LaunchToken};
 
-/// 启用 DX11 时附加给游戏的命令行参数。
+/// å¯ç”¨ DX11 æ—¶é™„åŠ ç»™æ¸¸æˆçš„å‘½ä»¤è¡Œå‚æ•°ã€‚
 const DX11_GAME_ARG: &str = "-force-d3d11";
 const DX11_CONFIG_KEY: &str = "launcher_dx11";
 
-/// Steam 启动游戏时写入的环境变量（非 Steam 快捷方式同样适用）。
-/// 任一项存在即可认为当前进程由 Steam 拉起。
+/// Steam å¯åŠ¨æ¸¸æˆæ—¶å†™å…¥çš„çŽ¯å¢ƒå˜é‡ï¼ˆéž Steam å¿«æ·æ–¹å¼åŒæ ·é€‚ç”¨ï¼‰ã€‚
+/// ä»»ä¸€é¡¹å­˜åœ¨å³å¯è®¤ä¸ºå½“å‰è¿›ç¨‹ç”± Steam æ‹‰èµ·ã€‚
 #[cfg(target_os = "windows")]
 const STEAM_LAUNCH_MARKERS: [&str; 4] =
     ["SteamClientLaunch", "SteamAppId", "SteamGameId", "SteamOverlayGameId"];
@@ -27,12 +27,12 @@ fn launched_by_steam() -> bool {
         .any(|name| std::env::var_os(name).is_some())
 }
 
-/// 长任务写闸：安装/更新、校验修复、预下载、切服执行前都要先拿到它。
+/// é•¿ä»»åŠ¡å†™é—¸ï¼šå®‰è£…/æ›´æ–°ã€æ ¡éªŒä¿®å¤ã€é¢„ä¸‹è½½ã€åˆ‡æœæ‰§è¡Œå‰éƒ½è¦å…ˆæ‹¿åˆ°å®ƒã€‚
 ///
-/// 启动器服务不再被一把外层 `Mutex<GameLauncherService>` 锁住——那把锁会让一次
-/// 几十分钟的下载把公告、背景图、状态查询全部堵死（前端刷新后启动流程正好要取
-/// 公告和背景图，于是卡在「正在加载初始数据…」）。这里用容量 1 的信号量，只保证
-/// 「会写安装目录」的任务彼此不并发，permit 随函数结束自动释放。
+/// å¯åŠ¨å™¨æœåŠ¡ä¸å†è¢«ä¸€æŠŠå¤–å±‚ `Mutex<GameLauncherService>` é”ä½â€”â€”é‚£æŠŠé”ä¼šè®©ä¸€æ¬¡
+/// å‡ ååˆ†é’Ÿçš„ä¸‹è½½æŠŠå…¬å‘Šã€èƒŒæ™¯å›¾ã€çŠ¶æ€æŸ¥è¯¢å…¨éƒ¨å µæ­»ï¼ˆå‰ç«¯åˆ·æ–°åŽå¯åŠ¨æµç¨‹æ­£å¥½è¦å–
+/// å…¬å‘Šå’ŒèƒŒæ™¯å›¾ï¼ŒäºŽæ˜¯å¡åœ¨ã€Œæ­£åœ¨åŠ è½½åˆå§‹æ•°æ®â€¦ã€ï¼‰ã€‚è¿™é‡Œç”¨å®¹é‡ 1 çš„ä¿¡å·é‡ï¼Œåªä¿è¯
+/// ã€Œä¼šå†™å®‰è£…ç›®å½•ã€çš„ä»»åŠ¡å½¼æ­¤ä¸å¹¶å‘ï¼Œpermit éšå‡½æ•°ç»“æŸè‡ªåŠ¨é‡Šæ”¾ã€‚
 async fn acquire_write_gate(
     svc: &Arc<GameLauncherService>,
 ) -> Result<tokio::sync::OwnedSemaphorePermit, String> {
@@ -40,6 +40,66 @@ async fn acquire_write_gate(
         .acquire_owned()
         .await
         .map_err(|e| format!("launcher write gate unavailable: {e}"))
+}
+
+/// å†™ç›®å½•ä»»åŠ¡å¼€è·‘å‰çš„**å ç”¨æ£€æµ‹ + æŒæœ‰é”**ï¼ˆåŒæ­¥å®žçŽ°ï¼Œè°ƒç”¨æ–¹åŒ…åœ¨ spawn_blocking é‡Œï¼‰ã€‚
+///
+/// 1. ç”¨ Restart Manager æ£€æµ‹å…³é”®æ–‡ä»¶ï¼ˆexe + æ ¸å¿ƒè¿è¡Œæ—¶ï¼‰å½“å‰è¢«è°é”ç€â€”â€”è¢«å ç”¨æ—¶
+///    è¿”å›žå¸¦ `LOCKED_BY:` å‰ç¼€çš„é”™è¯¯ï¼Œå†…å®¹æ˜¯ã€Œè¿›ç¨‹å (PID n)|è¿›ç¨‹å (PID n)â€¦ã€ï¼Œ
+///    å‰ç«¯è§£æžåŽç”¨ message å±•ç¤ºç»™ç”¨æˆ·ã€‚
+/// 2. æ²¡è¢«å ç”¨å°±**æˆ‘ä»¬å…ˆç‹¬å æ‰“å¼€**è¿™äº›æ–‡ä»¶å¹¶æŒæœ‰åˆ°ä»»åŠ¡ç»“æŸï¼šä»»åŠ¡è¿›è¡Œä¸­ä»»ä½•åŽæ¥è€…
+///    ï¼ˆç”¨æˆ·åˆç‚¹å¼€æ¸¸æˆã€æ€è½¯é‡æ‰«æï¼‰éƒ½æ‰“ä¸å¼€å…³é”®æ–‡ä»¶ï¼Œä¸ä¼šå†äº§ç”Ÿæ–°å ç”¨ã€‚
+async fn check_and_lock_install_dir(
+    install_path: String,
+    ch: GameChannel,
+) -> Result<crate::utils::dir_lock::DirLock, String> {
+    // RM æŸ¥è¯¢ä¸Žç‹¬å æ‰“å¼€éƒ½æ˜¯åŽŸç”Ÿè°ƒç”¨ï¼Œæ”¾é˜»å¡žçº¿ç¨‹é¿å…å ä½ tokio å·¥ä½œçº¿ç¨‹ï¼›
+    // è¿”å›žçš„ DirLock å·²åšæˆ Sendï¼ˆowned HANDLE æ— çº¿ç¨‹äº²å’Œæ€§ï¼‰ï¼Œå¯å®‰å…¨ç§»å‡ºã€‚
+    tokio::task::spawn_blocking(move || check_and_lock_install_dir_sync(&install_path, &ch))
+        .await
+        .map_err(|e| format!("dir lock task join failed: {e}"))?
+}
+
+fn check_and_lock_install_dir_sync(
+    install_path: &str,
+    ch: &GameChannel,
+) -> Result<crate::utils::dir_lock::DirLock, String> {
+    use crate::utils::dir_lock::{acquire_lock, check_files, sample_critical_files};
+
+    let files = sample_critical_files(
+        install_path,
+        ch.executable_name(),
+        ch.data_dir_name(),
+    );
+    if files.is_empty() {
+        // ç›®å½•è¿˜æ²¡æœ‰å¯æ‰§è¡Œæ–‡ä»¶ï¼ˆé¦–æ¬¡å®‰è£…ï¼‰æ— ä»Žå ç”¨ï¼Œç›´æŽ¥æ”¾è¡Œ
+        return Ok(crate::utils::dir_lock::DirLock::acquire_empty());
+    }
+
+    let files_ref: Vec<&std::path::Path> =
+        files.iter().map(|p| p.as_path()).collect();
+    let occupancy = check_files(&files_ref);
+    if occupancy.locked {
+        let listed = occupancy
+            .processes
+            .iter()
+            .map(|p| format!("{} (PID {})", p.name, p.pid))
+            .collect::<Vec<_>>()
+            .join(", ");
+        tracing::warn!("[dirlock] install dir {install_path} is locked by: {listed}");
+        // æœºå™¨å¯è¯»æ ¼å¼ï¼ˆå‰ç«¯è§£æžå±•ç¤ºï¼‰ï¼šLOCKED_BY:è¿›ç¨‹å (PID n)|è¿›ç¨‹å (PID n)â€¦
+        return Err(format!(
+            "LOCKED_BY:{}",
+            occupancy
+                .processes
+                .iter()
+                .map(|p| format!("{} (PID {})", p.name, p.pid))
+                .collect::<Vec<_>>()
+                .join("|")
+        ));
+    }
+
+    acquire_lock(&files_ref)
 }
 
 /// Return the process-level bytes read counter used by Task Manager's disk rate.
@@ -60,7 +120,7 @@ pub fn launcher_get_process_read_bytes() -> Result<u64, String> {
     Ok(0)
 }
 
-/// 获取游戏安装状态
+/// èŽ·å–æ¸¸æˆå®‰è£…çŠ¶æ€
 #[tauri::command]
 pub async fn launcher_check_status(
     service: tauri::State<'_, Arc<GameLauncherService>>,
@@ -81,7 +141,7 @@ pub async fn launcher_check_status(
     result
 }
 
-/// 安装或更新游戏
+/// å®‰è£…æˆ–æ›´æ–°æ¸¸æˆ
 #[tauri::command]
 pub async fn launcher_install_or_update(
     app: tauri::AppHandle,
@@ -99,6 +159,8 @@ pub async fn launcher_install_or_update(
     let ch = parse_channel(&channel)?;
     let svc = service.inner();
     let _write = acquire_write_gate(svc).await?;
+    // å†™å®‰è£…ç›®å½•å‰ï¼šæ£€æµ‹å ç”¨ï¼ˆè¢«é”åˆ™æŠ¥å‡ºå ç”¨è¿›ç¨‹ï¼‰å¹¶æŒæœ‰ç›®å½•é”åˆ°ä»»åŠ¡ç»“æŸ
+    let _dir_lock = check_and_lock_install_dir(install_path.clone(), ch.clone()).await?;
 
     let app_handle = app.clone();
     let progress_cb = Arc::new(move |progress: DownloadProgress| {
@@ -145,7 +207,7 @@ pub async fn launcher_install_or_update(
     }
 }
 
-/// 验证游戏文件完整性并修复
+/// éªŒè¯æ¸¸æˆæ–‡ä»¶å®Œæ•´æ€§å¹¶ä¿®å¤
 #[tauri::command]
 pub async fn launcher_verify_and_repair(
     app: tauri::AppHandle,
@@ -159,6 +221,8 @@ pub async fn launcher_verify_and_repair(
     let ch = parse_channel(&channel)?;
     let svc = service.inner();
     let _write = acquire_write_gate(svc).await?;
+    // å†™å®‰è£…ç›®å½•å‰ï¼šæ£€æµ‹å ç”¨ï¼ˆè¢«é”åˆ™æŠ¥å‡ºå ç”¨è¿›ç¨‹ï¼‰å¹¶æŒæœ‰ç›®å½•é”åˆ°ä»»åŠ¡ç»“æŸ
+    let _dir_lock = check_and_lock_install_dir(install_path.clone(), ch.clone()).await?;
 
     tracing::info!(
         "[launcher] verify_and_repair called: channel={:?}, max_concurrent={:?}, quick={:?}, install_path={}",
@@ -205,7 +269,7 @@ pub async fn launcher_verify_and_repair(
     }
 }
 
-/// 获取远程版本信息
+/// èŽ·å–è¿œç¨‹ç‰ˆæœ¬ä¿¡æ¯
 #[tauri::command]
 pub async fn launcher_get_remote_version(
     service: tauri::State<'_, Arc<GameLauncherService>>,
@@ -216,7 +280,7 @@ pub async fn launcher_get_remote_version(
     svc.get_latest_package(&ch, None).await
 }
 
-/// 预下载游戏更新资源
+/// é¢„ä¸‹è½½æ¸¸æˆæ›´æ–°èµ„æº
 #[tauri::command]
 pub async fn launcher_preload_download(
     app: tauri::AppHandle,
@@ -229,6 +293,8 @@ pub async fn launcher_preload_download(
     let ch = parse_channel(&channel)?;
     let svc = service.inner();
     let _write = acquire_write_gate(svc).await?;
+    // é¢„ä¸‹è½½åªå†™ç‹¬ç«‹æš‚å­˜ç›®å½•ï¼ˆ.staging.preload.*ï¼‰ï¼Œä¸è¦†ç›–ä»»ä½•æ¸¸æˆæ–‡ä»¶ï¼Œ
+    // å› æ­¤ä¸åšå ç”¨æ£€æµ‹ã€ä¸ä¸Šç›®å½•é”â€”â€”æ¸¸æˆç…§å¸¸å¯çŽ©ï¼Œä¸‹è½½ç…§å¸¸è¿›è¡Œã€‚
 
     let app_handle = app.clone();
     let progress_cb = Arc::new(move |progress: DownloadProgress| {
@@ -261,7 +327,7 @@ pub async fn launcher_preload_download(
     }
 }
 
-/// 安装可解密的官方预下载补丁
+/// å®‰è£…å¯è§£å¯†çš„å®˜æ–¹é¢„ä¸‹è½½è¡¥ä¸
 #[tauri::command]
 pub async fn launcher_install_preload(
     app: tauri::AppHandle,
@@ -274,6 +340,8 @@ pub async fn launcher_install_preload(
     let ch = parse_channel(&channel)?;
     let svc = service.inner();
     let _write = acquire_write_gate(svc).await?;
+    // å®‰è£…é¢„ä¸‹è½½ä¼šè¦†ç›–æ¸¸æˆæ–‡ä»¶ï¼šä¸Žå®‰è£…/æ ¡éªŒåŒä¸€å¥—å ç”¨æ£€æµ‹ + ç›®å½•é”
+    let _dir_lock = check_and_lock_install_dir(install_path.clone(), ch.clone()).await?;
 
     let app_handle = app.clone();
     let progress_cb = Arc::new(move |progress: DownloadProgress| {
@@ -305,7 +373,7 @@ pub async fn launcher_install_preload(
     }
 }
 
-/// 获取 payload 状态（上次安装/更新的版本信息）
+/// èŽ·å– payload çŠ¶æ€ï¼ˆä¸Šæ¬¡å®‰è£…/æ›´æ–°çš„ç‰ˆæœ¬ä¿¡æ¯ï¼‰
 #[tauri::command]
 pub async fn launcher_get_payload_state(
     service: tauri::State<'_, Arc<GameLauncherService>>,
@@ -316,10 +384,10 @@ pub async fn launcher_get_payload_state(
     Ok(svc.get_payload_state(&ch).await)
 }
 
-/// 取消正在进行的下载并清理缓存文件
+/// å–æ¶ˆæ­£åœ¨è¿›è¡Œçš„ä¸‹è½½å¹¶æ¸…ç†ç¼“å­˜æ–‡ä»¶
 #[tauri::command]
 pub async fn launcher_cancel_download(install_path: Option<String>) -> Result<(), String> {
-    // 先记录清理意图再取消，避免后台任务先退出导致缓存被保留
+    // å…ˆè®°å½•æ¸…ç†æ„å›¾å†å–æ¶ˆï¼Œé¿å…åŽå°ä»»åŠ¡å…ˆé€€å‡ºå¯¼è‡´ç¼“å­˜è¢«ä¿ç•™
     if let Some(path) = install_path.as_deref() {
         if !path.is_empty() {
             crate::services::game_launcher_service::request_cancel_cleanup();
@@ -335,7 +403,7 @@ pub async fn launcher_cancel_download(install_path: Option<String>) -> Result<()
     Ok(())
 }
 
-/// 检查是否存在下载缓存（暂存目录或 .download 文件）
+/// æ£€æŸ¥æ˜¯å¦å­˜åœ¨ä¸‹è½½ç¼“å­˜ï¼ˆæš‚å­˜ç›®å½•æˆ– .download æ–‡ä»¶ï¼‰
 #[tauri::command]
 pub async fn launcher_has_download_cache(install_path: String) -> Result<bool, String> {
     Ok(crate::services::game_launcher_service::has_download_cache(
@@ -343,7 +411,7 @@ pub async fn launcher_has_download_cache(install_path: String) -> Result<bool, S
     ))
 }
 
-/// 重置下载取消标志
+/// é‡ç½®ä¸‹è½½å–æ¶ˆæ ‡å¿—
 #[tauri::command]
 pub async fn launcher_reset_download_cancel() -> Result<(), String> {
     crate::services::game_launcher_service::reset_download_cancel();
@@ -368,7 +436,7 @@ pub async fn launcher_decrypt_file(file_path: String) -> Result<String, String> 
     crate::utils::hg_crypto::decrypt_file_to_string(&file_path)
 }
 
-/// 获取 Banner 列表
+/// èŽ·å– Banner åˆ—è¡¨
 #[tauri::command]
 pub async fn launcher_get_banners(
     service: tauri::State<'_, Arc<GameLauncherService>>,
@@ -379,7 +447,7 @@ pub async fn launcher_get_banners(
     svc.get_banners(&ch).await
 }
 
-/// 获取公告列表
+/// èŽ·å–å…¬å‘Šåˆ—è¡¨
 #[tauri::command]
 pub async fn launcher_get_announcements(
     service: tauri::State<'_, Arc<GameLauncherService>>,
@@ -390,7 +458,7 @@ pub async fn launcher_get_announcements(
     svc.get_announcements(&ch).await
 }
 
-/// 获取启动器公告内容（Banner + 公告 + 右侧栏合并）
+/// èŽ·å–å¯åŠ¨å™¨å…¬å‘Šå†…å®¹ï¼ˆBanner + å…¬å‘Š + å³ä¾§æ åˆå¹¶ï¼‰
 #[tauri::command]
 pub async fn launcher_get_notice_content(
     service: tauri::State<'_, Arc<GameLauncherService>>,
@@ -401,7 +469,7 @@ pub async fn launcher_get_notice_content(
     svc.get_notice_content(&ch).await
 }
 
-/// 获取启动器背景媒体 URL
+/// èŽ·å–å¯åŠ¨å™¨èƒŒæ™¯åª’ä½“ URL
 #[tauri::command]
 pub async fn launcher_get_background_image(
     service: tauri::State<'_, Arc<GameLauncherService>>,
@@ -412,17 +480,17 @@ pub async fn launcher_get_background_image(
     svc.get_background_image(&ch).await
 }
 
-/// 组装给前端的失败消息：`<token>: <detail>`（见 utils/official_launcher.rs 的契约）。
+/// ç»„è£…ç»™å‰ç«¯çš„å¤±è´¥æ¶ˆæ¯ï¼š`<token>: <detail>`ï¼ˆè§ utils/official_launcher.rs çš„å¥‘çº¦ï¼‰ã€‚
 fn launch_message(token: LaunchToken, detail: impl Into<String>) -> String {
     LaunchError::new(token, detail).message()
 }
 
-/// 同一时刻只允许一次启动：避免重复点击弹出两次 UAC、留下两套挂起的官方父进程。
+/// åŒä¸€æ—¶åˆ»åªå…è®¸ä¸€æ¬¡å¯åŠ¨ï¼šé¿å…é‡å¤ç‚¹å‡»å¼¹å‡ºä¸¤æ¬¡ UACã€ç•™ä¸‹ä¸¤å¥—æŒ‚èµ·çš„å®˜æ–¹çˆ¶è¿›ç¨‹ã€‚
 #[cfg(target_os = "windows")]
 static LAUNCH_IN_FLIGHT: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
-/// 直接启动游戏（旧行为）：交给 shell，靠 exe 自身的 manifest 自动提权。
-/// 只在找不到签名有效的官方启动器时作为回退使用。
+/// ç›´æŽ¥å¯åŠ¨æ¸¸æˆï¼ˆæ—§è¡Œä¸ºï¼‰ï¼šäº¤ç»™ shellï¼Œé  exe è‡ªèº«çš„ manifest è‡ªåŠ¨ææƒã€‚
+/// åªåœ¨æ‰¾ä¸åˆ°ç­¾åæœ‰æ•ˆçš„å®˜æ–¹å¯åŠ¨å™¨æ—¶ä½œä¸ºå›žé€€ä½¿ç”¨ã€‚
 #[cfg(target_os = "windows")]
 fn direct_launch(
     exe_path: &std::path::Path,
@@ -448,15 +516,15 @@ fn direct_launch(
     }
 }
 
-/// 启动游戏。
+/// å¯åŠ¨æ¸¸æˆã€‚
 ///
-/// 游戏会校验自己的**直接父进程**必须是签名有效的官方 `Games.exe`，因此这里优先走
-/// 「官方启动器父进程伪造」（见 `utils/official_launcher.rs`）：以提权 helper 创建一个
-/// 挂起且永不运行的官方启动器，再把它指定为游戏的父进程。找不到签名有效的官方启动器时
-/// 回退到直接启动（旧行为），并通过 `warning` 让界面提示原因。
+/// æ¸¸æˆä¼šæ ¡éªŒè‡ªå·±çš„**ç›´æŽ¥çˆ¶è¿›ç¨‹**å¿…é¡»æ˜¯ç­¾åæœ‰æ•ˆçš„å®˜æ–¹ `Games.exe`ï¼Œå› æ­¤è¿™é‡Œä¼˜å…ˆèµ°
+/// ã€Œå®˜æ–¹å¯åŠ¨å™¨çˆ¶è¿›ç¨‹ä¼ªé€ ã€ï¼ˆè§ `utils/official_launcher.rs`ï¼‰ï¼šä»¥ææƒ helper åˆ›å»ºä¸€ä¸ª
+/// æŒ‚èµ·ä¸”æ°¸ä¸è¿è¡Œçš„å®˜æ–¹å¯åŠ¨å™¨ï¼Œå†æŠŠå®ƒæŒ‡å®šä¸ºæ¸¸æˆçš„çˆ¶è¿›ç¨‹ã€‚æ‰¾ä¸åˆ°ç­¾åæœ‰æ•ˆçš„å®˜æ–¹å¯åŠ¨å™¨æ—¶
+/// å›žé€€åˆ°ç›´æŽ¥å¯åŠ¨ï¼ˆæ—§è¡Œä¸ºï¼‰ï¼Œå¹¶é€šè¿‡ `warning` è®©ç•Œé¢æç¤ºåŽŸå› ã€‚
 ///
-/// `dx11` 为 `None` 时读取配置键 `launcher_dx11`（默认 false）；为 true 时给游戏附加
-/// `-force-d3d11`。静默启动的 `--dx11` 参数在 `lib.rs` 中解析后通过内部 `launch_game` 传入。
+/// `dx11` ä¸º `None` æ—¶è¯»å–é…ç½®é”® `launcher_dx11`ï¼ˆé»˜è®¤ falseï¼‰ï¼›ä¸º true æ—¶ç»™æ¸¸æˆé™„åŠ 
+/// `-force-d3d11`ã€‚é™é»˜å¯åŠ¨çš„ `--dx11` å‚æ•°åœ¨ `lib.rs` ä¸­è§£æžåŽé€šè¿‡å†…éƒ¨ `launch_game` ä¼ å…¥ã€‚
 #[tauri::command]
 pub async fn launcher_start_game(
     config_service: tauri::State<'_, Arc<StdMutex<ConfigService>>>,
@@ -473,7 +541,7 @@ pub async fn launcher_start_game(
     launch_game(install_path, channel, dx11).await
 }
 
-/// `launcher_start_game` 的实际实现；静默模式没有 Tauri State，直接调用本函数。
+/// `launcher_start_game` çš„å®žé™…å®žçŽ°ï¼›é™é»˜æ¨¡å¼æ²¡æœ‰ Tauri Stateï¼Œç›´æŽ¥è°ƒç”¨æœ¬å‡½æ•°ã€‚
 pub(crate) async fn launch_game(
     install_path: String,
     channel: String,
@@ -500,19 +568,19 @@ pub(crate) async fn launch_game(
         });
     }
 
-    // 明日方舟不做父进程校验：实测 `Arknights.exe`（只导入 `ArknightsBase.dll` 一个模块）、
-    // `ArknightsBase.dll`、`GameAssembly.dll` 里都不存在 `Games.exe` / `WinVerifyTrust`
-    // 相关字符串，直接启动即可。终末地会校验自己的直接父进程必须是签名有效的官方启动器，
-    // 所以只有终末地需要走「官方父进程伪造」那条路。
+    // æ˜Žæ—¥æ–¹èˆŸä¸åšçˆ¶è¿›ç¨‹æ ¡éªŒï¼šå®žæµ‹ `Arknights.exe`ï¼ˆåªå¯¼å…¥ `ArknightsBase.dll` ä¸€ä¸ªæ¨¡å—ï¼‰ã€
+    // `ArknightsBase.dll`ã€`GameAssembly.dll` é‡Œéƒ½ä¸å­˜åœ¨ `Games.exe` / `WinVerifyTrust`
+    // ç›¸å…³å­—ç¬¦ä¸²ï¼Œç›´æŽ¥å¯åŠ¨å³å¯ã€‚ç»ˆæœ«åœ°ä¼šæ ¡éªŒè‡ªå·±çš„ç›´æŽ¥çˆ¶è¿›ç¨‹å¿…é¡»æ˜¯ç­¾åæœ‰æ•ˆçš„å®˜æ–¹å¯åŠ¨å™¨ï¼Œ
+    // æ‰€ä»¥åªæœ‰ç»ˆæœ«åœ°éœ€è¦èµ°ã€Œå®˜æ–¹çˆ¶è¿›ç¨‹ä¼ªé€ ã€é‚£æ¡è·¯ã€‚
     //
-    // 注意两个游戏的 exe manifest 都是 `requireAdministrator`（实测 RT_MANIFEST），
-    // 所以 `direct_launch` 的 ShellExecute 仍会弹 UAC —— 与「找不到官方启动器时终末地的
-    // 回退路径」完全一致。
+    // æ³¨æ„ä¸¤ä¸ªæ¸¸æˆçš„ exe manifest éƒ½æ˜¯ `requireAdministrator`ï¼ˆå®žæµ‹ RT_MANIFESTï¼‰ï¼Œ
+    // æ‰€ä»¥ `direct_launch` çš„ ShellExecute ä»ä¼šå¼¹ UAC â€”â€” ä¸Žã€Œæ‰¾ä¸åˆ°å®˜æ–¹å¯åŠ¨å™¨æ—¶ç»ˆæœ«åœ°çš„
+    // å›žé€€è·¯å¾„ã€å®Œå…¨ä¸€è‡´ã€‚
     if ch.is_arknights() {
         let _ = crate::utils::process::terminate_processes(exe_name);
         tracing::info!("[launcher] {exe_name} launched directly (no parent-process check)");
         return direct_launch(&exe_path, &game_arguments).map(|mut result| {
-            // 与终末地分支同一套判断：游戏经 UAC 以管理员运行、Steam 未提权时 overlay 注入不进去
+            // ä¸Žç»ˆæœ«åœ°åˆ†æ”¯åŒä¸€å¥—åˆ¤æ–­ï¼šæ¸¸æˆç» UAC ä»¥ç®¡ç†å‘˜è¿è¡Œã€Steam æœªææƒæ—¶ overlay æ³¨å…¥ä¸è¿›åŽ»
             if result.success
                 && launched_by_steam()
                 && !crate::utils::official_launcher::process_is_elevated()
@@ -529,7 +597,7 @@ pub(crate) async fn launch_game(
         });
     }
 
-    // Kill existing game processes first（原生快照，含子进程树；无残留时立刻返回）
+    // Kill existing game processes firstï¼ˆåŽŸç”Ÿå¿«ç…§ï¼Œå«å­è¿›ç¨‹æ ‘ï¼›æ— æ®‹ç•™æ—¶ç«‹åˆ»è¿”å›žï¼‰
     let _ = crate::utils::process::terminate_processes(exe_name);
 
     #[cfg(target_os = "windows")]
@@ -547,11 +615,11 @@ pub(crate) async fn launch_game(
 
         let game = exe_path.clone();
         let launch_arguments = game_arguments.clone();
-        // 状态文件用于区分「helper 在启动阶段就失败了」与「游戏创建成功但很快退出」。
+        // çŠ¶æ€æ–‡ä»¶ç”¨äºŽåŒºåˆ†ã€Œhelper åœ¨å¯åŠ¨é˜¶æ®µå°±å¤±è´¥äº†ã€ä¸Žã€Œæ¸¸æˆåˆ›å»ºæˆåŠŸä½†å¾ˆå¿«é€€å‡ºã€ã€‚
         let status_file = crate::utils::paths::app_data_dir()
             .ok()
             .map(|dir| dir.join("launcher_helper_status"));
-        // 查找、WinVerifyTrust 与进程创建都是阻塞调用，不占用 tokio 工作线程。
+        // æŸ¥æ‰¾ã€WinVerifyTrust ä¸Žè¿›ç¨‹åˆ›å»ºéƒ½æ˜¯é˜»å¡žè°ƒç”¨ï¼Œä¸å ç”¨ tokio å·¥ä½œçº¿ç¨‹ã€‚
         let attempt = tokio::task::spawn_blocking(move || {
             crate::utils::official_launcher::launch_via_official_parent(
                 &game,
@@ -573,15 +641,15 @@ pub(crate) async fn launch_game(
                 version: None,
                 warning: None,
             }),
-            // 没有签名有效的官方启动器：回退到直接启动，并让界面说明为什么可能失败。
+            // æ²¡æœ‰ç­¾åæœ‰æ•ˆçš„å®˜æ–¹å¯åŠ¨å™¨ï¼šå›žé€€åˆ°ç›´æŽ¥å¯åŠ¨ï¼Œå¹¶è®©ç•Œé¢è¯´æ˜Žä¸ºä»€ä¹ˆå¯èƒ½å¤±è´¥ã€‚
             Ok(Err(error)) if error.token == LaunchToken::NoLauncher => {
                 tracing::warn!(
-                    "[launcher] {} — falling back to a direct launch",
+                    "[launcher] {} â€” falling back to a direct launch",
                     error.message()
                 );
                 direct_launch(&exe_path, &game_arguments).map(|mut result| {
-                    // 用 `fallback` token 而不是原错误：前端据此显示「已直接启动」的提示，
-                    // 而不是把它当成启动失败。
+                    // ç”¨ `fallback` token è€Œä¸æ˜¯åŽŸé”™è¯¯ï¼šå‰ç«¯æ®æ­¤æ˜¾ç¤ºã€Œå·²ç›´æŽ¥å¯åŠ¨ã€çš„æç¤ºï¼Œ
+                    // è€Œä¸æ˜¯æŠŠå®ƒå½“æˆå¯åŠ¨å¤±è´¥ã€‚
                     result.warning = Some(
                         LaunchError::new(LaunchToken::Fallback, error.detail.clone()).message(),
                     );
@@ -606,10 +674,10 @@ pub(crate) async fn launch_game(
                         "[launcher] game created through the official launcher parent (in-process)"
                     ),
                 }
-                // Steam 只能把 overlay 注入到与自己同权限级别的进程。游戏 manifest 要求
-                // 管理员；本进程未提权时只能经 runas helper 创建游戏，overlay 无法越过
-                // 这条完整性级别边界。提权后（Steam 以管理员运行）游戏由本进程直接创建，
-                // 注入链得以保留。
+                // Steam åªèƒ½æŠŠ overlay æ³¨å…¥åˆ°ä¸Žè‡ªå·±åŒæƒé™çº§åˆ«çš„è¿›ç¨‹ã€‚æ¸¸æˆ manifest è¦æ±‚
+                // ç®¡ç†å‘˜ï¼›æœ¬è¿›ç¨‹æœªææƒæ—¶åªèƒ½ç» runas helper åˆ›å»ºæ¸¸æˆï¼Œoverlay æ— æ³•è¶Šè¿‡
+                // è¿™æ¡å®Œæ•´æ€§çº§åˆ«è¾¹ç•Œã€‚ææƒåŽï¼ˆSteam ä»¥ç®¡ç†å‘˜è¿è¡Œï¼‰æ¸¸æˆç”±æœ¬è¿›ç¨‹ç›´æŽ¥åˆ›å»ºï¼Œ
+                // æ³¨å…¥é“¾å¾—ä»¥ä¿ç•™ã€‚
                 let warning = (launched_by_steam()
                     && !crate::utils::official_launcher::process_is_elevated())
                 .then(|| {
@@ -653,7 +721,7 @@ pub(crate) async fn launch_game(
     }
 }
 
-/// 浏览文件夹
+/// æµè§ˆæ–‡ä»¶å¤¹
 #[tauri::command]
 pub fn launcher_browse_folder() -> Result<Option<String>, String> {
     let dialog = rfd::FileDialog::new().set_title("Select Game Directory");
@@ -663,14 +731,14 @@ pub fn launcher_browse_folder() -> Result<Option<String>, String> {
         .map(|p| p.to_string_lossy().to_string()))
 }
 
-/// 磁盘空间信息
+/// ç£ç›˜ç©ºé—´ä¿¡æ¯
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct DiskSpace {
     pub total: u64,
     pub free: u64,
 }
 
-/// 获取指定路径所在磁盘的总空间和可用空间（字节）
+/// èŽ·å–æŒ‡å®šè·¯å¾„æ‰€åœ¨ç£ç›˜çš„æ€»ç©ºé—´å’Œå¯ç”¨ç©ºé—´ï¼ˆå­—èŠ‚ï¼‰
 #[tauri::command]
 pub async fn launcher_get_disk_space(path: String) -> Result<DiskSpace, String> {
     let p = std::path::Path::new(&path);
@@ -729,7 +797,7 @@ pub async fn launcher_get_disk_space(path: String) -> Result<DiskSpace, String> 
     }
 }
 
-/// 扫描安装目录，检查已有文件的完整性
+/// æ‰«æå®‰è£…ç›®å½•ï¼Œæ£€æŸ¥å·²æœ‰æ–‡ä»¶çš„å®Œæ•´æ€§
 #[tauri::command]
 pub async fn launcher_scan_install_dir(
     service: tauri::State<'_, Arc<GameLauncherService>>,
@@ -741,11 +809,11 @@ pub async fn launcher_scan_install_dir(
     svc.scan_install_dir(&ch, &install_path).await
 }
 
-/// 解密 `config.ini` 并取出 `appcode` 与 `channel` 两个字段。
+/// è§£å¯† `config.ini` å¹¶å–å‡º `appcode` ä¸Ž `channel` ä¸¤ä¸ªå­—æ®µã€‚
 ///
-/// `config.ini` 是官方客户端自己写入的渠道档案（固定 AES-256-CBC 加密，与 `game_files`
-/// 同一套密钥），比靠特征 DLL 猜渠道更权威：终末地官服与 B 服、明日方舟官服与 B 服都是
-/// 同一个游戏 exe，只有 `config.ini` 里的 `channel` 能区分。
+/// `config.ini` æ˜¯å®˜æ–¹å®¢æˆ·ç«¯è‡ªå·±å†™å…¥çš„æ¸ é“æ¡£æ¡ˆï¼ˆå›ºå®š AES-256-CBC åŠ å¯†ï¼Œä¸Ž `game_files`
+/// åŒä¸€å¥—å¯†é’¥ï¼‰ï¼Œæ¯”é ç‰¹å¾ DLL çŒœæ¸ é“æ›´æƒå¨ï¼šç»ˆæœ«åœ°å®˜æœä¸Ž B æœã€æ˜Žæ—¥æ–¹èˆŸå®˜æœä¸Ž B æœéƒ½æ˜¯
+/// åŒä¸€ä¸ªæ¸¸æˆ exeï¼Œåªæœ‰ `config.ini` é‡Œçš„ `channel` èƒ½åŒºåˆ†ã€‚
 fn read_config_profile(install_dir: &std::path::Path) -> Option<(String, String)> {
     let config_path = install_dir.join("config.ini");
     let text =
@@ -765,25 +833,25 @@ fn read_config_profile(install_dir: &std::path::Path) -> Option<(String, String)
     Some((value_of("appcode")?, value_of("channel")?))
 }
 
-/// 根据目录下的文件特征与 `config.ini` 档案自动识别游戏渠道
+/// æ ¹æ®ç›®å½•ä¸‹çš„æ–‡ä»¶ç‰¹å¾ä¸Ž `config.ini` æ¡£æ¡ˆè‡ªåŠ¨è¯†åˆ«æ¸¸æˆæ¸ é“
 #[tauri::command]
 pub async fn launcher_detect_channel(install_path: String) -> Result<Option<String>, String> {
     let path = std::path::Path::new(&install_path);
 
-    // 检查基本游戏文件是否存在
+    // æ£€æŸ¥åŸºæœ¬æ¸¸æˆæ–‡ä»¶æ˜¯å¦å­˜åœ¨
     let has_endfield = path.join("Endfield.exe").exists() && path.join("Endfield_Data").is_dir();
     let has_arknights =
         path.join("Arknights.exe").exists() && path.join("Arknights_Data").is_dir();
     let has_config = path.join("config.ini").exists();
 
     if (!has_endfield && !has_arknights) || !has_config {
-        // 游戏未安装或目录无效
+        // æ¸¸æˆæœªå®‰è£…æˆ–ç›®å½•æ— æ•ˆ
         return Ok(None);
     }
 
     let profile = read_config_profile(path);
 
-    // 明日方舟：appcode `GzD1CpaWgmSq1wew`，渠道靠 channel=1（官服）/ channel=2（B 服）区分
+    // æ˜Žæ—¥æ–¹èˆŸï¼šappcode `GzD1CpaWgmSq1wew`ï¼Œæ¸ é“é  channel=1ï¼ˆå®˜æœï¼‰/ channel=2ï¼ˆB æœï¼‰åŒºåˆ†
     if has_arknights {
         let channel = profile.as_ref().map(|(_, channel)| channel.as_str());
         return Ok(Some(
@@ -795,7 +863,7 @@ pub async fn launcher_detect_channel(install_path: String) -> Result<Option<Stri
         ));
     }
 
-    // 终末地：先按渠道特征库判定（原有逻辑），识别不出时回退到 config.ini 的 channel
+    // ç»ˆæœ«åœ°ï¼šå…ˆæŒ‰æ¸ é“ç‰¹å¾åº“åˆ¤å®šï¼ˆåŽŸæœ‰é€»è¾‘ï¼‰ï¼Œè¯†åˆ«ä¸å‡ºæ—¶å›žé€€åˆ° config.ini çš„ channel
     let has_hgsdk = path.join("hgsdk.dll").exists();
     let has_pc_sdk = path.join("PCGameSDK.dll").exists();
     let has_gfsdk = path.join("gfsdk.dll").exists();
@@ -804,11 +872,11 @@ pub async fn launcher_detect_channel(install_path: String) -> Result<Option<Stri
     let has_play_pc_sdk = path.join("play_pc_sdk.dll").exists();
     let has_manifest_xml = path.join("manifest.xml").exists();
 
-    // 渠道识别逻辑：
+    // æ¸ é“è¯†åˆ«é€»è¾‘ï¼š
     // Google Play: glextra.dll + play_pc_sdk.dll + manifest.xml
-    // Global: gfsdk.dll + glfoundation.dll (无 PCGameSDK)
-    // B服: PCGameSDK.dll
-    // 官服: hgsdk.dll (无 PCGameSDK)
+    // Global: gfsdk.dll + glfoundation.dll (æ—  PCGameSDK)
+    // Bæœ: PCGameSDK.dll
+    // å®˜æœ: hgsdk.dll (æ—  PCGameSDK)
 
     if has_gl_extra && has_play_pc_sdk && has_manifest_xml {
         return Ok(Some("google_play".to_string()));
@@ -826,7 +894,7 @@ pub async fn launcher_detect_channel(install_path: String) -> Result<Option<Stri
         return Ok(Some("official".to_string()));
     }
 
-    // 特征库认不出来时，用 config.ini 里的 channel 兜底（国服两渠道都能认）
+    // ç‰¹å¾åº“è®¤ä¸å‡ºæ¥æ—¶ï¼Œç”¨ config.ini é‡Œçš„ channel å…œåº•ï¼ˆå›½æœä¸¤æ¸ é“éƒ½èƒ½è®¤ï¼‰
     if let Some((app_code, channel)) = profile {
         let endfield_app_code = crate::models::game::GameChannel::Official.app_code();
         if app_code == endfield_app_code {
@@ -836,11 +904,11 @@ pub async fn launcher_detect_channel(install_path: String) -> Result<Option<Stri
         }
     }
 
-    // 无法识别渠道
+    // æ— æ³•è¯†åˆ«æ¸ é“
     Ok(None)
 }
 
-/// 检查可执行文件是否存在
+/// æ£€æŸ¥å¯æ‰§è¡Œæ–‡ä»¶æ˜¯å¦å­˜åœ¨
 #[tauri::command]
 pub fn launcher_check_executable(install_path: String, channel: String) -> Result<bool, String> {
     let ch = parse_channel(&channel)?;
@@ -855,20 +923,20 @@ pub async fn launcher_check_game_running(channel: String) -> Result<bool, String
     Ok(crate::utils::process::is_process_running(ch.process_name()).await)
 }
 
-/// 获取游戏累计运行时长快照（仅统计本软件运行期间）。
+/// èŽ·å–æ¸¸æˆç´¯è®¡è¿è¡Œæ—¶é•¿å¿«ç…§ï¼ˆä»…ç»Ÿè®¡æœ¬è½¯ä»¶è¿è¡ŒæœŸé—´ï¼‰ã€‚
 #[tauri::command]
 pub fn launcher_get_game_playtime() -> GamePlaytime {
     crate::utils::game_playtime::snapshot()
 }
 
-/// 结束游戏进程。
+/// ç»“æŸæ¸¸æˆè¿›ç¨‹ã€‚
 ///
-/// 游戏由**提权** helper 创建（见 `utils/official_launcher.rs`），所以未提权的本进程执行
-/// `TerminateProcess` 只会拿到 `ERROR_ACCESS_DENIED` —— 这正是「停止」点了没反应
-/// 的原因。这里先就地试一次（本进程已提权时不必弹 UAC），仍有残留则经 UAC 以管理员权限
-/// 重试同一个动作，并把最终存活状态回给界面。
+/// æ¸¸æˆç”±**ææƒ** helper åˆ›å»ºï¼ˆè§ `utils/official_launcher.rs`ï¼‰ï¼Œæ‰€ä»¥æœªææƒçš„æœ¬è¿›ç¨‹æ‰§è¡Œ
+/// `TerminateProcess` åªä¼šæ‹¿åˆ° `ERROR_ACCESS_DENIED` â€”â€” è¿™æ­£æ˜¯ã€Œåœæ­¢ã€ç‚¹äº†æ²¡ååº”
+/// çš„åŽŸå› ã€‚è¿™é‡Œå…ˆå°±åœ°è¯•ä¸€æ¬¡ï¼ˆæœ¬è¿›ç¨‹å·²ææƒæ—¶ä¸å¿…å¼¹ UACï¼‰ï¼Œä»æœ‰æ®‹ç•™åˆ™ç» UAC ä»¥ç®¡ç†å‘˜æƒé™
+/// é‡è¯•åŒä¸€ä¸ªåŠ¨ä½œï¼Œå¹¶æŠŠæœ€ç»ˆå­˜æ´»çŠ¶æ€å›žç»™ç•Œé¢ã€‚
 ///
-/// 返回 `true` = 进程已结束；返回 `false` 且无错误 = 本来就没有同名进程。
+/// è¿”å›ž `true` = è¿›ç¨‹å·²ç»“æŸï¼›è¿”å›ž `false` ä¸”æ— é”™è¯¯ = æœ¬æ¥å°±æ²¡æœ‰åŒåè¿›ç¨‹ã€‚
 #[tauri::command]
 pub async fn launcher_kill_game(channel: String) -> Result<bool, String> {
     let ch = parse_channel(&channel)?;
@@ -877,9 +945,9 @@ pub async fn launcher_kill_game(channel: String) -> Result<bool, String> {
     #[cfg(target_os = "windows")]
     {
         let name = process_name.to_string();
-        // 进程快照 / TerminateProcess 与 UAC 等待都是阻塞调用，不占用 tokio 工作线程。
+        // è¿›ç¨‹å¿«ç…§ / TerminateProcess ä¸Ž UAC ç­‰å¾…éƒ½æ˜¯é˜»å¡žè°ƒç”¨ï¼Œä¸å ç”¨ tokio å·¥ä½œçº¿ç¨‹ã€‚
         let outcome = tokio::task::spawn_blocking(move || {
-            // 单次快照预检：本来就没有残留时直接返回，连终止调用都不必发起。
+            // å•æ¬¡å¿«ç…§é¢„æ£€ï¼šæœ¬æ¥å°±æ²¡æœ‰æ®‹ç•™æ—¶ç›´æŽ¥è¿”å›žï¼Œè¿žç»ˆæ­¢è°ƒç”¨éƒ½ä¸å¿…å‘èµ·ã€‚
             if !crate::utils::process::exists_once(&name) {
                 return Ok(false);
             }
@@ -907,7 +975,7 @@ pub async fn launcher_kill_game(channel: String) -> Result<bool, String> {
     }
 }
 
-/// 切换游戏渠道
+/// åˆ‡æ¢æ¸¸æˆæ¸ é“
 #[tauri::command]
 pub async fn launcher_switch_channel(
     service: tauri::State<'_, Arc<GameLauncherService>>,
@@ -926,18 +994,22 @@ pub async fn launcher_switch_channel(
     let to = parse_channel(&to_channel)?;
     let svc = service.inner();
     let _write = acquire_write_gate(svc).await?;
+    // åˆ‡æœä¼šè¦†ç›–æ¸¸æˆæ–‡ä»¶ï¼šå ç”¨æ£€æµ‹ï¼ˆæŠ¥å‡ºå ç”¨è¿›ç¨‹ï¼‰+ ç›®å½•é”åˆ°åˆ‡æ¢ç»“æŸã€‚
+    // Phase 0 çš„è¿›ç¨‹é¢„æ£€ä»åœ¨æœåŠ¡é‡Œä¿ç•™â€”â€”åŒä¿é™©ï¼Œä¸”å®ƒæŒ¡çš„æ˜¯ã€Œæ¸¸æˆåœ¨è·‘ã€è¿™ä¸€
+    // æœ€å¸¸è§åœºæ™¯ï¼Œè¿™é‡ŒæŒ¡çš„æ˜¯æ€è½¯/ç´¢å¼•æœåŠ¡ç­‰å…¶å®ƒå ç”¨è€…ã€‚
+    let _dir_lock = check_and_lock_install_dir(install_path.clone(), to.clone()).await?;
     svc.switch_channel(&from, &to, &install_path, app).await
 }
 
 fn parse_channel(s: &str) -> Result<GameChannel, String> {
     match s.to_lowercase().as_str() {
         "official" | "cn" => Ok(GameChannel::Official),
-        "bilibili" | "b服" | "bili" => Ok(GameChannel::Bilibili),
-        "global" | "国际服" => Ok(GameChannel::Global),
+        "bilibili" | "bæœ" | "bili" => Ok(GameChannel::Bilibili),
+        "global" | "å›½é™…æœ" => Ok(GameChannel::Global),
         "google_play" | "play" | "gp" => Ok(GameChannel::GooglePlay),
-        // 明日方舟（官服）与明日方舟 B 服
-        "arknights" | "ak" | "明日方舟" | "舟" => Ok(GameChannel::Arknights),
-        "arknights_bilibili" | "ak_bili" | "ak_b" | "明日方舟b服" => {
+        // æ˜Žæ—¥æ–¹èˆŸï¼ˆå®˜æœï¼‰ä¸Žæ˜Žæ—¥æ–¹èˆŸ B æœ
+        "arknights" | "ak" | "æ˜Žæ—¥æ–¹èˆŸ" | "èˆŸ" => Ok(GameChannel::Arknights),
+        "arknights_bilibili" | "ak_bili" | "ak_b" | "æ˜Žæ—¥æ–¹èˆŸbæœ" => {
             Ok(GameChannel::ArknightsBilibili)
         }
         _ => Err(format!(
@@ -947,10 +1019,10 @@ fn parse_channel(s: &str) -> Result<GameChannel, String> {
     }
 }
 
-/// 渠道对应的游戏进程名；渠道串不认识时返回 `None`。
+/// æ¸ é“å¯¹åº”çš„æ¸¸æˆè¿›ç¨‹åï¼›æ¸ é“ä¸²ä¸è®¤è¯†æ—¶è¿”å›ž `None`ã€‚
 ///
-/// `lib.rs` 的驻守实例（`--silent --launch-game`）要在启动后等待游戏结束，
-/// 需要知道该等 `Endfield.exe` 还是 `Arknights.exe`。
+/// `lib.rs` çš„é©»å®ˆå®žä¾‹ï¼ˆ`--silent --launch-game`ï¼‰è¦åœ¨å¯åŠ¨åŽç­‰å¾…æ¸¸æˆç»“æŸï¼Œ
+/// éœ€è¦çŸ¥é“è¯¥ç­‰ `Endfield.exe` è¿˜æ˜¯ `Arknights.exe`ã€‚
 pub(crate) fn channel_process_name(channel: &str) -> Option<String> {
     parse_channel(channel)
         .ok()

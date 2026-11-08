@@ -35,7 +35,7 @@
 | 2426–2517 | **预下载确认对话框**：提示将占用的磁盘空间（复用 `DiskSpaceBar`），空间不足禁用确认 |
 | 2520–2597 | 渠道选择对话框（首次安装、无法自动检测时）：按游戏分两组渲染，标题取 `launcher.game_group_{endfield,arknights}`，徽标取 `CHANNEL_SHORT` |
 | 2600–2778 | 扫描结果 + 磁盘空间占用条对话框（同样复用 `DiskSpaceBar`） |
-| 2781–2858 | 渠道切换：目标渠道选择对话框（候选来自 `switchableChannels(detectedChannel)`，明日方舟返回空表 → 该对话框不会出现，右上角只显示静态渠道徽章） |
+| 2781–2858 | 渠道切换：目标渠道选择对话框（候选来自 `switchableChannels(detectedChannel)`，两个游戏都返回候选——实测明日方舟官/B 服差异完整在清单里；含 `switch_channel_account_warning` 账号不互通提示） |
 | 2861–2901 | 渠道切换确认对话框 |
 | 2928–3012 | `GameSettingsModalProps` 接口与 `GameSettingsModal` 内部组件（未导出）：安装路径 + `GameLaunchSettingsFields` 共享设置，容器 `size="lg"`；`Dialog` 限制最大高度 `calc(100vh-3rem)` 并让 `Body` 内部滚动 |
 
@@ -48,7 +48,7 @@
 | `formatEta` | 93–100 | 内部工具：剩余秒数 → `m:ss` / `h:mm:ss` |
 | `ButtonProgressRing` | 110–181 | 内部组件：环绕主按钮/预下载按钮描边的百分比进度环，按按钮实测尺寸画胶囊路径（见「进度环形状」） |
 | `DownloadArrowIcon` | 183–209 | 内部组件：下载/安装中按钮里的图标——静止托盘 + 循环向下滑出的箭头（`.launcher-download-arrow`，定义在 `globals.css`） |
-| `ProgressFlyout` | 211–234 | 内部组件：进度浮层外壳（`createPortal` + 玻璃样式 + 边界翻转），安装/校验/预下载共用 |
+| `ProgressFlyout` | 211–234 | 内部组件：进度浮层外壳（`createPortal` + 玻璃样式 + 边界翻转），安装/校验/预下载共用。材质为 `.lg-media-chip lg-hairline border`（媒体层：深 tint 固定、白字恒可读）——不能用 `.lg-regular`：浅色主题下半透白底会淹没内容里写死的 `text-white/*` 白字 |
 | `DownloadProgressBody` | 236–282 | 内部组件：浮层里的下载型内容（已下载/总量、进度条、速度、剩余时间、当前文件） |
 | `DiskSpaceBar` | 284–347 | 内部组件：磁盘占用三色条（已用/需要下载/下载后剩余），安装确认与预下载确认共用 |
 | `GameActionPanel` | 349–3131 | 导出组件主体。props `{ game?: LauncherGame }`：传了就**钉死**在那个游戏上（整页推移时旧页要显示旧游戏的安装状态），不传则跟随全局 store 变化 |
@@ -61,8 +61,8 @@
 | `startInstall` | 612–631 | 执行安装/更新：`installOrUpdate` 透传 `readDownloadThreads()` 与 `readDownloadResume()`，成功后自动做一次 quick 校验 |
 | `handleInstall` | 633–681 | 首次安装编排（选目录 → 检测渠道 → 缓存续传/渠道选择） |
 | `handleChannelSelected` | 683–717 | 渠道选定后并行扫描目录与磁盘空间，弹扫描结果 |
-| `handleSwitchChannel` | 719–727 | 记录切换目标，转确认态（仅终末地渠道可达；明日方舟没有换服入口） |
-| `handleConfirmSwitch` | 729–774 | 定位进度浮层坐标并执行渠道切换，失败发 urgent 消息 |
+| `handleSwitchChannel` | 719–727 | 记录切换目标，转确认态（两个游戏的渠道均可达，候选由 `switchableChannels` 决定） |
+| `handleConfirmSwitch` | 729–784 | 先查游戏进程（`checkGameRunning(detectedChannel)`，同游戏各渠道进程名相同），在跑发 warn 消息拦截；否则定位进度浮层坐标并执行渠道切换，失败发 urgent 消息 |
 | `handleStart` | 820–876 | 启动游戏（无路径时先定位并检测渠道）；调用 `startGame(installPath, channel, readDx11())`，把返回结果按 `<token>: <detail>` 契约转成 `addMessage` 提示（失败 → urgent，回退 → warn） |
 | `formatVerifyResult` | 881–908 | 解析校验结果 JSON，生成 i18n 文本与 info/warn 级别 |
 | `handleUpdate` | 914–979 | 更新；优先安装官方补丁（`installPreload`）否则 `installOrUpdate`，两者均透传下载线程数与续传设置，成功后执行快速校验；失败分别提示更新或校验错误 |
@@ -112,7 +112,7 @@
 `handleLocate` 走 `browseFolder` + `detectChannel`；`handleInstall` 分三路：无路径 → 选目录后检测（有缓存弹 `resume-install`，检测失败弹渠道选择）、有路径但未检测到渠道 → 弹渠道选择、已检测 → 缓存续传或直接安装；`handleChannelSelected` 并行 `scanInstallDir` + `getDiskSpace`，失败则退回缓存判断流程。
 
 **渠道切换（719–774, 2781–2901）**
-选择器（2781）→ `handleSwitchChannel` 记录目标 → 确认框（2861）→ `handleConfirmSwitch` 计算浮层位置、调用 `switchChannel`、成功后同步 `channel`/`detectedChannel`/localStorage 并 `checkStatus`，失败经 `addMessage` 发 `switch-error` 紧急消息。切换中主按钮点击触发 `cancelSwitch`。
+选择器（2781）→ `handleSwitchChannel` 记录目标 → 确认框（2861）→ `handleConfirmSwitch` 计算浮层位置、调用 `switchChannel`、成功后同步 `channel`/`detectedChannel`/localStorage 并 `checkStatus`，失败经 `addMessage` 发 `switch-error` 紧急消息。切换中主按钮点击触发 `cancelSwitch`。右上角渠道徽章对两个游戏都可点击（终末地与明日方舟统一走同一入口）。
 
 **启动 / 停止（776–804, 973–976, 1256–1299）**
 `handleStart` → `startGame`（附带 `readDx11()`；启用时后端给游戏进程追加 `-force-d3d11`）。成功且带 `warning` 时提示 `launcher.launch_fallback_body`；失败时按 token 映射 `launcher.launch_err_*`。运行中点击主按钮：`launcher_skip_stop_confirm === "1"` 直接 `handleKill`，否则弹 `stop-game` 确认框（可勾选不再提示）。
@@ -138,7 +138,7 @@
 **取消不该报成失败**：后端取消时 `install_or_update` 返回 `Err("Install cancelled")`，`handleUpdate` 原来会因此弹一条 urgent「更新失败」。现在 `markDownloadCancelled()` 同时把 `userCancelledRef` 置真（每次发起新任务——`startInstall` / `handleUpdate` / `handleVerify` / `handleQuickVerify` / `handlePreload`——开头复位为假），`handleUpdate` 的 `catch` 与 `!result.success` 两个分支、以及两个校验入口的「校验完成」消息都会据此跳过，用户自己点的取消不再产生错误提示。
 
 **主按钮与进度浮层**
-下载阶段主按钮周围显示从正上方开始顺时针环绕的百分比进度环；悬停取消下载或关闭游戏时，主按钮背景显示透明浅红。按钮 hover 时计算 `progressFlyoutPos`（另见按钮定位 effect）；浮层经 `ProgressFlyout`（`createPortal` 到 `document.body`）挂出，按 `preparing`/`isDownloading`/`isVerifying`/`isComparing`/`isRepairing`/`isApplying`/`switching` 分支渲染进度条、速度、ETA、当前文件与切换阶段文案（阶段 → 文案映射）。预下载**不进入**该浮层，而是用自己的浮层实例（同为 `ProgressFlyout`，锚在预下载按钮上）。
+下载等长操作的主按钮周围显示从正上方开始顺时针环绕的百分比进度环（`stagePercent`：verifying/repairing 阶段分子取 `verified_bytes`，downloading/applying 阶段取 `downloaded`；checking/comparing 的 total 为 0 → 只剩淡轨道）；悬停取消下载或关闭游戏时，主按钮背景显示透明浅红。切换中主按钮同样显示该进度环（`switchPercent`：downloading 阶段 = 字节比；backing_up/moving 阶段 = file_index/file_count，后端把它们复用进 downloaded/total；fetching/comparing 阶段 total 为 0 → 无可见弧线）。按钮 hover 时计算 `progressFlyoutPos`（另见按钮定位 effect）；浮层经 `ProgressFlyout`（`createPortal` 到 `document.body`）挂出，按 `preparing`/`isDownloading`/`isVerifying`/`isComparing`/`isRepairing`/`isApplying`/`switching` 分支渲染进度条、速度、ETA、当前文件与切换阶段文案（阶段 → 文案映射）。预下载**不进入**该浮层，而是用自己的浮层实例（同为 `ProgressFlyout`，锚在预下载按钮上）。
 
 **进度环形状**：进度环由 `ButtonProgressRing` 绘制，必须贴合按钮自身的胶囊轮廓。早期实现用 `preserveAspectRatio="none"` 的 `<ellipse>` 近似，椭圆被按按钮宽高非等比拉伸，越靠两端越向里收（44px 高、150px 宽的按钮在圆角起点处已内缩约 8px），画出来是一圈「橄榄形」、与按钮边缘对不上；现在组件用 `ResizeObserver` 量出 `svg`（`absolute inset-0`，即按钮 padding box）的实际尺寸，再按同一尺寸生成圆角矩形路径（`rx` = 高度一半即胶囊，笔画外沿留 1px 压在按钮 hairline 上），路径起点落在正上方中央，配合 `pathLength="100"` 归一化让 `strokeDashoffset = 100 - percent` 直接表示进度。按钮宽度会随文案变化（「安装中…」↔「取消下载」），尺寸变化时 `ResizeObserver` 触发重画。
 

@@ -148,10 +148,14 @@ impl GameChannel {
 
     /// 该渠道是否支持"渠道切换"（换服）。
     ///
-    /// 终末地的换服是换差异文件 + 渠道特征库；明日方舟的渠道差异落在渠道 SDK/DLL 与目录结构上，
-    /// 不在清单里，用同一套逻辑换服会留下半套渠道文件，因此暂不开放。
+    /// 两个游戏的渠道差异都完整落在各自的 `game_files` 清单里（实测 2026-11-08）：
+    /// - 终末地：官/B/国际/GooglePlay 四渠道清单互 diff 换差异文件；
+    /// - 明日方舟：官服与 B 服（同 appcode，channel 1/2）清单 diff 约
+    ///   706 MB 下载（B 服独有 `BLPlatform64/` 186 MB、官服独有 `hgsdk.dll` 等
+    ///   1.9 MB、MD5 不同 520 MB），切换后 `config.ini` 的 channel 随包更新，
+    ///   渠道识别自动跟随。
     pub fn supports_channel_switch(&self) -> bool {
-        !self.is_arknights()
+        true
     }
 
     /// 公告 / Banner / 右侧栏的**回落渠道**：本渠道拿不到内容时改用哪个渠道的数据。

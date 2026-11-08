@@ -575,7 +575,7 @@
 ---
 
 ## `src-tauri/src/commands/launcher.rs`
-**职责**：游戏启动器（下载/校验/渠道切换/启动进程）的 IPC 层（846 行 / 27 个命令）。命令以 `State<Arc<GameLauncherService>>` 直接取服务——服务**不再**被一把外层 `Mutex` 包住；会写安装目录的长任务（`launcher_install_or_update`、`launcher_verify_and_repair`、`launcher_preload_download`、`launcher_install_preload`、`launcher_switch_channel`）先经 `acquire_write_gate` 取得 `write_gate`（容量 1 的 `Semaphore`）permit 再执行，其余命令（公告/背景图/状态查询/扫描）不再被下载堵住。涉及渠道的先经 `parse_channel` 把字符串转成 `GameChannel` 枚举；耗时操作通过回调 emit `launcher-progress` 事件推送进度。
+**职责**：游戏启动器（下载/校验/渠道切换/启动进程）的 IPC 层（约 1000 行 / 27 个命令）。命令以 `State<Arc<GameLauncherService>>` 直接取服务——服务**不再**被一把外层 `Mutex` 包住；会写安装目录的长任务（`launcher_install_or_update`、`launcher_verify_and_repair`、`launcher_install_preload`、`launcher_switch_channel`；`launcher_preload_download` 只写暂存不写安装目录、不做检测）先经 `acquire_write_gate` 取得 `write_gate`（容量 1 的 `Semaphore`）permit，再经 `check_and_lock_install_dir` 做**占用检测 + 目录锁**（`utils/dir_lock.rs`：Restart Manager 查谁锁了关键文件，被占用返回 `LOCKED_BY:进程名 (PID n)|…`；空闲则独占打开关键文件持有到任务结束），然后执行，其余命令（公告/背景图/状态查询/扫描）不再被下载堵住。涉及渠道的先经 `parse_channel` 把字符串转成 `GameChannel` 枚举；耗时操作通过回调 emit `launcher-progress` 事件推送进度。
 
 ### 内部结构
 - 1-9：导入（`models::game::*`、`GameLauncherService`、`Emitter`、`utils::official_launcher`）。

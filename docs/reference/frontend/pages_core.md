@@ -32,6 +32,7 @@
 - 193-204 行：订阅 `subscribeGameBgMode`，同步 `bgMediaMode`。
 - 206-236 行：订阅 `subscribeActiveGame` → 切游戏时同步 `activeGame` 与该游戏的 `channel`，并触发**整页推移**：先看新页数据在不在缓存里（`getCachedPageData`），在就直接推，不在就等 `fetchPageData` 拉完再推（等的时候旧页还留在原地，不会出现「新页一片空白」）。
 - 238-241 行：`prefetchOtherGame(activeGame)`——预取另一个游戏的数据，第一次切过去时不用等网络。
+- 243-252 行：**初次进入补拉当前游戏**——页面数据缓存是模块级 Map（`game-page.tsx` 的 `pageCache`），F5 刷新/应用启动后为空，而预取只拉「另一个游戏」，当前游戏的背景与公告会一直空着（切一次游戏才恢复）。挂载时缓存没有当前游戏数据就 `fetchPageData`，完成后 bump `pageDataVersion` 触发 `pages` useMemo 重算（缓存读取不进依赖，靠这个版本号触发）。
 - 243-249 行：`channel` 变化时若跨了游戏，把游戏选择也跟上（`setActiveGame(owner)`）。
 - 251-264 行：读取配置 `sidebar_rail_collapsed` 初始化 `sidebarCollapsed`；`toggleSidebarCollapsed()` 切换并持久化。
 - 266-272 行：卸载时 `setLauncherBgMedia(null)` 清理背景。
@@ -48,8 +49,8 @@
 **标题栏拆两半**（避免重复窗口按钮）：标题栏整条渲染两份会出现**重复的窗口控制按钮**，整条只渲染一份则品牌区（游戏名）不会跟着页面走。所以 `TitlebarBrand` 随页面走（两页各一份，`brandOnly`），`TitlebarControls`（铃铛 + 窗口三键）固定在右上角（只一份，`controlsOnly`）。
 
 - 264-492 行：**GAME MODE 分支**：
-  - 296-305 行：标题栏右侧区（`controlsOnly`）——固定不动，不跟页面走。
-  - 307-... 行：**页面层**（`pages.map`）：每页一个 `absolute inset-0` 容器，`transform` 为该页当前的位移、`zIndex` 出栈页 0 / 入栈页 1；页内含全屏背景（`<video autoPlay loop muted playsInline>`，或图片分支用 CSS 背景层：`background-size: cover` + `background-position: center` + `background-repeat: no-repeat`，即保持原始宽高比、取 `max(W/w, H/h)` 等比缩放到恰好完全覆盖视口、不留空白，溢出的长边方向居中裁掉；再叠加渐变遮罩；无资源时使用 CSS 渐变占位）、标题栏品牌区（`brandOnly`）、背景模式切换器、`InAppBrowser`（`z-40`）、`GameSwitchRail`（左侧贴边游戏切换栏）、`GamePageContent`（右侧社媒栏 + 底部横幅公告盒 + 操作面板）。
+  - 296-305 行：标题栏右侧区（`controlsOnly`）——固定不动，不跟页面走；覆盖层容器 `self-end` 只占右侧控件自身宽度（整宽的 `pointer-events-auto` + drag region 会盖住页面层品牌区，模式拨杆点不动）。
+  - 307-... 行：**页面层**（`pages.map`）：每页一个 `absolute inset-0` 容器，`transform` 为该页当前的位移、`zIndex` 出栈页 0 / 入栈页 1（useMemo 依赖含 `pageDataVersion`——初次拉到页面数据后 bump 触发重算，否则刷新后背景/公告一直是空的）；页内含全屏背景（`<video autoPlay loop muted playsInline>`，或图片分支用 CSS 背景层：`background-size: cover` + `background-position: center` + `background-repeat: no-repeat`，即保持原始宽高比、取 `max(W/w, H/h)` 等比缩放到恰好完全覆盖视口、不留空白，溢出的长边方向居中裁掉；再叠加渐变遮罩；无资源时使用 CSS 渐变占位）、标题栏品牌区（`brandOnly`）、背景模式切换器、`InAppBrowser`（`z-40`）、`GameSwitchRail`（左侧贴边游戏切换栏）、`GamePageContent`（右侧社媒栏 + 底部横幅公告盒 + 操作面板）。
   - **游戏模式不挂磨砂层**：背景是视频，标题栏保持背景本身清晰（原先的 `.frost-main frost-titlebar-only` 已移除）。
 - 494-609 行：**DATA MODE 分支**（默认业务界面）：
   - 497 行：`dashboard-background` 背景层；515 行：`CustomTitlebar`。

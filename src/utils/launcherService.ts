@@ -797,14 +797,15 @@ export async function persistInstallPath(
 /**
  * 可以切换到的渠道。
  *
- * 只有终末地支持换服：它的渠道差异都落在游戏清单里，换服就是换差异文件。
- * 明日方舟的渠道差异在渠道 SDK/DLL 与目录结构上（不在清单里），用同一套逻辑换服
- * 会留下半套渠道文件，所以这里返回空表，界面上不提供换服入口。
+ * 两个游戏都支持换服：渠道差异都完整落在各自的清单里（实测 2026-11-08）。
+ * - 终末地：官/B/国际/GooglePlay 四渠道互切；
+ * - 明日方舟：官服 ↔ B 服（channel 1/2），diff 约 706 MB
+ *   （B 服独有 `BLPlatform64/` 186 MB、官服独有 `hgsdk.dll` 等 1.9 MB、
+ *   MD5 不同 520 MB），切换后 `config.ini` 的 channel 随包更新。
  */
 export function switchableChannels(from: GameChannel): GameChannel[] {
   const game = CHANNEL_GAME[from];
-  if (game !== "endfield") return [];
-  return GAME_CHANNELS.endfield.filter((channel) => channel !== from);
+  return GAME_CHANNELS[game].filter((channel) => channel !== from);
 }
 
 export function formatBytes(bytes: number): string {

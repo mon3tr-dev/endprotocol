@@ -4090,6 +4090,31 @@ impl GameLauncherService {
             let _ = app.emit("launcher://progress", &ActiveOperation::Switching(progress));
         };
 
+        // 失败/取消的**终态事件**：前端靠 `phase === "error"` 才会把按钮从「切换中」
+        // 复位（`localActiveOp` 只在收到终态或组件重挂时清空），只返回 `Err` 会让
+        // 界面永远卡在切换中。所有失败路径必须先走这里再 `return Err`。
+        // 进程预检（Phase 0）发生在 `set_active_operation` 之前，前端还没进切换态，
+        // 不需要发终态。
+        let emit_terminal = |phase: &str| {
+            emit(phase, 0, 0, None, 0, 0);
+        };
+
+        // ===== Phase 0: 游戏进程预检 =====
+        // 两个渠道的游戏进程同名（`Arknights.exe` / `Endfield.exe`），渠道参数取哪个
+        // 都一样。文件被游戏或其伴生组件（AntiCheatExpert、启动器 WebView 等）占用时
+        // Phase 4 的覆盖写入会拿到 os error 32，所以进任何阶段前先拦住。
+        let running = crate::utils::process::exists_once(from_channel.process_name());
+        if running {
+            tracing::warn!(
+                "[switch] Refused: game process {} is running",
+                from_channel.process_name()
+            );
+            return Err(format!(
+                "Game is running ({}). Stop it before switching channels.",
+                from_channel.process_name()
+            ));
+        }
+
         // ===== Phase 1: Fetch manifests + diff =====
         self.set_active_operation(Some(ActiveOperation::Switching(SwitchProgress {
             phase: "checking".to_string(),
@@ -4105,29 +4130,61 @@ impl GameLauncherService {
 
         if SWITCH_CANCELLED.load(Ordering::SeqCst) {
             self.set_active_operation(None).await;
+            emit_terminal("error");
             reset_switch_cancel();
             return Err("Switch cancelled".to_string());
         }
 
-        let from_remote = self.get_latest_package(from_channel, None).await?;
+        let from_remote = match self.get_latest_package(from_channel, None).await {
+            Ok(v) => v,
+            Err(e) => {
+                self.set_active_operation(None).await;
+                emit_terminal("error");
+                return Err(e);
+            }
+        };
         if SWITCH_CANCELLED.load(Ordering::SeqCst) {
             self.set_active_operation(None).await;
+            emit_terminal("error");
             reset_switch_cancel();
             return Err("Switch cancelled".to_string());
         }
-        let to_remote = self.get_latest_package(to_channel, None).await?;
+        let to_remote = match self.get_latest_package(to_channel, None).await {
+            Ok(v) => v,
+            Err(e) => {
+                self.set_active_operation(None).await;
+                emit_terminal("error");
+                return Err(e);
+            }
+        };
         if SWITCH_CANCELLED.load(Ordering::SeqCst) {
             self.set_active_operation(None).await;
+            emit_terminal("error");
             reset_switch_cancel();
             return Err("Switch cancelled".to_string());
         }
-        let (from_manifest, _) = self.fetch_manifest(&from_remote.resource_base_url).await?;
+        let (from_manifest, _) = match self.fetch_manifest(&from_remote.resource_base_url).await {
+            Ok(v) => v,
+            Err(e) => {
+                self.set_active_operation(None).await;
+                emit_terminal("error");
+                return Err(e);
+            }
+        };
         if SWITCH_CANCELLED.load(Ordering::SeqCst) {
             self.set_active_operation(None).await;
+            emit_terminal("error");
             reset_switch_cancel();
             return Err("Switch cancelled".to_string());
         }
-        let (to_manifest, _) = self.fetch_manifest(&to_remote.resource_base_url).await?;
+        let (to_manifest, _) = match self.fetch_manifest(&to_remote.resource_base_url).await {
+            Ok(v) => v,
+            Err(e) => {
+                self.set_active_operation(None).await;
+                emit_terminal("error");
+                return Err(e);
+            }
+        };
 
         let from_map: std::collections::HashMap<&str, &ManifestFile> =
             from_manifest.iter().map(|f| (f.path.as_str(), f)).collect();
@@ -4182,6 +4239,7 @@ impl GameLauncherService {
                 }
                 let _ = fs::remove_dir_all(&staging_dir);
                 self.set_active_operation(None).await;
+                emit_terminal("error");
                 reset_switch_cancel();
                 return Err("Switch cancelled".to_string());
             }
@@ -4257,6 +4315,7 @@ impl GameLauncherService {
                     }
                     let _ = fs::remove_dir_all(&staging_dir);
                     self.set_active_operation(None).await;
+                    emit_terminal("error");
                     return Err(format!("Download failed for {}: {}", file.path, e));
                 }
             }
@@ -4271,7 +4330,21 @@ impl GameLauncherService {
         let backup_dir = backup_root.join(from_channel.as_str());
         let mut backed_up_files: Vec<(PathBuf, PathBuf)> = Vec::new();
 
-        for (idx, file) in files_to_remove.iter().enumerate() {
+        // 备份范围 = 将被删除的文件 + 将被覆盖且本地存在的 MD5 差异文件。
+        // 后者让反向切换能命中 Phase 2 的「Reusing backup」快速路径：
+        // 官↔B 来回切时，520 MB 的共有差异文件不再需要重新下载。
+        let mut backup_source: Vec<(&ManifestFile, bool)> = files_to_remove
+            .iter()
+            .map(|f| (f, false))
+            .collect();
+        backup_source.extend(
+            files_to_download
+                .iter()
+                .filter(|f| game_dir.join(&f.path).exists())
+                .map(|f| (f, true)),
+        );
+
+        for (idx, (file, will_overwrite)) in backup_source.iter().enumerate() {
             if SWITCH_CANCELLED.load(Ordering::SeqCst) {
                 tracing::info!("[switch] Cancelled during backup, restoring");
                 for (original, backup) in &backed_up_files {
@@ -4282,7 +4355,10 @@ impl GameLauncherService {
                         fs::copy(backup, original).ok();
                     }
                 }
+                // 覆盖型备份的原文件仍在原地（Phase 4 才覆盖），无需恢复；
+                // 删除型备份由上面 backed_up_files 循环还原
                 self.set_active_operation(None).await;
+                emit_terminal("error");
                 reset_switch_cancel();
                 return Err("Switch cancelled".to_string());
             }
@@ -4296,15 +4372,27 @@ impl GameLauncherService {
             emit(
                 "backing_up",
                 idx as u64,
-                files_to_remove.len() as u64,
+                backup_source.len() as u64,
                 Some(file.path.clone()),
                 idx,
-                files_to_remove.len(),
+                backup_source.len(),
             );
 
             if original.exists() {
-                fs::copy(&original, &backup).map_err(|e| format!("Backup copy: {}", e))?;
-                fs::remove_file(&original).map_err(|e| format!("Delete original: {}", e))?;
+                if let Err(e) = fs::copy(&original, &backup) {
+                    self.set_active_operation(None).await;
+                    emit_terminal("error");
+                    return Err(format!("Backup copy: {}", e));
+                }
+                // 覆盖型备份只留副本，不删原文件（原文件会在 Phase 4 被覆盖）；
+                // 删除型备份照旧移走原文件
+                if !will_overwrite {
+                    if let Err(e) = fs::remove_file(&original) {
+                        self.set_active_operation(None).await;
+                        emit_terminal("error");
+                        return Err(format!("Delete original: {}", e));
+                    }
+                }
                 backed_up_files.push((original, backup));
             }
         }
@@ -4332,6 +4420,7 @@ impl GameLauncherService {
                     }
                 }
                 self.set_active_operation(None).await;
+                emit_terminal("error");
                 reset_switch_cancel();
                 return Err("Switch cancelled".to_string());
             }
@@ -4351,7 +4440,42 @@ impl GameLauncherService {
                 files_to_download.len(),
             );
 
-            fs::copy(&src, &dst).map_err(|e| format!("Move to game dir: {}", e))?;
+            if let Err(e) = fs::copy(&src, &dst) {
+                // 目标文件被占用（os error 32，游戏/杀软/伴生进程）或其它 IO 失败：
+                // 目录此刻停在半切换状态，必须整体回滚——已覆盖的文件从备份还原，
+                // 已删除的文件从备份放回，让目录回到 from_channel 的完整状态。
+                tracing::error!(
+                    "[switch] Apply failed for {} ({}), rolling back",
+                    file.path,
+                    e
+                );
+                for dst_moved in &moved_files {
+                    let _ = fs::remove_file(dst_moved);
+                    let relative = dst_moved.strip_prefix(game_dir).unwrap_or(dst_moved);
+                    let backup = backup_dir.join(relative);
+                    if backup.exists() {
+                        if let Some(parent) = dst_moved.parent() {
+                            fs::create_dir_all(parent).ok();
+                        }
+                        fs::copy(&backup, dst_moved).ok();
+                    }
+                }
+                for (original, backup) in &backed_up_files {
+                    if !original.exists() && backup.exists() {
+                        if let Some(parent) = original.parent() {
+                            fs::create_dir_all(parent).ok();
+                        }
+                        fs::copy(backup, original).ok();
+                    }
+                }
+                let _ = fs::remove_dir_all(&staging_dir);
+                self.set_active_operation(None).await;
+                emit_terminal("error");
+                return Err(format!(
+                    "Move to game dir: {} — switched files were rolled back. Close the game and programs that may lock its files, then retry.",
+                    e
+                ));
+            }
             moved_files.push(dst);
         }
 

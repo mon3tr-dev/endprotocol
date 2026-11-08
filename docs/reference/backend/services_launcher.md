@@ -171,7 +171,7 @@
 | `async fn fetch_notice_parts`（私有） | L3767 | 按 `kinds`（`get_banner` / `get_announcement` / `get_sidebar`）发一次 `batch_proxy_web_raw` 请求 |
 | `fn parse_notice_parts`（私有关联 fn） | L3797 | 从原始响应解析出 `NoticeParts`（banner / announcements / sidebars 三项） |
 | `fn parse_sidebars`（私有关联 fn） | L3917 | 把 `get_sidebar_rsp` 的分组结构合并成扁平 `Vec<SidebarItem>`；解析失败只记日志并返回空表 |
-| `pub async fn switch_channel` | L4051 | 输入 `from_channel`、`to_channel`、`install_path`、`app` → 计算清单差异、下载差异文件、备份并应用，支持取消回滚 → `Ok(to_remote.version)` / `Err` |
+| `pub async fn switch_channel` | L4051 | 输入 `from_channel`、`to_channel`、`install_path`、`app` → 计算清单差异、下载差异文件、备份并应用（备份含将被覆盖的 MD5 差异文件），支持取消回滚 → `Ok(to_remote.version)` / `Err` |
 
 > 模块级另有私有结构体 `NoticeParts`（L66）：`banners` / `announcements` / `sidebars` 三项的解析容器，让三个取数入口共用同一套解析与回落逻辑。
 
@@ -240,7 +240,25 @@ B 服三项全空（官服参数与 B 服参数都查过），因此**取到空�
 - 回落请求失败只记日志（`safe_eprintln!`），不覆盖已取到的内容、不让整个请求失败。
 
 ### 渠道检测与切换
-`switch_channel` 依次比较两渠道清单、下载差异文件、备份并移除旧渠道文件、应用新渠道文件、清理暂存；切换期间检查取消标志并尝试回滚。
+`switch_channel` 依次做**游戏进程预检（Phase 0）**、比较两渠道清单、下载差异文件、备份并移除旧渠道文件、应用新渠道文件、清理暂存；切换期间检查取消标志并尝试回滚。
+
+**Phase 0 进程预检**：游戏进程在跑（含伴生组件占用文件）时 Phase 4 覆盖写入会拿到 os error 32，所以任何阶段开始前先用 `process::exists_once` 检查游戏进程，在跑即拒绝并返回可读错误。
+
+**终态事件**：Phase 1 起（`set_active_operation` 已置切换态）的所有失败/取消路径都先 emit `phase: "error"` 的 `launcher://switch-progress` / `launcher://progress` 再返回 `Err`——前端 `localActiveOp` 只在收到终态或组件重挂时清空，缺这一步界面会永远卡在「切换中」。Phase 0 的拒绝发生在置位之前，不发终态。
+
+**两个游戏都支持换服**（实测 2026-11-08，明日方舟官服 vs B 服清单 diff）：
+
+| 差异类别 | 文件数 | 体积 | 内容 |
+| --- | --- | --- | --- |
+| B 服独有 | 71 | 186 MB | `BLPlatform64/`（B 服渠道 SDK + CEF 内嵌浏览器） |
+| 官服独有 | 4 | 1.9 MB | `hgsdk.dll`、`devicehelper.dll`、`sdkdata/sdk_hgsdk_config.*` |
+| 同路径不同 MD5 | 32 | 520 MB | `Arknights.exe`、`config.ini`、`U8SDK.dll`、`u8_channel.dll`、`GameAssembly.dll` 等 |
+
+即明日方舟换服一次约下载 706 MB、删除 1.9 MB；切换后 `config.ini` 的 channel 随包更新，`launcher_detect_channel` 的识别自动跟随。旧结论「明日方舟渠道差异不在清单里」系推断错误，已被实测推翻。
+
+**备份范围（Phase 3）**：备份「对方渠道没有的文件」+「将被覆盖且本地存在的 MD5 差异文件」（覆盖型只留副本不删原文件，删除型照旧移走）。反向切换时 Phase 2 可命中「Reusing backup」快速路径，官↔B 来回切第二次起只需下载对方独有的 ~186 MB。
+
+**应用失败回滚（Phase 4）**：任一文件覆盖失败（典型：os error 32 文件被占用）时整体回滚——已覆盖文件从备份还原、已删除文件从备份放回，目录回到 `from_channel` 完整状态，错误信息提示关闭占用程序后重试。
 
 ### 游戏进程与磁盘辅助（位于 `commands/launcher.rs`）
 启动/检测/终止游戏、检测渠道、检查可执行文件和查询磁盘空间由对应 launcher command 处理，不属于本服务。
