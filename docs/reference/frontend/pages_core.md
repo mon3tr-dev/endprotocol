@@ -38,12 +38,13 @@
 - 187-194 行：预加载全部 banner 图片（`new Image()`），避免翻页动画首帧闪白。
 - 196-201 行：卸载时 `setLauncherBgMedia(null)` 清理背景。
 - 202-211 行：派生值：`isGameMode`、`announcementCategories`（去重分类）、`activeAnnouncementCategory`、`filteredAnnouncements`（按当前分类过滤）。
+- 212-222 行：**换游戏后的下标夹取**——`bannerIndex` 与 `announcementTab` 都可能因列表变短而越界（终末地 9 个 banner / 3 个公告分类，明日方舟 8 个 / 2 个），越界时夹回 0。少了这一步，渲染 `banners[bannerIndex].image_url` 会读到 `undefined` 导致整块面板白屏。
 - 213-431 行：**GAME MODE 分支**：
   - 214-222 行：背景源选择——`bgMediaMode === "video"` 且有 `video_url` 用视频，否则用 `image_url ?? video_url`。
   - 224-261 行：固定全屏背景（`<video autoPlay loop muted playsInline>`，或图片分支用 CSS 背景层：`background-size: cover` + `background-position: center` + `background-repeat: no-repeat`，即保持原始宽高比、取 `max(W/w, H/h)` 等比缩放到恰好完全覆盖视口、不留空白，溢出的长边方向居中裁掉；再叠加渐变遮罩；无资源时使用 CSS 渐变占位）。
   - 261-272 行：`CustomTitlebar`（261）、顶部中央背景模式悬浮切换器（263-266，仅 `bgMedia` 非空时挂载 `GameBackgroundSwitch`）、`InAppBrowser`（269，`z-40`，覆盖切换器与右侧栏）、`GameSidebarRail`（272，游戏模式右侧官方社媒栏，`items={sidebars}`，`z-30`）。
   - 275-431 行：内容层（`z-10`）：底部左侧「Banner + 公告」玻璃盒（281-422 行）与右侧 `GameActionPanel`（424-427 行）。
-    - 281-422 行：Banner 轮播 + 公告玻璃盒——翻页时离场图（292-304 行，绝对定位）向反方向推走（`.animate-banner-push-out-left/right`），入场图（306-328 行，`z-[1]`）从对应方向推入（`.animate-banner-push-in-right/left`）；点击 `jump_url` 走 `openInAppBrowser`，`onError` 隐藏图片；图片悬停时 `group-hover:scale-[1.08]` + `transition-transform duration-300` 缩放。悬停显示左右箭头（330-356 行，环形取模翻页）；底部圆点指示器（358-372 行）。公告区分类 Tab（376-396 行，`setAnnouncementTab`）+ 列表（398-415 行，`slice(0, 6)` 只显示 6 条，点击条目 `openInAppBrowser(item.jump_url)`）；无分类时显示 “No announcements”（417-421 行）。
+    - 281-422 行：Banner 轮播 + 公告玻璃盒——翻页时离场图（292-304 行，绝对定位）向反方向推走（`.animate-banner-push-out-left/right`），入场图（306-328 行，`z-[1]`）从对应方向推入（`.animate-banner-push-in-right/left`）；点击 `jump_url` 走 `openInAppBrowser`，`onError` 隐藏图片；图片悬停时 `group-hover:scale-[1.08]` + `transition-transform duration-300` 缩放。悬停显示左右箭头（330-356 行，环形取模翻页）；底部圆点指示器（358-372 行）。公告区分类 Tab（376-396 行，`setAnnouncementTab`）+ 列表（398-415 行，`slice(0, 6)` 只显示 6 条，点击条目 `openInAppBrowser(item.jump_url)`）；无分类时显示 “No announcements”（417-421 行，现为 i18n 键 `launcher.no_announcements`）。
 - 433-509 行：**DATA MODE 分支**（默认业务界面）：
   - 435-436 行：`dashboard-background` 背景层；439 行：`CustomTitlebar`。
   - 渐变磨砂层：`.frost-main frost-with-sidebar` 全屏覆盖层（`--frost-sidebar-w` 按折叠状态写入 `288px`/`64px`），纵向遮罩对应标题栏、横向遮罩对应侧边栏，两者取并集形成连通的 L 形强区；游戏模式下换成 `.frost-main frost-titlebar-only`（仅标题栏窄带，避免整屏 backdrop-filter 跟视频逐帧重算）。放在背景层之上、veil 之下、内容层之下。

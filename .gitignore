@@ -42,3 +42,5 @@ target/
 
 # pnpm auto-generated scaffold with unset allowBuilds placeholders
 pnpm-workspace.yaml
+
+.dsh/

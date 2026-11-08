@@ -644,13 +644,13 @@
 - 位置：launcher.rs:367（async）；参数：`file_path: String`；返回：`Result<String, String>`；逻辑：`utils::hg_crypto::decrypt_file_to_string(&file_path)` 解密游戏资源文件并返回文本。
 
 ### `launcher_get_banners`
-- 位置：launcher.rs:373（async）；参数：`service`、`channel`；返回：`Result<Vec<BannerItem>, String>`；逻辑：`GameLauncherService::get_banners(&ch)`。
+- 位置：launcher.rs:373（async）；参数：`service`、`channel`；返回：`Result<Vec<BannerItem>, String>`；逻辑：`GameLauncherService::get_banners(&ch)`（本渠道没有 Banner 时用回落渠道的补上）。
 
 ### `launcher_get_announcements`
-- 位置：launcher.rs:384（async）；参数：`service`、`channel`；返回：`Result<Vec<AnnouncementItem>, String>`；逻辑：`GameLauncherService::get_announcements(&ch)`。
+- 位置：launcher.rs:384（async）；参数：`service`、`channel`；返回：`Result<Vec<AnnouncementItem>, String>`；逻辑：`GameLauncherService::get_announcements(&ch)`（本渠道没有公告时用回落渠道的补上）。
 
 ### `launcher_get_notice_content`
-- 位置：launcher.rs:395（async）；参数：`service`、`channel`；返回：`Result<LauncherNoticeContent, String>`；逻辑：`GameLauncherService::get_notice_content(&ch)`（Banner + 公告 + 右侧栏 `sidebars` 合并内容，一次 `batch_proxy_web_raw` 带 `get_banner`/`get_announcement`/`get_sidebar` 三项）。
+- 位置：launcher.rs:395（async）；参数：`service`、`channel`；返回：`Result<LauncherNoticeContent, String>`；逻辑：`GameLauncherService::get_notice_content(&ch)`（Banner + 公告 + 右侧栏 `sidebars` 合并内容，一次 `batch_proxy_web_raw` 带 `get_banner`/`get_announcement`/`get_sidebar` 三项）。三项内容**各自独立**在为空时用回落渠道补（B服 → 官服、GooglePlay → Global），详见 [services_launcher.md](services_launcher.md) 的「公告内容回落」。
 
 ### `launcher_get_background_image`
 - 位置：launcher.rs:406（async）；参数：`service`、`channel`；返回：`Result<Option<BackgroundMedia>, String>`；逻辑：`GameLauncherService::get_background_image(&ch)`。

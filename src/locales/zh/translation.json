@@ -797,6 +797,7 @@
     "game_group_arknights": "明日方舟",
     "select_game_title": "切换游戏",
     "game_not_configured_hint": "该游戏还没有设置安装目录",
+    "no_announcements": "暂无公告",
     "scanning_files": "扫描已有文件中...",
     "scan_result_title": "文件扫描结果",
     "scan_result_desc": "发现 {{valid}}/{{total}} 个文件已完整，需要下载 {{missing}} 个缺失文件和 {{corrupted}} 个损坏文件",

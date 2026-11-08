@@ -59,6 +59,7 @@ interface DashboardLayoutProps {
 
 export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const location = useLocation();
+  const { t } = useTranslation();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [viewMode, setViewMode] = useState(getLauncherMode);
@@ -221,6 +222,16 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     });
   }, [banners]);
 
+  // 换游戏/换渠道后 banner 列表长度会变（终末地 9 条、明日方舟 8 条），
+  // 轮播下标可能停在越界位置 —— 渲染时直接取 banners[bannerIndex] 会读到
+  // undefined，整个面板白屏。这里把下标夹回合法范围。
+  useEffect(() => {
+    setBannerIndex((i) => {
+      if (banners.length === 0) return 0;
+      return i >= banners.length ? 0 : i;
+    });
+  }, [banners.length]);
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {
@@ -237,6 +248,18 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const filteredAnnouncements = announcements.filter(
     (a) => a.category === activeAnnouncementCategory,
   );
+
+  // 换游戏后公告分类数会变（终末地 3 类、明日方舟 2 类），选中的下标可能越界，
+  // 那样页签一个都不高亮。越界时夹回第一个。
+  useEffect(() => {
+    setAnnouncementTab((i) =>
+      announcementCategories.length === 0
+        ? 0
+        : i >= announcementCategories.length
+          ? 0
+          : i,
+    );
+  }, [announcementCategories.length]);
 
   // ========== GAME MODE ==========
   if (isGameMode) {
@@ -455,7 +478,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                 </div>
               ) : (
                 <div className="flex-1 flex items-center justify-center text-xs text-white/30">
-                  No announcements
+                  {t("launcher.no_announcements")}
                 </div>
               )}
             </div>

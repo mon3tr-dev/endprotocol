@@ -797,6 +797,7 @@
     "game_group_arknights": "Arknights",
     "select_game_title": "Switch game",
     "game_not_configured_hint": "This game has no install folder yet",
+    "no_announcements": "No announcements",
     "scanning_files": "Scanning existing files...",
     "scan_result_title": "File Scan Result",
     "scan_result_desc": "Found {{valid}}/{{total}} complete files. Need to download {{missing}} missing and {{corrupted}} corrupted files",

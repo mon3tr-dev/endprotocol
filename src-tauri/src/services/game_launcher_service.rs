@@ -58,6 +58,17 @@ fn is_archive_control_file(relative: &Path) -> bool {
         .any(|control| name.eq_ignore_ascii_case(control))
 }
 
+/// 一次公告类请求解析出来的三项内容（Banner / 公告 / 右侧栏）。
+///
+/// 单独成结构是为了让 `get_banners` / `get_announcements` / `get_notice_content`
+/// 共用同一套解析与回落逻辑：谁缺哪项就补哪项，不必整份换掉。
+#[derive(Debug, Default)]
+struct NoticeParts {
+    banners: Vec<BannerItem>,
+    announcements: Vec<AnnouncementItem>,
+    sidebars: Vec<SidebarItem>,
+}
+
 /// 读取 `delete_files.txt` 内容：官方是"每行一个相对路径"的清单；
 /// 这里同时兼容 JSON 数组（`["a","b"]` 或 `[{"path":"a"}]`），两种都归一化为相对路径列表。
 fn parse_delete_list(content: &str) -> Vec<String> {
@@ -3616,33 +3627,20 @@ impl GameLauncherService {
 
     /// 获取 Banner 列表
     pub async fn get_banners(&self, channel: &GameChannel) -> Result<Vec<BannerItem>, String> {
-        let proxy_reqs = serde_json::json!([{
-            "kind": "get_banner",
-            "get_banner_req": {
-                "appcode": channel.app_code(),
-                "language": "zh-cn",
-                "channel": channel.channel(),
-                "sub_channel": channel.sub_channel(),
-                "platform": "Windows",
-                "source": "launcher"
+        let mut parts = self
+            .fetch_notice_parts(channel, &["get_banner"])
+            .await?;
+
+        // 该渠道没有 Banner 时用回落渠道（官服 / 国际服）的补上。
+        if parts.banners.is_empty() {
+            if let Some(fallback) = channel.notice_fallback_channel() {
+                if let Ok(fb) = self.fetch_notice_parts(&fallback, &["get_banner"]).await {
+                    parts.banners = fb.banners;
+                }
             }
-        }]);
+        }
 
-        let body = self.batch_proxy_web(channel, proxy_reqs).await?;
-
-        let banners = body
-            .proxy_rsps
-            .iter()
-            .filter_map(|r| r.get_banner_rsp.as_ref())
-            .flat_map(|rsp| {
-                rsp.banners.iter().map(|b| BannerItem {
-                    image_url: b.url.clone(),
-                    jump_url: b.jump_url.clone(),
-                })
-            })
-            .collect();
-
-        Ok(banners)
+        Ok(parts.banners)
     }
 
     /// 获取公告列表
@@ -3650,50 +3648,20 @@ impl GameLauncherService {
         &self,
         channel: &GameChannel,
     ) -> Result<Vec<AnnouncementItem>, String> {
-        let proxy_reqs = serde_json::json!([{
-            "kind": "get_announcement",
-            "get_announcement_req": {
-                "appcode": channel.app_code(),
-                "language": "zh-cn",
-                "channel": channel.channel(),
-                "sub_channel": channel.sub_channel(),
-                "platform": "Windows",
-                "source": "launcher"
+        let mut parts = self
+            .fetch_notice_parts(channel, &["get_announcement"])
+            .await?;
+
+        // 该渠道没有公告时用回落渠道（官服 / 国际服）的补上。
+        if parts.announcements.is_empty() {
+            if let Some(fallback) = channel.notice_fallback_channel() {
+                if let Ok(fb) = self.fetch_notice_parts(&fallback, &["get_announcement"]).await {
+                    parts.announcements = fb.announcements;
+                }
             }
-        }]);
+        }
 
-        let body = self.batch_proxy_web(channel, proxy_reqs).await?;
-
-        let announcements = body
-            .proxy_rsps
-            .iter()
-            .filter_map(|r| r.get_announcement_rsp.as_ref())
-            .flat_map(|rsp| {
-                rsp.tabs.iter().flat_map(|tab| {
-                    tab.announcements.iter().map(|a| {
-                        let date = a
-                            .start_ts
-                            .as_ref()
-                            .and_then(|ts| ts.parse::<i64>().ok())
-                            .map(|ts| {
-                                let dt =
-                                    chrono::DateTime::from_timestamp(ts, 0).unwrap_or_default();
-                                dt.format("%m/%d").to_string()
-                            })
-                            .unwrap_or_default();
-
-                        AnnouncementItem {
-                            category: tab.tab_name.clone(),
-                            title: a.content.clone(),
-                            date,
-                            jump_url: a.jump_url.clone().unwrap_or_default(),
-                        }
-                    })
-                })
-            })
-            .collect();
-
-        Ok(announcements)
+        Ok(parts.announcements)
     }
 
     /// 获取启动器公告内容（Banner + 公告合并返回）
@@ -3725,157 +3693,210 @@ impl GameLauncherService {
         Ok(raw)
     }
 
+    /// 获取启动器公告内容（Banner + 公告 + 右侧栏）
+    ///
+    /// 三项内容各自独立回落：某渠道拿不到公告就用官服（国际服渠道用 Global）的，
+    /// 拿不到右侧栏同理——线上 B 服三项全空、官服三项齐全。
     pub async fn get_notice_content(
         &self,
         channel: &GameChannel,
     ) -> Result<LauncherNoticeContent, String> {
-        // B服公告API与官服相同，直接用官服参数
-        let api_channel = if *channel == GameChannel::Bilibili {
-            &GameChannel::Official
-        } else {
-            channel
-        };
+        let mut parts = self
+            .fetch_notice_parts(channel, &["get_banner", "get_announcement", "get_sidebar"])
+            .await?;
 
-        let proxy_reqs = serde_json::json!([
-            {
-                "kind": "get_banner",
-                "get_banner_req": {
-                    "appcode": api_channel.app_code(),
-                    "language": "zh-cn",
-                    "channel": api_channel.channel(),
-                    "sub_channel": api_channel.sub_channel(),
-                    "platform": "Windows",
-                    "source": "launcher"
-                }
-            },
-            {
-                "kind": "get_announcement",
-                "get_announcement_req": {
-                    "appcode": api_channel.app_code(),
-                    "language": "zh-cn",
-                    "channel": api_channel.channel(),
-                    "sub_channel": api_channel.sub_channel(),
-                    "platform": "Windows",
-                    "source": "launcher"
-                }
-            },
-            {
-                "kind": "get_sidebar",
-                "get_sidebar_req": {
-                    "appcode": api_channel.app_code(),
-                    "language": "zh-cn",
-                    "channel": api_channel.channel(),
-                    "sub_channel": api_channel.sub_channel(),
-                    "platform": "Windows",
-                    "source": "launcher"
+        // 该渠道缺哪一项，就用回落渠道补哪一项。
+        let needs_fallback = parts.banners.is_empty()
+            || parts.announcements.is_empty()
+            || parts.sidebars.is_empty();
+
+        if needs_fallback {
+            if let Some(fallback) = channel.notice_fallback_channel() {
+                match self
+                    .fetch_notice_parts(
+                        &fallback,
+                        &["get_banner", "get_announcement", "get_sidebar"],
+                    )
+                    .await
+                {
+                    Ok(fb) => {
+                        if parts.banners.is_empty() {
+                            parts.banners = fb.banners;
+                        }
+                        if parts.announcements.is_empty() {
+                            parts.announcements = fb.announcements;
+                        }
+                        if parts.sidebars.is_empty() {
+                            parts.sidebars = fb.sidebars;
+                        }
+                    }
+                    Err(e) => {
+                        crate::safe_eprintln!(
+                            "[Launcher] notice fallback to {:?} failed: {}",
+                            fallback,
+                            e
+                        );
+                    }
                 }
             }
-        ]);
+        }
 
-        let raw = self.batch_proxy_web_raw(api_channel, proxy_reqs).await?;
+        crate::safe_eprintln!(
+            "[Launcher] get_notice_content result: {} banners, {} announcements, {} sidebars",
+            parts.banners.len(),
+            parts.announcements.len(),
+            parts.sidebars.len()
+        );
 
-        let mut banners = Vec::new();
-        let mut announcements = Vec::new();
+        Ok(LauncherNoticeContent {
+            banners: parts.banners,
+            announcements: parts.announcements,
+            sidebars: parts.sidebars,
+        })
+    }
 
-        if let Some(rsps) = raw.get("proxy_rsps").and_then(|v| v.as_array()) {
-            for rsp in rsps {
-                let kind = rsp.get("kind").and_then(|v| v.as_str()).unwrap_or("");
+    /// 一次 `web/batch_proxy` 请求拉取指定的公告类内容。
+    ///
+    /// `kinds` 取接口的完整 kind 名（`get_banner` / `get_announcement` / `get_sidebar`），
+    /// 请求体里的键是 `<kind>_req`（如 `get_banner_req`）。
+    ///
+    /// 参数直接用渠道自己的 appcode/channel/sub_channel，**不做**任何预先替换：
+    /// 回落由调用方在拿到空结果后决定，避免"B 服"这种硬替换把官服内容原样顶掉
+    /// （官方 B 服本来就与官服同内容，行为一致；但明日方舟 B 服 appcode 相同、
+    /// channel 不同，硬替换会丢掉该渠道真正独有的数据）。
+    async fn fetch_notice_parts(
+        &self,
+        channel: &GameChannel,
+        kinds: &[&str],
+    ) -> Result<NoticeParts, String> {
+        let proxy_reqs: Vec<serde_json::Value> = kinds
+            .iter()
+            .map(|kind| {
+                let req_key = format!("{}_req", kind);
+                serde_json::json!({
+                    "kind": kind,
+                    req_key: {
+                        "appcode": channel.app_code(),
+                        "language": "zh-cn",
+                        "channel": channel.channel(),
+                        "sub_channel": channel.sub_channel(),
+                        "platform": "Windows",
+                        "source": "launcher"
+                    }
+                })
+            })
+            .collect();
 
-                if kind == "get_banner" {
-                    if let Some(banner_rsp) = rsp.get("get_banner_rsp") {
-                        if let Some(items) = banner_rsp.get("banners").and_then(|v| v.as_array()) {
-                            for b in items {
-                                let image_url = b
-                                    .get("url")
-                                    .and_then(|v| v.as_str())
-                                    .unwrap_or("")
-                                    .to_string();
-                                let jump_url = b
-                                    .get("jump_url")
-                                    .and_then(|v| v.as_str())
-                                    .unwrap_or("")
-                                    .to_string();
-                                if !image_url.is_empty() {
-                                    banners.push(BannerItem {
-                                        image_url,
-                                        jump_url,
-                                    });
-                                }
+        let raw = self
+            .batch_proxy_web_raw(channel, serde_json::Value::Array(proxy_reqs))
+            .await?;
+        Ok(Self::parse_notice_parts(&raw))
+    }
+
+    /// 从 `batch_proxy` 的原始响应里解析出 Banner / 公告 / 右侧栏三项。
+    fn parse_notice_parts(raw: &serde_json::Value) -> NoticeParts {
+        let mut parts = NoticeParts::default();
+
+        let Some(rsps) = raw.get("proxy_rsps").and_then(|v| v.as_array()) else {
+            return parts;
+        };
+
+        for rsp in rsps {
+            let kind = rsp.get("kind").and_then(|v| v.as_str()).unwrap_or("");
+
+            if kind == "get_banner" {
+                if let Some(banner_rsp) = rsp.get("get_banner_rsp") {
+                    if let Some(items) = banner_rsp.get("banners").and_then(|v| v.as_array()) {
+                        for b in items {
+                            let image_url = b
+                                .get("url")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("")
+                                .to_string();
+                            let jump_url = b
+                                .get("jump_url")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("")
+                                .to_string();
+                            if !image_url.is_empty() {
+                                parts.banners.push(BannerItem {
+                                    image_url,
+                                    jump_url,
+                                });
                             }
                         }
                     }
                 }
+            }
 
-                if kind == "get_announcement" {
-                    if let Some(ann_rsp) = rsp.get("get_announcement_rsp") {
-                        if let Some(tabs) = ann_rsp.get("tabs").and_then(|v| v.as_array()) {
-                            for tab in tabs {
-                                let tab_name = tab
-                                    .get("tabName")
-                                    .or_else(|| tab.get("tab_name"))
-                                    .and_then(|v| v.as_str())
-                                    .unwrap_or("")
-                                    .to_string();
-                                if let Some(items) =
-                                    tab.get("announcements").and_then(|v| v.as_array())
-                                {
-                                    for a in items {
-                                        let title = a
-                                            .get("title")
-                                            .and_then(|v| v.as_str())
-                                            .unwrap_or("")
-                                            .trim()
-                                            .to_string();
-                                        let content = a
-                                            .get("content")
-                                            .and_then(|v| v.as_str())
-                                            .unwrap_or("")
-                                            .trim()
-                                            .to_string();
-                                        let display_title =
-                                            if !title.is_empty() { title } else { content };
-                                        if display_title.is_empty() {
-                                            continue;
-                                        }
-
-                                        let date = a
-                                            .get("start_ts")
-                                            .or_else(|| a.get("startTs"))
-                                            .and_then(|v| {
-                                                // 尝试从字符串或数字解析时间戳
-                                                if let Some(s) = v.as_str() {
-                                                    s.parse::<i64>().ok()
-                                                } else {
-                                                    v.as_i64()
-                                                }
-                                            })
-                                            .map(|ts| {
-                                                // 如果时间戳大于1e12，认为是毫秒，转换为秒
-                                                let secs = if ts > 1_000_000_000_000 {
-                                                    ts / 1000
-                                                } else {
-                                                    ts
-                                                };
-                                                let dt = chrono::DateTime::from_timestamp(secs, 0)
-                                                    .unwrap_or_default();
-                                                dt.format("%m/%d").to_string()
-                                            })
-                                            .unwrap_or_default();
-
-                                        let jump_url = a
-                                            .get("jump_url")
-                                            .or_else(|| a.get("jumpUrl"))
-                                            .and_then(|v| v.as_str())
-                                            .unwrap_or("")
-                                            .to_string();
-
-                                        announcements.push(AnnouncementItem {
-                                            category: tab_name.clone(),
-                                            title: display_title,
-                                            date,
-                                            jump_url,
-                                        });
+            if kind == "get_announcement" {
+                if let Some(ann_rsp) = rsp.get("get_announcement_rsp") {
+                    if let Some(tabs) = ann_rsp.get("tabs").and_then(|v| v.as_array()) {
+                        for tab in tabs {
+                            let tab_name = tab
+                                .get("tabName")
+                                .or_else(|| tab.get("tab_name"))
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("")
+                                .to_string();
+                            if let Some(items) =
+                                tab.get("announcements").and_then(|v| v.as_array())
+                            {
+                                for a in items {
+                                    let title = a
+                                        .get("title")
+                                        .and_then(|v| v.as_str())
+                                        .unwrap_or("")
+                                        .trim()
+                                        .to_string();
+                                    let content = a
+                                        .get("content")
+                                        .and_then(|v| v.as_str())
+                                        .unwrap_or("")
+                                        .trim()
+                                        .to_string();
+                                    let display_title =
+                                        if !title.is_empty() { title } else { content };
+                                    if display_title.is_empty() {
+                                        continue;
                                     }
+
+                                    let date = a
+                                        .get("start_ts")
+                                        .or_else(|| a.get("startTs"))
+                                        .and_then(|v| {
+                                            if let Some(s) = v.as_str() {
+                                                s.parse::<i64>().ok()
+                                            } else {
+                                                v.as_i64()
+                                            }
+                                        })
+                                        .map(|ts| {
+                                            let secs = if ts > 1_000_000_000_000 {
+                                                ts / 1000
+                                            } else {
+                                                ts
+                                            };
+                                            let dt =
+                                                chrono::DateTime::from_timestamp(secs, 0)
+                                                    .unwrap_or_default();
+                                            dt.format("%m/%d").to_string()
+                                        })
+                                        .unwrap_or_default();
+
+                                    let jump_url = a
+                                        .get("jump_url")
+                                        .or_else(|| a.get("jumpUrl"))
+                                        .and_then(|v| v.as_str())
+                                        .unwrap_or("")
+                                        .to_string();
+
+                                    parts.announcements.push(AnnouncementItem {
+                                        category: tab_name.clone(),
+                                        title: display_title,
+                                        date,
+                                        jump_url,
+                                    });
                                 }
                             }
                         }
@@ -3884,20 +3905,8 @@ impl GameLauncherService {
             }
         }
 
-        crate::safe_eprintln!(
-            "[Launcher] get_notice_content result: {} banners, {} announcements",
-            banners.len(),
-            announcements.len()
-        );
-
-        let sidebars = Self::parse_sidebars(&raw);
-        crate::safe_eprintln!("[Launcher] get_notice_content: {} sidebars", sidebars.len());
-
-        Ok(LauncherNoticeContent {
-            banners,
-            announcements,
-            sidebars,
-        })
+        parts.sidebars = Self::parse_sidebars(raw);
+        parts
     }
 
     /// 解析 `get_sidebar_rsp`：把「条目自身」与「sidebar_labels[0]」两处链接合并成扁平列表。
@@ -4633,4 +4642,105 @@ async fn download_single_file(
         "Download failed after {} attempts: {}",
         max_retries, last_error
     ))
+}
+
+#[cfg(test)]
+mod notice_fallback_tests {
+    use super::*;
+    use crate::models::game::GameChannel;
+
+    /// 回落渠道的映射关系（B 服 → 官服、GooglePlay → Global，主渠道不回落）。
+    #[test]
+    fn fallback_channel_mapping() {
+        assert_eq!(
+            GameChannel::Bilibili.notice_fallback_channel(),
+            Some(GameChannel::Official)
+        );
+        assert_eq!(
+            GameChannel::ArknightsBilibili.notice_fallback_channel(),
+            Some(GameChannel::Arknights)
+        );
+        assert_eq!(
+            GameChannel::GooglePlay.notice_fallback_channel(),
+            Some(GameChannel::Global)
+        );
+        assert_eq!(GameChannel::Official.notice_fallback_channel(), None);
+        assert_eq!(GameChannel::Global.notice_fallback_channel(), None);
+        assert_eq!(GameChannel::Arknights.notice_fallback_channel(), None);
+    }
+
+    /// 真实接口联调：B 服公告三项全空，回落后应拿到官服内容。
+    ///
+    /// 这条测试打的是线上 `web/batch_proxy`，验证「B 服 → 官服」的回落真的生效。
+    #[tokio::test]
+    async fn bilibili_channel_falls_back_to_official() {
+        let svc = GameLauncherService::new();
+
+        let bili = svc
+            .get_notice_content(&GameChannel::ArknightsBilibili)
+            .await
+            .expect("bilibili notice content");
+
+        let official = svc
+            .get_notice_content(&GameChannel::Arknights)
+            .await
+            .expect("official notice content");
+
+        assert!(
+            !official.announcements.is_empty(),
+            "官服公告不应为空，否则无法验证回落"
+        );
+        assert!(
+            !official.sidebars.is_empty(),
+            "官服右侧栏不应为空，否则无法验证回落"
+        );
+        assert_eq!(
+            bili.announcements.len(),
+            official.announcements.len(),
+            "B 服公告应回落到官服"
+        );
+        assert_eq!(
+            bili.sidebars.len(),
+            official.sidebars.len(),
+            "B 服右侧栏应回落到官服"
+        );
+        assert_eq!(
+            bili.banners.len(),
+            official.banners.len(),
+            "B 服 Banner 应回落到官服"
+        );
+    }
+
+    /// 真实接口联调：`get_banners` / `get_announcements` 单独走时也要能回落。
+    #[tokio::test]
+    async fn single_kind_endpoints_fall_back() {
+        let svc = GameLauncherService::new();
+
+        let bili_banners = svc
+            .get_banners(&GameChannel::ArknightsBilibili)
+            .await
+            .expect("bilibili banners");
+        let official_banners = svc
+            .get_banners(&GameChannel::Arknights)
+            .await
+            .expect("official banners");
+
+        assert!(
+            !bili_banners.is_empty(),
+            "B 服 Banner 应回落到官服"
+        );
+        assert_eq!(bili_banners.len(), official_banners.len());
+
+        let bili_ann = svc
+            .get_announcements(&GameChannel::Bilibili)
+            .await
+            .expect("bilibili announcements");
+        let official_ann = svc
+            .get_announcements(&GameChannel::Official)
+            .await
+            .expect("official announcements");
+
+        assert!(!bili_ann.is_empty(), "终末地 B 服公告应回落到官服");
+        assert_eq!(bili_ann.len(), official_ann.len());
+    }
 }

@@ -667,6 +667,7 @@ derive 均为 `Serialize, Deserialize, Clone, Debug` + 容器 `rename_all = "cam
 | `executable_name` | game.rs:137 | 终末地 `Endfield.exe`，明日方舟 `Arknights.exe` |
 | `process_name` | game.rs:145 | 与 `executable_name` 相同（`utils/process.rs` 的进程快照匹配与终止用） |
 | `supports_channel_switch` | game.rs:153 | 是否支持换服：终末地 `true`，明日方舟 `false`（渠道差异落在渠道 SDK/DLL 与目录结构上，不在清单里） |
+| `notice_fallback_channel` | game.rs:157 | 公告/Banner/右侧栏的**回落渠道**（返回 `Option<GameChannel>`）：B服 → 同游戏官服、GooglePlay → Global，主渠道返回 `None`。线上实测 B 服三项全空、官服齐全；详见 [services_launcher.md](services_launcher.md) 的「公告内容回落」 |
 
 ### `enum ActiveOperation`
 - 位置：game.rs:161

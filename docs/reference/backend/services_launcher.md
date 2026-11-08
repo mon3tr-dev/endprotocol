@@ -164,12 +164,16 @@
 | `fn preload_staging_version`（私有关联 fn） | L3399 | 读取预下载暂存目录记录的目标版本 |
 | `fn preload_staging_dir` / `preload_staging_dirs` / `cleanup_preload_staging`（私有） | L3405 | 定位（单个/全部，按修改时间新到旧）与清理预下载暂存目录 |
 | `fn save_payload_state` / `load_payload_state` / `get_payload_state` / `save_preload_state` | L3448 | 读写 `game_state/{channel}.json` 与预下载状态（键就是渠道名，两个游戏天然分开） |
-| `async fn batch_proxy_web`（私有） | L3543 | 批量代理请求并解析响应（含公告结构调试输出） |
-| `pub async fn get_banners` / `get_announcements` | L3618 | 获取 Banner 与公告 |
-| `async fn batch_proxy_web_raw`（私有） | L3700 | 批量代理并返回原始 `serde_json::Value` |
-| `pub async fn get_notice_content` / `get_background_image` / `classify_media_type` | L3728 | 公告 + Banner + 侧边栏三合一请求、背景媒体与媒体类型判定 |
-| `fn parse_sidebars`（私有关联 fn） | L3908 | 把 `get_sidebar_rsp` 的分组结构合并成扁平 `Vec<SidebarItem>`；解析失败只记日志并返回空表 |
-| `pub async fn switch_channel` | L4042 | 输入 `from_channel`、`to_channel`、`install_path`、`app` → 计算清单差异、下载差异文件、备份并应用，支持取消回滚 → `Ok(to_remote.version)` / `Err` |
+| `async fn batch_proxy_web`（私有） | L3554 | 批量代理请求并解析响应（含公告结构调试输出） |
+| `pub async fn get_banners` / `get_announcements` | L3629 | 获取 Banner 与公告（各自带回落，见「公告内容回落」） |
+| `async fn batch_proxy_web_raw`（私有） | L3668 | 批量代理并返回原始 `serde_json::Value` |
+| `pub async fn get_notice_content` / `get_background_image` / `classify_media_type` | L3700 | 公告 + Banner + 侧边栏三合一请求（带回落）、背景媒体与媒体类型判定 |
+| `async fn fetch_notice_parts`（私有） | L3767 | 按 `kinds`（`get_banner` / `get_announcement` / `get_sidebar`）发一次 `batch_proxy_web_raw` 请求 |
+| `fn parse_notice_parts`（私有关联 fn） | L3797 | 从原始响应解析出 `NoticeParts`（banner / announcements / sidebars 三项） |
+| `fn parse_sidebars`（私有关联 fn） | L3917 | 把 `get_sidebar_rsp` 的分组结构合并成扁平 `Vec<SidebarItem>`；解析失败只记日志并返回空表 |
+| `pub async fn switch_channel` | L4051 | 输入 `from_channel`、`to_channel`、`install_path`、`app` → 计算清单差异、下载差异文件、备份并应用，支持取消回滚 → `Ok(to_remote.version)` / `Err` |
+
+> 模块级另有私有结构体 `NoticeParts`（L66）：`banners` / `announcements` / `sidebars` 三项的解析容器，让三个取数入口共用同一套解析与回落逻辑。
 
 > 方法总数 56：模块级 12（含 2 个归档辅助）、`MultipartZipReader` 3、`GameLauncherService` impl 内 41（其中公开方法 19）。`download_file_with_resume` / `download_and_verify` 仍保留在代码中，但没有任何调用方（死代码）。
 
@@ -211,9 +215,29 @@
 - 可安装条件：`has_preload && cd_key 非空`（即正式发版、`patch` 下发后）；后端 `install_preload` 会再次校验密钥，缺失即拒绝。
 - 预下载分卷是 WinZip AES 加密的官方补丁分卷（`.zip.001`…），与应用阶段消费的是同一批文件。
 
-### 公告与侧边栏（L3235-3655）
-- `get_notice_content` 一次 `batch_proxy_web_raw` 请求带上 `get_banner` / `get_announcement` / `get_sidebar`（B 服复用官服参数），分别解析为 `banners` / `announcements` / `sidebars`。
+### 公告与侧边栏（L3668-3972）
+- `get_notice_content` 一次 `batch_proxy_web_raw` 请求带上 `get_banner` / `get_announcement` / `get_sidebar`，分别解析为 `banners` / `announcements` / `sidebars`（解析集中在 `parse_notice_parts`，右侧栏由 `parse_sidebars` 解析）。
 - `parse_sidebars` 抹平官方数据的两种形态（`pic.url` + `jump_url` 与 `sidebar_labels[0]`），规则是「条目自身优先、缺失回退第一条 label」。
+
+#### 公告内容回落（分项独立）
+线上实测（`web/batch_proxy`，2026-11-08）各渠道三项内容条数：
+
+| 渠道 | banner | 公告 tabs/条数 | 右侧栏 |
+| --- | --- | --- | --- |
+| 终末地 官服 | 9 | 3 / 20 | 9 |
+| 终末地 B服 | **0** | **0 / 0** | **0** |
+| 终末地 国际服 | 8 | 3 / 15 | 7 |
+| 终末地 GooglePlay | 0 | 3 / 15 | 7 |
+| 明日方舟 官服 | 8 | 2 / 9 | 7 |
+| 明日方舟 B服 | **0** | **0 / 0** | **0** |
+
+B 服三项全空（官服参数与 B 服参数都查过），因此**取到空结果时用回落渠道补**：
+- 回落渠道由 `GameChannel::notice_fallback_channel` 给出：B服 → 同游戏官服（`bilibili` → `official`、`arknights_bilibili` → `arknights`）、GooglePlay → Global；主渠道返回 `None`。
+- **三项各自独立判断**：只补缺的那一项，不整份替换（万一某渠道只有公告没有右侧栏，另一项仍保留本渠道的内容）。
+- 请求参数不做预先替换：先用渠道自己的 appcode/channel/sub_channel 请求，拿到空才回落到回落渠道再请求一次。
+- `get_banners` / `get_announcements` 走同一套逻辑，各自只补自己那项。
+- 背景图（`get_main_bg_image`）**不走回落**：实测 B 服背景图是有的（与官服不同的图），Global 与 GooglePlay 的背景图也不同，保持本渠道的。
+- 回落请求失败只记日志（`safe_eprintln!`），不覆盖已取到的内容、不让整个请求失败。
 
 ### 渠道检测与切换
 `switch_channel` 依次比较两渠道清单、下载差异文件、备份并移除旧渠道文件、应用新渠道文件、清理暂存；切换期间检查取消标志并尝试回滚。

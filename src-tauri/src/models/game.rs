@@ -153,6 +153,30 @@ impl GameChannel {
     pub fn supports_channel_switch(&self) -> bool {
         !self.is_arknights()
     }
+
+    /// 公告 / Banner / 右侧栏的**回落渠道**：本渠道拿不到内容时改用哪个渠道的数据。
+    ///
+    /// 线上实测（`web/batch_proxy`，2026-11-08）：
+    /// - B 服（终末地 `bilibili`、明日方舟 `arknights_bilibili`）的 `get_banner` /
+    ///   `get_announcement` / `get_sidebar` 三项**全部返回空**，官服则分别有
+    ///   9/20/9（终末地）与 8/9/7（明日方舟）条 → B 服回落同游戏的官服；
+    /// - 明日方舟的海外参数（appcode 仍是 `GzD1CpaWgmSq1wew`）公告与右侧栏全空
+    ///   → 回落终末地国际服并不合适，这里一律回落明日方舟官服；
+    /// - 终末地 GooglePlay（sub_channel 802）公告与右侧栏与 Global 相同，背景图不同 →
+    ///   回落 Global。
+    ///
+    /// 返回 `None` 表示本渠道就是该游戏的主渠道，不需要回落。
+    pub fn notice_fallback_channel(&self) -> Option<GameChannel> {
+        match self {
+            // B 服 → 同游戏官服
+            GameChannel::Bilibili => Some(GameChannel::Official),
+            GameChannel::ArknightsBilibili => Some(GameChannel::Arknights),
+            // Google Play 与 Global 同属国际服，公告/侧边栏同源
+            GameChannel::GooglePlay => Some(GameChannel::Global),
+            // 官服 / Global / 明日方舟官服：本身就是主渠道
+            GameChannel::Official | GameChannel::Global | GameChannel::Arknights => None,
+        }
+    }
 }
 
 /// 活跃操作（统一管理安装/校验/切服状态）
