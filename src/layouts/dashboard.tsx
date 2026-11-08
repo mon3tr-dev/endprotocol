@@ -415,13 +415,21 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
             {/* In-app browser overlay — 全屏覆盖（含标题栏），自带窗口控制 */}
             <InAppBrowser />
 
-            {/* 左侧游戏切换：贴左边缘，鼠标靠近才展开（终末地 / 明日方舟） */}
-            <GameSwitchRail />
-
             {/* 页面内容：右侧社媒栏 + 底部横幅公告 + 操作面板 */}
             <GamePageContent game={page.game} data={page.data} />
           </div>
         ))}
+
+        {/*
+         * 左侧游戏切换栏：**只挂载一份**，放在页面层之外（终末地 / 明日方舟）。
+         *
+         * 它本身 portal 到 body、fixed 贴左边缘，根本不随页面推移移动，
+         * 放进页面层毫无收益；反而每次切换都会随新页重新挂载出一个
+         * 收起态的新实例（portal 后入者的 DOM 顺序在上，直接盖住旧实例），
+         * 表现为「切一下游戏，左侧栏收回去，得再动一下鼠标才重新展开」。
+         * 挂载一份之后展开状态跨切换保留：点完图标栏不收，直接接着点另一个。
+         */}
+        <GameSwitchRail />
       </div>
     );
   }

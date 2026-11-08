@@ -50,7 +50,8 @@
 
 - 264-492 行：**GAME MODE 分支**：
   - 296-305 行：标题栏右侧区（`controlsOnly`）——固定不动，不跟页面走；覆盖层容器 `self-end` 只占右侧控件自身宽度（整宽的 `pointer-events-auto` + drag region 会盖住页面层品牌区，模式拨杆点不动）。
-  - 307-... 行：**页面层**（`pages.map`）：每页一个 `absolute inset-0` 容器，`transform` 为该页当前的位移、`zIndex` 出栈页 0 / 入栈页 1（useMemo 依赖含 `pageDataVersion`——初次拉到页面数据后 bump 触发重算，否则刷新后背景/公告一直是空的）；页内含全屏背景（`<video autoPlay loop muted playsInline>`，或图片分支用 CSS 背景层：`background-size: cover` + `background-position: center` + `background-repeat: no-repeat`，即保持原始宽高比、取 `max(W/w, H/h)` 等比缩放到恰好完全覆盖视口、不留空白，溢出的长边方向居中裁掉；再叠加渐变遮罩；无资源时使用 CSS 渐变占位）、标题栏品牌区（`brandOnly`）、背景模式切换器、`InAppBrowser`（`z-40`）、`GameSwitchRail`（左侧贴边游戏切换栏）、`GamePageContent`（右侧社媒栏 + 底部横幅公告盒 + 操作面板）。
+  - 307-... 行：**页面层**（`pages.map`）：每页一个 `absolute inset-0` 容器，`transform` 为该页当前的位移、`zIndex` 出栈页 0 / 入栈页 1（useMemo 依赖含 `pageDataVersion`——初次拉到页面数据后 bump 触发重算，否则刷新后背景/公告一直是空的）；页内含全屏背景（`<video autoPlay loop muted playsInline>`，或图片分支用 CSS 背景层：`background-size: cover` + `background-position: center` + `background-repeat: no-repeat`，即保持原始宽高比、取 `max(W/w, H/h)` 等比缩放到恰好完全覆盖视口、不留空白，溢出的长边方向居中裁掉；再叠加渐变遮罩；无资源时使用 CSS 渐变占位）、标题栏品牌区（`brandOnly`）、背景模式切换器、`InAppBrowser`（`z-40`）、`GamePageContent`（右侧社媒栏 + 底部横幅公告盒 + 操作面板）。
+  - 页面层之后：`GameSwitchRail`（左侧贴边游戏切换栏）——**只挂载一份、放在页面层之外**：它本身 portal 到 body、fixed 贴左边缘，不随页面推移；放进页面层会导致每次切换随新页重新挂载出收起态的新实例（portal 后入者的 DOM 顺序在上，盖住旧实例），表现为切一下游戏左侧栏就收回去、要再动一下鼠标才重新展开。
   - **游戏模式不挂磨砂层**：背景是视频，标题栏保持背景本身清晰（原先的 `.frost-main frost-titlebar-only` 已移除）。
 - 494-609 行：**DATA MODE 分支**（默认业务界面）：
   - 497 行：`dashboard-background` 背景层；515 行：`CustomTitlebar`。
