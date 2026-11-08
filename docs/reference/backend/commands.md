@@ -46,7 +46,7 @@
 | `capture_screen` | commands/color_picker.rs:36 | `window: WebviewWindow` | `Result<ScreenCapture, String>` | Windows：`window` 控制 + GDI 截屏；非 Windows：返回仅支持 Windows 的错误 |
 | `finish_screen_pick` | commands/color_picker.rs:56 | `window: WebviewWindow` | `()`（无返回） | Windows：退出全屏并聚焦；非 Windows：空实现 |
 | `get_config` | commands/config.rs:9 | `state: State<Arc<Mutex<ConfigService>>>`、`key: String` | `Option<Value>` | `ConfigService::get` |
-| `get_game_launch_command` | commands/startup.rs:206 | `config_service: State<Arc<Mutex<ConfigService>>>` | `Result<String, String>` | 校验/更新 `main_exe_path` 并返回含 `--silent --launch-game` 的带引号命令 |
+| `get_game_launch_command` | commands/startup.rs:301 | `config_service: State<Arc<Mutex<ConfigService>>>`、`game: Option<String>` | `Result<String, String>` | 校验/更新 `main_exe_path` 并返回含 `--silent --launch-game` 的带引号命令 |
 | `set_config` | commands/config.rs:47 | `state`、`key: String`、`value: Value` | `Result<(), String>` | **拒绝写机密键**（`secret_registry::has_secret_fields`）；否则 `ConfigService::set`；当 `key == "proxy_config"` 时额外 `utils::http_client::set_global_proxy_config(Some(value))`（后续 HTTP 请求即时生效） |
 | `remove_config` | commands/config.rs:64 | `state`、`key: String` | `bool` | `ConfigService::remove`（同时清理凭据库条目） |
 | `get_all_configs` | commands/config.rs:71 | `state` | `HashMap<String, Value>` | `ConfigService::get_all_public` —— **机密字段被逐字段剔除**，不含凭据 |
@@ -109,12 +109,12 @@
 | `get_api_health` | commands/diagnostics.rs:37 | 无 | `ApiHealthSnapshot` | `utils::api_health::snapshot` |
 | `reset_api_health` | commands/diagnostics.rs:43 | 无 | `()` | `utils::api_health::reset` |
 | `get_tray_user_info` | commands/tray.rs:8 | `config_service: State<Arc<Mutex<ConfigService>>>` | `Result<TrayUserInfo, String>` | `ConfigService::get::<TrayUserInfo>("tray_user_info")` |
-| `steam_shortcut_defaults` | commands/startup.rs:215 | `config_service: State<Arc<Mutex<ConfigService>>>` | `Result<SteamShortcutDefaults, String>` | Steam 弹窗默认值：名字、从 `Endfield.exe` 提取的 `.ico`、DX11、上次勾选的两项 Overlay 选项、开始菜单 Steam 快捷方式数量、当前是否已提权 |
+| `steam_shortcut_defaults` | commands/startup.rs:324 | `config_service: State<Arc<Mutex<ConfigService>>>`、`game: Option<String>` | `Result<SteamShortcutDefaults, String>` | Steam 弹窗默认值：名字、从 `Endfield.exe` 提取的 `.ico`、DX11、上次勾选的两项 Overlay 选项、开始菜单 Steam 快捷方式数量、当前是否已提权 |
 | `pick_steam_icon` | commands/startup.rs:267 | 无 | `Result<Option<String>, String>` | `rfd` 选择 `ico`/`png`/`exe`，取消返回 `None` |
 | `pick_steam_icon_source` | commands/startup.rs:277 | 无 | `Result<Option<String>, String>` | `rfd` 选择用于提取图标的 exe，取消返回 `None` |
 | `extract_steam_icon` | commands/startup.rs:289 | `exe_path: String` | `Result<String, String>` | `utils::game_icon::extract_icon` 重新组装 `RT_GROUP_ICON` 为 `.ico`，写出到应用数据目录并返回路径 |
-| `create_game_shortcut` | commands/startup.rs:297 | `config_service: State<Arc<Mutex<ConfigService>>>`、`dx11: Option<bool>`（缺省读配置 `launcher_dx11`） | `Result<Option<String>, String>` | 用户通过 `rfd` 选择 `.lnk` 路径；PowerShell COM 创建快捷方式，启动参数按开关包含 `--dx11`，返回路径；取消选择返回 `None` |
-| `add_steam_shortcut` | commands/startup.rs:370 | `config_service: State<Arc<Mutex<ConfigService>>>`、`options: SteamShortcutOptions`（`name`、`icon_path`、`dx11`、`create_admin_shortcut`、`elevate_start_menu`） | `Result<AddSteamShortcutResult, String>` | 允许 Steam 运行中写入：`utils::steam::add_shortcut` 按名字 upsert 当前账户 `userdata/<id>/config/shortcuts.vdf`；按勾选创建管理员 Steam 快捷方式（用户选路径）并提升开始菜单 Steam 快捷方式；返回 vdf 路径与新建/提升结果；非 Windows 返回 `Err` |
+| `create_game_shortcut` | commands/startup.rs:405 | `config_service: State<Arc<Mutex<ConfigService>>>`、`dx11: Option<bool>`、`game: Option<String>` | `Result<Option<String>, String>` | 用户通过 `rfd` 选择 `.lnk` 路径；PowerShell COM 创建快捷方式，启动参数按开关包含 `--dx11`，返回路径；取消选择返回 `None` |
+| `add_steam_shortcut` | commands/startup.rs:480 | `config_service: State<Arc<Mutex<ConfigService>>>`、`options: SteamShortcutOptions`（含 `game`） | `Result<AddSteamShortcutResult, String>` | 允许 Steam 运行中写入：`utils::steam::add_shortcut` 按名字 upsert 当前账户 `userdata/<id>/config/shortcuts.vdf`；按勾选创建管理员 Steam 快捷方式（用户选路径）并提升开始菜单 Steam 快捷方式；返回 vdf 路径与新建/提升结果；非 Windows 返回 `Err` |
 | `set_tray_user` | commands/tray.rs:19 | `app: AppHandle`、`config_service`、`role_id: String` | `Result<(), String>` | `ConfigService::set("tray_user_info", …)`、`tray::update_tray_menu` |
 | `update_tray_user_data` | commands/tray.rs:45 | `app`、`config_service`、`user_info: TrayUserInfo`（前端由 `src/utils/trayService.ts` 组装，含 `accountLevel`） | `Result<(), String>` | `ConfigService::set("tray_user_info", …)`、`tray::update_tray_menu` |
 | `show_tray_panel` | commands/tray.rs:66 | `app: AppHandle` | `Result<(), String>` | `tray::show_tray_panel` |
@@ -152,6 +152,10 @@
 ## `src-tauri/src/commands/startup.rs`
 **职责**：静默游戏启动命令的配置、命令行文本、Windows `.lnk` 快捷方式，以及 Steam 第三方游戏条目的参数弹窗支撑（默认值、图标提取、写入）。Steam 条目允许在 Steam 运行时写入（写完需重启 Steam 才可见）。
 **导出**：`refresh_main_exe_path`（启动初始化辅助函数）、`SteamShortcutOptions`、`SteamShortcutDefaults`、`AddSteamShortcutResult`、Tauri 命令 `get_game_launch_command`、`steam_shortcut_defaults`、`pick_steam_icon`、`pick_steam_icon_source`、`extract_steam_icon`、`create_game_shortcut`、`add_steam_shortcut`。
+**按游戏分区**：`LauncherGame`（`endfield` / `arknights`）决定配置键—— 终末地沿用
+`launcher_install_path` / `launcher_channel` / `launcher_dx11`，明日方舟用同名 `_arknights` 后缀键；
+静默启动参数带 `--game <id>`（缺省 `endfield`，兼容升级前创建的快捷方式），驻守实例据此读对应一组键。
+
 **主要依赖**：`ConfigService`、`rfd::FileDialog`、Windows PowerShell `WScript.Shell` COM、`utils::steam`、`utils::game_icon`、`utils::official_launcher`（`process_is_elevated`）。
 
 | 符号 | 位置 | 说明 |
@@ -167,13 +171,13 @@
 | `default_steam_name` | startup.rs:26 | 未自定义名字时按当前渠道给 Steam 条目默认名：`arknights*` → 「明日方舟」，其余 → 「明日方舟：终末地」 |
 | `steam_icon_path` | startup.rs:173 | 图标缓存路径 `%LOCALAPPDATA%\\cn.msk-network.endprotocol\\steam\\<exe 名小写>.ico`（`endfield.ico` / `arknights.ico`） |
 | `default_icon` | startup.rs:185 | 从游戏 exe 提取 `.ico`，返回 `(路径, 是否提取成功, 游戏是否存在)`；提取失败回退为 exe 自身路径 |
-| `get_game_launch_command` | startup.rs:206 | 返回带引号的当前 exe 路径及 `--silent --launch-game` |
-| `steam_shortcut_defaults` | startup.rs:215 | 弹窗默认值：名字缺省按渠道取（见 `default_steam_name`）、图标优先沿用上次保存的自定义图标否则重新提取、DX11 与应用设置同源、两项 Overlay 选项取上次保存值；附带开始菜单 Steam 快捷方式数量与当前进程是否已提权 |
+| `get_game_launch_command` | startup.rs:301 | 返回带引号的当前 exe 路径及 `--silent --launch-game --game <id>`（`game` 缺省为终末地） |
+| `steam_shortcut_defaults` | startup.rs:324 | 弹窗默认值：名字缺省按渠道取（见 `default_steam_name`）、图标优先沿用上次保存的自定义图标否则重新提取、DX11 与应用设置同源、两项 Overlay 选项取上次保存值；附带开始菜单 Steam 快捷方式数量与当前进程是否已提权 |
 | `pick_steam_icon` | startup.rs:267 | `rfd` 选择图标文件（`ico`/`png`/`exe`），取消返回 `None` |
 | `pick_steam_icon_source` | startup.rs:277 | `rfd` 选择用于提取图标的 exe，取消返回 `None` |
 | `extract_steam_icon` | startup.rs:289 | 对指定 exe 调用 `utils::game_icon::extract_icon`（图标名按 exe 名派生），返回生成的 `.ico` 路径 |
-| `create_game_shortcut` | startup.rs:297 | 读取 `dx11`（缺省读 `launcher_dx11`），用户选择保存路径后创建 Windows `.lnk`；exe 缺失时不设置图标；取消返回 `None` |
-| `add_steam_shortcut`（async） | startup.rs:370 | 校验名字非空 → `utils::steam::add_shortcut` 写 `shortcuts.vdf`（同名条目更新）→ 回写 `steam_shortcut_name` / `steam_shortcut_icon` / 两个 Overlay 选项 → 按勾选创建管理员 Steam 快捷方式（`rfd` 选保存路径，取消即报错）与提升开始菜单 Steam 快捷方式 |
+| `create_game_shortcut` | startup.rs:405 | 读取 `dx11`（缺省读该游戏的 `launcher_dx11`），用户选择保存路径后创建 Windows `.lnk`；exe 缺失时不设置图标；取消返回 `None` |
+| `add_steam_shortcut`（async） | startup.rs:480 | 校验名字非空 → `utils::steam::add_shortcut` 写 `shortcuts.vdf`（同名条目更新）→ 回写 `steam_shortcut_name` / `steam_shortcut_icon` / 两个 Overlay 选项 → 按勾选创建管理员 Steam 快捷方式（`rfd` 选保存路径，取消即报错）与提升开始菜单 Steam 快捷方式 |
 | `powershell_literal`（私有，仅 Windows） | startup.rs:469 | 单引号转义（`'` → `''`），用于嵌入脚本路径串 |
 | `run_powershell`（私有，仅 Windows） | startup.rs:474 | `-EncodedCommand` 执行脚本并收集 stderr/stdout 作为错误详情 |
 

@@ -53,7 +53,11 @@ import {
   CHANNEL_GAME,
   GAME_CHANNELS,
   GAME_ORDER,
+  gameConfigKey,
+  readGameChannel,
+  readGameInstallPath,
   switchableChannels,
+  type LauncherGame,
   KILL_TOKEN_KEYS,
   LAUNCH_TOKEN_KEYS,
   LAUNCH_WARNING_TITLE_KEYS,
@@ -63,19 +67,27 @@ import { addMessage } from "@/utils/messageStore";
 import {
   GameLaunchSettingsFields,
   QuickLaunchModal,
+  readCancelBehavior,
   readDownloadResume,
   readDownloadThreads,
   readDx11,
+  readVerifyThreads,
   setDx11Setting,
   GAME_LAUNCH_SYNC_EVENT,
 } from "@/components/game-launch-settings";
+import {
+  ALL_GAMES,
+  getActiveGame,
+  setActiveGame,
+  subscribeActiveGame,
+} from "@/stores/launcherGame";
 import { SettingsDivider } from "@/components/ui/settings-row";
 import { ElapsedTime } from "@/components/ui/elapsed-time";
 
-const STORAGE_KEY_INSTALL_PATH = "launcher_install_path";
-const STORAGE_KEY_CHANNEL = "launcher_channel";
+/** 这两个键实际按游戏分区：终末地 `launcher_*`，明日方舟 `launcher_*_arknights`。 */
+const STORAGE_BASE_INSTALL_PATH = "launcher_install_path";
+const STORAGE_BASE_CHANNEL = "launcher_channel";
 const STORAGE_KEY_SKIP_STOP_CONFIRM = "launcher_skip_stop_confirm";
-const STORAGE_KEY_CANCEL_BEHAVIOR = "launcher_cancel_behavior"; // "ask" | "keep" | "delete"
 
 /** 游戏操作面板统一按钮风格（与预下载按钮一致）
  *
@@ -354,25 +366,27 @@ function DiskSpaceBar({
 export function GameActionPanel() {
   const { t, i18n } = useTranslation();
   const lang = i18n.language === "zh" ? "zh" : "en";
-  const [channel, setChannel] = useState<GameChannel>(() => {
-    return (
-      (localStorage.getItem(STORAGE_KEY_CHANNEL) as GameChannel) || "official"
-    );
-  });
+  /**
+   * 当前游戏（终末地 / 明日方舟）。
+   *
+   * 面板顶部有游戏切换；每切换一次，安装路径、渠道、DX11 等全部换成该游戏自己那一份
+   * （键名由 `gameConfigKey` / `scopedKey` 派生），两个游戏的配置互不覆盖。
+   */
+  const [game, setGame] = useState<LauncherGame>(getActiveGame);
+  const [channel, setChannel] = useState<GameChannel>(() =>
+    readGameChannel(getActiveGame()),
+  );
   const [gameStatus, setGameStatus] = useState<GameStatus | null>(null);
   const [localActiveOp, setLocalActiveOp] = useState<ActiveOperation | null>(
     null,
   );
-  const [installPath, setInstallPath] = useState(() => {
-    return localStorage.getItem(STORAGE_KEY_INSTALL_PATH) || "";
-  });
+  const [installPath, setInstallPath] = useState(() =>
+    readGameInstallPath(getActiveGame()),
+  );
   const [detectedChannel, setDetectedChannel] = useState<GameChannel | null>(
     () => {
-      const savedPath = localStorage.getItem(STORAGE_KEY_INSTALL_PATH);
-      const savedChannel = localStorage.getItem(
-        STORAGE_KEY_CHANNEL,
-      ) as GameChannel | null;
-      return savedPath ? savedChannel : null;
+      const savedPath = readGameInstallPath(getActiveGame());
+      return savedPath ? readGameChannel(getActiveGame()) : null;
     },
   );
   const [detecting, setDetecting] = useState(false);
@@ -382,7 +396,7 @@ export function GameActionPanel() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [quickLaunchOpen, setQuickLaunchOpen] = useState(false);
   const [gameRunning, setGameRunning] = useState(false);
-  const [dx11, setDx11] = useState(readDx11());
+  const [dx11, setDx11] = useState(() => readDx11(getActiveGame()));
   const [playtime, setPlaytime] = useState<GamePlaytime | null>(null);
   const [btnHovered, setBtnHovered] = useState(false);
   const [btnLabelKey, setBtnLabelKey] = useState(0);
@@ -494,21 +508,45 @@ export function GameActionPanel() {
     : 0;
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY_CHANNEL, channel);
-  }, [channel]);
+    localStorage.setItem(gameConfigKey(STORAGE_BASE_CHANNEL, game), channel);
+  }, [channel, game]);
+
+  // 切换游戏：把安装路径 / 渠道换成该游戏自己那一份，并清掉上一个游戏的派生状态。
+  useEffect(() => {
+    return subscribeActiveGame(() => {
+      const next = getActiveGame();
+      setGame((previous) => {
+        if (previous === next) return previous;
+        const nextPath = readGameInstallPath(next);
+        const nextChannel = readGameChannel(next);
+        setInstallPath(nextPath);
+        setChannel(nextChannel);
+        setDetectedChannel(nextPath ? nextChannel : null);
+        setGameStatus(null);
+        setLocalActiveOp(null);
+        setPreloadProgress(null);
+        setStatusReady(false);
+        cancellingRef.current = false;
+        userCancelledRef.current = false;
+        return next;
+      });
+    });
+  }, []);
 
   // 后端 config 才是启动游戏的真正依据（静默启动、快捷方式都直接读它）；
   // WebView 的 localStorage 可能因换构建产物或清缓存丢失，这里把后端值回灌一次，
-  // 避免托盘打开完整版后游戏面板误显示「定位游戏」。
+  // 避免托盘打开完整版后游戏面板误显示「定位游戏」。两个游戏的键各自回灌。
   useEffect(() => {
     let cancelled = false;
     void restoreLaunchConfig().then(() => {
       if (cancelled) return;
-      const backendPath = localStorage.getItem(STORAGE_KEY_INSTALL_PATH);
+      const backendPath = readGameInstallPath(game);
       if (backendPath && backendPath !== installPath) {
         setInstallPath(backendPath);
       }
-      const backendChannel = localStorage.getItem(STORAGE_KEY_CHANNEL);
+      const backendChannel = localStorage.getItem(
+        gameConfigKey(STORAGE_BASE_CHANNEL, game),
+      );
       if (
         backendChannel &&
         ALL_CHANNELS.includes(backendChannel as GameChannel)
@@ -519,9 +557,9 @@ export function GameActionPanel() {
     return () => {
       cancelled = true;
     };
-    // 仅挂载时回灌一次
+    // 仅在挂载与切换游戏时回灌
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [game]);
 
   // Check game status
   const checkStatus = useCallback(async () => {
@@ -556,9 +594,9 @@ export function GameActionPanel() {
       return;
     }
     let cancelled = false;
-    const cachedPath = localStorage.getItem(STORAGE_KEY_INSTALL_PATH);
+    const cachedPath = readGameInstallPath(game);
     const cachedChannel = localStorage.getItem(
-      STORAGE_KEY_CHANNEL,
+      gameConfigKey(STORAGE_BASE_CHANNEL, game),
     ) as GameChannel | null;
     const hasCachedDetection =
       cachedPath === installPath && cachedChannel !== null;
@@ -577,7 +615,7 @@ export function GameActionPanel() {
         setDetectedChannel(detected);
         if (detected && detected !== channel) {
           setChannel(detected);
-          localStorage.setItem(STORAGE_KEY_CHANNEL, detected);
+          localStorage.setItem(gameConfigKey(STORAGE_BASE_CHANNEL, game), detected);
         }
       })
       .catch(() => {
@@ -627,7 +665,7 @@ export function GameActionPanel() {
 
   // 与设置页的 DX11 开关保持同步（localStorage 变更会触发 GAME_LAUNCH_SYNC_EVENT）
   useEffect(() => {
-    const sync = () => setDx11(readDx11());
+    const sync = () => setDx11(readDx11(game));
     window.addEventListener(GAME_LAUNCH_SYNC_EVENT, sync);
     return () => window.removeEventListener(GAME_LAUNCH_SYNC_EVENT, sync);
   }, []);
@@ -784,7 +822,7 @@ export function GameActionPanel() {
       unlisten.then((fn) => fn());
       unlistenSwitch.then((fn) => fn());
     };
-  }, [refreshStatus]);
+  }, [game, installPath, refreshStatus]);
 
   // Close menu flyout on outside click
   useEffect(() => {
@@ -817,14 +855,17 @@ export function GameActionPanel() {
     const selected = await browseFolder();
     if (selected) {
       setInstallPath(selected);
-      localStorage.setItem(STORAGE_KEY_INSTALL_PATH, selected);
+      localStorage.setItem(gameConfigKey(STORAGE_BASE_INSTALL_PATH, game), selected);
       setDetecting(true);
       try {
         const detected = await detectChannel(selected);
         if (detected) {
           setDetectedChannel(detected);
           setChannel(detected);
-          localStorage.setItem(STORAGE_KEY_CHANNEL, detected);
+          localStorage.setItem(
+            gameConfigKey(STORAGE_BASE_CHANNEL, game),
+            detected,
+          );
         }
       } catch {
         // detection failed, leave channel as-is
@@ -832,7 +873,7 @@ export function GameActionPanel() {
         setDetecting(false);
       }
     }
-  }, []);
+  }, [game]);
 
   const startInstall = useCallback(
     async (cleanCache: boolean) => {
@@ -847,8 +888,8 @@ export function GameActionPanel() {
         const result = await installOrUpdate(
           channel,
           installPath,
-          readDownloadThreads(),
-          readDownloadResume(),
+          readDownloadThreads(game),
+          readDownloadResume(game),
         );
         // After successful install, run quick verify
         if (result.success) {
@@ -857,7 +898,7 @@ export function GameActionPanel() {
             installPath,
             4,
             true,
-            readDownloadResume(),
+            readDownloadResume(game),
           );
         }
       } catch {
@@ -872,14 +913,20 @@ export function GameActionPanel() {
       const selected = await browseFolder();
       if (selected) {
         setInstallPath(selected);
-        localStorage.setItem(STORAGE_KEY_INSTALL_PATH, selected);
+        localStorage.setItem(
+          gameConfigKey(STORAGE_BASE_INSTALL_PATH, game),
+          selected,
+        );
         setDetecting(true);
         try {
           const detected = await detectChannel(selected);
           if (detected) {
             setDetectedChannel(detected);
             setChannel(detected);
-            localStorage.setItem(STORAGE_KEY_CHANNEL, detected);
+            localStorage.setItem(
+              gameConfigKey(STORAGE_BASE_CHANNEL, game),
+              detected,
+            );
             // Channel detected, check for cache and install
             const hasCache = await hasDownloadCache(selected);
             if (hasCache) {
@@ -915,7 +962,7 @@ export function GameActionPanel() {
     } else {
       startInstall(false);
     }
-  }, [installPath, detectedChannel, startInstall]);
+  }, [game, installPath, detectedChannel, startInstall]);
 
   const handleChannelSelected = useCallback(
     async (selectedChannel: GameChannel) => {
@@ -923,9 +970,18 @@ export function GameActionPanel() {
       const path = pendingInstallPath || installPath;
       if (!path) return;
 
+      // 在渠道选择框里选了另一个游戏的渠道 → 顺便把当前游戏切过去，
+      // 否则安装路径会写进上一个游戏的分区。
+      const ownerGame = CHANNEL_GAME[selectedChannel];
+      if (ownerGame && ownerGame !== game) {
+        setActiveGame(ownerGame);
+      }
       setChannel(selectedChannel);
       setDetectedChannel(selectedChannel);
-      localStorage.setItem(STORAGE_KEY_CHANNEL, selectedChannel);
+      localStorage.setItem(
+        gameConfigKey(STORAGE_BASE_CHANNEL, ownerGame ?? game),
+        selectedChannel,
+      );
 
       // Scan existing files before installing
       setScanning(true);
@@ -950,7 +1006,7 @@ export function GameActionPanel() {
         setScanning(false);
       }
     },
-    [pendingInstallPath, installPath, startInstall],
+    [game, pendingInstallPath, installPath, startInstall],
   );
 
   const handleSwitchChannel = useCallback(
@@ -990,7 +1046,7 @@ export function GameActionPanel() {
       console.log("[switch] switchChannel completed OK");
       setChannel(targetChannel);
       setDetectedChannel(targetChannel);
-      localStorage.setItem(STORAGE_KEY_CHANNEL, targetChannel);
+      localStorage.setItem(gameConfigKey(STORAGE_BASE_CHANNEL, game), targetChannel);
       console.log("[switch] States reset, calling checkStatus...");
       checkStatus()
         .then(() => {
@@ -1015,14 +1071,20 @@ export function GameActionPanel() {
       const selected = await browseFolder();
       if (selected) {
         setInstallPath(selected);
-        localStorage.setItem(STORAGE_KEY_INSTALL_PATH, selected);
+        localStorage.setItem(
+          gameConfigKey(STORAGE_BASE_INSTALL_PATH, game),
+          selected,
+        );
         setDetecting(true);
         try {
           const detected = await detectChannel(selected);
           if (detected) {
             setDetectedChannel(detected);
             setChannel(detected);
-            localStorage.setItem(STORAGE_KEY_CHANNEL, detected);
+            localStorage.setItem(
+            gameConfigKey(STORAGE_BASE_CHANNEL, game),
+            detected,
+          );
           }
         } catch {
           // detection failed
@@ -1034,7 +1096,7 @@ export function GameActionPanel() {
     }
 
     try {
-      const result = await startGame(installPath, channel, readDx11());
+      const result = await startGame(installPath, channel, readDx11(game));
       if (!result.success) {
         // 后端 message 是 `<token>: <detail>`：token 选文案，detail 是技术细节。
         const { token, detail } = splitLaunchToken(result.message);
@@ -1117,14 +1179,14 @@ export function GameActionPanel() {
         ? await installPreload(
             channel,
             installPath,
-            readDownloadThreads(),
-            readDownloadResume(),
+            readDownloadThreads(game),
+            readDownloadResume(game),
           )
         : await installOrUpdate(
             channel,
             installPath,
-            readDownloadThreads(),
-            readDownloadResume(),
+            readDownloadThreads(game),
+            readDownloadResume(game),
           );
     } catch (error) {
       // 用户自己点的「取消下载」也会走到这里（后端返回 Install cancelled），不该报成失败
@@ -1153,16 +1215,13 @@ export function GameActionPanel() {
     }
 
     try {
-      const threads = parseInt(
-        localStorage.getItem("launcher_verify_threads") || "12",
-        10,
-      );
+      const threads = readVerifyThreads(game);
       const verification = await verifyAndRepair(
         channel,
         installPath,
         threads,
         true,
-        readDownloadResume(),
+        readDownloadResume(game),
       );
       const { type, body } = formatVerifyResult(verification.message);
       addMessage({
@@ -1196,17 +1255,14 @@ export function GameActionPanel() {
     cancellingRef.current = false;
     userCancelledRef.current = false;
     await resetDownloadCancel();
-    const threads = parseInt(
-      localStorage.getItem("launcher_verify_threads") || "12",
-      10,
-    );
+    const threads = readVerifyThreads(game);
     try {
       const result = await verifyAndRepair(
         channel,
         installPath,
         threads,
         false,
-        readDownloadResume(),
+        readDownloadResume(game),
       );
       // 用户主动取消的校验不该弹「校验完成」
       if (!userCancelledRef.current) {
@@ -1223,7 +1279,7 @@ export function GameActionPanel() {
     } finally {
       checkStatus();
     }
-  }, [channel, installPath, checkStatus, formatVerifyResult]);
+  }, [channel, game, installPath, checkStatus, formatVerifyResult]);
 
   const handleQuickVerify = useCallback(async () => {
     if (!installPath) return;
@@ -1231,17 +1287,14 @@ export function GameActionPanel() {
     cancellingRef.current = false;
     userCancelledRef.current = false;
     await resetDownloadCancel();
-    const threads = parseInt(
-      localStorage.getItem("launcher_verify_threads") || "12",
-      10,
-    );
+    const threads = readVerifyThreads(game);
     try {
       const result = await verifyAndRepair(
         channel,
         installPath,
         threads,
         true,
-        readDownloadResume(),
+        readDownloadResume(game),
       );
       // 用户主动取消的校验不该弹「校验完成」
       if (!userCancelledRef.current) {
@@ -1258,7 +1311,7 @@ export function GameActionPanel() {
     } finally {
       checkStatus();
     }
-  }, [channel, installPath, checkStatus]);
+  }, [channel, game, installPath, checkStatus]);
 
   /** 取消/停止下载时立刻把按钮上的下载态收掉。
    *
@@ -1278,7 +1331,7 @@ export function GameActionPanel() {
     markDownloadCancelled();
     await cancelDownload(installPath);
     refreshStatus();
-  }, [installPath, markDownloadCancelled, refreshStatus]);
+  }, [game, installPath, markDownloadCancelled, refreshStatus]);
 
   // 预下载体积（提前声明：handlePreload 的依赖数组需要在渲染期就能取到）
   const preloadTotalBytes = gameStatus?.preload_total_bytes ?? 0;
@@ -1301,8 +1354,8 @@ export function GameActionPanel() {
       await preloadDownload(
         channel,
         installPath,
-        readDownloadThreads(),
-        readDownloadResume(),
+        readDownloadThreads(game),
+        readDownloadResume(game),
       );
     } catch {
       // error handled by progress
@@ -1311,17 +1364,17 @@ export function GameActionPanel() {
       setPreloadProgress(null);
       refreshStatus();
     }
-  }, [channel, installPath, preloadTotalBytes, refreshStatus]);
+  }, [channel, game, installPath, preloadTotalBytes, refreshStatus]);
 
   // 取消预下载（点预下载按钮触发）：只停预下载，不影响主按钮状态
   const handlePreloadCancel = useCallback(async () => {
     cancellingRef.current = true;
     setDownloadSpeed(0);
     // 沿用「取消下载行为」设置：keep 保留已下载分卷（下次可续传），其余情况连暂存一起删
-    const behavior = localStorage.getItem(STORAGE_KEY_CANCEL_BEHAVIOR) || "ask";
+    const behavior = readCancelBehavior(game);
     await cancelDownload(behavior === "keep" ? undefined : installPath);
     refreshStatus();
-  }, [installPath, refreshStatus]);
+  }, [game, installPath, refreshStatus]);
 
   // 点预下载按钮：先弹确认框提示将占用的磁盘空间（与安装确认一致）
   const handlePreloadClick = useCallback(async () => {
@@ -1743,8 +1796,7 @@ export function GameActionPanel() {
     ) {
       handleCancel();
     } else if (isDownloading || isApplying) {
-      const behavior =
-        localStorage.getItem(STORAGE_KEY_CANCEL_BEHAVIOR) || "ask";
+      const behavior = readCancelBehavior(game);
       if (behavior === "keep") {
         markDownloadCancelled();
         cancelDownload(); // no path → keep files
@@ -1803,8 +1855,53 @@ export function GameActionPanel() {
     ],
   );
 
+  /** 游戏切换分段控件：两个游戏各自保存安装路径 / 渠道 / 设置，切换即换整套配置。 */
+  const gameSwitch = (
+    <div className="flex items-center gap-2">
+      <div
+        className="flex items-center gap-1 rounded-full p-[3px] lg-inset"
+        role="tablist"
+        aria-label={t("launcher.select_game_title")}
+      >
+        {ALL_GAMES.map((candidate) => {
+          const active = candidate === game;
+          const hasInstall = Boolean(readGameInstallPath(candidate));
+          return (
+            <button
+              key={candidate}
+              type="button"
+              role="tab"
+              aria-selected={active}
+              onClick={() => {
+                if (candidate === game) return;
+                setActiveGame(candidate);
+              }}
+              className={`relative rounded-full px-3 h-6 text-xs font-medium transition-colors cursor-pointer ${
+                active
+                  ? "bg-primary/25 text-primary-text"
+                  : "text-muted lg-hoverable"
+              }`}
+            >
+              {t(`launcher.game_group_${candidate}`)}
+              {hasInstall && (
+                <span
+                  className={`ml-1 inline-block h-1 w-1 rounded-full align-middle ${
+                    active ? "bg-primary-text" : "bg-emerald-400/70"
+                  }`}
+                />
+              )}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+
   return (
     <>
+      {/* 游戏切换：终末地 / 明日方舟，各自一套安装路径与设置 */}
+      <div className="mb-3">{gameSwitch}</div>
+
       {/* 右上角状态栏：服务器/渠道指示 */}
       {installPath && (isInstalled || (detecting && !detectedChannel)) && (
         <div className="absolute right-4 top-4 z-20 lg:right-8 lg:top-8 flex flex-col items-end gap-2">
@@ -2627,7 +2724,7 @@ export function GameActionPanel() {
           onClose={() => setSettingsOpen(false)}
           onSave={(path) => {
             setInstallPath(path);
-            localStorage.setItem(STORAGE_KEY_INSTALL_PATH, path);
+            localStorage.setItem(gameConfigKey(STORAGE_BASE_INSTALL_PATH, game), path);
             setSettingsOpen(false);
             checkStatus();
           }}

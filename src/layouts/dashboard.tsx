@@ -39,12 +39,18 @@ import {
   type BannerItem,
   type AnnouncementItem,
   type SidebarItem,
+  CHANNEL_GAME,
   getNoticeContent,
   getBackgroundImage,
+  readGameChannel,
 } from "@/utils/launcherService";
+import {
+  getActiveGame,
+  subscribeActiveGame,
+} from "@/stores/launcherGame";
 import { isWindowsPlatform } from "@/utils/platform";
 
-const STORAGE_KEY_CHANNEL = "launcher_channel";
+/** 旧键名：仅用于把历史选择迁移到按游戏分区的键上（见下方 channel effect）。 */
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -59,11 +65,11 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     getLauncherBgMedia,
   );
   const [bgMediaMode, setBgMediaMode] = useState<GameBgMode>(getGameBgMode);
-  const [channel] = useState<GameChannel>(() => {
-    return (
-      (localStorage.getItem(STORAGE_KEY_CHANNEL) as GameChannel) || "official"
-    );
-  });
+  // 公告 / 背景图 / 横幅都跟着"当前游戏"走：切换游戏后重新拉该游戏的内容。
+  const [activeGame, setActiveGame] = useState(getActiveGame);
+  const [channel, setChannel] = useState<GameChannel>(() =>
+    readGameChannel(getActiveGame()),
+  );
   const [banners, setBanners] = useState<BannerItem[]>([]);
   const [announcements, setAnnouncements] = useState<AnnouncementItem[]>([]);
   const [sidebars, setSidebars] = useState<SidebarItem[]>([]);
@@ -103,9 +109,22 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     });
   }, []);
 
+  // 切换游戏时，把 dashboard 的渠道与背景/公告一起换到该游戏。
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY_CHANNEL, channel);
-  }, [channel]);
+    return subscribeActiveGame(() => {
+      const next = getActiveGame();
+      setActiveGame(next);
+      setChannel(readGameChannel(next));
+    });
+  }, []);
+
+  // 渠道变化（切游戏 / 换服）时，若跨了游戏，把游戏选择也跟上。
+  useEffect(() => {
+    const owner = CHANNEL_GAME[channel];
+    if (owner && owner !== activeGame) {
+      setActiveGame(owner);
+    }
+  }, [channel, activeGame]);
 
   // Restore persisted sidebar collapse state
   useEffect(() => {

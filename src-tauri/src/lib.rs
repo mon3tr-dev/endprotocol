@@ -60,8 +60,10 @@ pub fn run() {
     // 在任何业务逻辑之前安装崩溃捕获，确保初始化阶段 panic 也能落盘。
     utils::crash::install_panic_hook();
 
-    // `--dx11` 只与 `--launch-game` 组合生效；缺省时在 start_game_from_config 中读取应用设置。
+    // `--dx11` / `--game` 只与 `--launch-game` 组合生效；缺省时在 start_game_from_config
+    // 中读取应用设置（DX11 按游戏各存一份）。
     let requested_dx11 = args.iter().any(|arg| arg == DX11_ARG).then_some(true);
+    let requested_game = commands::startup::game_from_args(&args);
 
     if silent_mode {
         // 驻守实例（`--silent --launch-game`）：不可见、无托盘、不计时、不注册单实例插件，
@@ -72,7 +74,7 @@ pub fn run() {
                 utils::crash::set_app_handle(app.handle().clone());
                 let config_service = create_config_service()?;
                 app.manage(config_service);
-                start_game_from_config(app.handle(), initial_dx11, true);
+                start_game_from_config(app.handle(), initial_dx11, true, requested_game);
                 Ok(())
             })
             .build(tauri::generate_context!())
@@ -389,7 +391,7 @@ pub fn run() {
             AccountService::start_auto_refresh(timer_service);
 
             if launch_game {
-                start_game_from_config(app.handle(), requested_dx11, false);
+                start_game_from_config(app.handle(), requested_dx11, false, requested_game);
             }
 
             app_ready_for_full_instance(app.handle(), &app_ready, &pending_requests);
@@ -459,7 +461,8 @@ fn dispatch_pending_requests<R: Runtime>(
 fn dispatch_instance_request<R: Runtime>(app: &tauri::AppHandle<R>, args: &[String]) {
     if args.iter().any(|arg| arg == LAUNCH_GAME_ARG) {
         let dx11 = args.iter().any(|arg| arg == DX11_ARG).then_some(true);
-        start_game_from_config(app, dx11, false);
+        let game = commands::startup::game_from_args(args);
+        start_game_from_config(app, dx11, false, game);
     }
     tray::show_main_window_focus(app);
 }
@@ -494,6 +497,7 @@ fn start_game_from_config<R: Runtime>(
     app: &tauri::AppHandle<R>,
     dx11: Option<bool>,
     exit_when_game_ends: bool,
+    game: commands::startup::LauncherGame,
 ) {
     let config = match app.try_state::<Arc<StdMutex<ConfigService>>>() {
         Some(config) => config.inner().clone(),
@@ -509,19 +513,21 @@ fn start_game_from_config<R: Runtime>(
             return;
         }
     };
+    // 安装路径 / 渠道 / DX11 都按游戏分区：静默启动带的是哪个 `--game`，就读哪一组键。
     let (Some(install_path), Some(channel), stored_dx11) = (
-        config.get::<String>("launcher_install_path"),
-        config.get::<String>("launcher_channel"),
-        config.get::<bool>("launcher_dx11").unwrap_or(false),
+        config.get::<String>(game.install_path_key()),
+        config.get::<String>(game.channel_key()),
+        config.get::<bool>(game.dx11_key()).unwrap_or(false),
     ) else {
-        write_startup_error(
-            "Cannot start the game: launcher_install_path or launcher_channel is not configured.",
-        );
+        write_startup_error(&format!(
+            "Cannot start {}: its installation path or channel is not configured.",
+            game.id()
+        ));
         return;
     };
     drop(config);
 
-    // 命令行 `--dx11` 优先；未提供时使用应用内设置（配置键 launcher_dx11，默认 false）。
+    // 命令行 `--dx11` 优先；未提供时使用应用内设置（配置键 launcher_dx11[_arknights]，默认 false）。
     let dx11 = dx11.unwrap_or(stored_dx11);
     let app_handle = app.clone();
     // 驻守实例要知道自己该等哪个进程（终末地 / 明日方舟），先解析出来再移交 channel

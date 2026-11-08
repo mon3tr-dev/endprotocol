@@ -17,12 +17,18 @@ import {
   addSteamShortcut,
   createGameShortcut,
   extractSteamIcon,
+  gameConfigKey,
   getGameLaunchCommand,
   getSteamShortcutDefaults,
   pickSteamIcon,
   pickSteamIconSource,
   syncSilentLaunchConfig,
+  type LauncherGame,
 } from "@/utils/launcherService";
+import {
+  getActiveGame,
+  subscribeActiveGame,
+} from "@/stores/launcherGame";
 import { isWindowsPlatform } from "@/utils/platform";
 import { addMessage } from "@/utils/messageStore";
 import { logError } from "@/utils/logger";
@@ -44,27 +50,52 @@ export const GAME_LAUNCH_SYNC_EVENT = "game-launch-settings-sync";
 const COPY_FEEDBACK_MS = 3000;
 const DEFAULT_DOWNLOAD_THREADS = 8;
 
-export const readCancelBehavior = (): string => {
+/**
+ * 设置键 → 实际存储键。
+ *
+ * 取消行为 / 线程数 / 断点续传 / DX11 都是"每个游戏一份"：两个游戏的下载体量、
+ * 可接受的并发、DX11 表现都不同，共用一份会让改一个游戏影响另一个。
+ * 终末地沿用历史键名（老用户设置原样可用），明日方舟加 `_arknights` 后缀。
+ */
+export function scopedKey(base: string, game: LauncherGame = getActiveGame()): string {
+  return game === "arknights" ? `${base}_arknights` : base;
+}
+
+/** 某个游戏配置在后端 config 里的键（DX11 后端也按游戏各存一份） */
+function dx11ConfigKey(game: LauncherGame): string {
+  return gameConfigKey("launcher_dx11", game);
+}
+
+export const readCancelBehavior = (
+  game: LauncherGame = getActiveGame(),
+): string => {
   try {
-    return localStorage.getItem(CANCEL_BEHAVIOR_KEY) || "ask";
+    return localStorage.getItem(scopedKey(CANCEL_BEHAVIOR_KEY, game)) || "ask";
   } catch {
     return "ask";
   }
 };
 
-export const readVerifyThreads = (): number => {
+export const readVerifyThreads = (
+  game: LauncherGame = getActiveGame(),
+): number => {
   try {
-    const parsed = parseInt(localStorage.getItem(VERIFY_THREADS_KEY) || "12", 10);
+    const parsed = parseInt(
+      localStorage.getItem(scopedKey(VERIFY_THREADS_KEY, game)) || "12",
+      10,
+    );
     return Number.isFinite(parsed) ? Math.min(32, Math.max(1, parsed)) : 12;
   } catch {
     return 12;
   }
 };
 
-export const readDownloadThreads = (): number => {
+export const readDownloadThreads = (
+  game: LauncherGame = getActiveGame(),
+): number => {
   try {
     const parsed = parseInt(
-      localStorage.getItem(DOWNLOAD_THREADS_KEY) ||
+      localStorage.getItem(scopedKey(DOWNLOAD_THREADS_KEY, game)) ||
         String(DEFAULT_DOWNLOAD_THREADS),
       10,
     );
@@ -77,17 +108,21 @@ export const readDownloadThreads = (): number => {
 };
 
 /** 断点续传默认开启：仅当用户显式关闭时返回 false。 */
-export const readDownloadResume = (): boolean => {
+export const readDownloadResume = (
+  game: LauncherGame = getActiveGame(),
+): boolean => {
   try {
-    return localStorage.getItem(DOWNLOAD_RESUME_KEY) !== "false";
+    return (
+      localStorage.getItem(scopedKey(DOWNLOAD_RESUME_KEY, game)) !== "false"
+    );
   } catch {
     return true;
   }
 };
 
-export const readDx11 = (): boolean => {
+export const readDx11 = (game: LauncherGame = getActiveGame()): boolean => {
   try {
-    return localStorage.getItem(DX11_KEY) === "true";
+    return localStorage.getItem(scopedKey(DX11_KEY, game)) === "true";
   } catch {
     return false;
   }
@@ -100,10 +135,10 @@ export const persistGameLaunchSetting = (key: string, value: string) => {
   window.dispatchEvent(new Event(GAME_LAUNCH_SYNC_EVENT));
 };
 
-/** DX11 开关同时写 localStorage（界面同步）与后端配置（静默启动读取）。 */
-export const setDx11Setting = (value: boolean) => {
-  persistGameLaunchSetting(DX11_KEY, String(value));
-  void setConfig("launcher_dx11", value);
+/** DX11 开关同时写 localStorage（界面同步）与后端配置（静默启动读取），按游戏分区。 */
+export const setDx11Setting = (value: boolean, game = getActiveGame()) => {
+  persistGameLaunchSetting(scopedKey(DX11_KEY, game), String(value));
+  void setConfig(dx11ConfigKey(game), value);
 };
 
 /**
@@ -112,49 +147,69 @@ export const setDx11Setting = (value: boolean) => {
  */
 export function GameLaunchSettingsFields() {
   const { t } = useTranslation();
-  const [cancelBehavior, setCancelBehavior] = useState(readCancelBehavior);
-  const [verifyThreads, setVerifyThreads] = useState(readVerifyThreads);
-  const [downloadThreads, setDownloadThreads] = useState(readDownloadThreads);
-  const [downloadResume, setDownloadResume] = useState(readDownloadResume);
+  // 这些字段跟着「当前选中的游戏」走：切换游戏后重新从该游戏的分区键读一遍。
+  const [game, setGame] = useState<LauncherGame>(getActiveGame);
+  const [cancelBehavior, setCancelBehavior] = useState(() =>
+    readCancelBehavior(game),
+  );
+  const [verifyThreads, setVerifyThreads] = useState(() =>
+    readVerifyThreads(game),
+  );
+  const [downloadThreads, setDownloadThreads] = useState(() =>
+    readDownloadThreads(game),
+  );
+  const [downloadResume, setDownloadResume] = useState(() =>
+    readDownloadResume(game),
+  );
   const [bgMediaMode, setBgMediaMode] = useState<GameBgMode>(getGameBgMode);
-  const [dx11, setDx11] = useState(readDx11);
+  const [dx11, setDx11] = useState(() => readDx11(game));
 
   useEffect(() => {
     const sync = () => {
-      setCancelBehavior(readCancelBehavior());
-      setVerifyThreads(readVerifyThreads());
-      setDownloadThreads(readDownloadThreads());
-      setDownloadResume(readDownloadResume());
-      setDx11(readDx11());
+      setCancelBehavior(readCancelBehavior(game));
+      setVerifyThreads(readVerifyThreads(game));
+      setDownloadThreads(readDownloadThreads(game));
+      setDownloadResume(readDownloadResume(game));
+      setDx11(readDx11(game));
     };
     window.addEventListener(GAME_LAUNCH_SYNC_EVENT, sync);
     const unsubscribeBg = subscribeGameBgMode(() => {
       setBgMediaMode(getGameBgMode());
     });
+    const unsubscribeGame = subscribeActiveGame(() => {
+      setGame(getActiveGame());
+    });
     return () => {
       window.removeEventListener(GAME_LAUNCH_SYNC_EVENT, sync);
       unsubscribeBg();
+      unsubscribeGame();
     };
-  }, []);
+  }, [game]);
 
   const handleCancelChange = (value: string) => {
     setCancelBehavior(value);
-    persistGameLaunchSetting(CANCEL_BEHAVIOR_KEY, value);
+    persistGameLaunchSetting(scopedKey(CANCEL_BEHAVIOR_KEY, game), value);
   };
 
   const handleThreadsChange = (value: number) => {
     setVerifyThreads(value);
-    persistGameLaunchSetting(VERIFY_THREADS_KEY, String(value));
+    persistGameLaunchSetting(scopedKey(VERIFY_THREADS_KEY, game), String(value));
   };
 
   const handleDownloadThreadsChange = (value: number) => {
     setDownloadThreads(value);
-    persistGameLaunchSetting(DOWNLOAD_THREADS_KEY, String(value));
+    persistGameLaunchSetting(
+      scopedKey(DOWNLOAD_THREADS_KEY, game),
+      String(value),
+    );
   };
 
   const handleDownloadResumeChange = (value: boolean) => {
     setDownloadResume(value);
-    persistGameLaunchSetting(DOWNLOAD_RESUME_KEY, String(value));
+    persistGameLaunchSetting(
+      scopedKey(DOWNLOAD_RESUME_KEY, game),
+      String(value),
+    );
   };
 
   const handleBgMediaChange = (value: GameBgMode) => {
@@ -165,7 +220,7 @@ export function GameLaunchSettingsFields() {
 
   const handleDx11Change = (value: boolean) => {
     setDx11(value);
-    setDx11Setting(value);
+    setDx11Setting(value, game);
   };
 
   return (
@@ -398,8 +453,10 @@ export function GameLaunchSettings() {
  */
 export function QuickLaunchModal({ onClose }: { onClose: () => void }) {
   const { t } = useTranslation();
+  // 快捷方式命令里带 `--game <id>`，所以整个弹窗跟着当前选中的游戏走。
+  const [game, setGame] = useState<LauncherGame>(getActiveGame);
   const [baseCommand, setBaseCommand] = useState("");
-  const [dx11, setDx11] = useState(readDx11);
+  const [dx11, setDx11] = useState(() => readDx11(game));
   const [copied, setCopied] = useState(false);
   const [creatingShortcut, setCreatingShortcut] = useState(false);
   const [steamOpen, setSteamOpen] = useState(false);
@@ -411,7 +468,7 @@ export function QuickLaunchModal({ onClose }: { onClose: () => void }) {
     void (async () => {
       try {
         await syncSilentLaunchConfig();
-        const command = await getGameLaunchCommand();
+        const command = await getGameLaunchCommand(game);
         if (active) setBaseCommand(command);
       } catch (error) {
         if (active) {
@@ -427,13 +484,17 @@ export function QuickLaunchModal({ onClose }: { onClose: () => void }) {
     return () => {
       active = false;
     };
-  }, [t]);
+  }, [t, game]);
 
   useEffect(() => {
-    const sync = () => setDx11(readDx11());
+    const sync = () => setDx11(readDx11(game));
     window.addEventListener(GAME_LAUNCH_SYNC_EVENT, sync);
-    return () => window.removeEventListener(GAME_LAUNCH_SYNC_EVENT, sync);
-  }, []);
+    const unsubscribeGame = subscribeActiveGame(() => setGame(getActiveGame()));
+    return () => {
+      window.removeEventListener(GAME_LAUNCH_SYNC_EVENT, sync);
+      unsubscribeGame();
+    };
+  }, [game]);
 
   useEffect(() => () => window.clearTimeout(copyResetTimer.current), []);
 
@@ -443,7 +504,7 @@ export function QuickLaunchModal({ onClose }: { onClose: () => void }) {
 
   const handleToggleDx11 = (value: boolean) => {
     setDx11(value);
-    setDx11Setting(value);
+    setDx11Setting(value, game);
   };
 
   const handleCopyCommand = async () => {
@@ -469,7 +530,7 @@ export function QuickLaunchModal({ onClose }: { onClose: () => void }) {
     setCreatingShortcut(true);
     try {
       await syncSilentLaunchConfig();
-      const savedPath = await createGameShortcut({ dx11 });
+      const savedPath = await createGameShortcut({ dx11, game });
       if (savedPath) {
         addMessage({
           type: "info",
@@ -681,12 +742,14 @@ function IconPreview({ path }: { path: string }) {
  */
 export function SteamShortcutModal({ onClose }: { onClose: () => void }) {
   const { t } = useTranslation();
+  // 默认名 / 默认图标 / 默认 DX11 都按当前游戏取（两个游戏的 exe 与图标不同）
+  const [game] = useState<LauncherGame>(getActiveGame);
   const [loading, setLoading] = useState(true);
   const [name, setName] = useState("");
   const [iconPath, setIconPath] = useState("");
   const [iconExtracted, setIconExtracted] = useState(false);
   const [gameExeFound, setGameExeFound] = useState(false);
-  const [dx11, setDx11] = useState(readDx11);
+  const [dx11, setDx11] = useState(() => readDx11(game));
   const [createAdminShortcut, setCreateAdminShortcut] = useState(false);
   const [elevateStartMenu, setElevateStartMenu] = useState(false);
   const [startMenuCount, setStartMenuCount] = useState(0);
@@ -707,7 +770,7 @@ export function SteamShortcutModal({ onClose }: { onClose: () => void }) {
     void (async () => {
       try {
         await syncSilentLaunchConfig();
-        const defaults = await getSteamShortcutDefaults();
+        const defaults = await getSteamShortcutDefaults(game);
         if (!active) return;
         setName(defaults.name);
         setIconPath(defaults.icon_path);
@@ -771,6 +834,7 @@ export function SteamShortcutModal({ onClose }: { onClose: () => void }) {
       await syncSilentLaunchConfig();
       const result = await addSteamShortcut({
         name: name.trim(),
+        game,
         iconPath: iconPath.trim() || null,
         dx11,
         createAdminShortcut,

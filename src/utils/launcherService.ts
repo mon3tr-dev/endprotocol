@@ -335,11 +335,17 @@ export async function startGame(
   channel: GameChannel,
   dx11?: boolean,
 ): Promise<LauncherResult> {
+  // 启动游戏把「本游戏的安装路径 / 渠道」写进后端配置：驻守实例（Steam 快捷方式）读的
+  // 就是这组键，而安装路径与渠道按游戏分区，两个游戏互不覆盖。
+  const game = CHANNEL_GAME[channel];
   await invoke("set_config", {
-    key: "launcher_install_path",
+    key: gameConfigKey("launcher_install_path", game),
     value: installPath,
   });
-  await invoke("set_config", { key: "launcher_channel", value: channel });
+  await invoke("set_config", {
+    key: gameConfigKey("launcher_channel", game),
+    value: channel,
+  });
   return invoke<LauncherResult>("launcher_start_game", {
     installPath,
     channel,
@@ -347,58 +353,79 @@ export async function startGame(
   });
 }
 
+/** 把前端 localStorage 里两个游戏的启动配置同步到后端（静默启动 / 快捷方式读后端）。 */
 export async function syncSilentLaunchConfig(): Promise<void> {
-  const installPath = localStorage.getItem("launcher_install_path");
-  const channel = localStorage.getItem("launcher_channel");
-  const dx11 = localStorage.getItem("launcher_dx11");
-  if (installPath) {
-    await invoke("set_config", {
-      key: "launcher_install_path",
-      value: installPath,
-    });
-  }
-  if (channel) {
-    await invoke("set_config", { key: "launcher_channel", value: channel });
-  }
-  if (dx11 !== null) {
-    await invoke("set_config", {
-      key: "launcher_dx11",
-      value: dx11 === "true",
-    });
+  for (const game of GAME_ORDER) {
+    const installPath = localStorage.getItem(
+      gameConfigKey("launcher_install_path", game),
+    );
+    const channel = localStorage.getItem(
+      gameConfigKey("launcher_channel", game),
+    );
+    const dx11 = localStorage.getItem(gameConfigKey("launcher_dx11", game));
+    if (installPath) {
+      await invoke("set_config", {
+        key: gameConfigKey("launcher_install_path", game),
+        value: installPath,
+      });
+    }
+    if (channel) {
+      await invoke("set_config", {
+        key: gameConfigKey("launcher_channel", game),
+        value: channel,
+      });
+    }
+    if (dx11 !== null) {
+      await invoke("set_config", {
+        key: gameConfigKey("launcher_dx11", game),
+        value: dx11 === "true",
+      });
+    }
   }
 }
 
+/** 后端配置回灌 localStorage（按游戏逐个回灌）。 */
 export async function restoreLaunchConfig(): Promise<void> {
   try {
-    const installPath = await invoke<string | null>("get_config", {
-      key: "launcher_install_path",
-    });
-    if (installPath) {
-      localStorage.setItem("launcher_install_path", installPath);
-    }
-    const channel = await invoke<string | null>("get_config", {
-      key: "launcher_channel",
-    });
-    if (channel) {
-      localStorage.setItem("launcher_channel", channel);
-    }
-    const dx11 = await invoke<boolean | null>("get_config", {
-      key: "launcher_dx11",
-    });
-    if (typeof dx11 === "boolean") {
-      localStorage.setItem("launcher_dx11", String(dx11));
+    for (const game of GAME_ORDER) {
+      const installPath = await invoke<string | null>("get_config", {
+        key: gameConfigKey("launcher_install_path", game),
+      });
+      if (installPath) {
+        localStorage.setItem(
+          gameConfigKey("launcher_install_path", game),
+          installPath,
+        );
+      }
+      const channel = await invoke<string | null>("get_config", {
+        key: gameConfigKey("launcher_channel", game),
+      });
+      if (channel) {
+        localStorage.setItem(
+          gameConfigKey("launcher_channel", game),
+          channel,
+        );
+      }
+      const dx11 = await invoke<boolean | null>("get_config", {
+        key: gameConfigKey("launcher_dx11", game),
+      });
+      if (typeof dx11 === "boolean") {
+        localStorage.setItem(gameConfigKey("launcher_dx11", game), String(dx11));
+      }
     }
   } catch {
     // 后端不可用时保留 localStorage 现状
   }
 }
 
-export async function getGameLaunchCommand(): Promise<string> {
-  return invoke<string>("get_game_launch_command");
+export async function getGameLaunchCommand(game: LauncherGame): Promise<string> {
+  return invoke<string>("get_game_launch_command", { game });
 }
 
 export interface LaunchExportOptions {
   dx11?: boolean;
+  /** 目标游戏；缺省为终末地 */
+  game?: LauncherGame;
 }
 
 export async function createGameShortcut(
@@ -406,6 +433,7 @@ export async function createGameShortcut(
 ): Promise<string | null> {
   return invoke<string | null>("create_game_shortcut", {
     dx11: options?.dx11,
+    game: options?.game ?? null,
   });
 }
 
@@ -437,8 +465,10 @@ export interface AddSteamShortcutResult {
   elevated_start_menu: string[];
 }
 
-export async function getSteamShortcutDefaults(): Promise<SteamShortcutDefaults> {
-  return invoke<SteamShortcutDefaults>("steam_shortcut_defaults");
+export async function getSteamShortcutDefaults(
+  game: LauncherGame,
+): Promise<SteamShortcutDefaults> {
+  return invoke<SteamShortcutDefaults>("steam_shortcut_defaults", { game });
 }
 
 export async function pickSteamIcon(): Promise<string | null> {
@@ -459,6 +489,7 @@ export async function addSteamShortcut(
   return invoke<AddSteamShortcutResult>("add_steam_shortcut", {
     options: {
       name: options.name,
+      game: options.game ?? null,
       icon_path: options.iconPath,
       dx11: options.dx11,
       create_admin_shortcut: options.createAdminShortcut,
@@ -619,6 +650,58 @@ export const CHANNEL_GAME: Record<GameChannel, GameId> = {
 export const ALL_CHANNELS: GameChannel[] = GAME_ORDER.flatMap(
   (game) => GAME_CHANNELS[game],
 );
+
+// ========== 按游戏分区的配置键 ==========
+//
+// 安装路径 / 渠道 / DX11 都是"每个游戏一份"：两个游戏的目录、exe、CDN 完全不同，
+// 共用一份配置会互相覆盖。终末地沿用历史键名（老用户配置原样可用），
+// 明日方舟用 `_arknights` 后缀；后端 `commands/startup.rs::LauncherGame::*_key` 用同一套规则。
+
+export type LauncherGame = "endfield" | "arknights";
+
+/** 某个游戏在 localStorage / 后端 config 里的键名后缀 */
+function gameSuffix(game: LauncherGame): string {
+  return game === "arknights" ? "_arknights" : "";
+}
+
+/** 键名：`launcher_install_path` / `launcher_install_path_arknights` */
+export function gameConfigKey(
+  base: "launcher_install_path" | "launcher_channel" | "launcher_dx11",
+  game: LauncherGame,
+): string {
+  return `${base}${gameSuffix(game)}`;
+}
+
+/** 渠道 → 所属游戏（与 `CHANNEL_GAME` 同源，供不引入 launcherService 的场景使用） */
+export function gameOfChannel(channel: GameChannel): LauncherGame {
+  return CHANNEL_GAME[channel];
+}
+
+/** 每个游戏在没有记录时使用的默认渠道 */
+export const DEFAULT_CHANNEL: Record<LauncherGame, GameChannel> = {
+  endfield: "official",
+  arknights: "arknights",
+};
+
+/** 读取某个游戏的安装路径（localStorage） */
+export function readGameInstallPath(game: LauncherGame): string {
+  try {
+    return localStorage.getItem(gameConfigKey("launcher_install_path", game)) || "";
+  } catch {
+    return "";
+  }
+}
+
+/** 读取某个游戏上次使用的渠道（localStorage）；没有记录时给该游戏的默认渠道 */
+export function readGameChannel(game: LauncherGame): GameChannel {
+  try {
+    const stored = localStorage.getItem(gameConfigKey("launcher_channel", game));
+    if (stored && CHANNEL_GAME[stored as GameChannel] === game) {
+      return stored as GameChannel;
+    }
+  } catch {}
+  return DEFAULT_CHANNEL[game];
+}
 
 /**
  * 可以切换到的渠道。

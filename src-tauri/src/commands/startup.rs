@@ -8,9 +8,7 @@ use crate::models::game::GameChannel;
 use crate::services::config_service::ConfigService;
 
 const MAIN_EXE_KEY: &str = "main_exe_path";
-const INSTALL_PATH_KEY: &str = "launcher_install_path";
-const CHANNEL_KEY: &str = "launcher_channel";
-const DX11_CONFIG_KEY: &str = "launcher_dx11";
+/// 历史单游戏键名，保留给迁移与默认值（按游戏分区的键见下方 `LauncherGame::*_key`）。
 const STEAM_SHORTCUT_NAME_KEY: &str = "steam_shortcut_name";
 const STEAM_SHORTCUT_ICON_KEY: &str = "steam_shortcut_icon";
 const STEAM_CREATE_ADMIN_SHORTCUT_KEY: &str = "steam_create_admin_shortcut";
@@ -18,26 +16,112 @@ const STEAM_ELEVATE_START_MENU_KEY: &str = "steam_elevate_start_menu";
 
 const LAUNCH_ARGS: &str = "--silent --launch-game";
 const DX11_ARG: &str = "--dx11";
-/// Steam 条目默认显示名（按游戏区分；用户自定义过的名字优先，见 `steam_shortcut_defaults`）。
+/// `--game <endfield|arknights>`：驻守实例要知道去启动哪个游戏。
+///
+/// 两个游戏各有独立的安装路径 / 渠道 / DX11 设置，所以静默启动必须带上游戏标识；
+/// 缺省为 `endfield`（兼容升级前创建的 Steam 快捷方式）。
+const GAME_ARG: &str = "--game";
+const GAME_ARG_ENDFIELD: &str = "endfield";
+const GAME_ARG_ARKNIGHTS: &str = "arknights";
+
+/// Steam 条目默认显示名（用户自定义过的名字优先，见 `steam_shortcut_defaults`）。
 const DEFAULT_STEAM_NAME_ENDFIELD: &str = "明日方舟：终末地";
 const DEFAULT_STEAM_NAME_ARKNIGHTS: &str = "明日方舟";
 
-/// 未自定义名字时，按当前配置的渠道给默认 Steam 条目名。
-fn default_steam_name(config_service: &Arc<Mutex<ConfigService>>) -> String {
-    let channel = config_service
-        .lock()
-        .ok()
-        .and_then(|config| config.get::<String>(CHANNEL_KEY));
-    match channel.as_deref().map(|value| value.to_ascii_lowercase()) {
-        Some(value) if value.starts_with("arknights") => DEFAULT_STEAM_NAME_ARKNIGHTS.to_string(),
-        _ => DEFAULT_STEAM_NAME_ENDFIELD.to_string(),
+/// 启动器配置的「游戏」维度：决定读哪一组配置键。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum LauncherGame {
+    Endfield,
+    Arknights,
+}
+
+impl LauncherGame {
+    pub(crate) fn id(self) -> &'static str {
+        match self {
+            LauncherGame::Endfield => GAME_ARG_ENDFIELD,
+            LauncherGame::Arknights => GAME_ARG_ARKNIGHTS,
+        }
+    }
+
+    /// 解析 `--game` 的取值（大小写不敏感）；认不出时返回 `None`。
+    pub(crate) fn parse(value: &str) -> Option<Self> {
+        match value.to_ascii_lowercase().as_str() {
+            "endfield" | "终末地" => Some(LauncherGame::Endfield),
+            "arknights" | "ak" | "明日方舟" => Some(LauncherGame::Arknights),
+            _ => None,
+        }
+    }
+}
+
+/// 从命令行里取 `--game` 的值；缺省（或取值非法）视为终末地。
+pub(crate) fn game_from_args(args: &[String]) -> LauncherGame {
+    let mut iter = args.iter();
+    while let Some(arg) = iter.next() {
+        if arg == GAME_ARG {
+            if let Some(value) = iter.next() {
+                if let Some(game) = LauncherGame::parse(value) {
+                    return game;
+                }
+            }
+        }
+    }
+    LauncherGame::Endfield
+}
+
+// ============ 按游戏分区的配置键 ============
+//
+// 终末地沿用历史键名（升级不迁移、老用户配置原样可用），明日方舟用带后缀的新键。
+// 前端 `launcherGameConfigKey()` 用同一套规则拼 localStorage 键名。
+
+const INSTALL_PATH_KEY_ENDFIELD: &str = "launcher_install_path";
+const INSTALL_PATH_KEY_ARKNIGHTS: &str = "launcher_install_path_arknights";
+const CHANNEL_KEY_ENDFIELD: &str = "launcher_channel";
+const CHANNEL_KEY_ARKNIGHTS: &str = "launcher_channel_arknights";
+const DX11_CONFIG_KEY_ENDFIELD: &str = "launcher_dx11";
+const DX11_CONFIG_KEY_ARKNIGHTS: &str = "launcher_dx11_arknights";
+
+impl LauncherGame {
+    pub(crate) fn install_path_key(self) -> &'static str {
+        match self {
+            LauncherGame::Endfield => INSTALL_PATH_KEY_ENDFIELD,
+            LauncherGame::Arknights => INSTALL_PATH_KEY_ARKNIGHTS,
+        }
+    }
+
+    pub(crate) fn channel_key(self) -> &'static str {
+        match self {
+            LauncherGame::Endfield => CHANNEL_KEY_ENDFIELD,
+            LauncherGame::Arknights => CHANNEL_KEY_ARKNIGHTS,
+        }
+    }
+
+    pub(crate) fn dx11_key(self) -> &'static str {
+        match self {
+            LauncherGame::Endfield => DX11_CONFIG_KEY_ENDFIELD,
+            LauncherGame::Arknights => DX11_CONFIG_KEY_ARKNIGHTS,
+        }
+    }
+}
+
+/// 未自定义名字时，按游戏给 Steam 条目默认名。
+fn default_steam_name(game: LauncherGame) -> String {
+    match game {
+        LauncherGame::Endfield => DEFAULT_STEAM_NAME_ENDFIELD.to_string(),
+        LauncherGame::Arknights => DEFAULT_STEAM_NAME_ARKNIGHTS.to_string(),
     }
 }
 /// 管理员 Steam 快捷方式的启动参数（跳过好友界面，减少启动时的额外窗口）。
 const STEAM_ADMIN_ARGS: &str = "-nofriendsui -allfriendsui";
 
 pub(crate) fn launch_args(dx11: bool) -> String {
-    let mut args = LAUNCH_ARGS.to_string();
+    build_launch_args(LauncherGame::Endfield, dx11)
+}
+
+/// 按游戏拼启动参数：`--silent --launch-game --game <id> [--dx11]`。
+///
+/// 驻守实例靠 `--game` 决定读哪一组安装路径 / 渠道配置，两个游戏的快捷方式因此互不干扰。
+pub(crate) fn build_launch_args(game: LauncherGame, dx11: bool) -> String {
+    let mut args = format!("{} --game {}", LAUNCH_ARGS, game.id());
     if dx11 {
         args.push(' ');
         args.push_str(DX11_ARG);
@@ -54,6 +138,11 @@ pub struct SteamShortcutOptions {
     pub icon_path: Option<String>,
     /// 启动选项是否附带 `--dx11`（缺省读应用设置）。
     pub dx11: Option<bool>,
+    /// 目标游戏（`endfield` / `arknights`）。缺省为终末地。
+    ///
+    /// 快捷方式必须带上 `--game`，否则驻守实例会去启动终末地。
+    #[serde(default)]
+    pub game: Option<String>,
     /// 是否创建「以管理员身份运行」的 Steam 快捷方式。
     #[serde(default)]
     pub create_admin_shortcut: bool,
@@ -134,12 +223,18 @@ pub fn refresh_main_exe_path(config_service: &Arc<Mutex<ConfigService>>) -> Resu
     ensure_main_exe_path(config_service).map(|_| ())
 }
 
-/// 读取游戏安装目录与渠道，校验可用后返回（游戏 exe 路径一并给出）。
-fn resolve_install(config_service: &Arc<Mutex<ConfigService>>) -> Result<PathBuf, String> {
+/// 读取某个游戏的安装目录与渠道，校验可用后返回（游戏 exe 路径一并给出）。
+///
+/// 安装路径与渠道按游戏分区存储：终末地沿用 `launcher_install_path` / `launcher_channel`，
+/// 明日方舟用带 `_arknights` 后缀的键，两者互不覆盖。
+fn resolve_install(
+    config_service: &Arc<Mutex<ConfigService>>,
+    game: LauncherGame,
+) -> Result<PathBuf, String> {
     let install_path = config_service
         .lock()
         .map_err(|error| error.to_string())?
-        .get::<String>(INSTALL_PATH_KEY)
+        .get::<String>(game.install_path_key())
         .filter(|path| !path.trim().is_empty())
         .ok_or_else(|| "Game installation path is not configured.".to_string())?;
 
@@ -152,7 +247,7 @@ fn resolve_install(config_service: &Arc<Mutex<ConfigService>>) -> Result<PathBuf
     let channel = config_service
         .lock()
         .map_err(|error| error.to_string())?
-        .get::<String>(CHANNEL_KEY)
+        .get::<String>(game.channel_key())
         .filter(|channel| !channel.trim().is_empty())
         .ok_or_else(|| "Game channel is not configured.".to_string())?;
     let channel = match channel.to_ascii_lowercase().as_str() {
@@ -205,22 +300,38 @@ fn default_icon(game_exe: &PathBuf) -> (String, bool, bool) {
 #[tauri::command]
 pub fn get_game_launch_command(
     config_service: State<'_, Arc<Mutex<ConfigService>>>,
+    game: Option<String>,
 ) -> Result<String, String> {
+    let game = parse_game_param(game.as_deref());
     let exe_path = ensure_main_exe_path(config_service.inner())?;
-    Ok(format!("\"{}\" {LAUNCH_ARGS}", exe_path.display()))
+    Ok(format!(
+        "\"{}\" {} --game {}",
+        exe_path.display(),
+        LAUNCH_ARGS,
+        game.id()
+    ))
 }
 
-/// Steam 弹窗默认值：名字、`Endfield.exe` 提取的图标、DX11 与上次勾选的 Overlay 选项。
+/// 前端传进来的 `game` 参数（缺省 / 非法一律按终末地处理）。
+pub(crate) fn parse_game_param(value: Option<&str>) -> LauncherGame {
+    value
+        .and_then(LauncherGame::parse)
+        .unwrap_or(LauncherGame::Endfield)
+}
+
+/// Steam 弹窗默认值：名字、游戏 exe 提取的图标、DX11 与上次勾选的 Overlay 选项。
 #[tauri::command]
 pub fn steam_shortcut_defaults(
     config_service: State<'_, Arc<Mutex<ConfigService>>>,
+    game: Option<String>,
 ) -> Result<SteamShortcutDefaults, String> {
+    let game = parse_game_param(game.as_deref());
     let stored = {
         let config = config_service.lock().map_err(|error| error.to_string())?;
         (
             config.get::<String>(STEAM_SHORTCUT_NAME_KEY),
             config.get::<String>(STEAM_SHORTCUT_ICON_KEY),
-            config.get::<bool>(DX11_CONFIG_KEY).unwrap_or(false),
+            config.get::<bool>(game.dx11_key()).unwrap_or(false),
             config
                 .get::<bool>(STEAM_CREATE_ADMIN_SHORTCUT_KEY)
                 .unwrap_or(false),
@@ -231,7 +342,7 @@ pub fn steam_shortcut_defaults(
     };
     let (stored_name, stored_icon, dx11, create_admin_shortcut, elevate_start_menu) = stored;
 
-    let game_exe = resolve_install(config_service.inner()).ok();
+    let game_exe = resolve_install(config_service.inner(), game).ok();
     let (extracted_icon, icon_extracted, game_exe_found) = match game_exe.as_ref() {
         Some(path) => default_icon(path),
         None => (String::new(), false, false),
@@ -244,10 +355,7 @@ pub fn steam_shortcut_defaults(
 
     let name = stored_name
         .filter(|name| !name.trim().is_empty())
-        .unwrap_or_else(|| {
-            // 未自定义名字时按当前渠道给默认值（终末地 / 明日方舟各自一个）
-            default_steam_name(config_service.inner())
-        });
+        .unwrap_or_else(|| default_steam_name(game));
 
     Ok(SteamShortcutDefaults {
         name,
@@ -297,21 +405,23 @@ pub fn extract_steam_icon(exe_path: String) -> Result<String, String> {
 pub fn create_game_shortcut(
     config_service: State<'_, Arc<Mutex<ConfigService>>>,
     dx11: Option<bool>,
+    game: Option<String>,
 ) -> Result<Option<String>, String> {
+    let game = parse_game_param(game.as_deref());
     let exe_path = ensure_main_exe_path(config_service.inner())?;
     let stored_dx11 = config_service
         .lock()
         .map_err(|error| error.to_string())?
-        .get::<bool>(DX11_CONFIG_KEY)
+        .get::<bool>(game.dx11_key())
         .unwrap_or(false);
     let use_dx11 = dx11.unwrap_or(stored_dx11);
-    let game_exe = resolve_install(config_service.inner()).ok();
+    let game_exe = resolve_install(config_service.inner(), game).ok();
 
     #[cfg(target_os = "windows")]
     {
         let Some(mut shortcut_path) = rfd::FileDialog::new()
             .set_title("Save game launch shortcut")
-            .set_file_name("EndProtocol - Start Game.lnk")
+            .set_file_name(&format!("EndProtocol - {}.lnk", default_steam_name(game)))
             .add_filter("Windows Shortcut", &["lnk"])
             .save_file()
         else {
@@ -347,7 +457,7 @@ pub fn create_game_shortcut(
              $shortcut.Save()",
             powershell_literal(&shortcut_path.to_string_lossy()),
             powershell_literal(&exe_path.to_string_lossy()),
-            powershell_literal(&launch_args(use_dx11)),
+            powershell_literal(&build_launch_args(game, use_dx11)),
             powershell_literal(&work_dir.to_string_lossy()),
         );
 
@@ -371,11 +481,12 @@ pub async fn add_steam_shortcut(
     config_service: State<'_, Arc<Mutex<ConfigService>>>,
     options: SteamShortcutOptions,
 ) -> Result<AddSteamShortcutResult, String> {
+    let game = parse_game_param(options.game.as_deref());
     let exe_path = ensure_main_exe_path(config_service.inner())?;
     let stored_dx11 = config_service
         .lock()
         .map_err(|error| error.to_string())?
-        .get::<bool>(DX11_CONFIG_KEY)
+        .get::<bool>(game.dx11_key())
         .unwrap_or(false);
     let use_dx11 = options.dx11.unwrap_or(stored_dx11);
 
@@ -397,7 +508,7 @@ pub async fn add_steam_shortcut(
             &crate::utils::steam::SteamShortcut {
                 name,
                 exe_path: &exe_path,
-                launch_options: &launch_args(use_dx11),
+                launch_options: &build_launch_args(game, use_dx11),
                 icon_path: icon.as_deref(),
             },
         )?;
