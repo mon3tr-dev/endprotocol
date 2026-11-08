@@ -49,6 +49,11 @@ import {
   onSwitchProgress,
   formatBytes,
   CHANNEL_LABELS,
+  CHANNEL_SHORT,
+  CHANNEL_GAME,
+  GAME_CHANNELS,
+  GAME_ORDER,
+  switchableChannels,
   KILL_TOKEN_KEYS,
   LAUNCH_TOKEN_KEYS,
   LAUNCH_WARNING_TITLE_KEYS,
@@ -1803,8 +1808,8 @@ export function GameActionPanel() {
       {/* 右上角状态栏：服务器/渠道指示 */}
       {installPath && (isInstalled || (detecting && !detectedChannel)) && (
         <div className="absolute right-4 top-4 z-20 lg:right-8 lg:top-8 flex flex-col items-end gap-2">
-          {/* 服务器/渠道指示（点击可切换渠道） */}
-          {isInstalled && detectedChannel && (
+          {/* 服务器/渠道指示：终末地可点击切换渠道；明日方舟没有换服入口，只作指示 */}
+          {isInstalled && detectedChannel && CHANNEL_GAME[detectedChannel] === "endfield" && (
             <button
               type="button"
               onClick={() => setSwitchOpen(true)}
@@ -1821,6 +1826,16 @@ export function GameActionPanel() {
               </span>
             </button>
           )}
+
+          {/* 明日方舟：只显示渠道，不提供换服入口（渠道差异不在清单里，换服需要重装） */}
+          {isInstalled &&
+            detectedChannel &&
+            CHANNEL_GAME[detectedChannel] === "arknights" && (
+              <div className={`${PILL_BASE} ${PILL_TEXT} gap-1.5 px-4`}>
+                <div className="w-1.5 h-1.5 rounded-full bg-emerald-400/80" />
+                <span>{CHANNEL_LABELS[detectedChannel][lang]}</span>
+              </div>
+            )}
 
           {/* 识别渠道中的指示（未识别出渠道时显示） */}
           {detecting && !detectedChannel && (
@@ -2794,30 +2809,31 @@ export function GameActionPanel() {
                   <p className="text-sm text-muted mb-4">
                     {t("launcher.select_channel_desc")}
                   </p>
-                  <div className="flex flex-col gap-2">
-                    {ALL_CHANNELS.map((ch) => (
-                      <button
-                        key={ch}
-                        type="button"
-                        onClick={() => handleChannelSelected(ch)}
-                        disabled={scanning}
-                        className="flex items-center gap-3 p-3 rounded-lg lg-material-row border border-separator/50 hover:border-primary/50 hover:bg-primary/10 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center shrink-0">
-                          <span className="text-sm font-bold text-primary-text">
-                            {ch === "official"
-                              ? "官"
-                              : ch === "bilibili"
-                                ? "B"
-                                : ch === "global"
-                                  ? "G"
-                                  : "GP"}
-                          </span>
-                        </div>
-                        <span className="text-sm font-medium text-foreground/80">
-                          {CHANNEL_LABELS[ch]?.[lang] || ch}
+                  <div className="flex flex-col gap-4">
+                    {GAME_ORDER.map((game) => (
+                      <div key={game} className="flex flex-col gap-2">
+                        <span className="text-xs font-medium text-muted uppercase tracking-wide">
+                          {t(`launcher.game_group_${game}`)}
                         </span>
-                      </button>
+                        {GAME_CHANNELS[game].map((ch) => (
+                          <button
+                            key={ch}
+                            type="button"
+                            onClick={() => handleChannelSelected(ch)}
+                            disabled={scanning}
+                            className="flex items-center gap-3 p-3 rounded-lg lg-material-row border border-separator/50 hover:border-primary/50 hover:bg-primary/10 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center shrink-0">
+                              <span className="text-sm font-bold text-primary-text">
+                                {CHANNEL_SHORT[ch]}
+                              </span>
+                            </div>
+                            <span className="text-sm font-medium text-foreground/80">
+                              {CHANNEL_LABELS[ch]?.[lang] || ch}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
                     ))}
                   </div>
                   {scanning && (
@@ -3082,7 +3098,7 @@ export function GameActionPanel() {
                     {t("launcher.switch_channel_desc")}
                   </p>
                   <div className="flex flex-col gap-2">
-                    {ALL_CHANNELS.map((ch) => (
+                    {switchableChannels(detectedChannel).map((ch) => (
                       <button
                         key={ch}
                         type="button"
@@ -3102,13 +3118,7 @@ export function GameActionPanel() {
                           }`}
                         >
                           <span className="text-sm font-bold text-primary-text">
-                            {ch === "official"
-                              ? "官"
-                              : ch === "bilibili"
-                                ? "B"
-                                : ch === "global"
-                                  ? "G"
-                                  : "GP"}
+                            {CHANNEL_SHORT[ch]}
                           </span>
                         </div>
                         <div className="flex flex-col items-start">

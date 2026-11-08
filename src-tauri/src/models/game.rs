@@ -1,20 +1,34 @@
 use serde::{Deserialize, Serialize};
 
-/// 游戏渠道
+/// 游戏渠道。
+///
+/// 前四个是《明日方舟：终末地》的服务器分支，后两个是《明日方舟》的服务器分支。
+/// 两者共用同一套启动器接口（`launcher.hypergryph.com/api/proxy/batch_proxy`）与同一套
+/// 下载/更新协议（加密清单 + WinZip AES 分卷补丁），差异集中在 appcode、CDN 一级路径、
+/// 可执行文件名与数据目录，所以在这里统一承载。
+///
+/// 明日方舟的 appcode 与终末地不同（`GzD1CpaWgmSq1wew`，官服/B 服同 appcode，
+/// 靠 `channel`/`sub_channel` 区分），线上实测确认。
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub enum GameChannel {
-    /// 国服官服
+    /// 终末地 · 国服官服
     #[serde(rename = "official")]
     Official,
-    /// 国服B服
+    /// 终末地 · 国服 B 服
     #[serde(rename = "bilibili")]
     Bilibili,
-    /// 国际服
+    /// 终末地 · 国际服
     #[serde(rename = "global")]
     Global,
-    /// 国际服 Google Play
+    /// 终末地 · 国际服 Google Play
     #[serde(rename = "google_play")]
     GooglePlay,
+    /// 明日方舟 · 国服官服
+    #[serde(rename = "arknights")]
+    Arknights,
+    /// 明日方舟 · 国服 B 服
+    #[serde(rename = "arknights_bilibili")]
+    ArknightsBilibili,
 }
 
 impl GameChannel {
@@ -24,64 +38,88 @@ impl GameChannel {
             GameChannel::Bilibili => "bilibili",
             GameChannel::Global => "global",
             GameChannel::GooglePlay => "google_play",
+            GameChannel::Arknights => "arknights",
+            GameChannel::ArknightsBilibili => "arknights_bilibili",
+        }
+    }
+
+    /// 游戏标识：`endfield`（终末地）/ `arknights`（明日方舟）。
+    ///
+    /// 用于按游戏区分的东西：Steam 快捷方式图标缓存、运行时长统计、界面分组。
+    pub fn game_id(&self) -> &'static str {
+        match self {
+            GameChannel::Arknights | GameChannel::ArknightsBilibili => "arknights",
+            _ => "endfield",
+        }
+    }
+
+    /// 是否为《明日方舟》
+    pub fn is_arknights(&self) -> bool {
+        matches!(
+            self,
+            GameChannel::Arknights | GameChannel::ArknightsBilibili
+        )
+    }
+
+    /// 游戏数据目录名（安装完整性检测用）
+    pub fn data_dir_name(&self) -> &'static str {
+        match self {
+            GameChannel::Arknights | GameChannel::ArknightsBilibili => "Arknights_Data",
+            _ => "Endfield_Data",
         }
     }
 
     /// 返回 API URL
     pub fn api_url(&self) -> &'static str {
         match self {
-            GameChannel::Official | GameChannel::Bilibili => {
-                "https://launcher.hypergryph.com/api/proxy/batch_proxy"
-            }
             GameChannel::Global | GameChannel::GooglePlay => {
                 "https://launcher.gryphline.com/api/proxy/batch_proxy"
             }
+            _ => "https://launcher.hypergryph.com/api/proxy/batch_proxy",
         }
     }
 
     /// 返回 Web API URL (用于公告/背景图)
     pub fn web_api_url(&self) -> &'static str {
         match self {
-            GameChannel::Official | GameChannel::Bilibili => {
-                "https://launcher.hypergryph.com/api/proxy/web/batch_proxy"
-            }
             GameChannel::Global | GameChannel::GooglePlay => {
                 "https://launcher.gryphline.com/api/proxy/web/batch_proxy"
             }
+            _ => "https://launcher.hypergryph.com/api/proxy/web/batch_proxy",
         }
     }
 
-    /// 返回 appcode
+    /// 返回 appcode（游戏本体）
     pub fn app_code(&self) -> &'static str {
         match self {
             GameChannel::Official | GameChannel::Bilibili => "6LL0KJuqHBVz33WK",
             GameChannel::Global | GameChannel::GooglePlay => "YDUTE5gscDZ229CW",
+            GameChannel::Arknights | GameChannel::ArknightsBilibili => "GzD1CpaWgmSq1wew",
         }
     }
 
-    /// 返回 launcher_appcode
+    /// 返回 launcher_appcode（启动器本体，两个游戏共用官方启动器 appcode）
     pub fn launcher_app_code(&self) -> &'static str {
         match self {
-            GameChannel::Official | GameChannel::Bilibili => "abYeZZ16BPluCFyT",
             GameChannel::Global | GameChannel::GooglePlay => "YDUTE5gscDZ229CW",
+            _ => "abYeZZ16BPluCFyT",
         }
     }
 
     /// 返回 channel
     pub fn channel(&self) -> &'static str {
         match self {
-            GameChannel::Official => "1",
-            GameChannel::Bilibili => "2",
-            GameChannel::Global => "6",
-            GameChannel::GooglePlay => "6",
+            GameChannel::Official | GameChannel::Arknights => "1",
+            GameChannel::Bilibili | GameChannel::ArknightsBilibili => "2",
+            GameChannel::Global | GameChannel::GooglePlay => "6",
         }
     }
 
     /// 返回 sub_channel
     pub fn sub_channel(&self) -> &'static str {
         match self {
-            GameChannel::Official => "1",
-            GameChannel::Bilibili => "2",
+            GameChannel::Official | GameChannel::Arknights => "1",
+            GameChannel::Bilibili | GameChannel::ArknightsBilibili => "2",
             GameChannel::Global => "6",
             GameChannel::GooglePlay => "802",
         }
@@ -90,19 +128,30 @@ impl GameChannel {
     /// 返回 seq
     pub fn seq(&self) -> &'static str {
         match self {
-            GameChannel::Official | GameChannel::Bilibili => "5",
             GameChannel::Global | GameChannel::GooglePlay => "3",
+            _ => "5",
         }
     }
 
     /// 游戏可执行文件名
     pub fn executable_name(&self) -> &'static str {
-        "Endfield.exe"
+        match self {
+            GameChannel::Arknights | GameChannel::ArknightsBilibili => "Arknights.exe",
+            _ => "Endfield.exe",
+        }
     }
 
     /// 进程名（用于 utils/process.rs 的进程快照匹配与终止）
     pub fn process_name(&self) -> &'static str {
-        "Endfield.exe"
+        self.executable_name()
+    }
+
+    /// 该渠道是否支持"渠道切换"（换服）。
+    ///
+    /// 终末地的换服是换差异文件 + 渠道特征库；明日方舟的渠道差异落在渠道 SDK/DLL 与目录结构上，
+    /// 不在清单里，用同一套逻辑换服会留下半套渠道文件，因此暂不开放。
+    pub fn supports_channel_switch(&self) -> bool {
+        !self.is_arknights()
     }
 }
 
@@ -295,6 +344,17 @@ impl PatchInfo {
             self.package_size.parse().unwrap_or(0)
         }
     }
+
+    /// 是否为**差量**补丁包（V2 补丁索引 `patch.json` 非空即判为差量）。
+    ///
+    /// 线上实测：终末地 1.6.3→1.6.4 是"整文件包"，`v2_patch_info_url` 为空，
+    /// 包内条目就是最终文件，解压即可用；明日方舟 78.0.0→79.0.0 是差量包，
+    /// `v2_patch_info_url` 指向 `patch.json`，包内是
+    /// `vfs_files/vfs_patch/diff_<old>_<new>/xxx.ab_patch`，必须由 Patch.exe（hpatch）
+    /// 结合本地 base 文件才能生成新文件。本实现不含 hpatch，所以提前绕过这条路径。
+    pub fn is_delta(&self) -> bool {
+        !self.v2_patch_info_url.trim().is_empty()
+    }
 }
 
 /// 预下载补丁包（`get_latest_game_rsp.pre_patch`）
@@ -378,6 +438,21 @@ pub struct RemotePackage {
     /// 是否有未加密的整补丁包（`patch.url`）
     #[serde(default)]
     pub has_patch_whole: bool,
+    /// 补丁包是否为**差量**形态（V2 索引非空；差量包需要 hpatch，本实现会绕过它）
+    #[serde(default)]
+    pub patch_is_delta: bool,
+    /// 未加密整补丁包（`patch.url`）——差量包走不通时可直接下载它铺盘
+    #[serde(default)]
+    pub patch_whole_url: String,
+    /// 未加密整补丁包的 MD5（`patch.md5`，可能为空）。实测这就是 `patch.url` 那份 zip 的
+    /// MD5（终末地 1.6.3→1.6.4 的 `patch.url` 3,073,906 B 实测 md5 = `patch.md5`）。
+    #[serde(default)]
+    pub patch_whole_md5: String,
+    /// `patch.package_size`（分卷合计字节数），**不是**整补丁 zip 的实际长度：
+    /// 明日方舟 79.0.0 该值为 1,221,839,400，而 `patch.url` 实际 3,518,344,483 B。
+    /// 只用于日志与粗略预估，进度以响应 `Content-Length` 为准。
+    #[serde(default)]
+    pub patch_whole_bytes: u64,
 }
 
 /// 下载进度

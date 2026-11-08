@@ -500,6 +500,35 @@ pub(crate) async fn launch_game(
         });
     }
 
+    // 明日方舟不做父进程校验：实测 `Arknights.exe`（只导入 `ArknightsBase.dll` 一个模块）、
+    // `ArknightsBase.dll`、`GameAssembly.dll` 里都不存在 `Games.exe` / `WinVerifyTrust`
+    // 相关字符串，直接启动即可。终末地会校验自己的直接父进程必须是签名有效的官方启动器，
+    // 所以只有终末地需要走「官方父进程伪造」那条路。
+    //
+    // 注意两个游戏的 exe manifest 都是 `requireAdministrator`（实测 RT_MANIFEST），
+    // 所以 `direct_launch` 的 ShellExecute 仍会弹 UAC —— 与「找不到官方启动器时终末地的
+    // 回退路径」完全一致。
+    if ch.is_arknights() {
+        let _ = crate::utils::process::terminate_processes(exe_name);
+        tracing::info!("[launcher] {exe_name} launched directly (no parent-process check)");
+        return direct_launch(&exe_path, &game_arguments).map(|mut result| {
+            // 与终末地分支同一套判断：游戏经 UAC 以管理员运行、Steam 未提权时 overlay 注入不进去
+            if result.success
+                && launched_by_steam()
+                && !crate::utils::official_launcher::process_is_elevated()
+            {
+                result.warning = Some(
+                    LaunchError::new(
+                        LaunchToken::OverlayUnavailable,
+                        "the game runs elevated while Steam does not; run Steam as administrator for the overlay",
+                    )
+                    .message(),
+                );
+            }
+            result
+        });
+    }
+
     // Kill existing game processes first（原生快照，含子进程树；无残留时立刻返回）
     let _ = crate::utils::process::terminate_processes(exe_name);
 
@@ -712,22 +741,61 @@ pub async fn launcher_scan_install_dir(
     svc.scan_install_dir(&ch, &install_path).await
 }
 
-/// 根据目录下的文件特征自动识别游戏渠道
+/// 解密 `config.ini` 并取出 `appcode` 与 `channel` 两个字段。
+///
+/// `config.ini` 是官方客户端自己写入的渠道档案（固定 AES-256-CBC 加密，与 `game_files`
+/// 同一套密钥），比靠特征 DLL 猜渠道更权威：终末地官服与 B 服、明日方舟官服与 B 服都是
+/// 同一个游戏 exe，只有 `config.ini` 里的 `channel` 能区分。
+fn read_config_profile(install_dir: &std::path::Path) -> Option<(String, String)> {
+    let config_path = install_dir.join("config.ini");
+    let text =
+        crate::utils::hg_crypto::decrypt_file_to_string(&config_path.to_string_lossy()).ok()?;
+
+    let value_of = |key: &str| -> Option<String> {
+        text.lines().find_map(|line| {
+            let line = line.trim();
+            let rest = line.strip_prefix(key)?;
+            let rest = rest.trim_start();
+            let rest = rest.strip_prefix('=')?.trim();
+            let value = rest.trim_matches('"').trim();
+            (!value.is_empty()).then(|| value.to_string())
+        })
+    };
+
+    Some((value_of("appcode")?, value_of("channel")?))
+}
+
+/// 根据目录下的文件特征与 `config.ini` 档案自动识别游戏渠道
 #[tauri::command]
 pub async fn launcher_detect_channel(install_path: String) -> Result<Option<String>, String> {
     let path = std::path::Path::new(&install_path);
 
     // 检查基本游戏文件是否存在
-    let has_exe = path.join("Endfield.exe").exists();
-    let has_data = path.join("Endfield_Data").is_dir();
+    let has_endfield = path.join("Endfield.exe").exists() && path.join("Endfield_Data").is_dir();
+    let has_arknights =
+        path.join("Arknights.exe").exists() && path.join("Arknights_Data").is_dir();
     let has_config = path.join("config.ini").exists();
 
-    if !has_exe || !has_data || !has_config {
+    if (!has_endfield && !has_arknights) || !has_config {
         // 游戏未安装或目录无效
         return Ok(None);
     }
 
-    // 检查渠道特征文件
+    let profile = read_config_profile(path);
+
+    // 明日方舟：appcode `GzD1CpaWgmSq1wew`，渠道靠 channel=1（官服）/ channel=2（B 服）区分
+    if has_arknights {
+        let channel = profile.as_ref().map(|(_, channel)| channel.as_str());
+        return Ok(Some(
+            match channel {
+                Some("2") => "arknights_bilibili",
+                _ => "arknights",
+            }
+            .to_string(),
+        ));
+    }
+
+    // 终末地：先按渠道特征库判定（原有逻辑），识别不出时回退到 config.ini 的 channel
     let has_hgsdk = path.join("hgsdk.dll").exists();
     let has_pc_sdk = path.join("PCGameSDK.dll").exists();
     let has_gfsdk = path.join("gfsdk.dll").exists();
@@ -756,6 +824,16 @@ pub async fn launcher_detect_channel(install_path: String) -> Result<Option<Stri
 
     if has_hgsdk {
         return Ok(Some("official".to_string()));
+    }
+
+    // 特征库认不出来时，用 config.ini 里的 channel 兜底（国服两渠道都能认）
+    if let Some((app_code, channel)) = profile {
+        let endfield_app_code = crate::models::game::GameChannel::Official.app_code();
+        if app_code == endfield_app_code {
+            return Ok(Some(
+                if channel == "2" { "bilibili" } else { "official" }.to_string(),
+            ));
+        }
     }
 
     // 无法识别渠道
@@ -857,9 +935,24 @@ fn parse_channel(s: &str) -> Result<GameChannel, String> {
         "bilibili" | "b服" | "bili" => Ok(GameChannel::Bilibili),
         "global" | "国际服" => Ok(GameChannel::Global),
         "google_play" | "play" | "gp" => Ok(GameChannel::GooglePlay),
+        // 明日方舟（官服）与明日方舟 B 服
+        "arknights" | "ak" | "明日方舟" | "舟" => Ok(GameChannel::Arknights),
+        "arknights_bilibili" | "ak_bili" | "ak_b" | "明日方舟b服" => {
+            Ok(GameChannel::ArknightsBilibili)
+        }
         _ => Err(format!(
-            "Unknown channel: '{}'. Use: official, bilibili, global, google_play",
+            "Unknown channel: '{}'. Use: official, bilibili, global, google_play, arknights, arknights_bilibili",
             s
         )),
     }
+}
+
+/// 渠道对应的游戏进程名；渠道串不认识时返回 `None`。
+///
+/// `lib.rs` 的驻守实例（`--silent --launch-game`）要在启动后等待游戏结束，
+/// 需要知道该等 `Endfield.exe` 还是 `Arknights.exe`。
+pub(crate) fn channel_process_name(channel: &str) -> Option<String> {
+    parse_channel(channel)
+        .ok()
+        .map(|ch| ch.process_name().to_string())
 }

@@ -24,8 +24,11 @@ const POLL_SECONDS: u64 = 5;
 /// 运行中每累积多久把已过去的时长折入总数并落盘（秒）。
 const FOLD_SECONDS: u64 = 60;
 
-/// 游戏进程名（各渠道一致）。
-const GAME_PROCESS_NAME: &str = "Endfield.exe";
+/// 游戏进程名（各渠道一致，但两个游戏不同）。
+///
+/// 当前统计的是"本机任一游戏在运行"的合计时长（`game_playtime_total_seconds` 单键），
+/// 所以两个进程都要探测，否则玩明日方舟的时段会被漏掉。
+const GAME_PROCESS_NAMES: [&str; 2] = ["Endfield.exe", "Arknights.exe"];
 
 /// 返回给前端的运行时长快照。
 #[derive(Debug, Clone, Serialize)]
@@ -90,7 +93,13 @@ pub fn init(config_service: Arc<StdMutex<ConfigService>>) {
 
 async fn poll_loop() {
     loop {
-        let running = crate::utils::process::is_process_running(GAME_PROCESS_NAME).await;
+        let mut running = false;
+        for name in GAME_PROCESS_NAMES {
+            if crate::utils::process::is_process_running(name).await {
+                running = true;
+                break;
+            }
+        }
         update(running);
         tokio::time::sleep(Duration::from_secs(POLL_SECONDS)).await;
     }

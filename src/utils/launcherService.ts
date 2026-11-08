@@ -3,7 +3,13 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
 // ========== Types ==========
 
-export type GameChannel = "official" | "bilibili" | "global" | "google_play";
+export type GameChannel =
+  | "official"
+  | "bilibili"
+  | "global"
+  | "google_play"
+  | "arknights"
+  | "arknights_bilibili";
 
 export interface GameStatus {
   is_installed: boolean;
@@ -42,6 +48,14 @@ export interface RemotePackage {
   patch_total_bytes: number;
   /** 是否存在未加密的整补丁包（`patch.url`） */
   has_patch_whole: boolean;
+  /** 补丁包是否为差量形态（V2 索引非空，需要 hpatch；此时走整补丁 zip 或清单逐文件） */
+  patch_is_delta: boolean;
+  /** 未加密整补丁包地址（差量包的兜底形态，条目就是最终游戏文件） */
+  patch_whole_url: string;
+  /** 未加密整补丁包的 MD5（可能为空） */
+  patch_whole_md5: string;
+  /** 未加密整补丁包字节数 */
+  patch_whole_bytes: number;
   /** 预下载分卷需下载的总字节数 */
   preload_total_bytes: number;
 }
@@ -565,14 +579,59 @@ export const CHANNEL_LABELS: Record<GameChannel, Record<string, string>> = {
   bilibili: { zh: "终末地 B服", en: "Endfield Bilibili" },
   global: { zh: "终末地 国际服", en: "Endfield Global" },
   google_play: { zh: "终末地 Google Play", en: "Endfield Google Play" },
+  arknights: { zh: "明日方舟 官服", en: "Arknights CN" },
+  arknights_bilibili: { zh: "明日方舟 B服", en: "Arknights Bilibili" },
 };
 
-export const ALL_CHANNELS: GameChannel[] = [
-  "official",
-  "bilibili",
-  "global",
-  "google_play",
-];
+/** 渠道列表按钮上的圆形徽标文字 */
+export const CHANNEL_SHORT: Record<GameChannel, string> = {
+  official: "官",
+  bilibili: "B",
+  global: "G",
+  google_play: "GP",
+  arknights: "方",
+  arknights_bilibili: "方B",
+};
+
+/** 游戏标识：与后端 `GameChannel::game_id()` 一致 */
+export type GameId = "endfield" | "arknights";
+
+/** 按游戏分组的渠道表（安装/选择渠道时按组展示） */
+export const GAME_CHANNELS: Record<GameId, GameChannel[]> = {
+  endfield: ["official", "bilibili", "global", "google_play"],
+  arknights: ["arknights", "arknights_bilibili"],
+};
+
+/** 游戏分组展示顺序 */
+export const GAME_ORDER: GameId[] = ["endfield", "arknights"];
+
+/** 渠道 → 所属游戏 */
+export const CHANNEL_GAME: Record<GameChannel, GameId> = {
+  official: "endfield",
+  bilibili: "endfield",
+  global: "endfield",
+  google_play: "endfield",
+  arknights: "arknights",
+  arknights_bilibili: "arknights",
+};
+
+/** 全部渠道（选择渠道/安装入口用） */
+export const ALL_CHANNELS: GameChannel[] = GAME_ORDER.flatMap(
+  (game) => GAME_CHANNELS[game],
+);
+
+/**
+ * 可以切换到的渠道。
+ *
+ * 只有终末地支持换服：它的渠道差异都落在游戏清单里，换服就是换差异文件。
+ * 明日方舟的渠道差异在渠道 SDK/DLL 与目录结构上（不在清单里），用同一套逻辑换服
+ * 会留下半套渠道文件，所以这里返回空表，界面上不提供换服入口。
+ */
+export function switchableChannels(from: GameChannel): GameChannel[] {
+  const game = CHANNEL_GAME[from];
+  if (game !== "endfield") return [];
+  return GAME_CHANNELS.endfield.filter((channel) => channel !== from);
+}
 
 export function formatBytes(bytes: number): string {
   if (bytes === 0) return "0 B";

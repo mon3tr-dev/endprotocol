@@ -793,6 +793,8 @@
     "unknown_channel": "未知渠道",
     "select_channel_title": "选择游戏区服",
     "select_channel_desc": "请选择要安装的游戏区服版本",
+    "game_group_endfield": "明日方舟：终末地",
+    "game_group_arknights": "明日方舟",
     "scanning_files": "扫描已有文件中...",
     "scan_result_title": "文件扫描结果",
     "scan_result_desc": "发现 {{valid}}/{{total}} 个文件已完整，需要下载 {{missing}} 个缺失文件和 {{corrupted}} 个损坏文件",

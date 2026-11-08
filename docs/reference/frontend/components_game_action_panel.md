@@ -2,7 +2,7 @@
 
 > 逐行精读源码生成。行号仅用于快速定位，可能滞后于当前代码（本文件已在多处漂移，例如 `ButtonProgressRing` 实际在 110 行），定位符号时请以符号名为准。
 
-**文件职责**：Windows 游戏启动器主操作面板，聚合「定位游戏目录 → 检测渠道 → 安装/更新/校验/修复/预载 → 启动/停止游戏 → 切换渠道」全流程，并提供下载进度浮层、确认对话框、磁盘空间预检、累计游戏运行时长徽章与设置入口。仅 Windows 的 dashboard 游戏模式会挂载该组件；Linux/macOS 不显示游戏入口。
+**文件职责**：Windows 游戏启动器主操作面板，聚合「定位游戏目录 → 检测渠道 → 安装/更新/校验/修复/预载 → 启动/停止游戏 → 切换渠道」全流程，并提供下载进度浮层、确认对话框、磁盘空间预检、累计游戏运行时长徽章与设置入口。仅 Windows 的 dashboard 游戏模式会挂载该组件；Linux/macOS 不显示游戏入口。渠道列表同时承载《明日方舟：终末地》与《明日方舟》，按 `GAME_ORDER` / `GAME_CHANNELS` 分组渲染。
 
 **导出**：`GameActionPanel`（无 props 的函数组件，行 52）。
 
@@ -33,9 +33,9 @@
 | 2062–2081 | `QuickLaunchModal`、`GameSettingsModal` 条件挂载（quickLaunchOpen 状态） |
 | 2081–2423 | 通用确认对话框（5 种 confirmAction 分支 + 「不再提示」复选框） |
 | 2426–2517 | **预下载确认对话框**：提示将占用的磁盘空间（复用 `DiskSpaceBar`），空间不足禁用确认 |
-| 2520–2597 | 渠道选择对话框（首次安装、无法自动检测时） |
+| 2520–2597 | 渠道选择对话框（首次安装、无法自动检测时）：按游戏分两组渲染，标题取 `launcher.game_group_{endfield,arknights}`，徽标取 `CHANNEL_SHORT` |
 | 2600–2778 | 扫描结果 + 磁盘空间占用条对话框（同样复用 `DiskSpaceBar`） |
-| 2781–2858 | 渠道切换：目标渠道选择对话框 |
+| 2781–2858 | 渠道切换：目标渠道选择对话框（候选来自 `switchableChannels(detectedChannel)`，明日方舟返回空表 → 该对话框不会出现，右上角只显示静态渠道徽章） |
 | 2861–2901 | 渠道切换确认对话框 |
 | 2928–3012 | `GameSettingsModalProps` 接口与 `GameSettingsModal` 内部组件（未导出）：安装路径 + `GameLaunchSettingsFields` 共享设置，容器 `size="lg"`；`Dialog` 限制最大高度 `calc(100vh-3rem)` 并让 `Body` 内部滚动 |
 
@@ -62,7 +62,7 @@
 | `startInstall` | 612–631 | 执行安装/更新：`installOrUpdate` 透传 `readDownloadThreads()` 与 `readDownloadResume()`，成功后自动做一次 quick 校验 |
 | `handleInstall` | 633–681 | 首次安装编排（选目录 → 检测渠道 → 缓存续传/渠道选择） |
 | `handleChannelSelected` | 683–717 | 渠道选定后并行扫描目录与磁盘空间，弹扫描结果 |
-| `handleSwitchChannel` | 719–727 | 记录切换目标，转确认态 |
+| `handleSwitchChannel` | 719–727 | 记录切换目标，转确认态（仅终末地渠道可达；明日方舟没有换服入口） |
 | `handleConfirmSwitch` | 729–774 | 定位进度浮层坐标并执行渠道切换，失败发 urgent 消息 |
 | `handleStart` | 820–876 | 启动游戏（无路径时先定位并检测渠道）；调用 `startGame(installPath, channel, readDx11())`，把返回结果按 `<token>: <detail>` 契约转成 `addMessage` 提示（失败 → urgent，回退 → warn） |
 | `formatVerifyResult` | 881–908 | 解析校验结果 JSON，生成 i18n 文本与 info/warn 级别 |

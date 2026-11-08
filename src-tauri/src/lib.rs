@@ -469,18 +469,19 @@ fn dispatch_instance_request<R: Runtime>(app: &tauri::AppHandle<R>, args: &[Stri
 /// 驻守实例被 Steam 等外部启动器拉起的进程退出后会立刻停止「游戏中」状态并停止计时，
 /// 因此驻守实例在游戏运行期间保持存活，游戏退出后再退出应用。
 /// 游戏在 120 秒内未出现（启动失败/被取消）时同样结束等待。
-async fn wait_for_game_session() {
+///
+/// `game_process` 是要等的进程名：终末地 `Endfield.exe`、明日方舟 `Arknights.exe`。
+async fn wait_for_game_session(game_process: &str) {
     use std::time::{Duration, Instant};
 
     const POLL_INTERVAL: Duration = Duration::from_secs(2);
     const GAME_LAUNCH_GRACE: Duration = Duration::from_secs(120);
 
-    let process_name = models::game::GameChannel::Official.process_name();
     let started = Instant::now();
     let mut seen = false;
 
     loop {
-        if utils::process::is_process_running(process_name).await {
+        if utils::process::is_process_running(game_process).await {
             seen = true;
         } else if seen || started.elapsed() >= GAME_LAUNCH_GRACE {
             return;
@@ -523,6 +524,9 @@ fn start_game_from_config<R: Runtime>(
     // 命令行 `--dx11` 优先；未提供时使用应用内设置（配置键 launcher_dx11，默认 false）。
     let dx11 = dx11.unwrap_or(stored_dx11);
     let app_handle = app.clone();
+    // 驻守实例要知道自己该等哪个进程（终末地 / 明日方舟），先解析出来再移交 channel
+    let game_process = commands::launcher::channel_process_name(&channel)
+        .unwrap_or_else(|| models::game::GameChannel::Official.process_name().to_string());
     tauri::async_runtime::spawn(async move {
         match commands::launcher::launch_game(install_path, channel, dx11).await {
             Ok(result) if result.success => {
@@ -530,7 +534,7 @@ fn start_game_from_config<R: Runtime>(
                     write_startup_error(&format!("Game launch warning: {warning}"));
                 }
                 if exit_when_game_ends {
-                    wait_for_game_session().await;
+                    wait_for_game_session(&game_process).await;
                     app_handle.exit(0);
                 }
             }

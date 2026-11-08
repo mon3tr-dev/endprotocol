@@ -396,29 +396,30 @@
 ---
 
 ## `src-tauri/src/utils/game_playtime.rs`
-**职责**：游戏运行时长统计（187 行）。作为进程级单例，只统计 EndProtocol 自身运行期间的游戏进程在线时长：后台每 5 秒探测一次 `Endfield.exe`，进程出现即开始一段会话、消失即把该段累加进总时长并落盘；应用启动时若游戏已在运行则从启动时刻算起，应用退出时若游戏仍在运行则计到退出时刻。
-**导出**：`TOTAL_SECONDS_KEY`、`GamePlaytime`、`init`、`snapshot`、`finalize`；私有：常量 `POLL_SECONDS`/`FOLD_SECONDS`/`GAME_PROCESS_NAME`、`Inner`、`STATE`、`CONFIG`、`state`、`now_secs`、`poll_loop`、`update`、`persist`。
+**职责**：游戏运行时长统计（196 行）。作为进程级单例，只统计 EndProtocol 自身运行期间的游戏进程在线时长：后台每 5 秒探测一次游戏进程（`Endfield.exe` / `Arknights.exe` 任一在跑即算在线），进程出现即开始一段会话、消失即把该段累加进总时长并落盘；应用启动时若游戏已在运行则从启动时刻算起，应用退出时若游戏仍在运行则计到退出时刻。两个游戏共用同一个总时长键（"本机游戏时长合计"）。
+**导出**：`TOTAL_SECONDS_KEY`、`GamePlaytime`、`init`、`snapshot`、`finalize`；私有：常量 `POLL_SECONDS`/`FOLD_SECONDS`/`GAME_PROCESS_NAMES`、`Inner`、`STATE`、`CONFIG`、`state`、`now_secs`、`poll_loop`、`update`、`persist`。
 **主要依赖**：`serde::Serialize`、`std::sync::{Arc, Mutex, OnceLock}`、`std::time::{SystemTime, UNIX_EPOCH}`、`crate::services::config_service::ConfigService`、`crate::utils::process::is_process_running`、`tauri::async_runtime`、`tracing`。
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
-| `TOTAL_SECONDS_KEY` | :20 | `"game_playtime_total_seconds"`，累计总时长在 `app_config.json` 中的键（u64 秒） |
+| `TOTAL_SECONDS_KEY` | :19 | `"game_playtime_total_seconds"`，累计总时长在 `app_config.json` 中的键（u64 秒） |
 | `POLL_SECONDS` / `FOLD_SECONDS` | :22 / :25 | 进程探测间隔 5s；运行中每累积 60s 把已过去时长折入总数并落盘（崩溃安全） |
-| `GAME_PROCESS_NAME` | :28 | `"Endfield.exe"`（各渠道一致） |
-| `GamePlaytime`（struct，`Serialize`） | :31-39 | 前端快照：`total_seconds`（不含当前会话）、`session_seconds`（未运行为 0）、`running` |
-| `struct Inner` | :41-47 | 内存态：`total_seconds`、`session_start`、`running`、`first_poll`、`app_start` |
-| `static STATE / CONFIG` | :49-50 | `OnceLock<StdMutex<Inner>>` 与 `OnceLock<Arc<StdMutex<ConfigService>>>` 单例 |
-| `state()` / `now_secs()` | :52 / :64 | 惰性初始化单例；当前 Unix 秒（失败为 0） |
-| `init(config_service)` | :72 | 从 config 读回 `total_seconds`，记录 `app_start`，置首轮探测标记，`CONFIG.set` 后 `tauri::async_runtime::spawn(poll_loop)`。lib.rs 在静默/完整两种 setup 中均调用 |
-| `poll_loop()`（私有 async） | :91 | 循环：`is_process_running("Endfield.exe")` → `update` → sleep 5s |
-| `update(running)`（私有） | :99 | 会话开始（首次探测到运行从 `app_start` 算、否则从此刻算）；会话结束累加并落盘；运行中每满 60s 折叠落盘 |
-| `snapshot() -> GamePlaytime` | :143 | 汇报当前总数 + 实时会话（命令 `launcher_get_game_playtime` 的返回） |
-| `finalize()` | :162 | 应用退出（`RunEvent::Exit`）时若仍在运行则计到此刻并落盘；幂等 |
-| `persist(inner)`（私有） | :174 | 把 `total_seconds` 写入 `ConfigService`（`app_config.json`） |
+| `GAME_PROCESS_NAMES` | :31 | `["Endfield.exe", "Arknights.exe"]`：两个游戏都要探测，否则玩明日方舟的时段会被漏掉 |
+| `GamePlaytime`（struct，`Serialize`） | :35-42 | 前端快照：`total_seconds`（不含当前会话）、`session_seconds`（未运行为 0）、`running` |
+| `struct Inner` | :44-50 | 内存态：`total_seconds`、`session_start`、`running`、`first_poll`、`app_start` |
+| `static STATE / CONFIG` | :52-53 | `OnceLock<StdMutex<Inner>>` 与 `OnceLock<Arc<StdMutex<ConfigService>>>` 单例 |
+| `state()` / `now_secs()` | :55 / :67 | 惰性初始化单例；当前 Unix 秒（失败为 0） |
+| `init(config_service)` | :75 | 从 config 读回 `total_seconds`，记录 `app_start`，置首轮探测标记，`CONFIG.set` 后 `tauri::async_runtime::spawn(poll_loop)`。lib.rs 在静默/完整两种 setup 中均调用 |
+| `poll_loop()`（私有 async） | :94 | 循环：遍历 `GAME_PROCESS_NAMES` 调用 `is_process_running`，任一为真即 `update(true)`，然后 sleep 5s |
+| `update(running)`（私有） | :108 | 会话开始（首次探测到运行从 `app_start` 算、否则从此刻算）；会话结束累加并落盘；运行中每满 60s 折叠落盘 |
+| `snapshot() -> GamePlaytime` | :152 | 汇报当前总数 + 实时会话（命令 `launcher_get_game_playtime` 的返回） |
+| `finalize()` | :171 | 应用退出（`RunEvent::Exit`）时若仍在运行则计到此刻并落盘；幂等 |
+| `persist(inner)`（私有） | :183 | 把 `total_seconds` 写入 `ConfigService`（`app_config.json`） |
 
 **备注**：
 - 事件/命令关联：`launcher_get_game_playtime`（commands/launcher.rs）→ `snapshot`；lib.rs 的 `.setup()` 调用 `init`，`.run(|_, event| …)` 在 `RunEvent::Exit` 调用 `finalize`。
 - 仅统计 EndProtocol 运行期间；游戏在软件未运行时的时间段不计入。运行中每 60s 折叠落盘，进程被强杀最多丢 60s。
+- 两个游戏共用 `game_playtime_total_seconds` 一个键：同时开着两个游戏也只计一份时间。
 - 存储位置：`%LOCALAPPDATA%\cn.msk-network.endprotocol\app_config.json` 的 `game_playtime_total_seconds`。
 - **驻守实例**（`--silent --launch-game`，游戏退出后自行退出）不调用 `init`：避免与同时运行的完整版重复累计，也减少多实例并发写配置文件；该会话的应用内时长不计入，由 Steam 记录游戏时长。
 

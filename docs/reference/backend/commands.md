@@ -46,7 +46,7 @@
 | `capture_screen` | commands/color_picker.rs:36 | `window: WebviewWindow` | `Result<ScreenCapture, String>` | Windows：`window` 控制 + GDI 截屏；非 Windows：返回仅支持 Windows 的错误 |
 | `finish_screen_pick` | commands/color_picker.rs:56 | `window: WebviewWindow` | `()`（无返回） | Windows：退出全屏并聚焦；非 Windows：空实现 |
 | `get_config` | commands/config.rs:9 | `state: State<Arc<Mutex<ConfigService>>>`、`key: String` | `Option<Value>` | `ConfigService::get` |
-| `get_game_launch_command` | commands/startup.rs:185 | `config_service: State<Arc<Mutex<ConfigService>>>` | `Result<String, String>` | 校验/更新 `main_exe_path` 并返回含 `--silent --launch-game` 的带引号命令 |
+| `get_game_launch_command` | commands/startup.rs:206 | `config_service: State<Arc<Mutex<ConfigService>>>` | `Result<String, String>` | 校验/更新 `main_exe_path` 并返回含 `--silent --launch-game` 的带引号命令 |
 | `set_config` | commands/config.rs:47 | `state`、`key: String`、`value: Value` | `Result<(), String>` | **拒绝写机密键**（`secret_registry::has_secret_fields`）；否则 `ConfigService::set`；当 `key == "proxy_config"` 时额外 `utils::http_client::set_global_proxy_config(Some(value))`（后续 HTTP 请求即时生效） |
 | `remove_config` | commands/config.rs:64 | `state`、`key: String` | `bool` | `ConfigService::remove`（同时清理凭据库条目） |
 | `get_all_configs` | commands/config.rs:71 | `state` | `HashMap<String, Value>` | `ConfigService::get_all_public` —— **机密字段被逐字段剔除**，不含凭据 |
@@ -72,34 +72,34 @@
 | `get_backgrounds_dir` | commands/image.rs:141 | 无 | `Result<String, String>` | `utils::paths::backgrounds_dir` |
 | `save_background_image` | commands/image.rs:152 | `data: String`（base64/dataURL） | `Result<String, String>` | `paths::backgrounds_dir`、清空目录、`base64` 解码、写 `bg.webp` |
 | `delete_background_image` | commands/image.rs:190 | 无 | `Result<(), String>` | `paths::backgrounds_dir` + 删除目录下全部文件 |
-| `launcher_get_process_read_bytes` | commands/launcher.rs:13 | 无 | `Result<u64, String>` | Win32 `GetProcessIoCounters`（非 Windows 返回 0） |
-| `launcher_check_status` | commands/launcher.rs:51 | `service: State<Arc<GameLauncherService>>`、`channel: String`、`install_path: String` | `Result<GameStatus, String>` | 本地 `parse_channel`、`GameLauncherService::check_status`；只读命令，下载期间不再排队等锁 |
-| `launcher_install_or_update` | commands/launcher.rs:59 | `app: AppHandle`、`service`、`channel`、`install_path`、`max_concurrent: Option<usize>`（默认 8）、`resume: Option<bool>`（默认 true） | `Result<LauncherResult, String>` | `GameLauncherService::install_or_update`，按线程数并发下载、可断点续传，进度回调 emit `launcher-progress` |
-| `launcher_verify_and_repair` | commands/launcher.rs:122 | `app`、`service`、`channel`、`install_path`、`max_concurrent: Option<usize>`、`quick: Option<bool>`、`resume: Option<bool>`（默认 true） | `Result<LauncherResult, String>` | `GameLauncherService::verify_and_repair`，emit `launcher-progress`；失败时额外发出 `error` 终态事件 |
-| `launcher_get_remote_version` | commands/launcher.rs:179 | `service`、`channel` | `Result<RemotePackage, String>` | `GameLauncherService::get_latest_package` |
-| `launcher_preload_download` | commands/launcher.rs:192 | `app`、`service`、`channel`、`install_path`、`max_concurrent: Option<usize>`（默认 8）、`resume: Option<bool>`（默认 true） | `Result<LauncherResult, String>` | `GameLauncherService::preload_download`（独立预下载传入 `None`，由服务获取包信息），emit `launcher-progress` |
-| `launcher_install_preload` | commands/launcher.rs:236 | `app`、`service`、`channel`、`install_path`、`max_concurrent: Option<usize>`（默认 8）、`resume: Option<bool>`（默认 true） | `Result<LauncherResult, String>` | `GameLauncherService::install_preload`：校验并下载分卷、解密安装，emit `launcher-progress`；前端安装成功后另行触发快速校验 |
-| `launcher_get_payload_state` | commands/launcher.rs:279 | `service`、`channel` | `Result<Option<PayloadState>, String>` | `GameLauncherService::get_payload_state` |
-| `launcher_cancel_download` | commands/launcher.rs:290 | `install_path: Option<String>` | `Result<(), String>` | 带非空路径时先 `request_cancel_cleanup`（记录删除意图）再 `cancel_download`/`cleanup_staging_files`；不带路径仅置取消标志、保留缓存 |
-| `launcher_has_download_cache` | commands/launcher.rs:309 | `install_path: String` | `Result<bool, String>` | `game_launcher_service::has_download_cache` |
-| `launcher_reset_download_cancel` | commands/launcher.rs:317 | 无 | `Result<(), String>` | `game_launcher_service::reset_download_cancel` |
-| `launcher_cancel_switch` | commands/launcher.rs:323 | 无 | `Result<(), String>` | `game_launcher_service::cancel_switch` |
-| `launcher_cancel_all` | commands/launcher.rs:329 | 无 | `Result<(), String>` | `game_launcher_service::cancel_download` + `cancel_switch` |
-| `launcher_decrypt_file` | commands/launcher.rs:336 | `file_path: String` | `Result<String, String>` | `utils::hg_crypto::decrypt_file_to_string` |
-| `launcher_get_banners` | commands/launcher.rs:307 | `service`、`channel` | `Result<Vec<BannerItem>, String>` | `GameLauncherService::get_banners` |
-| `launcher_get_announcements` | commands/launcher.rs:318 | `service`、`channel` | `Result<Vec<AnnouncementItem>, String>` | `GameLauncherService::get_announcements` |
-| `launcher_get_notice_content` | commands/launcher.rs:377 | `service`、`channel` | `Result<LauncherNoticeContent, String>` | `GameLauncherService::get_notice_content`（Banner + 公告 + 右侧栏 `sidebars` 合并内容） |
-| `launcher_get_background_image` | commands/launcher.rs:340 | `service`、`channel` | `Result<Option<BackgroundMedia>, String>` | `GameLauncherService::get_background_image` |
-| `launcher_start_game` | commands/launcher.rs:443 | `config_service: State<Arc<StdMutex<ConfigService>>>`、`install_path: String`、`channel: String`、`dx11: Option<bool>`（省略时读配置 `launcher_dx11`，默认 false） | `Result<LauncherResult, String>` | `parse_channel`、`process::terminate_processes`（原生快照清理同名残留）、`official_launcher::launch_via_official_parent`（已提权时本进程直接伪造官方父进程；否则提权 helper）/ 回退 `direct_launch` → `shell_execute_game`；DX11 开启时给游戏参数追加 `-force-d3d11`；Steam 启动且应用未提权时在 `warning` 返回 `overlay_unavailable` |
-| `launcher_browse_folder` | commands/launcher.rs:523 | 无 | `Result<Option<String>, String>` | `rfd::FileDialog::pick_folder` |
-| `launcher_get_disk_space` | commands/launcher.rs:540 | `path: String` | `Result<DiskSpace, String>` | 调用 `powershell Get-PSDrive` 子进程解析 used/free |
-| `launcher_scan_install_dir` | commands/launcher.rs:599 | `service`、`channel`、`install_path` | `Result<FileScanResult, String>` | `GameLauncherService::scan_install_dir` |
-| `launcher_detect_channel` | commands/launcher.rs:611 | `install_path: String` | `Result<Option<String>, String>` | 纯本地特征文件探测（hgsdk.dll / PCGameSDK.dll / gfsdk.dll 等） |
-| `launcher_check_executable` | commands/launcher.rs:662 | `install_path: String`、`channel: String` | `Result<bool, String>` | `parse_channel` + `GameChannel::executable_name` + `Path::exists` |
-| `launcher_check_game_running` | commands/launcher.rs:757 | `channel: String` | `Result<bool, String>` | `parse_channel` + `utils::process::is_process_running`（同名进程需有顶层窗口或在 90 秒启动宽限内，排除无窗口挂起残留）；游戏面板每 3 秒轮询 |
-| `launcher_get_game_playtime` | commands/launcher.rs:764 | 无 | `GamePlaytime`（同步返回） | `utils::game_playtime::snapshot`（累计总时长 + 实时会话 + 运行态） |
-| `launcher_kill_game` | commands/launcher.rs:777 | `channel: String` | `Result<bool, String>`（失败为 `<token>: <detail>`） | `spawn_blocking` + `process::exists_once`（单次快照预检）→ `official_launcher::kill_game_process`：就地 `process::terminate_processes`（原生快照 + `TerminateProcess`，含子进程树），`AccessDenied`/`StillRunning` 才 runas 重启自身跑 `--endfield-kill-helper`（提权终止） |
-| `launcher_switch_channel` | commands/launcher.rs:816 | `service`、`from_channel`、`to_channel`、`install_path`、`app: AppHandle` | `Result<String, String>` | `GameLauncherService::switch_channel` |
+| `launcher_get_process_read_bytes` | commands/launcher.rs:47 | 无 | `Result<u64, String>` | Win32 `GetProcessIoCounters`（非 Windows 返回 0） |
+| `launcher_check_status` | commands/launcher.rs:65 | `service: State<Arc<GameLauncherService>>`、`channel: String`、`install_path: String` | `Result<GameStatus, String>` | 本地 `parse_channel`、`GameLauncherService::check_status`；只读命令，下载期间不再排队等锁 |
+| `launcher_install_or_update` | commands/launcher.rs:86 | `app: AppHandle`、`service`、`channel`、`install_path`、`max_concurrent: Option<usize>`（默认 8）、`resume: Option<bool>`（默认 true） | `Result<LauncherResult, String>` | `GameLauncherService::install_or_update`，按线程数并发下载、可断点续传，进度回调 emit `launcher-progress` |
+| `launcher_verify_and_repair` | commands/launcher.rs:150 | `app`、`service`、`channel`、`install_path`、`max_concurrent: Option<usize>`、`quick: Option<bool>`、`resume: Option<bool>`（默认 true） | `Result<LauncherResult, String>` | `GameLauncherService::verify_and_repair`，emit `launcher-progress`；失败时额外发出 `error` 终态事件 |
+| `launcher_get_remote_version` | commands/launcher.rs:210 | `service`、`channel` | `Result<RemotePackage, String>` | `GameLauncherService::get_latest_package` |
+| `launcher_preload_download` | commands/launcher.rs:221 | `app`、`service`、`channel`、`install_path`、`max_concurrent: Option<usize>`（默认 8）、`resume: Option<bool>`（默认 true） | `Result<LauncherResult, String>` | `GameLauncherService::preload_download`（独立预下载传入 `None`，由服务获取包信息），emit `launcher-progress` |
+| `launcher_install_preload` | commands/launcher.rs:266 | `app`、`service`、`channel`、`install_path`、`max_concurrent: Option<usize>`（默认 8）、`resume: Option<bool>`（默认 true） | `Result<LauncherResult, String>` | `GameLauncherService::install_preload`：校验并下载分卷、解密安装，emit `launcher-progress`；前端安装成功后另行触发快速校验 |
+| `launcher_get_payload_state` | commands/launcher.rs:310 | `service`、`channel` | `Result<Option<PayloadState>, String>` | `GameLauncherService::get_payload_state` |
+| `launcher_cancel_download` | commands/launcher.rs:321 | `install_path: Option<String>` | `Result<(), String>` | 带非空路径时先 `request_cancel_cleanup`（记录删除意图）再 `cancel_download`/`cleanup_staging_files`；不带路径仅置取消标志、保留缓存 |
+| `launcher_has_download_cache` | commands/launcher.rs:340 | `install_path: String` | `Result<bool, String>` | `game_launcher_service::has_download_cache` |
+| `launcher_reset_download_cancel` | commands/launcher.rs:348 | 无 | `Result<(), String>` | `game_launcher_service::reset_download_cancel` |
+| `launcher_cancel_switch` | commands/launcher.rs:354 | 无 | `Result<(), String>` | `game_launcher_service::cancel_switch` |
+| `launcher_cancel_all` | commands/launcher.rs:360 | 无 | `Result<(), String>` | `game_launcher_service::cancel_download` + `cancel_switch` |
+| `launcher_decrypt_file` | commands/launcher.rs:367 | `file_path: String` | `Result<String, String>` | `utils::hg_crypto::decrypt_file_to_string` |
+| `launcher_get_banners` | commands/launcher.rs:373 | `service`、`channel` | `Result<Vec<BannerItem>, String>` | `GameLauncherService::get_banners` |
+| `launcher_get_announcements` | commands/launcher.rs:384 | `service`、`channel` | `Result<Vec<AnnouncementItem>, String>` | `GameLauncherService::get_announcements` |
+| `launcher_get_notice_content` | commands/launcher.rs:395 | `service`、`channel` | `Result<LauncherNoticeContent, String>` | `GameLauncherService::get_notice_content`（Banner + 公告 + 右侧栏 `sidebars` 合并内容） |
+| `launcher_get_background_image` | commands/launcher.rs:406 | `service`、`channel` | `Result<Option<BackgroundMedia>, String>` | `GameLauncherService::get_background_image` |
+| `launcher_start_game` | commands/launcher.rs:461 | `config_service: State<Arc<StdMutex<ConfigService>>>`、`install_path: String`、`channel: String`、`dx11: Option<bool>`（省略时读配置 `launcher_dx11`，默认 false） | `Result<LauncherResult, String>` | `parse_channel`、`process::terminate_processes`（原生快照清理同名残留）、`official_launcher::launch_via_official_parent`（已提权时本进程直接伪造官方父进程；否则提权 helper）/ 回退 `direct_launch` → `shell_execute_game`；DX11 开启时给游戏参数追加 `-force-d3d11`；Steam 启动且应用未提权时在 `warning` 返回 `overlay_unavailable` |
+| `launcher_browse_folder` | commands/launcher.rs:658 | 无 | `Result<Option<String>, String>` | `rfd::FileDialog::pick_folder` |
+| `launcher_get_disk_space` | commands/launcher.rs:675 | `path: String` | `Result<DiskSpace, String>` | 调用 `powershell Get-PSDrive` 子进程解析 used/free |
+| `launcher_scan_install_dir` | commands/launcher.rs:734 | `service`、`channel`、`install_path` | `Result<FileScanResult, String>` | `GameLauncherService::scan_install_dir` |
+| `launcher_detect_channel` | commands/launcher.rs:770 | `install_path: String` | `Result<Option<String>, String>` | 按游戏分派：终末地用特征 DLL（hgsdk.dll / PCGameSDK.dll / gfsdk.dll 等），明日方舟读 `config.ini` 的 `channel`；纯本地不联网 |
+| `launcher_check_executable` | commands/launcher.rs:845 | `install_path: String`、`channel: String` | `Result<bool, String>` | `parse_channel` + `GameChannel::executable_name` + `Path::exists` |
+| `launcher_check_game_running` | commands/launcher.rs:853 | `channel: String` | `Result<bool, String>` | `parse_channel` + `utils::process::is_process_running`（同名进程需有顶层窗口或在 90 秒启动宽限内，排除无窗口挂起残留）；游戏面板每 3 秒轮询 |
+| `launcher_get_game_playtime` | commands/launcher.rs:860 | 无 | `GamePlaytime`（同步返回） | `utils::game_playtime::snapshot`（累计总时长 + 实时会话 + 运行态） |
+| `launcher_kill_game` | commands/launcher.rs:873 | `channel: String` | `Result<bool, String>`（失败为 `<token>: <detail>`） | `spawn_blocking` + `process::exists_once`（单次快照预检）→ `official_launcher::kill_game_process`：就地 `process::terminate_processes`（原生快照 + `TerminateProcess`，含子进程树），`AccessDenied`/`StillRunning` 才 runas 重启自身跑 `--endfield-kill-helper`（提权终止） |
+| `launcher_switch_channel` | commands/launcher.rs:912 | `service`、`from_channel`、`to_channel`、`install_path`、`app: AppHandle` | `Result<String, String>` | `GameLauncherService::switch_channel` |
 | `get_backend_logs` | commands/logs.rs:4 | 无 | `Vec<LogEntry>` | `utils::logger::get_logger().get_recent_logs()` |
 | `set_log_level` | commands/logs.rs:11 | `level: String`（`"debug"｜"info"｜"warn"｜"error"`） | `Result<(), String>` | `LogLevel::parse` → `utils::logger::set_log_level`（运行时切换，持久化由前端 `set_config` 负责） |
 | `get_log_dir` | commands/diagnostics.rs:7 | 无 | `Result<String, String>` | `utils::paths::log_dir()` |
@@ -109,12 +109,12 @@
 | `get_api_health` | commands/diagnostics.rs:37 | 无 | `ApiHealthSnapshot` | `utils::api_health::snapshot` |
 | `reset_api_health` | commands/diagnostics.rs:43 | 无 | `()` | `utils::api_health::reset` |
 | `get_tray_user_info` | commands/tray.rs:8 | `config_service: State<Arc<Mutex<ConfigService>>>` | `Result<TrayUserInfo, String>` | `ConfigService::get::<TrayUserInfo>("tray_user_info")` |
-| `steam_shortcut_defaults` | commands/startup.rs:194 | `config_service: State<Arc<Mutex<ConfigService>>>` | `Result<SteamShortcutDefaults, String>` | Steam 弹窗默认值：名字、从 `Endfield.exe` 提取的 `.ico`、DX11、上次勾选的两项 Overlay 选项、开始菜单 Steam 快捷方式数量、当前是否已提权 |
-| `pick_steam_icon` | commands/startup.rs:243 | 无 | `Result<Option<String>, String>` | `rfd` 选择 `ico`/`png`/`exe`，取消返回 `None` |
-| `pick_steam_icon_source` | commands/startup.rs:253 | 无 | `Result<Option<String>, String>` | `rfd` 选择用于提取图标的 exe，取消返回 `None` |
-| `extract_steam_icon` | commands/startup.rs:265 | `exe_path: String` | `Result<String, String>` | `utils::game_icon::extract_icon` 重新组装 `RT_GROUP_ICON` 为 `.ico`，写出到应用数据目录并返回路径 |
-| `create_game_shortcut` | commands/startup.rs:272 | `config_service: State<Arc<Mutex<ConfigService>>>`、`dx11: Option<bool>`（缺省读配置 `launcher_dx11`） | `Result<Option<String>, String>` | 用户通过 `rfd` 选择 `.lnk` 路径；PowerShell COM 创建快捷方式，启动参数按开关包含 `--dx11`，返回路径；取消选择返回 `None` |
-| `add_steam_shortcut` | commands/startup.rs:345 | `config_service: State<Arc<Mutex<ConfigService>>>`、`options: SteamShortcutOptions`（`name`、`icon_path`、`dx11`、`create_admin_shortcut`、`elevate_start_menu`） | `Result<AddSteamShortcutResult, String>` | 允许 Steam 运行中写入：`utils::steam::add_shortcut` 按名字 upsert 当前账户 `userdata/<id>/config/shortcuts.vdf`；按勾选创建管理员 Steam 快捷方式（用户选路径）并提升开始菜单 Steam 快捷方式；返回 vdf 路径与新建/提升结果；非 Windows 返回 `Err` |
+| `steam_shortcut_defaults` | commands/startup.rs:215 | `config_service: State<Arc<Mutex<ConfigService>>>` | `Result<SteamShortcutDefaults, String>` | Steam 弹窗默认值：名字、从 `Endfield.exe` 提取的 `.ico`、DX11、上次勾选的两项 Overlay 选项、开始菜单 Steam 快捷方式数量、当前是否已提权 |
+| `pick_steam_icon` | commands/startup.rs:267 | 无 | `Result<Option<String>, String>` | `rfd` 选择 `ico`/`png`/`exe`，取消返回 `None` |
+| `pick_steam_icon_source` | commands/startup.rs:277 | 无 | `Result<Option<String>, String>` | `rfd` 选择用于提取图标的 exe，取消返回 `None` |
+| `extract_steam_icon` | commands/startup.rs:289 | `exe_path: String` | `Result<String, String>` | `utils::game_icon::extract_icon` 重新组装 `RT_GROUP_ICON` 为 `.ico`，写出到应用数据目录并返回路径 |
+| `create_game_shortcut` | commands/startup.rs:297 | `config_service: State<Arc<Mutex<ConfigService>>>`、`dx11: Option<bool>`（缺省读配置 `launcher_dx11`） | `Result<Option<String>, String>` | 用户通过 `rfd` 选择 `.lnk` 路径；PowerShell COM 创建快捷方式，启动参数按开关包含 `--dx11`，返回路径；取消选择返回 `None` |
+| `add_steam_shortcut` | commands/startup.rs:370 | `config_service: State<Arc<Mutex<ConfigService>>>`、`options: SteamShortcutOptions`（`name`、`icon_path`、`dx11`、`create_admin_shortcut`、`elevate_start_menu`） | `Result<AddSteamShortcutResult, String>` | 允许 Steam 运行中写入：`utils::steam::add_shortcut` 按名字 upsert 当前账户 `userdata/<id>/config/shortcuts.vdf`；按勾选创建管理员 Steam 快捷方式（用户选路径）并提升开始菜单 Steam 快捷方式；返回 vdf 路径与新建/提升结果；非 Windows 返回 `Err` |
 | `set_tray_user` | commands/tray.rs:19 | `app: AppHandle`、`config_service`、`role_id: String` | `Result<(), String>` | `ConfigService::set("tray_user_info", …)`、`tray::update_tray_menu` |
 | `update_tray_user_data` | commands/tray.rs:45 | `app`、`config_service`、`user_info: TrayUserInfo`（前端由 `src/utils/trayService.ts` 组装，含 `accountLevel`） | `Result<(), String>` | `ConfigService::set("tray_user_info", …)`、`tray::update_tray_menu` |
 | `show_tray_panel` | commands/tray.rs:66 | `app: AppHandle` | `Result<(), String>` | `tray::show_tray_panel` |
@@ -163,16 +163,17 @@
 | `ensure_main_exe_path` | startup.rs:94 | 规范化当前 exe 路径；当配置缺失、无效或已变化时更新 `main_exe_path` |
 | `refresh_main_exe_path` | startup.rs:119 | 应用初始化时同步 exe 路径 |
 | `launch_args`（`pub(crate)`） | startup.rs:26 | 组合 `--silent --launch-game`，按需追加 `--dx11`；不再支持 `--close-after-launch` |
-| `resolve_install` | startup.rs:124 | 读取并校验 `launcher_install_path` / `launcher_channel`，返回游戏 `Endfield.exe` 路径 |
-| `steam_icon_path` | startup.rs:158 | 图标缓存路径 `%LOCALAPPDATA%\\cn.msk-network.endprotocol\\steam\\endfield.ico` |
-| `default_icon` | startup.rs:165 | 从游戏 exe 提取 `.ico`，返回 `(路径, 是否提取成功, 游戏是否存在)`；提取失败回退为 exe 自身路径 |
-| `get_game_launch_command` | startup.rs:186 | 返回带引号的当前 exe 路径及 `--silent --launch-game` |
-| `steam_shortcut_defaults` | startup.rs:195 | 弹窗默认值：名字缺省「明日方舟：终末地」、图标优先沿用上次保存的自定义图标否则重新提取、DX11 与应用设置同源、两项 Overlay 选项取上次保存值；附带开始菜单 Steam 快捷方式数量与当前进程是否已提权 |
-| `pick_steam_icon` | startup.rs:244 | `rfd` 选择图标文件（`ico`/`png`/`exe`），取消返回 `None` |
-| `pick_steam_icon_source` | startup.rs:254 | `rfd` 选择用于提取图标的 exe，取消返回 `None` |
-| `extract_steam_icon` | startup.rs:266 | 对指定 exe 调用 `utils::game_icon::extract_icon`，返回生成的 `.ico` 路径 |
-| `create_game_shortcut` | startup.rs:273 | 读取 `dx11`（缺省读 `launcher_dx11`），用户选择保存路径后创建 Windows `.lnk`；exe 缺失时不设置图标；取消返回 `None` |
-| `add_steam_shortcut`（async） | startup.rs:346 | 校验名字非空 → `utils::steam::add_shortcut` 写 `shortcuts.vdf`（同名条目更新）→ 回写 `steam_shortcut_name` / `steam_shortcut_icon` / 两个 Overlay 选项 → 按勾选创建管理员 Steam 快捷方式（`rfd` 选保存路径，取消即报错）与提升开始菜单 Steam 快捷方式 |
+| `resolve_install` | startup.rs:138 | 读取并校验 `launcher_install_path` / `launcher_channel`（六个渠道全部受理），按渠道返回游戏 exe 路径（`Endfield.exe` / `Arknights.exe`） |
+| `default_steam_name` | startup.rs:26 | 未自定义名字时按当前渠道给 Steam 条目默认名：`arknights*` → 「明日方舟」，其余 → 「明日方舟：终末地」 |
+| `steam_icon_path` | startup.rs:173 | 图标缓存路径 `%LOCALAPPDATA%\\cn.msk-network.endprotocol\\steam\\<exe 名小写>.ico`（`endfield.ico` / `arknights.ico`） |
+| `default_icon` | startup.rs:185 | 从游戏 exe 提取 `.ico`，返回 `(路径, 是否提取成功, 游戏是否存在)`；提取失败回退为 exe 自身路径 |
+| `get_game_launch_command` | startup.rs:206 | 返回带引号的当前 exe 路径及 `--silent --launch-game` |
+| `steam_shortcut_defaults` | startup.rs:215 | 弹窗默认值：名字缺省按渠道取（见 `default_steam_name`）、图标优先沿用上次保存的自定义图标否则重新提取、DX11 与应用设置同源、两项 Overlay 选项取上次保存值；附带开始菜单 Steam 快捷方式数量与当前进程是否已提权 |
+| `pick_steam_icon` | startup.rs:267 | `rfd` 选择图标文件（`ico`/`png`/`exe`），取消返回 `None` |
+| `pick_steam_icon_source` | startup.rs:277 | `rfd` 选择用于提取图标的 exe，取消返回 `None` |
+| `extract_steam_icon` | startup.rs:289 | 对指定 exe 调用 `utils::game_icon::extract_icon`（图标名按 exe 名派生），返回生成的 `.ico` 路径 |
+| `create_game_shortcut` | startup.rs:297 | 读取 `dx11`（缺省读 `launcher_dx11`），用户选择保存路径后创建 Windows `.lnk`；exe 缺失时不设置图标；取消返回 `None` |
+| `add_steam_shortcut`（async） | startup.rs:370 | 校验名字非空 → `utils::steam::add_shortcut` 写 `shortcuts.vdf`（同名条目更新）→ 回写 `steam_shortcut_name` / `steam_shortcut_icon` / 两个 Overlay 选项 → 按勾选创建管理员 Steam 快捷方式（`rfd` 选保存路径，取消即报错）与提升开始菜单 Steam 快捷方式 |
 | `powershell_literal`（私有，仅 Windows） | startup.rs:469 | 单引号转义（`'` → `''`），用于嵌入脚本路径串 |
 | `run_powershell`（私有，仅 Windows） | startup.rs:474 | `-EncodedCommand` 执行脚本并收集 stderr/stdout 作为错误详情 |
 
@@ -583,78 +584,80 @@
 - 670-733：游戏运行检测与进程终止；735 起：`launcher_switch_channel`。
 
 ### `launcher_get_process_read_bytes`
-- 位置：launcher.rs:13（同步）；参数：无；返回：`Result<u64, String>`；逻辑：Windows 下 `GetCurrentProcess` + `GetProcessIoCounters` 取 `ReadTransferCount`（任务管理器磁盘速率用），非 Windows 返回 `Ok(0)`。
+- 位置：launcher.rs:47（同步）；参数：无；返回：`Result<u64, String>`；逻辑：Windows 下 `GetCurrentProcess` + `GetProcessIoCounters` 取 `ReadTransferCount`（任务管理器磁盘速率用），非 Windows 返回 `Ok(0)`。
 
 ### `launcher_check_status`
-- 位置：launcher.rs:31（async）；参数：`service`、`channel: String`、`install_path: String`；返回：`Result<GameStatus, String>`；逻辑：`parse_channel` → 加锁 → `GameLauncherService::check_status(&ch, &install_path).await`。
+- 位置：launcher.rs:65（async）；参数：`service`、`channel: String`、`install_path: String`；返回：`Result<GameStatus, String>`；逻辑：`parse_channel` → 加锁 → `GameLauncherService::check_status(&ch, &install_path).await`。
 
 ### `launcher_install_or_update`
-- 位置：launcher.rs:59（async）
+- 位置：launcher.rs:86（async）
 - 参数：`app: AppHandle`、`service`、`channel`、`install_path`、`max_concurrent: Option<usize>`（缺省 8）、`resume: Option<bool>`（缺省 true）
 - 返回：`Result<LauncherResult, String>`（业务失败也包成 `success:false` 的 `LauncherResult`，不返回 `Err`）
 - 逻辑：构造 `progress_cb` 回调，每阶段 `app.emit("launcher-progress", &DownloadProgress)`；调 `GameLauncherService::install_or_update(&ch, &install_path, progress_cb, max_concurrent, resume)`，成功填 `version` 与 "Update to {v} completed"，失败填错误串。`resume` 决定取消/失败后是否保留分片与暂存。
 - 事件：`launcher-progress`
 
 ### `launcher_verify_and_repair`
-- 位置：launcher.rs:122（async）
+- 位置：launcher.rs:150（async）
 - 参数：`app`、`service`、`channel`、`install_path`、`max_concurrent: Option<usize>`、`quick: Option<bool>`、`resume: Option<bool>`
 - 返回：`Result<LauncherResult, String>`
 - 逻辑：`GameLauncherService::verify_and_repair(..., max_concurrent.unwrap_or(12), quick.unwrap_or(false), resume.unwrap_or(true))`，进度同样 emit `launcher-progress`；结果包成 `LauncherResult`，发生错误时额外 emit `stage = "error"` 以结束前端进度状态。
 
 ### `launcher_get_remote_version`
-- 位置：launcher.rs:179（async）；参数：`service`、`channel`；返回：`Result<RemotePackage, String>`；逻辑：`GameLauncherService::get_latest_package(&ch, None)` 取远程版本包（不带本地版本，因此不会返回 `pre_patch` 预下载信息）。
+- 位置：launcher.rs:210（async）；参数：`service`、`channel`；返回：`Result<RemotePackage, String>`；逻辑：`GameLauncherService::get_latest_package(&ch, None)` 取远程版本包（不带本地版本，因此不会返回 `pre_patch` 预下载信息）。
 
 ### `launcher_preload_download`
-- 位置：launcher.rs:192（async）
+- 位置：launcher.rs:221（async）
 - 参数：`app`、`service`、`channel`、`install_path`、`max_concurrent: Option<usize>`、`resume: Option<bool>`
 - 返回：`Result<LauncherResult, String>`
 - 逻辑：`GameLauncherService::preload_download(..., max_concurrent.unwrap_or(8), resume.unwrap_or(true), None)` 预下载官方预发布补丁分卷（服务内自行读本地版本以取 `pre_patch`），进度 emit `launcher-progress`。
 
 ### `launcher_install_preload`
-- 位置：launcher.rs:236（async）
+- 位置：launcher.rs:266（async）
 - 参数：`app`、`service`、`channel`、`install_path`、`max_concurrent: Option<usize>`、`resume: Option<bool>`
 - 返回：`Result<LauncherResult, String>`
 - 逻辑：调用 `GameLauncherService::install_preload`；复用已下载分卷或先下载并 MD5 校验，使用官方 `pkg.cd_key` 解压到暂存区并应用文件。命令完成后由前端再调用快速校验与修复；解压密码只保留在后端。
 - 事件：`launcher-progress`
 
 ### `launcher_get_payload_state`
-- 位置：launcher.rs:279（async）；参数：`service`、`channel`；返回：`Result<Option<PayloadState>, String>`；逻辑：`GameLauncherService::get_payload_state(&ch)`，返回上次安装/更新的 payload 状态。
+- 位置：launcher.rs:310（async）；参数：`service`、`channel`；返回：`Result<Option<PayloadState>, String>`；逻辑：`GameLauncherService::get_payload_state(&ch)`，返回上次安装/更新的 payload 状态。
 
 ### `launcher_cancel_download`
-- 位置：launcher.rs:290（async）；参数：`install_path: Option<String>`；返回：`Result<(), String>`；逻辑：给了非空路径时先调 `game_launcher_service::request_cancel_cleanup()` 记录删除意图，再置取消标志并 `cleanup_staging_files(&path)`；不给路径时仅 `cancel_download()`，后台任务会保留分片与暂存以便续传。**不加 service 锁**。
+- 位置：launcher.rs:321（async）；参数：`install_path: Option<String>`；返回：`Result<(), String>`；逻辑：给了非空路径时先调 `game_launcher_service::request_cancel_cleanup()` 记录删除意图，再置取消标志并 `cleanup_staging_files(&path)`；不给路径时仅 `cancel_download()`，后台任务会保留分片与暂存以便续传。**不加 service 锁**。
 
 ### `launcher_has_download_cache`
-- 位置：launcher.rs:309（async）；参数：`install_path: String`；返回：`Result<bool, String>`；逻辑：`game_launcher_service::has_download_cache(&path)` 判断是否有暂存目录或 `.download` 文件。
+- 位置：launcher.rs:340（async）；参数：`install_path: String`；返回：`Result<bool, String>`；逻辑：`game_launcher_service::has_download_cache(&path)` 判断是否有暂存目录或 `.download` 文件。
 
 ### `launcher_reset_download_cancel`
-- 位置：launcher.rs:317（async）；参数：无；返回：`Result<(), String>`；逻辑：`game_launcher_service::reset_download_cancel()`。
+- 位置：launcher.rs:348（async）；参数：无；返回：`Result<(), String>`；逻辑：`game_launcher_service::reset_download_cancel()`。
 
 ### `launcher_cancel_switch`
-- 位置：launcher.rs:288（async）；参数：无；返回：`Result<(), String>`；逻辑：`game_launcher_service::cancel_switch()` 取消渠道切换。
+- 位置：launcher.rs:354（async）；参数：无；返回：`Result<(), String>`；逻辑：`game_launcher_service::cancel_switch()` 取消渠道切换。
 
 ### `launcher_cancel_all`
-- 位置：launcher.rs:294（async）；参数：无；返回：`Result<(), String>`；逻辑：依次 `cancel_download()` + `cancel_switch()`。
+- 位置：launcher.rs:360（async）；参数：无；返回：`Result<(), String>`；逻辑：依次 `cancel_download()` + `cancel_switch()`。
 
 ### `launcher_decrypt_file`
-- 位置：launcher.rs:301（async）；参数：`file_path: String`；返回：`Result<String, String>`；逻辑：`utils::hg_crypto::decrypt_file_to_string(&file_path)` 解密游戏资源文件并返回文本。
+- 位置：launcher.rs:367（async）；参数：`file_path: String`；返回：`Result<String, String>`；逻辑：`utils::hg_crypto::decrypt_file_to_string(&file_path)` 解密游戏资源文件并返回文本。
 
 ### `launcher_get_banners`
-- 位置：launcher.rs:307（async）；参数：`service`、`channel`；返回：`Result<Vec<BannerItem>, String>`；逻辑：`GameLauncherService::get_banners(&ch)`。
+- 位置：launcher.rs:373（async）；参数：`service`、`channel`；返回：`Result<Vec<BannerItem>, String>`；逻辑：`GameLauncherService::get_banners(&ch)`。
 
 ### `launcher_get_announcements`
-- 位置：launcher.rs:318（async）；参数：`service`、`channel`；返回：`Result<Vec<AnnouncementItem>, String>`；逻辑：`GameLauncherService::get_announcements(&ch)`。
+- 位置：launcher.rs:384（async）；参数：`service`、`channel`；返回：`Result<Vec<AnnouncementItem>, String>`；逻辑：`GameLauncherService::get_announcements(&ch)`。
 
 ### `launcher_get_notice_content`
-- 位置：launcher.rs:377（async）；参数：`service`、`channel`；返回：`Result<LauncherNoticeContent, String>`；逻辑：`GameLauncherService::get_notice_content(&ch)`（Banner + 公告 + 右侧栏 `sidebars` 合并内容，一次 `batch_proxy_web_raw` 带 `get_banner`/`get_announcement`/`get_sidebar` 三项）。
+- 位置：launcher.rs:395（async）；参数：`service`、`channel`；返回：`Result<LauncherNoticeContent, String>`；逻辑：`GameLauncherService::get_notice_content(&ch)`（Banner + 公告 + 右侧栏 `sidebars` 合并内容，一次 `batch_proxy_web_raw` 带 `get_banner`/`get_announcement`/`get_sidebar` 三项）。
 
 ### `launcher_get_background_image`
-- 位置：launcher.rs:340（async）；参数：`service`、`channel`；返回：`Result<Option<BackgroundMedia>, String>`；逻辑：`GameLauncherService::get_background_image(&ch)`。
+- 位置：launcher.rs:406（async）；参数：`service`、`channel`；返回：`Result<Option<BackgroundMedia>, String>`；逻辑：`GameLauncherService::get_background_image(&ch)`。
 
 ### `launcher_start_game`
-- 位置：launcher.rs:443（async）
+- 位置：launcher.rs:461（async）
 - 参数：`config_service: State<Arc<StdMutex<ConfigService>>>`、`install_path: String`、`channel: String`、`dx11: Option<bool>`（为 `None` 时读取配置 `launcher_dx11`，缺省 false）
 - 返回：`Result<LauncherResult, String>`
-- 逻辑：用 `ch.executable_name()` 拼 exe 路径，不存在直接返回 `success:false`；启用 DX11 时构造游戏参数 `vec!["-force-d3d11"]`；先 `process::terminate_processes(exe_name)` 清理残留（原生快照 + `TerminateProcess`，无残留时立刻返回，旧实现的 `taskkill /F /IM` + `sleep(500ms)` 已移除）；随后（Windows）在 `spawn_blocking` 中调用 `official_launcher::launch_via_official_parent` —— **游戏会校验自己的直接父进程必须是签名有效的官方 `Games.exe`**，该函数先查找 + 验签官方启动器（失败即 `no_launcher`），然后分两条路径：应用**已提权**时由当前进程直接创建「挂起且永不运行的官方启动器 + 以其为父进程的游戏进程」（保留 Steam overlay 的 `CreateProcess` 注入链）；**未提权**时用 `ShellExecuteExW("runas")` 以 `--endfield-launch-helper` 提权重启自身完成创建，命令侧用 2.5s 宽限期 + 状态文件判断 helper 是启动阶段失败还是游戏已创建。找不到签名有效的官方启动器时回退 `direct_launch`（`ShellExecuteW(SW_SHOWNORMAL)` + 游戏参数，即旧行为）并把原因放进 `LauncherResult.warning`。若当前进程由 Steam 拉起（`SteamClientLaunch` / `SteamAppId` / `SteamGameId` / `SteamOverlayGameId` 之一存在）且未提权，额外在 `warning` 返回 `overlay_unavailable`。非 Windows 走 `Command::spawn` 并传入 `game_arguments`。实际实现在 `launch_game`（launcher.rs:459），供静默启动直接调用。启动前先以应用权限调用 `process::terminate_processes`；应用未提权时它无法结束上一局由提权进程创建的残留（结果为 `AccessDenied`，仅记 debug），提权 helper 在创建新游戏前会再调用一次同一原语清理。
+- 逻辑：用 `ch.executable_name()` 拼 exe 路径，不存在直接返回 `success:false`；启用 DX11 时构造游戏参数 `vec!["-force-d3d11"]`；先 `process::terminate_processes(exe_name)` 清理残留（原生快照 + `TerminateProcess`，无残留时立刻返回，旧实现的 `taskkill /F /IM` + `sleep(500ms)` 已移除）。
+  - **明日方舟直接启动**：`Arknights.exe` / `ArknightsBase.dll` / `GameAssembly.dll` 里都不存在 `Games.exe` / `WinVerifyTrust` 相关字符串（实测），方舟不校验父进程，所以 `ch.is_arknights()` 时清完残留直接 `direct_launch`，不走提权 helper 那条路。
+  - **终末地**：（Windows）在 `spawn_blocking` 中调用 `official_launcher::launch_via_official_parent` —— **游戏会校验自己的直接父进程必须是签名有效的官方 `Games.exe`**，该函数先查找 + 验签官方启动器（失败即 `no_launcher`），然后分两条路径：应用**已提权**时由当前进程直接创建「挂起且永不运行的官方启动器 + 以其为父进程的游戏进程」（保留 Steam overlay 的 `CreateProcess` 注入链）；**未提权**时用 `ShellExecuteExW("runas")` 以 `--endfield-launch-helper` 提权重启自身完成创建，命令侧用 2.5s 宽限期 + 状态文件判断 helper 是启动阶段失败还是游戏已创建。找不到签名有效的官方启动器时回退 `direct_launch`（`ShellExecuteW(SW_SHOWNORMAL)` + 游戏参数，即旧行为）并把原因放进 `LauncherResult.warning`。若当前进程由 Steam 拉起（`SteamClientLaunch` / `SteamAppId` / `SteamGameId` / `SteamOverlayGameId` 之一存在）且未提权，额外在 `warning` 返回 `overlay_unavailable`。非 Windows 走 `Command::spawn` 并传入 `game_arguments`。实际实现在 `launch_game`（launcher.rs:477），供静默启动直接调用。启动前先以应用权限调用 `process::terminate_processes`；应用未提权时它无法结束上一局由提权进程创建的残留（结果为 `AccessDenied`，仅记 debug），提权 helper 在创建新游戏前会再调用一次同一原语清理。
 - 并发保护：`static LAUNCH_IN_FLIGHT`（launcher.rs:405）保证同一时刻只有一次启动，避免重复点击弹出两次 UAC / 留下两套挂起的父进程。
 
 #### `launcher_start_game` 的 `message` / `warning` token 契约
@@ -673,37 +676,41 @@
 | `unknown` | 其它（含 helper 提前退出的未知码、启动中重复点击） | 兜底 |
 
 ### `launcher_browse_folder`
-- 位置：launcher.rs:523（同步）；参数：无；返回：`Result<Option<String>, String>`；逻辑：`rfd::FileDialog::new().set_title("Select Game Directory").pick_folder()`，取消返回 `None`。
+- 位置：launcher.rs:658（同步）；参数：无；返回：`Result<Option<String>, String>`；逻辑：`rfd::FileDialog::new().set_title("Select Game Directory").pick_folder()`，取消返回 `None`。
 
 ### `launcher_get_disk_space`
-- 位置：launcher.rs:540（async）
+- 位置：launcher.rs:675（async）
 - 参数：`path: String`
 - 返回：`Result<DiskSpace, String>`（`{total, free}` 字节）
 - 逻辑：沿 `ancestors()` 找第一个存在的根路径，Windows 下起 `powershell -NoProfile -Command "Get-PSDrive …"` 解析 `Used|Free` 并相加得 total；非 Windows 返回 `u64::MAX` 占位。
 
 ### `launcher_scan_install_dir`
-- 位置：launcher.rs:599（async）；参数：`service`、`channel`、`install_path`；返回：`Result<FileScanResult, String>`；逻辑：`GameLauncherService::scan_install_dir(&ch, &install_path)` 扫描已有文件完整性。
+- 位置：launcher.rs:734（async）；参数：`service`、`channel`、`install_path`；返回：`Result<FileScanResult, String>`；逻辑：`GameLauncherService::scan_install_dir(&ch, &install_path)` 扫描已有文件完整性。
 
 ### `launcher_detect_channel`
-- 位置：launcher.rs:611（async）；参数：`install_path: String`；返回：`Result<Option<String>, String>`；逻辑：先校验 `Endfield.exe`+`Endfield_Data`+`config.ini` 齐全否则 `None`；再按特征 DLL 判定：`glextra.dll`+`play_pc_sdk.dll`+`manifest.xml` → `google_play`，`gfsdk.dll`+`glfoundation.dll` → `global`，`PCGameSDK.dll` → `bilibili`，`hgsdk.dll` → `official`，否则 `None`。纯本地，不联网。
+- 位置：launcher.rs:770（async）；参数：`install_path: String`；返回：`Result<Option<String>, String>`
+- 逻辑：先按游戏分派（`Endfield.exe`+`Endfield_Data` / `Arknights.exe`+`Arknights_Data`，两者都要有 `config.ini`，否则 `None`）：
+  - **明日方舟**（`Arknights.exe`+`Arknights_Data`）：用 `read_config_profile`（launcher.rs:730）解密 `config.ini` 读 `appcode`/`channel`，`channel=2` → `arknights_bilibili`，其余 → `arknights`。官方两个渠道共用同一 appcode `GzD1CpaWgmSq1wew`，只有 `channel` 能区分。
+  - **终末地**：先按特征 DLL 判定 `glextra.dll`+`play_pc_sdk.dll`+`manifest.xml` → `google_play`，`gfsdk.dll`+`glfoundation.dll` → `global`，`PCGameSDK.dll` → `bilibili`，`hgsdk.dll` → `official`；都认不出时回退到 `config.ini` 的 `channel`（appcode 必须等于 `6LL0KJuqHBVz33WK`）。
+- 纯本地，不联网。`config.ini` 是固定 AES-256-CBC 加密的渠道档案（与 `game_files` 同一套密钥），比特征 DLL 更权威。
 
 ### `launcher_check_executable`
-- 位置：launcher.rs:662（同步）；参数：`install_path: String`、`channel: String`；返回：`Result<bool, String>`；逻辑：`parse_channel` → `Path::exists` 判断渠道对应 exe 是否存在。
+- 位置：launcher.rs:845（同步）；参数：`install_path: String`、`channel: String`；返回：`Result<bool, String>`；逻辑：`parse_channel` → `Path::exists` 判断渠道对应 exe 是否存在。
 
 ### `launcher_check_game_running`
-- 位置：launcher.rs:757（异步）；参数：`channel: String`；返回：`Result<bool, String>`；逻辑：`parse_channel` → `utils::process::is_process_running(ch.process_name())`（进程快照取得同名 PID，任一 PID 拥有顶层窗口或在 90 秒启动宽限内才视为运行中；无窗口的崩溃/挂起残留返回 false）。前端游戏面板每 3 秒调用；快照与窗口判定在 `spawn_blocking` 中执行，不阻塞 Tauri 主线程。
+- 位置：launcher.rs:853（异步）；参数：`channel: String`；返回：`Result<bool, String>`；逻辑：`parse_channel` → `utils::process::is_process_running(ch.process_name())`（进程快照取得同名 PID，任一 PID 拥有顶层窗口或在 90 秒启动宽限内才视为运行中；无窗口的崩溃/挂起残留返回 false）。前端游戏面板每 3 秒调用；快照与窗口判定在 `spawn_blocking` 中执行，不阻塞 Tauri 主线程。
 
 ### `launcher_get_game_playtime`
-- 位置：launcher.rs:764（同步）；参数：无；返回：`GamePlaytime`（`{ total_seconds, session_seconds, running }`）；逻辑：`utils::game_playtime::snapshot()`，返回累计总时长（不含当前会话）+ 当前会话时长 + 运行态。由后台探测任务 `utils::game_playtime` 维护，仅在 EndProtocol 运行期间统计。
+- 位置：launcher.rs:860（同步）；参数：无；返回：`GamePlaytime`（`{ total_seconds, session_seconds, running }`）；逻辑：`utils::game_playtime::snapshot()`，返回累计总时长（不含当前会话）+ 当前会话时长 + 运行态。由后台探测任务 `utils::game_playtime` 维护，仅在 EndProtocol 运行期间统计。
 
 ### `launcher_kill_game`
-- 位置：launcher.rs:777（async）
+- 位置：launcher.rs:873（async）
 - 参数：`channel: String`
 - 返回：`Result<bool, String>`（`true` = 进程已结束；`false` = 本来就没有同名进程；失败时 `Err("<token>: <detail>")`，token 为 `cancelled` / `kill_failed` / `unknown`）
 - 逻辑：`parse_channel` → `spawn_blocking` 里先 `process::exists_once`（单次快照预检，无残留直接返回 `false`），再走 `official_launcher::kill_game_process`：① 就地 `process::terminate_processes`（原生快照 + `OpenProcess(PROCESS_TERMINATE)`/`TerminateProcess`，含后代进程树；`Terminated`/`Nothing` 到此为止，不弹 UAC）；② 结果为 `AccessDenied` 或 `StillRunning` 时用 `ShellExecuteExW("runas")` 以 `--endfield-kill-helper --name <Endfield.exe>` 重启自身（`crate::run` 在 logger/Tauri 初始化前由 `try_run_kill_helper` 截获），并阻塞等待 helper 退出码（上限 10 秒）。游戏由提权 helper 创建，未提权的 `TerminateProcess` 只会拿到 `ERROR_ACCESS_DENIED` —— 这正是旧实现「点了停止没反应」的原因；`AccessDenied` 由 `TerminateOutcome` 直接给出，因此不需要再等一轮存活轮询（旧实现的两轮 `has_processes` + `taskkill` 子进程合计约 10 秒，是「UAC 弹得慢」的主因）。旧实现的 `wmic` 兜底已移除（`wmic` 在新版 Windows 已弃用，且同样过不了权限边界）。
 
 ### `launcher_switch_channel`
-- 位置：launcher.rs:816（async）
+- 位置：launcher.rs:912（async）
 - 参数：`service`、`from_channel: String`、`to_channel: String`、`install_path: String`、`app: AppHandle`
 - 返回：`Result<String, String>`（成功消息）
 - 逻辑：两个 channel 都经 `parse_channel` 校验，然后 `GameLauncherService::switch_channel(&from, &to, &install_path, app).await`（service 内部可用 app emit 进度/事件）。

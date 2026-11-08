@@ -533,6 +533,12 @@ impl GameLauncherService {
                 has_patch_whole: patch_info
                     .map(|p| !p.url.is_empty())
                     .unwrap_or(false),
+                patch_is_delta: patch_info.map(|p| p.is_delta()).unwrap_or(false),
+                patch_whole_url: patch_info.map(|p| p.url.clone()).unwrap_or_default(),
+                patch_whole_md5: patch_info.map(|p| p.md5.clone()).unwrap_or_default(),
+                patch_whole_bytes: patch_info
+                    .map(|p| p.package_size.parse().unwrap_or(0))
+                    .unwrap_or(0),
             },
             cd_key,
         ))
@@ -620,7 +626,7 @@ impl GameLauncherService {
 
         // 检查核心文件
         let has_exe = path.join(channel.executable_name()).exists();
-        let has_data = path.join("Endfield_Data").is_dir();
+        let has_data = path.join(channel.data_dir_name()).is_dir();
         let has_config = path.join("config.ini").exists();
         let channel_detected = has_exe && has_data && has_config;
 
@@ -1174,10 +1180,19 @@ impl GameLauncherService {
             patch_cd_key.is_some()
         );
 
+        if remote.patch_is_delta {
+            tracing::info!(
+                "[install] Server offered a V2 delta patch archive (hpatch); using the manifest file-by-file path instead"
+            );
+        }
+
         // 1.5 补丁包优先：官方常规更新走"下载加密分卷 → 7zg 解压 → 覆盖/删除"，比按清单逐文件
-        // 下载省得多（实测 1.6.3→1.6.4 只需 3 MB 补丁包，而清单差异可达 GB 级）。
-        // 差量形态（含 hpatch `_patch` 条目）本实现不支持，检测到后回退清单路径。
-        if remote.has_patch && !remote.patch_parts.is_empty() {
+        // 下载省得多（实测终末地 1.6.3→1.6.4 只需 3 MB 补丁包，而清单差异可达 GB 级）。
+        //
+        // 但**差量形态**（V2 索引非空，包内是 `vfs_files/vfs_patch/…_patch`）必须由 hpatch
+        // 结合本地 base 文件生成新文件，本实现不含 hpatch，所以提前判掉、直接走清单逐文件，
+        // 不去白下几 GB 分卷再失败。明日方舟的补丁目前都是这种差量包。
+        if remote.has_patch && !remote.patch_parts.is_empty() && !remote.patch_is_delta {
             match patch_cd_key.as_deref() {
                 Some(key) => {
                     tracing::info!(
@@ -1223,6 +1238,43 @@ impl GameLauncherService {
                 None => {
                     tracing::warn!(
                         "[install] Server offered a patch archive without cd_key; falling back to manifest download"
+                    );
+                }
+            }
+        }
+
+        // 1.6 **差量包兜底**：明日方舟的补丁是 V2 差量包（`vfs_files/vfs_patch/…_patch`），
+        // 必须由 hpatch 结合本地 base 生成新文件；本实现不含 hpatch。但服务端同时提供
+        // `patch.url` —— 一个**未加密的整补丁 zip，条目就是最终游戏文件**（实测明日方舟
+        // 79.0.0 这份 3,518,344,483 B / 3616 条，抽样 md5 与清单一致，且无 `_patch` 条目）。
+        // 所以差量包这条路上，用整补丁 zip 铺盘，比按清单逐文件重下省得多。
+        if remote.patch_is_delta && !remote.patch_whole_url.is_empty() {
+            tracing::info!(
+                "[install] V2 delta patch detected; using the unencrypted whole patch zip instead (server reports {} bytes of volumes)",
+                remote.patch_whole_bytes
+            );
+            match self
+                .install_from_whole_patch_zip(
+                    channel,
+                    install_path,
+                    &remote.patch_whole_url,
+                    &remote.patch_whole_md5,
+                    progress_callback.clone(),
+                    resume,
+                )
+                .await
+            {
+                Ok(version) => {
+                    progress_callback(DownloadProgress {
+                        stage: InstallStage::Completed.as_str().to_string(),
+                        ..Default::default()
+                    });
+                    return Ok(version);
+                }
+                Err(error) => {
+                    tracing::warn!(
+                        "[install] Whole patch zip failed ({}); falling back to manifest download",
+                        error
                     );
                 }
             }
@@ -2397,6 +2449,20 @@ impl GameLauncherService {
                 });
                 Ok(version)
             }
+            // 差量预下载包（V2）：包内是 hpatch 用的 `_patch` 数据，不能直接铺进游戏目录。
+            // 分卷已经留好，等正式发版后走「更新」按清单逐文件下载即可，这里给出可读提示
+            // 而不是把内部前缀 `DELTA_ARCHIVE:` 泄漏到界面上。
+            Err(error) if error.starts_with(ERR_DELTA_ARCHIVE) => {
+                progress_callback(DownloadProgress {
+                    stage: InstallStage::Error.as_str().to_string(),
+                    ..Default::default()
+                });
+                tracing::warn!("[preload] delta archive cannot be applied directly: {error}");
+                Err(
+                    "This preload package is a V2 delta patch (hpatch-based) and cannot be applied directly; use Update instead"
+                        .to_string(),
+                )
+            }
             Err(error) => {
                 progress_callback(DownloadProgress {
                     stage: InstallStage::Error.as_str().to_string(),
@@ -2568,6 +2634,236 @@ impl GameLauncherService {
             parts.len()
         );
         Ok(installed_package.version)
+    }
+
+    /// 用**未加密整补丁 zip**（`patch.url`）更新：差量包（V2）走不通时的官方回退形态。
+    ///
+    /// 实测依据（明日方舟 79.0.0，`patch.url` 指向 3,518,344,483 B 的 zip）：
+    /// - 3616 个条目、**0 个加密条目**、**0 个 `_patch` 条目**，条目名就是最终游戏文件路径；
+    /// - 抽样 `config.ini` / `WebviewConfig/WebPortalSign.gryph` 的 MD5 与远端清单逐条一致；
+    /// - 包内同样带 `game_files`（16 B）与 `package_files` 等控制文件。
+    /// 所以这条路与"分卷解密解压"共用后半段（自检 + 控制文件过滤 + delete 清单 + 原子替换），
+    /// 只是前半段换成"下载一个明文 zip 再普通解压"。
+    async fn install_from_whole_patch_zip(
+        &self,
+        channel: &GameChannel,
+        install_path: &str,
+        url: &str,
+        expected_md5: &str,
+        progress_callback: Arc<dyn Fn(DownloadProgress) + Send + Sync>,
+        resume: bool,
+    ) -> Result<String, String> {
+        CANCEL_CLEANUP_REQUESTED.store(false, Ordering::SeqCst);
+
+        let staging_path = PathBuf::from(format!("{}.staging.wholepatch", install_path));
+        fs::create_dir_all(&staging_path).map_err(|e| format!("Create whole-patch staging: {}", e))?;
+        let archive_path = staging_path.join("patch.zip");
+        let archive_str = archive_path.to_string_lossy().to_string();
+
+        // 1) 下载整包（断点续传 + MD5）
+        progress_callback(DownloadProgress {
+            downloaded: 0,
+            total: 0,
+            stage: InstallStage::Downloading.as_str().to_string(),
+            current_file: Some("patch.zip".to_string()),
+            file_index: 0,
+            file_count: 1,
+            verified_bytes: 0,
+        });
+        let counter = Arc::new(AtomicU64::new(0));
+        let download = download_single_file(
+            &self.download_client,
+            url,
+            &archive_str,
+            expected_md5,
+            counter,
+            0,
+            resume,
+        )
+        .await;
+        if let Err(error) = download {
+            let cleanup_requested = CANCEL_CLEANUP_REQUESTED.load(Ordering::SeqCst);
+            if !resume || cleanup_requested {
+                let _ = fs::remove_dir_all(&staging_path);
+            }
+            return Err(error);
+        }
+
+        // 2) 解压（明文 zip，不需要密码）
+        let extracted_dir = staging_path.join(".extracted");
+        if extracted_dir.exists() {
+            let _ = fs::remove_dir_all(&extracted_dir);
+        }
+        fs::create_dir_all(&extracted_dir)
+            .map_err(|e| format!("Create extraction directory: {}", e))?;
+
+        let extracted_for_task = extracted_dir.clone();
+        let archive_for_task = archive_path.clone();
+        let progress_for_task = progress_callback.clone();
+        let extract_result = tokio::task::spawn_blocking(move || {
+            Self::extract_plain_archive(&archive_for_task, &extracted_for_task, progress_for_task)
+        })
+        .await
+        .map_err(|e| format!("Whole-patch extraction task failed: {}", e))?;
+        if let Err(error) = extract_result {
+            let cleanup_requested = CANCEL_CLEANUP_REQUESTED.load(Ordering::SeqCst);
+            if !resume || cleanup_requested {
+                let _ = fs::remove_dir_all(&staging_path);
+            }
+            return Err(error);
+        }
+
+        // 3) 自检 + 4) 应用（与分卷路径共用同一套逻辑）
+        match Self::verify_archive_package_files(&extracted_dir) {
+            Ok(0) => {}
+            Ok(checked) => tracing::info!(
+                "[wholepatch] package_files self-check passed for {} file(s)",
+                checked
+            ),
+            Err(error) => {
+                let cleanup_requested = CANCEL_CLEANUP_REQUESTED.load(Ordering::SeqCst);
+                if !resume || cleanup_requested {
+                    let _ = fs::remove_dir_all(&staging_path);
+                }
+                return Err(error);
+            }
+        }
+        self.apply_extracted_files(&extracted_dir, Path::new(install_path), &progress_callback)?;
+
+        // 5) 落状态（优先用包内 game_files）
+        let installed_package = self.get_latest_package(channel, None).await?;
+        let (manifest, manifest_sha256) = match Self::read_archive_manifest(&extracted_dir) {
+            Some(pair) => pair,
+            None => {
+                self.fetch_manifest(&installed_package.resource_base_url)
+                    .await?
+            }
+        };
+        self.save_payload_state(
+            channel,
+            &installed_package.version,
+            &manifest_sha256,
+            &manifest,
+        )?;
+        let _ = self.save_preload_state(channel, &installed_package.version, false);
+
+        let _ = fs::remove_dir_all(&staging_path);
+        tracing::info!(
+            "[wholepatch] Applied whole patch zip: version={}",
+            installed_package.version
+        );
+        Ok(installed_package.version)
+    }
+
+    /// 解压**未加密**的整补丁 zip（`patch.url`）。与 `extract_encrypted_archive` 的区别只有
+    /// 一处：条目不需要密码，但仍然会拒绝差量条目，避免把 `_patch` 数据铺进游戏目录。
+    fn extract_plain_archive(
+        archive_path: &Path,
+        output_dir: &Path,
+        progress_callback: Arc<dyn Fn(DownloadProgress) + Send + Sync>,
+    ) -> Result<(), String> {
+        let file = File::open(archive_path).map_err(|e| format!("Open whole patch zip: {}", e))?;
+        let mut archive =
+            zip::ZipArchive::new(file).map_err(|e| format!("Parse whole patch zip: {}", e))?;
+        let file_count = archive.len();
+
+        let mut total_bytes = 0u64;
+        let mut delta_entries = Vec::new();
+        for index in 0..file_count {
+            let name = archive.name_for_index(index).unwrap_or("").to_string();
+            let normalized = name.replace('\\', "/").to_lowercase();
+            if normalized.ends_with("_patch") || normalized.contains("vfs_files/vfs_patch/") {
+                if delta_entries.len() < 5 {
+                    delta_entries.push(name);
+                }
+                continue;
+            }
+            if let Ok(entry) = archive.by_index(index) {
+                if !entry.is_dir() {
+                    total_bytes = total_bytes.saturating_add(entry.size());
+                }
+            }
+        }
+        if !delta_entries.is_empty() {
+            return Err(format!(
+                "{} whole patch zip unexpectedly contains hpatch delta entries (e.g. {})",
+                ERR_DELTA_ARCHIVE,
+                delta_entries.join(", ")
+            ));
+        }
+
+        let mut extracted_bytes = 0u64;
+        let mut extracted_files = 0usize;
+        let mut seen_paths = HashSet::new();
+        let mut buffer = vec![0u8; 1024 * 1024];
+
+        for index in 0..file_count {
+            if DOWNLOAD_CANCELLED.load(Ordering::Relaxed) {
+                return Err("Whole patch installation cancelled".to_string());
+            }
+            let entry_name = archive
+                .name_for_index(index)
+                .ok_or_else(|| "Invalid path in whole patch zip".to_string())?
+                .to_string();
+            let safe_name = entry_name.trim_end_matches(['/', '\\']);
+            GameLauncherService::validate_path(safe_name)?;
+
+            let mut entry = archive
+                .by_index(index)
+                .map_err(|e| format!("Open zip entry: {}", e))?;
+            let relative = entry
+                .enclosed_name()
+                .ok_or_else(|| format!("Unsafe path in whole patch zip: {}", entry_name))?
+                .to_path_buf();
+            let normalized = relative.to_string_lossy().replace('\\', "/").to_lowercase();
+            if !seen_paths.insert(normalized) {
+                return Err(format!("Duplicate path in whole patch zip: {}", entry_name));
+            }
+
+            let destination = output_dir.join(relative);
+            if entry.is_dir() {
+                fs::create_dir_all(&destination)
+                    .map_err(|e| format!("Create extracted directory: {}", e))?;
+                continue;
+            }
+            if let Some(parent) = destination.parent() {
+                fs::create_dir_all(parent)
+                    .map_err(|e| format!("Create extracted directory: {}", e))?;
+            }
+            let mut output =
+                File::create(&destination).map_err(|e| format!("Create extracted file: {}", e))?;
+            let current_file = entry_name;
+            loop {
+                if DOWNLOAD_CANCELLED.load(Ordering::Relaxed) {
+                    return Err("Whole patch installation cancelled".to_string());
+                }
+                let read = entry
+                    .read(&mut buffer)
+                    .map_err(|e| format!("Read extracted file {}: {}", current_file, e))?;
+                if read == 0 {
+                    break;
+                }
+                output
+                    .write_all(&buffer[..read])
+                    .map_err(|e| format!("Write extracted file {}: {}", current_file, e))?;
+                extracted_bytes = extracted_bytes.saturating_add(read as u64);
+                progress_callback(DownloadProgress {
+                    downloaded: extracted_bytes,
+                    total: total_bytes,
+                    stage: InstallStage::Applying.as_str().to_string(),
+                    current_file: Some(current_file.clone()),
+                    file_index: extracted_files,
+                    file_count,
+                    verified_bytes: 0,
+                });
+            }
+            extracted_files += 1;
+        }
+
+        if extracted_files == 0 {
+            return Err("Whole patch zip contains no installable files".to_string());
+        }
+        Ok(())
     }
 
     /// 下载分卷到指定暂存目录：已存在且 MD5 一致的跳过，能按"同名 + MD5"命中复用目录时直接搬过来。

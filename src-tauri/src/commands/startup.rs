@@ -4,6 +4,7 @@ use std::sync::{Arc, Mutex};
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
+use crate::models::game::GameChannel;
 use crate::services::config_service::ConfigService;
 
 const MAIN_EXE_KEY: &str = "main_exe_path";
@@ -17,8 +18,21 @@ const STEAM_ELEVATE_START_MENU_KEY: &str = "steam_elevate_start_menu";
 
 const LAUNCH_ARGS: &str = "--silent --launch-game";
 const DX11_ARG: &str = "--dx11";
-/// Steam 条目默认显示名。
-const DEFAULT_STEAM_NAME: &str = "明日方舟：终末地";
+/// Steam 条目默认显示名（按游戏区分；用户自定义过的名字优先，见 `steam_shortcut_defaults`）。
+const DEFAULT_STEAM_NAME_ENDFIELD: &str = "明日方舟：终末地";
+const DEFAULT_STEAM_NAME_ARKNIGHTS: &str = "明日方舟";
+
+/// 未自定义名字时，按当前配置的渠道给默认 Steam 条目名。
+fn default_steam_name(config_service: &Arc<Mutex<ConfigService>>) -> String {
+    let channel = config_service
+        .lock()
+        .ok()
+        .and_then(|config| config.get::<String>(CHANNEL_KEY));
+    match channel.as_deref().map(|value| value.to_ascii_lowercase()) {
+        Some(value) if value.starts_with("arknights") => DEFAULT_STEAM_NAME_ARKNIGHTS.to_string(),
+        _ => DEFAULT_STEAM_NAME_ENDFIELD.to_string(),
+    }
+}
 /// 管理员 Steam 快捷方式的启动参数（跳过好友界面，减少启动时的额外窗口）。
 const STEAM_ADMIN_ARGS: &str = "-nofriendsui -allfriendsui";
 
@@ -141,23 +155,29 @@ fn resolve_install(config_service: &Arc<Mutex<ConfigService>>) -> Result<PathBuf
         .get::<String>(CHANNEL_KEY)
         .filter(|channel| !channel.trim().is_empty())
         .ok_or_else(|| "Game channel is not configured.".to_string())?;
-    if !matches!(
-        channel.to_ascii_lowercase().as_str(),
-        "official" | "bilibili" | "global" | "google_play"
-    ) {
-        return Err(format!("Unsupported game channel: {channel}"));
-    }
+    let channel = match channel.to_ascii_lowercase().as_str() {
+        "official" => GameChannel::Official,
+        "bilibili" => GameChannel::Bilibili,
+        "global" => GameChannel::Global,
+        "google_play" => GameChannel::GooglePlay,
+        "arknights" => GameChannel::Arknights,
+        "arknights_bilibili" => GameChannel::ArknightsBilibili,
+        other => return Err(format!("Unsupported game channel: {other}")),
+    };
 
-    Ok(
-        PathBuf::from(&install_path)
-            .join(crate::models::game::GameChannel::Official.executable_name()),
-    )
+    Ok(PathBuf::from(&install_path).join(channel.executable_name()))
 }
 
-/// 图标缓存路径：`%LOCALAPPDATA%\<app>\steam\endfield.ico`。
-fn steam_icon_path() -> Result<PathBuf, String> {
+/// 图标缓存路径：`%LOCALAPPDATA%\<app>\steam\<exe 名小写>.ico`
+/// （终末地 → `endfield.ico`，明日方舟 → `arknights.ico`）。
+fn steam_icon_path(game_exe: &std::path::Path) -> Result<PathBuf, String> {
+    let stem = game_exe
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .unwrap_or("game")
+        .to_ascii_lowercase();
     crate::utils::paths::app_data_dir()
-        .map(|dir| dir.join("steam").join("endfield.ico"))
+        .map(|dir| dir.join("steam").join(format!("{stem}.ico")))
         .map_err(|error| error.to_string())
 }
 
@@ -167,7 +187,7 @@ fn default_icon(game_exe: &PathBuf) -> (String, bool, bool) {
         return (String::new(), false, false);
     }
 
-    match steam_icon_path() {
+    match steam_icon_path(game_exe) {
         Ok(target) => match crate::utils::game_icon::extract_icon(game_exe, &target) {
             Ok(path) => (path.to_string_lossy().into_owned(), true, true),
             Err(error) => {
@@ -224,7 +244,10 @@ pub fn steam_shortcut_defaults(
 
     let name = stored_name
         .filter(|name| !name.trim().is_empty())
-        .unwrap_or_else(|| DEFAULT_STEAM_NAME.to_string());
+        .unwrap_or_else(|| {
+            // 未自定义名字时按当前渠道给默认值（终末地 / 明日方舟各自一个）
+            default_steam_name(config_service.inner())
+        });
 
     Ok(SteamShortcutDefaults {
         name,
@@ -264,8 +287,9 @@ pub fn pick_steam_icon_source() -> Result<Option<String>, String> {
 /// 用于用户手动指定「从哪个 exe 提取图标」（默认是游戏目录下的 `Endfield.exe`）。
 #[tauri::command]
 pub fn extract_steam_icon(exe_path: String) -> Result<String, String> {
-    let target = steam_icon_path()?;
-    crate::utils::game_icon::extract_icon(&PathBuf::from(exe_path), &target)
+    let exe = PathBuf::from(exe_path);
+    let target = steam_icon_path(&exe)?;
+    crate::utils::game_icon::extract_icon(&exe, &target)
         .map(|path| path.to_string_lossy().into_owned())
 }
 
