@@ -343,6 +343,34 @@ pub fn set_log_level(level: LogLevel) {
     }
 }
 
+/// 第三方网络栈在 DEBUG 级别会输出海量内部事件（h2 的帧读写、hyper 的连接状态、
+/// reqwest 的连接池/重试、rustls 的握手细节…）。reqwest 0.13 起其依赖启用了
+/// tracing，这些事件会灌进日志（实测约 50 KB/s 落盘，并在终端刷屏），因此按
+/// target 前缀降噪：这些模块只保留 INFO/WARN/ERROR，DEBUG/TRACE 直接丢弃。
+const NOISY_TARGETS: &[&str] = &[
+    "h2",
+    "hyper",
+    "hyper_util",
+    "reqwest",
+    "rustls",
+    "mio",
+    "tower",
+    "tokio_util",
+    "want",
+    "hickory_proto",
+    "hickory_resolver",
+    "zbus",
+    "zvariant",
+];
+
+/// module_path 是否命中降噪前缀（按 `::` 边界匹配，避免误伤同名前缀的自家模块）。
+fn is_noisy_target(module_path: &str) -> bool {
+    NOISY_TARGETS.iter().any(|prefix| {
+        module_path.starts_with(prefix)
+            && (module_path.len() == prefix.len() || module_path.as_bytes()[prefix.len()] == b':')
+    })
+}
+
 /// tracing 层：将 tracing 事件桥接到自定义 Logger
 struct TracingBridgeLayer;
 
@@ -366,9 +394,21 @@ where
         _ctx: tracing_subscriber::layer::Context<'_, S>,
     ) -> bool {
         let mapped_level = map_tracing_level(*metadata.level());
-        try_get_logger()
+        let enabled = try_get_logger()
             .map(|logger| logger.is_enabled(mapped_level))
-            .unwrap_or(false)
+            .unwrap_or(false);
+        if !enabled {
+            return false;
+        }
+
+        // 第三方网络栈的 DEBUG/TRACE（map 后都是 LogLevel::Debug）丢弃，避免刷屏。
+        // 用 `target()` 而非 `module_path()`：后者可能为 None（`log` crate 桥接的事件
+        // 就没有 module_path），而 target 始终存在且对 h2/hyper/reqwest 就是模块路径。
+        if mapped_level == LogLevel::Debug && is_noisy_target(metadata.target()) {
+            return false;
+        }
+
+        true
     }
 
     fn on_event(
@@ -384,18 +424,30 @@ where
             return;
         }
 
-        let module = event
-            .metadata()
+        // 先收集字段，再决定模块名。
+        // 不再拼接 `[target]` 前缀：module 已单独展示，去掉重复的完整 crate 路径可显著缩短日志。
+        let mut visitor = TracingVisitor(String::new());
+        event.record(&mut visitor);
+
+        // 模块名：优先 `module_path()`；经 `log` crate 桥接的事件（如
+        // tauri_plugin_updater）没有 module_path，其真实来源在 `log.target=...`
+        // 字段里，取它作为模块名，避免整类日志都显示成 `[unknown]` / `[log]`。
+        let metadata = event.metadata();
+        let module_path = metadata
             .module_path()
-            .unwrap_or("unknown")
+            .map(str::to_string)
+            .or_else(|| {
+                visitor
+                    .0
+                    .split_whitespace()
+                    .find_map(|part| part.strip_prefix("log.target=").map(str::to_string))
+            });
+        let module = module_path
+            .as_deref()
+            .unwrap_or(metadata.target())
             .rsplit("::")
             .next()
             .unwrap_or("unknown");
-
-        // 收集字段信息。不再拼接 `[target]` 前缀：module 已单独展示，
-        // 去掉重复的完整 crate 路径可显著缩短日志。
-        let mut visitor = TracingVisitor(String::new());
-        event.record(&mut visitor);
 
         match mapped_level {
             LogLevel::Error => logger.error_with_module(module, &visitor.0),

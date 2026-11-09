@@ -120,7 +120,7 @@
 
 ## `src-tauri/src/utils/logger.rs`
 **职责**：自研日志系统（491 行）：控制台彩色输出 + 按日期文件落盘 + 内存环形缓冲（供前端读取），支持运行时切换日志级别；未开启开发者模式时默认 INFO，DEBUG 不进入内存/文件/控制台。包含 `tracing` 桥接层（输出裁剪到模块短名与紧凑字段）与 9 个导出宏。
-**导出**：`LogLevel`、`LogEntry`、`LoggerConfig`、`Logger`、`console_available`、`eprint_console`、`init_logger`、`get_logger`、`try_get_logger`、`set_log_level`、`init_tracing_subscriber`、宏 `log_debug!` / `log_info!` / `log_warn!` / `log_error!` / `log_debug_module!` / `log_info_module!` / `log_warn_module!` / `log_error_module!` / `safe_eprintln!`。私有项：`TracingBridgeLayer`、`TracingVisitor`、`GLOBAL_LOGGER`、`MAX_DEBUG_MESSAGE_CHARS`。
+**导出**：`LogLevel`、`LogEntry`、`LoggerConfig`、`Logger`、`console_available`、`eprint_console`、`init_logger`、`get_logger`、`try_get_logger`、`set_log_level`、`init_tracing_subscriber`、宏 `log_debug!` / `log_info!` / `log_warn!` / `log_error!` / `log_debug_module!` / `log_info_module!` / `log_warn_module!` / `log_error_module!` / `safe_eprintln!`。私有项：`TracingBridgeLayer`、`TracingVisitor`、`GLOBAL_LOGGER`、`MAX_DEBUG_MESSAGE_CHARS`、`NOISY_TARGETS`、`is_noisy_target`。
 **主要依赖**：`chrono`（Local 时间）、`serde::Serialize`、`tracing` / `tracing-subscriber`、`super::paths`、`std::sync::{atomic::{AtomicU8, Ordering}, Mutex}`。
 
 ### 日志级别与条目
@@ -169,9 +169,9 @@
 | `get_logger() -> &'static Logger` | logger.rs:303 | `GLOBAL_LOGGER.get().expect(...)`；未初始化即调用会 panic |
 | `try_get_logger() -> Option<&'static Logger>` | logger.rs:310 | 未初始化时返回 `None`；供 panic hook、诊断导出与 `set_log_level` 安全使用 |
 | `set_log_level(level)` | logger.rs:315 | 运行时更新全局日志级别；未初始化时静默忽略。调用方 `commands/logs.rs::set_log_level`、lib.rs setup（按 `developer_mode` / `log_level` 配置应用） |
-| `struct TracingBridgeLayer` + `impl Layer<S>` | logger.rs:321-383 | `enabled` 先按当前级别短路（级别关闭时 tracing 宏不再构造字段）；`on_event` 再取 module 路径最后一段，消息不再拼 `[target]` 前缀，仅保留字段汇总后调用 `*_with_module` |
-| `struct TracingVisitor(String)` + `impl field::Visit` | logger.rs:384-423 | 实现 `record_debug/record_str/record_i64/record_u64/record_bool`；`message` 字段去掉 `message=` 前缀，其它字段以 `name=value` 空格连接 |
-| `init_tracing_subscriber()` | logger.rs:425 | `registry().with(TracingBridgeLayer).try_init().ok()`，已初始化则忽略；调用方 lib.rs |
+| `struct TracingBridgeLayer` + `impl Layer<S>` | logger.rs:321-411 | `enabled` 先按当前级别短路（级别关闭时 tracing 宏不再构造字段），再按 `metadata.target()` 对第三方网络栈（`h2`/`hyper`/`reqwest`/`rustls`/`mio`/`tower`/`zbus` 等，见私有常量 `NOISY_TARGETS`）的 DEBUG/TRACE 事件降噪——reqwest 0.13 起其依赖启用 tracing，不降噪会以约 50 KB/s 灌满日志与终端；`on_event` 取 module 路径最后一段（无 `module_path` 的 `log` crate 桥接事件回退到字段里的 `log.target`，再回退 `metadata.target()`），消息不再拼 `[target]` 前缀，仅保留字段汇总后调用 `*_with_module` |
+| `struct TracingVisitor(String)` + `impl field::Visit` | logger.rs:451-490 | 实现 `record_debug/record_str/record_i64/record_u64/record_bool`；`message` 字段去掉 `message=` 前缀，其它字段以 `name=value` 空格连接 |
+| `init_tracing_subscriber()` | logger.rs:492 | `registry().with(TracingBridgeLayer).try_init().ok()`，已初始化则忽略；调用方 lib.rs |
 
 ### 导出宏（均 `#[macro_export]`，路径 `$crate::utils::logger::get_logger()`）
 
