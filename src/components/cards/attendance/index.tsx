@@ -82,7 +82,6 @@ function findLastIndex<T>(arr: T[], predicate: (item: T) => boolean): number {
 export default function AttendanceCard({
   roleId: _roleId,
   cardId,
-  isEditMode = false,
 }: BaseCardProps) {
   const { t, i18n } = useTranslation();
   const [settings, setSettings] = useState<AttendanceCardSettings>({});

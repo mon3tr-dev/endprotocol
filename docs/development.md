@@ -54,31 +54,34 @@ pnpm tauri build
 | 技术 | 版本 | 用途 |
 | --- | --- | --- |
 | React | 19.x | UI 框架 |
-| TypeScript | 5.6.x | 类型系统 |
-| Vite | 6.x | 构建工具（双入口） |
-| Tailwind CSS | 4.x | 样式框架 |
+| TypeScript | 7.0.x（native tsgo） | 类型系统 |
+| Vite | 8.x（Rolldown） | 构建工具（双入口） |
+| Tailwind CSS | 4.3.x | 样式框架 |
 | aura-glass | 3.5.x | 玻璃拟态组件库 |
-| React Router | 6.23.x | 路由 |
-| i18next / react-i18next | 26.x / 17.x | 国际化 |
+| React Router | 7.18.x | 路由 |
+| i18next / react-i18next | 27.x / 18.x | 国际化 |
 | ECharts | 6.1.x | 抽卡统计图表 |
 | dnd-kit | 6.x / 9.x / 10.x | 卡片拖拽排序 |
-| morphicons / lucide | 1.7.x / 1.33.x | 图标 |
+| morphicons / lucide | 2.0.x / 1.70.x | 图标 |
 | qrcode | 1.5.x | 扫码登录二维码生成 |
-| tailwind-variants / clsx | 3.2.x / 2.1.x | 类名工具 |
+| tailwind-variants / clsx | 4.0.x / 2.1.x | 类名工具 |
 | uuid | 14.x | 卡片实例 ID |
 
 ### 后端
 
 | 技术 | 版本 | 用途 |
 | --- | --- | --- |
-| Tauri | 2.x | 桌面应用框架（启用 `tray-icon`） |
+| Tauri | 2.12.x | 桌面应用框架（启用 `tray-icon`） |
 | Rust | edition 2021 | 后端语言 |
-| reqwest | 0.12 | HTTP 客户端 |
+| reqwest | 0.13 | HTTP 客户端（`native-tls` + `query` feature） |
 | tokio | 1.x | 异步运行时 |
 | serde / serde_json | 1.x | 序列化 |
 | windows-sys | 0.61 | Win32 API（GDI 截屏、窗口、Shell） |
-| rfd | 0.15 | 原生文件 / 目录选择框 |
+| rfd | 0.18 | 原生文件 / 目录选择框 |
 | walkdir | 2.x | 安装目录文件扫描 |
+| zip | 9.x | 游戏补丁包解压（`aes-crypto` + `deflate-flate2`） |
+| sysinfo | 0.40 | 系统资源采集 |
+| rand | 0.10 | 随机数（rsa 0.9 专用路径仍用 rand_core 0.6） |
 
 ### 加密与校验
 
@@ -89,6 +92,9 @@ pnpm tauri build
 | 鹰角启动器清单解密 | AES-256-CBC（`hg_crypto`） |
 | 文件完整性 | MD5、SHA-256 |
 | 其他 | Gzip (flate2)、Base64、Hex |
+
+> 注：RustCrypto 栈已统一到 digest 0.11 / cipher 0.5（aes 0.9、cbc/ecb 0.2、des 0.9、hmac 0.13、sha2/md-5 0.11）；
+> 唯一例外是 rsa 0.9（仍绑 digest 0.10 / rand_core 0.6，经 `rsa::rand_core::OsRng` 使用），待 rsa 0.10 稳定后收口。
 
 ### Tauri 插件
 
@@ -159,10 +165,23 @@ endprotocol/
 仓库未配置 lint 或测试脚本。使用以下命令检查：
 
 ```bash
-npm run build      # vite build（前端类型/语法检查）
+npx tsc --noEmit   # TypeScript 7 全量类型检查（零错误为通过）
+npm run build      # vite build（Rolldown 打包，出现 Circular chunk: 视为失败）
 npm run dev        # vite dev server
 cargo check        # 在 src-tauri/ 目录下运行（已有警告属预期）
+cargo test         # 在 src-tauri/ 目录下运行（72 个测试）
 ```
+
+### ⚠️ `tauri dev` 窗口长时间空白？检查 `server.watch.ignored`
+
+Vite 8 的文件监听器是 Rust 实现、**启动即递归建树**。本仓库根目录下的 `target/`（Rust
+workspace 构建目录）在本机有 35 GB / 5.6 万个文件，若不排除，首个模块请求会被阻塞数十秒
+（实测冷启动 `/src/main.tsx` 耗时 **46 秒**）。症状是 `tauri dev` 起来后窗口长时间只有启动
+splash、DevTools 控制台没有任何输出，看起来像"窗口没有内容"。
+
+`vite.config.ts` 的 `server.watch.ignored` 必须包含 `**/target/**`、`**/dist/**`、
+`**/dist-linux/**`（以及 `**/src-tauri/**`）；加上后同一测量降到 **0.13 秒**。新增产物目录时
+记得同步加入。
 
 ---
 

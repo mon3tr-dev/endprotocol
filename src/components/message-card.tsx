@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import { cn } from "@/lib/cn";
 import type { AppMessage } from "@/utils/messageStore";
 import { removeMessage, markRead } from "@/utils/messageStore";
@@ -60,7 +61,7 @@ function TypeIcon({ type }: { type: string }) {
   );
 }
 
-function timeAgo(ts: number, t: (key: string, options?: Record<string, unknown>) => string): string {
+function timeAgo(ts: number, t: TFunction): string {
   const diff = Date.now() - ts;
   const sec = Math.floor(diff / 1000);
   if (sec < 60) return t("messages.just_now");

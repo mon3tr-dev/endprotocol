@@ -609,7 +609,7 @@
 ## `src/components/primitives.ts`
 **职责**：tailwind-variants 定义的排版原语（渐变大标题、副标题）。
 **导出**：`title`、`subtitle`
-**主要依赖**：`tailwind-variants`（^3.2.2，`tv`）
+**主要依赖**：`tailwind-variants`（^4.0.1，`tv`）
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
@@ -621,7 +621,7 @@
 ## `src/components/icons.tsx`
 **职责**：业务图标集合——品牌图标（内联 SVG）、lucide 图标的 MorphIcon 封装、以及 key 到图标的映射表 `CardIcon`。
 **导出**：`Logo`、`DiscordIcon`、`TwitterIcon`、`GithubIcon`、29 个命名图标、3 个别名、`CardIcon`
-**主要依赖**：`lucide`（^1.33.0，35 个图标）、`morphicons/react`（`MorphIcon`）、`@/components/morph-icon`（`createMorphIcon`、`IconSvgProps`）、`morphicons`（`IconInput` 类型）
+**主要依赖**：`lucide`（^1.70.0，35 个图标）、`morphicons/react`（`MorphIcon`）、`@/components/morph-icon`（`createMorphIcon`、`IconSvgProps`）、`morphicons`（`IconInput` 类型）
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
@@ -660,7 +660,7 @@
 4. **注释与实现不符**：`back-to-top.tsx:8-9` 注释称超过 50% 显示，实际 `p > 20`（:32）。
 5. **尺寸序列异常**：`modal.tsx:44-52` 中 `xl` 1100px 大于 `2xl` 1000px。
 6. **层级风险**：`GlobalAlertHost` 为 `z-50`，modal/AlertDialog 遮罩为 `z-[100]`，Select 菜单 `z-[9999]`，BackToTop 为 `z-[10003]`。
-7. **依赖包名**：图标库为 `lucide`（v1.33.0）而非常见的 `lucide-react`；动效图标为 `morphicons`（v1.7.0）。
+7. **依赖包名**：图标库为 `lucide`（v1.70.0）而非常见的 `lucide-react`；动效图标为 `morphicons`（v2.0.2，2.0 起 filled 变体真实渲染为填充）。
 8. **`GlassSelect` 关闭策略**：菜单打开时任意滚动（capture 阶段）都会关闭菜单（select.tsx:42）。
 9. **`Select` 静默不渲染**：未提供 `onValueChange`/`onChange` 时返回 `null`（select.tsx:148）。
 10. **`confirmDialog` 依赖 Host**：未挂载 `ConfirmDialogHost` 时永远 resolve `false`（confirm-dialog.tsx:18）。

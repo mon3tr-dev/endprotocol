@@ -116,7 +116,10 @@ impl SklandService {
                 message: format!("Failed to parse public key: {}", e),
             })?;
         let ep = {
-            let mut rng = rand::thread_rng();
+            // rsa 0.9 仍绑 rand_core 0.6；rand 0.10 的 ThreadRng 实现的是 rand_core
+            // 0.10 的 trait，两者类型不互通。这里用 rsa 自带 `rand_core::OsRng`
+            //（系统熵源，语义与原 thread_rng 一致）。
+            let mut rng = rsa::rand_core::OsRng;
             let ep_bytes = rsa_pub_key
                 .encrypt(&mut rng, Pkcs1v15Encrypt, uid.as_bytes())
                 .map_err(|e| AppError::AuthError {
@@ -286,7 +289,9 @@ impl SklandService {
         log_debug!("GZIP_BASE64_LENGTH: {}", base64_gzip.len());
 
         // AES-128-CBC 加密（特殊填充：先加 \x00，再补到16字节倍数）
-        use aes::cipher::{BlockEncrypt, KeyInit};
+        // cipher 0.5：`BlockEncrypt` 更名 `BlockCipherEncrypt`；`generic_array`
+        // 模块更名 `array`（hybrid-array，`Array` 类型 + `From<&[u8; N]>`）。
+        use aes::cipher::{BlockCipherEncrypt, KeyInit};
 
         let mut data = base64_gzip.as_bytes().to_vec();
         data.push(0x00); // 关键点：先添加一个 \x00
@@ -314,7 +319,8 @@ impl SklandService {
                 block[i] ^= prev_block[i];
             }
 
-            let mut encrypted = aes::cipher::generic_array::GenericArray::clone_from_slice(&block);
+            let mut encrypted: aes::cipher::array::Array<u8, _> =
+                block.into();
             cipher.encrypt_block(&mut encrypted);
 
             result.extend_from_slice(&encrypted);
@@ -435,16 +441,17 @@ impl SklandService {
         log_debug!("calculate_sign header_json: {}", h_ca_str);
         log_debug!("calculate_sign raw: {}", raw_data);
 
-        // 2. HMAC-SHA256
+        // 2. HMAC-SHA256（digest 0.11：`KeyInit` 需显式导入）
+        use hmac::KeyInit as _;
         let mut mac = HmacSha256::new_from_slice(token.as_bytes()).expect("HMAC key error");
         mac.update(raw_data.as_bytes());
         let hmac_res = hex::encode(mac.finalize().into_bytes());
 
         log_debug!("calculate_sign hex_hmac: {}", hmac_res);
 
-        // 3. MD5
+        // 3. MD5（digest 0.11 的输出为 hybrid-array，不实现 LowerHex，改用 hex::encode）
         let digest = Md5::digest(hmac_res.as_bytes());
-        let md5_hex = format!("{:x}", digest);
+        let md5_hex = hex::encode(digest);
         log_debug!("calculate_sign md5: {}", md5_hex);
 
         md5_hex
@@ -1251,7 +1258,9 @@ impl SklandService {
 
 /// DES 3DES 加密函数（ECB 模式，Zero Padding）
 fn des_encrypt_3des(key: &str, data: &str) -> Result<String, AppError> {
-    use des::cipher::{BlockEncrypt, KeyInit};
+    // cipher 0.5：`BlockEncrypt` 更名 `BlockCipherEncrypt`，`encrypt_block_b2b`
+    // 由 trait 方法变为固有方法（见 des 0.9）。
+    use des::cipher::{BlockCipherEncrypt, KeyInit};
     use des::Des;
 
     let mut data_bytes = data.as_bytes().to_vec();
@@ -1270,7 +1279,10 @@ fn des_encrypt_3des(key: &str, data: &str) -> Result<String, AppError> {
     let mut out = vec![0u8; data_bytes.len()];
 
     for i in (0..data_bytes.len()).step_by(8) {
-        cipher.encrypt_block_b2b((&data_bytes[i..i + 8]).into(), (&mut out[i..i + 8]).into());
+        // cipher 0.5 的 Block 是 hybrid-array：&[u8] 不再直接 Into，需定长切片。
+        let in_block: &[u8; 8] = (&data_bytes[i..i + 8]).try_into().expect("DES block size");
+        let out_block: &mut [u8; 8] = (&mut out[i..i + 8]).try_into().expect("DES block size");
+        cipher.encrypt_block_b2b(in_block.into(), out_block.into());
     }
 
     Ok(BASE64.encode(out))

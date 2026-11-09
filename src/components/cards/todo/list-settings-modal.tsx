@@ -10,7 +10,7 @@ import {
   CustomModalHeader,
 } from "@/components/custom-modal";
 import { useTodoLists, updateTodoList } from "@/stores/todoStore";
-import { SORT_MODE_OPTIONS, TODO_COLORS, TODO_ICONS } from "@/types/todo";
+import { SORT_MODE_OPTIONS, TODO_COLORS, TODO_ICONS, normalizeTodoIcon } from "@/types/todo";
 import type { TodoSortMode } from "@/types/todo";
 import { TodoIcon } from "./todo-icon";
 
@@ -83,7 +83,7 @@ export function TodoListSettingsModal({
       setColor(list.color ?? TODO_COLORS[0]);
       setCustomColorDraft(list.color ?? TODO_COLORS[0]);
       setHexDraft(normalizeHexColor(list.color ?? TODO_COLORS[0]).slice(1));
-      setIcon(list.icon ?? TODO_ICONS[0]);
+      setIcon(normalizeTodoIcon(list.icon));
       setSortMode(list.sortMode);
       setHideCompleted(list.hideCompleted);
       setDailyResetEnabled(list.dailyResetEnabled);

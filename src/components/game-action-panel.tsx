@@ -8,6 +8,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import {
   GlassAlertDialogCompound as GlassAlertDialog,
   GlassModalCompound as GlassModal,
@@ -114,7 +115,7 @@ const PILL_TEXT = "text-xs font-medium text-white/80";
  *  initialization）。提升到模块层后与声明顺序无关。 */
 function formatDirLockError(
   error: unknown,
-  t: (key: string, opts?: Record<string, unknown>) => string,
+  t: TFunction,
 ): string {
   const raw = String(error);
   if (!raw.includes("LOCKED_BY:")) return raw;

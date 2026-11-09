@@ -2781,7 +2781,13 @@ impl GameLauncherService {
         let mut total_bytes = 0u64;
         let mut delta_entries = Vec::new();
         for index in 0..file_count {
-            let name = archive.name_for_index(index).unwrap_or("").to_string();
+            // zip 9：`name_for_index` 返回 `Option<ZipResult<Cow<str>>>`（双层）。
+            // 这里只做差量形态预检，失败时用空名跳过即可。
+            let name = archive
+                .name_for_index(index)
+                .map(|r| r.unwrap_or_default())
+                .unwrap_or_default()
+                .to_string();
             let normalized = name.replace('\\', "/").to_lowercase();
             if normalized.ends_with("_patch") || normalized.contains("vfs_files/vfs_patch/") {
                 if delta_entries.len() < 5 {
@@ -2815,6 +2821,7 @@ impl GameLauncherService {
             let entry_name = archive
                 .name_for_index(index)
                 .ok_or_else(|| "Invalid path in whole patch zip".to_string())?
+                .map_err(|e| format!("Resolve zip entry name: {}", e))?
                 .to_string();
             let safe_name = entry_name.trim_end_matches(['/', '\\']);
             GameLauncherService::validate_path(safe_name)?;
@@ -3049,7 +3056,13 @@ impl GameLauncherService {
         let mut total_bytes = 0u64;
         let mut delta_entries = Vec::new();
         for index in 0..file_count {
-            let name = archive.name_for_index(index).unwrap_or("").to_string();
+            // zip 9：`name_for_index` 返回 `Option<ZipResult<Cow<str>>>`（双层）。
+            // 这里只做差量形态预检，失败时用空名跳过即可。
+            let name = archive
+                .name_for_index(index)
+                .map(|r| r.unwrap_or_default())
+                .unwrap_or_default()
+                .to_string();
             let normalized = name.replace('\\', "/").to_lowercase();
             if normalized.ends_with("_patch") || normalized.contains("vfs_files/vfs_patch/") {
                 if delta_entries.len() < 5 {
@@ -3091,6 +3104,7 @@ impl GameLauncherService {
             let entry_name = archive
                 .name_for_index(index)
                 .ok_or_else(|| "Invalid path in archive".to_string())?
+                .map_err(|e| format!("Resolve zip entry name: {}", e))?
                 .to_string();
             let safe_name = entry_name.trim_end_matches(['/', '\\']);
             GameLauncherService::validate_path(safe_name)?;
@@ -4500,9 +4514,10 @@ impl GameLauncherService {
     }
 }
 
-/// 原子地回退已累计的下载进度（避免并发任务下溢）
+/// 原子地回退已累计的下载进度（避免并发任务下溢）。
+/// Rust 1.99 起 `fetch_update` 弃用，更名 `try_update`。
 fn subtract_download_progress(counter: &AtomicU64, bytes: u64) {
-    let _ = counter.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |value| {
+    let _ = counter.try_update(Ordering::Relaxed, Ordering::Relaxed, |value| {
         Some(value.saturating_sub(bytes))
     });
 }

@@ -30,7 +30,7 @@ export function useLongPressDrag({
   const [longPressProgress, setLongPressProgress] = useState(0);
   const [progressInterval, setProgressInterval] = useState<NodeJS.Timeout | null>(null);
   const [shouldStartDrag, setShouldStartDrag] = useState(false);
-  const [enteredEditModeViaLongPress, setEnteredEditModeViaLongPress] = useState(false);
+  const [, setEnteredEditModeViaLongPress] = useState(false);
   const pointerDownEventRef = useRef<React.PointerEvent | null>(null);
 
   const handlePointerDown = (e: React.PointerEvent) => {

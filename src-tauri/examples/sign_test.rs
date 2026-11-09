@@ -1,5 +1,5 @@
 use hex;
-use hmac::{Hmac, Mac};
+use hmac::{Hmac, KeyInit as _, Mac};
 use md5::Digest;
 use md5::Md5;
 use serde_json::json;
@@ -20,9 +20,9 @@ fn calculate_sign(path: &str, body: &str, ts: &str, did: &str, token: &str) -> S
     mac.update(raw.as_bytes());
     let hex_hmac = hex::encode(mac.finalize().into_bytes());
 
-    // MD5 of hex_hmac
+    // MD5 of hex_hmac（digest 0.11 的输出不实现 LowerHex，改用 hex::encode）
     let md5_digest = Md5::digest(hex_hmac.as_bytes());
-    format!("{:x}", md5_digest)
+    hex::encode(md5_digest)
 }
 
 fn main() {
@@ -52,7 +52,7 @@ fn main() {
     println!("Rust hmac hex len: {}", hex_hmac.len());
     println!("Rust hmac hex debug: {:?}", hex_hmac);
     // compute md5 in two ways for debug
-    let md5_a = format!("{:x}", Md5::digest(hex_hmac.as_bytes()));
+    let md5_a = hex::encode(Md5::digest(hex_hmac.as_bytes()));
     println!("Rust sign (calculate_sign): {}", sign);
     println!("Rust md5_a: {}", md5_a);
 }

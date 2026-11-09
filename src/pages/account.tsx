@@ -540,10 +540,10 @@ export default function AccountPage() {
   const [isOtpInvalid, setIsOtpInvalid] = useState(false); // OTP 是否无效
 
   // 扫码登录相关状态
-  const [scanId, setScanId] = useState("");
+  const [, setScanId] = useState("");
   const [scanUrl, setScanUrl] = useState("");
   const [isGeneratingQr, setIsGeneratingQr] = useState(false);
-  const [isPollingScan, setIsPollingScan] = useState(false);
+  const [, setIsPollingScan] = useState(false);
   const [scanWaiting, setScanWaiting] = useState(true); // true=等待扫码, false=已扫码待确认
   const [qrGenFailed, setQrGenFailed] = useState(false); // 二维码自动生成失败
   const qrPollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -1671,35 +1671,6 @@ export default function AccountPage() {
       setLoginError(
         i18n.language === "zh" ? `保存失败: ${error}` : `Save failed: ${error}`,
       );
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleManageSklandRoles = async (userId: string) => {
-    setIsLoading(true);
-    try {
-      const result = await getSklandAccountRoles(userId);
-      if (!result.success || !result.cred || !result.token) {
-        throw new Error(result.errorMessage || "Failed to load game roles");
-      }
-      setLoginCred(result.cred);
-      setLoginToken(result.token);
-      setLoginUserId(userId);
-      setAvailableRoles(result.availableRoles || []);
-      setSelectedRoles(
-        accounts
-          .filter((account) => account.userId === userId)
-          .map((account) => account.id),
-      );
-      setIsManagingSklandRoles(true);
-      setShowSklandConfirmation(false);
-      setIsRoleSelectionOpen(true);
-      setLoginError("");
-      setIsAddModalOpen(true);
-    } catch (error) {
-      setGlobalAlert({ type: "danger", message: String(error) });
-      setTimeout(() => setGlobalAlert(null), 5000);
     } finally {
       setIsLoading(false);
     }

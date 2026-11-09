@@ -26,7 +26,7 @@ const DEFAULT_DAILY_RESET_TIME = "00:00";
 let lists: TodoList[] = [];
 let loaded = false;
 let loadingPromise: Promise<TodoList[]> | null = null;
-let dailyResetTimer: ReturnType<typeof setInterval> | null = null;
+let dailyResetTimer: number | null = null;
 let dailyResetInProgress = false;
 const listeners = new Set<() => void>();
 

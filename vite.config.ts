@@ -27,62 +27,57 @@ export default defineConfig(async () => ({
         }
       : undefined,
     watch: {
-      // 3. tell Vite to ignore watching `src-tauri`
-      ignored: ["**/src-tauri/**"],
+      // 3. tell Vite to ignore watching `src-tauri` 以及根目录下的构建产物。
+      //
+      // 根目录 `target/`（Rust workspace 的构建目录）在本机有 35 GB / 5.6 万个文件。
+      // Vite 8 的文件监听器是 Rust 实现、启动即递归建树，扫描它会把**首个模块请求**
+      // 阻塞数十秒（实测冷启动 `/src/main.tsx` 耗时 46 秒），表现就是 `tauri dev`
+      // 起来后窗口长时间只有启动 splash、控制台没有任何输出——看起来像"窗口没内容"。
+      // `dist/`、`dist-linux/` 同理：它们是本项目的产物目录，dev 下不需要监听。
+      ignored: [
+        "**/src-tauri/**",
+        "**/target/**",
+        "**/dist/**",
+        "**/dist-linux/**",
+      ],
     },
   },
   build: {
-    outDir: path.resolve(__dirname, "dist"),
+    outDir: path.resolve(import.meta.dirname, "dist"),
     emptyOutDir: true,
-    rollupOptions: {
+    rolldownOptions: {
       input: {
-        main: path.resolve(__dirname, "index.html"),
-        "tray-panel": path.resolve(__dirname, "tray-panel.html"),
+        main: path.resolve(import.meta.dirname, "index.html"),
+        "tray-panel": path.resolve(import.meta.dirname, "tray-panel.html"),
       },
       output: {
         // 每个第三方包只落在唯一一个 chunk 里，且 chunk 之间**没有回边**。
         //
+        // Vite 8 起 bundler 由 Rolldown 接管：`manualChunks` 函数形式已 deprecated，
+        // 迁移到原生 `codeSplitting.groups`（test 匹配模块 id，group 依赖方向单一）。
+        //
         // 此前用 `id.includes("react-dom")` 做匹配，它同时命中了 `@radix-ui/react-dom`
         // 等包，于是 Radix 的模块被塞进 `vendor-react`，而它们又 import 其它 Radix
-        // 包 —— Rollup 直接报告 circular chunk：
-        //   vendor-react -> vendor-ui -> vendor-react
-        //   vendor -> vendor-react -> vendor
-        // 出现回边时 Rollup 会重排模块的顶层声明，React 的工厂变量 `ot` 在其
-        // 自身模块求值前就被写入，浏览器里抛
-        //   TypeError: undefined is not an object (evaluating 'ot.Activity=S')
-        // 前端在 main.tsx 之前就崩了，Splash 永远停在「正在启动…」。Linux 与 Windows
-        // 的产物哈希不同（本仓库的 vendor-react 在两端分别是 DII7mJny / Cw5N63L7），
-        // 是否触发取决于模块顺序，所以只有 Linux 发行版稳定复现。
-        //
-        // 现在按「包根目录」精确匹配，保证依赖方向单一：
+        // 包 —— Rollup 直接报告 circular chunk，前端在 main.tsx 之前就崩了。
+        // 所以 React 组仍按「包根目录」精确锚定（react/react-dom/scheduler），保证依赖方向单一：
         //   vendor-ui / vendor-dnd → vendor-react → vendor
-        manualChunks(id) {
-          if (!id.includes("node_modules")) return;
-          if (id.includes("zrender")) return "vendor-zrender";
-          if (id.includes("echarts")) return "vendor-echarts";
-          // React 运行时成组：react / react-dom / scheduler 互相引用，不能拆开。
-          // 用包根锚定，避免 `@radix-ui/react-dom` 之类被误收。
-          if (
-            /[\\/]node_modules[\\/](?:\.pnpm[\\/][^\\/]+[\\/])?(?:react|react-dom|scheduler)[\\/]/.test(
-              id,
-            ) ||
-            /[\\/]node_modules[\\/](?:\.pnpm[\\/][^\\/]+[\\/])?react-router/.test(id) ||
-            id.includes("@remix-run")
-          )
-            return "vendor-react";
-          if (id.includes("@dnd-kit")) return "vendor-dnd";
-          if (id.includes("@tauri-apps")) return "vendor-tauri";
-          if (id.includes("i18next") || id.includes("react-i18next"))
-            return "vendor-i18n";
-          if (
-            id.includes("lucide") ||
-            id.includes("morphicons") ||
-            id.includes("@radix-ui") ||
-            id.includes("react-beautiful-color") ||
-            id.includes("qrcode")
-          )
-            return "vendor-ui";
-          return "vendor";
+        codeSplitting: {
+          groups: [
+            { name: "vendor-zrender", test: /[\\/]node_modules[\\/](?:\.pnpm[\\/][^\\/]+[\\/])?zrender[\\/]/, priority: 10 },
+            { name: "vendor-echarts", test: /[\\/]node_modules[\\/](?:\.pnpm[\\/][^\\/]+[\\/])?echarts[\\/]/, priority: 10 },
+            // React 运行时成组：react / react-dom / scheduler / router 互相引用，
+            // 用相同 name 落进同一个 chunk；按包根锚定，避免 `@radix-ui/react-dom` 被误收。
+            { name: "vendor-react", test: /[\\/]node_modules[\\/](?:\.pnpm[\\/][^\\/]+[\\/])?(?:react|react-dom|scheduler)[\\/]/, priority: 10 },
+            { name: "vendor-react", test: /[\\/]node_modules[\\/](?:\.pnpm[\\/][^\\/]+[\\/])?react-router(?:-dom)?[\\/]/, priority: 10 },
+            { name: "vendor-react", test: /[\\/]node_modules[\\/](?:\.pnpm[\\/][^\\/]+[\\/])?@remix-run[\\/]/, priority: 10 },
+            { name: "vendor-dnd", test: /[\\/]node_modules[\\/](?:\.pnpm[\\/][^\\/]+[\\/])?@dnd-kit[\\/]/, priority: 10 },
+            { name: "vendor-tauri", test: /[\\/]node_modules[\\/](?:\.pnpm[\\/][^\\/]+[\\/])?@tauri-apps[\\/]/, priority: 10 },
+            { name: "vendor-i18n", test: /[\\/]node_modules[\\/](?:\.pnpm[\\/][^\\/]+[\\/])?(?:i18next|react-i18next)[\\/]/, priority: 10 },
+            { name: "vendor-ui", test: /[\\/]node_modules[\\/](?:\.pnpm[\\/][^\\/]+[\\/])?lucide[\\/]/, priority: 10 },
+            { name: "vendor-ui", test: /[\\/]node_modules[\\/](?:\.pnpm[\\/][^\\/]+[\\/])?morphicons[\\/]/, priority: 10 },
+            { name: "vendor-ui", test: /[\\/]node_modules[\\/](?:\.pnpm[\\/][^\\/]+[\\/])?@radix-ui[\\/]/, priority: 10 },
+            { name: "vendor-ui", test: /[\\/]node_modules[\\/](?:\.pnpm[\\/][^\\/]+[\\/])?qrcode[\\/]/, priority: 10 },
+          ],
         },
       },
     },

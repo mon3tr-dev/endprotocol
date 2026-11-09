@@ -603,7 +603,7 @@ async function performUpdateCheck(): Promise<UpdateCheckResult> {
   const channel = currentChannel;
   logger.info(`Checking for updates on ${channel} channel (source: ${currentSource})...`, "Updater");
 
-  let update: Update | null;
+  let update: Update | ManualUpdate | null;
 
   try {
     update = await resolveRelease();

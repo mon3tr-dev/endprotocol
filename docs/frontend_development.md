@@ -49,9 +49,9 @@
 3. 如路由需可恢复，把路径加入 `App.tsx` 的 `ROUTES` 白名单
 4. 导航入口：`src/components/dashboard-sidebar.tsx` 或 `navbar.tsx`（入口与侧栏结构见 [components_sidebar_charts.md](reference/frontend/components_sidebar_charts.md)）
 
-> 打包：页面按路由懒加载；第三方库由 `vite.config.ts` 的 `build.rollupOptions.output.manualChunks` 拆成 `vendor-react`/`vendor-echarts`/`vendor-zrender`/`vendor-i18n`/`vendor-ui`/`vendor-dnd`/`vendor-tauri` 等 chunk，避免单个 chunk 超过 Vite 的 500 kB 告警阈值。引入 `echarts` 时务必用 `echarts/core` + 按需 `echarts.use(...)`，不要全量 `import * as echarts from "echarts"`。
+> 打包：页面按路由懒加载；第三方库由 `vite.config.ts` 的 `build.rolldownOptions.output.codeSplitting.groups` 拆成 `vendor-react`/`vendor-echarts`/`vendor-zrender`/`vendor-i18n`/`vendor-ui`/`vendor-dnd`/`vendor-tauri` 等 chunk，避免单个 chunk 超过 Vite 的 500 kB 告警阈值。引入 `echarts` 时务必用 `echarts/core` + 按需 `echarts.use(...)`，不要全量 `import * as echarts from "echarts"`。
 >
-> ⚠️ **改 `manualChunks` 必须保持 chunk 之间无回边**。判定包归属时用「包根锚定」（`/[\\/]node_modules[\\/](?:\.pnpm[\\/][^\\/]+[\\/])?react-dom[\\/]/`），不要用 `id.includes("react-dom")` —— 后者会命中 `@radix-ui/react-dom` 等包，把 Radix 塞进 `vendor-react`，Rollup 便会报告 `Circular chunk: vendor-react -> vendor-ui -> vendor-react` 并重排模块顶层声明，React 工厂变量在其模块求值前被写入，浏览器抛 `Cannot set properties of undefined (setting 'Activity')`，前端在 `main.tsx` 之前就崩溃、Splash 永远停在「正在启动…」。该故障的产物哈希与平台相关，**只在 Linux 发行版稳定复现**，Windows 上生成同一份配置的产物却正常，所以务必以 `pnpm build` 输出中是否出现 `Circular chunk:` 为准，出现即视为构建失败。
+> ⚠️ **改 `codeSplitting.groups` 必须保持 chunk 之间无回边**。判定包归属时用「包根锚定」（`/[\\/]node_modules[\\/](?:\.pnpm[\\/][^\\/]+[\\/])?react-dom[\\/]/`），不要用宽泛的子串匹配 —— 后者会命中 `@radix-ui/react-dom` 等包，把 Radix 塞进 `vendor-react`，Rolldown 便会报告 `Circular chunk: vendor-react -> vendor-ui -> vendor-react` 并重排模块顶层声明，React 工厂变量在其模块求值前被写入，浏览器抛 `Cannot set properties of undefined (setting 'Activity')`，前端在 `main.tsx` 之前就崩溃、Splash 永远停在「正在启动…」。该故障的产物哈希与平台相关，**只在 Linux 发行版稳定复现**，Windows 上生成同一份配置的产物却正常，所以务必以 `pnpm build` 输出中是否出现 `Circular chunk:` 为准，出现即视为构建失败。
 
 ### 3.3 新增后端命令调用
 

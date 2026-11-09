@@ -9,7 +9,6 @@ use std::process::Command;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use sysinfo::{Components, CpuRefreshKind, Disks, Networks, System};
-
 /// 温度读数（CPU / 主板 / 硬盘等）。
 #[derive(Debug, Clone, Serialize, Default)]
 #[serde(rename_all = "camelCase")]
@@ -148,14 +147,17 @@ const GPU_REFRESH_INTERVAL: Duration = Duration::from_secs(2);
 
 impl SystemResourceService {
     pub fn new() -> Self {
-        let mut system = System::new();
+        // sysinfo 0.40：构造器返回 `Result`（初始化可能失败）。失败即 panic——
+        // 采集器在应用启动期创建，系统 API 不可用时降级运行没有意义。
+        let mut system = System::new().expect("sysinfo: failed to initialize System");
         // 只初始化 CPU 列表与内存，避免在应用启动时枚举全部进程。
         system.refresh_cpu_list(CpuRefreshKind::nothing());
         system.refresh_memory();
-        let disks = Disks::new_with_refreshed_list();
-        let networks = Networks::new_with_refreshed_list();
+        let disks = Disks::new_with_refreshed_list().expect("sysinfo: failed to init Disks");
+        let networks =
+            Networks::new_with_refreshed_list().expect("sysinfo: failed to init Networks");
         // 温度传感器首次采集较慢，延迟到第一次 snapshot 时刷新。
-        let components = Components::new();
+        let components = Components::new().expect("sysinfo: failed to init Components");
         let cpu_perf_percent = Arc::new(Mutex::new(None));
         spawn_cpu_performance_thread(cpu_perf_percent.clone());
 
@@ -194,12 +196,13 @@ impl SystemResourceService {
                 .duration_since(std::time::UNIX_EPOCH)
                 .map(|d| d.as_millis() as u64)
                 .unwrap_or(0),
-            host_name: System::host_name(),
-            os_name: System::name(),
-            os_version: System::os_version(),
-            long_os_version: System::long_os_version(),
-            kernel_version: System::kernel_version(),
-            uptime_sec: System::uptime(),
+            // sysinfo 0.40：静态信息查询返回 `Result`，失败映射为 None/0（尽力而为）。
+            host_name: System::host_name().ok(),
+            os_name: System::name().ok(),
+            os_version: System::os_version().ok(),
+            long_os_version: System::long_os_version().ok(),
+            kernel_version: System::kernel_version().ok(),
+            uptime_sec: System::uptime().unwrap_or(0),
             cpu,
             memory,
             gpus,
@@ -217,7 +220,7 @@ impl SystemResourceService {
             .iter()
             .map(|cpu| CpuCoreInfo {
                 name: cpu.name().to_string(),
-                usage_percent: round2(cpu.cpu_usage()),
+                usage_percent: round2(cpu.usage()),
                 frequency_mhz: cpu.frequency(),
             })
             .collect();
@@ -280,7 +283,6 @@ impl SystemResourceService {
 
         let readings: Vec<TemperatureReading> = self
             .components
-            .list()
             .iter()
             .filter_map(|component| {
                 component.temperature().map(|celsius| TemperatureReading {
@@ -324,7 +326,6 @@ impl SystemResourceService {
 
         let mut result: Vec<DiskInfo> = self
             .disks
-            .list()
             .iter()
             .map(|disk| {
                 let total = disk.total_space();
@@ -368,11 +369,11 @@ impl SystemResourceService {
 
         let mut result: Vec<NetworkInfo> = self
             .networks
-            .list()
             .iter()
             .map(|(name, data)| NetworkInfo {
-                id: name.clone(),
-                name: name.clone(),
+                // sysinfo 0.40：接口名从 String 改为 OsString。
+                id: name.to_string_lossy().to_string(),
+                name: name.to_string_lossy().to_string(),
                 received_bytes_per_sec: data.received() as f64 / elapsed_secs,
                 transmitted_bytes_per_sec: data.transmitted() as f64 / elapsed_secs,
                 total_received_bytes: data.total_received(),

@@ -611,11 +611,6 @@ export function AchievementModal({
               medals={medals}
               selectedIds={listSelectedIds}
               onToggle={toggleMedal}
-              headerLeft={
-                <span className="text-sm text-muted">
-                  {t("card:ach_selected_count", { count: listSelectedIds.length })}
-                </span>
-              }
             />
           </CustomModalBody>
           <CustomModalFooter>

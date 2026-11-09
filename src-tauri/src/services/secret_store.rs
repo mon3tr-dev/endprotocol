@@ -328,6 +328,7 @@ pub mod file_backend {
 
     use aes_gcm::aead::{Aead, KeyInit};
     use aes_gcm::{Aes256Gcm, Nonce};
+    use aes::cipher::consts::U12;
 
     /// 密钥文件路径。
     fn key_path(file_path: &PathBuf) -> PathBuf {
@@ -398,7 +399,7 @@ pub mod file_backend {
         // 避免依赖 aead 的 `Generate` trait（需要额外 rand_core feature）。
         let mut nonce_bytes = [0u8; 12];
         getrandom(&mut nonce_bytes);
-        let nonce = Nonce::from_slice(&nonce_bytes);
+        let nonce: Nonce<U12> = nonce_bytes.into();
         let ct = cipher
             .encrypt(&nonce, plain)
             .map_err(|e| format!("encrypt failed: {e}"))?;
@@ -413,17 +414,25 @@ pub mod file_backend {
             return Err("secret file is truncated".to_string());
         }
         let cipher = Aes256Gcm::new_from_slice(key).map_err(|e| e.to_string())?;
-        let nonce = Nonce::from_slice(&blob[..12]);
+        // blob[..12] 是切片，不能用定长数组转换，用 clone 进 Array（长度 12 固定）。
+        let mut nonce_arr = [0u8; 12];
+        nonce_arr.copy_from_slice(&blob[..12]);
+        let nonce: Nonce<U12> = nonce_arr.into();
         let plain = cipher
-            .decrypt(nonce, &blob[12..])
+            .decrypt(&nonce, &blob[12..])
             .map_err(|_| "secret file failed integrity check (wrong key or corrupted)".to_string())?;
         serde_json::from_slice(&plain).map_err(|e| format!("deserialize failed: {e}"))
     }
 
     /// 生成随机字节。
     fn getrandom(buf: &mut [u8]) {
-        use rand::RngCore;
-        rand::rngs::OsRng.fill_bytes(buf);
+        // rand 0.10：`rngs::OsRng` 更名 `SysRng`；其 `try_fill_bytes` 带 `Result`
+        // （Error 非 Infallible），用 `UnwrapErr` 包一层得到 `Rng`（失败即 panic，
+        // 与旧 `OsRng.fill_bytes` 行为一致）。
+        use rand::rand_core::UnwrapErr;
+        use rand::rngs::SysRng;
+        use rand::Rng as _;
+        UnwrapErr(SysRng).fill_bytes(buf);
     }
 
     /// 把文件权限收紧到当前用户（Unix）。Windows 上跳过。

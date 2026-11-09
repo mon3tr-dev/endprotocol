@@ -48,14 +48,12 @@ interface MedalBrowserProps {
   medals: AchieveMedal[];
   selectedIds?: string[];
   onToggle?: (id: string) => void;
-  headerLeft?: React.ReactNode;
 }
 
 export function MedalBrowser({
   medals,
   selectedIds,
   onToggle,
-  headerLeft,
 }: MedalBrowserProps) {
   const { t } = useTranslation();
   const [activeCategory, setActiveCategory] = useState<string>("all");

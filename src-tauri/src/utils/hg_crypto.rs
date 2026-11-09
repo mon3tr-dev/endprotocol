@@ -1,4 +1,6 @@
-use aes::cipher::{BlockDecryptMut, KeyIvInit};
+// cipher 0.5：`BlockDecryptMut` 更名 `BlockModeDecrypt`，`decrypt_padded_mut`
+// 更名 `decrypt_padded`（in-place 语义不变）。
+use aes::cipher::{BlockModeDecrypt, KeyIvInit};
 use aes::Aes256;
 use cbc::Decryptor;
 use sha2::{Digest, Sha256};
@@ -39,7 +41,7 @@ pub fn decrypt_bytes(encrypted_bytes: &[u8]) -> Result<Vec<u8>, String> {
 
     let mut buf = encrypted_bytes.to_vec();
     let decrypted = cipher
-        .decrypt_padded_mut::<cbc::cipher::block_padding::Pkcs7>(&mut buf)
+        .decrypt_padded::<cbc::cipher::block_padding::Pkcs7>(&mut buf)
         .map_err(|e| format!("AES decrypt: {}", e))?;
 
     Ok(decrypted.to_vec())

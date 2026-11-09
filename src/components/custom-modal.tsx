@@ -2,8 +2,6 @@ import { forwardRef } from "react";
 import { GlassModal } from "@/components/ui/modal";
 import { CloseIcon } from "@/components/ui/app-icon";
 
-type ModalSize = "xs" | "sm" | "md" | "lg" | "full" | "cover";
-
 /**
  * 应用级 Modal 兼容层
  * 基于自定义 GlassModal（液态玻璃），保留向后兼容的 size 语义

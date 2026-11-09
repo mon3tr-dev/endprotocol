@@ -726,6 +726,7 @@ pub(crate) fn create_main_window<R: Runtime>(
 }
 
 fn app_webview_url<R: Runtime>(
+    #[cfg_attr(not(debug_assertions), allow(unused_variables))]
     app: &tauri::AppHandle<R>,
     asset_path: &str,
 ) -> Result<WebviewUrl, String> {

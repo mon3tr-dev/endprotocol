@@ -20,46 +20,50 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 tauri = { version = "~2.12", features = ["tray-icon", "unstable"] } # unstable：in-app browser 动态创建子 Webview，见 commands/browser.rs
 tauri-plugin-opener = "~2.7"
-tauri-plugin-fs = "~2.6"
+tauri-plugin-fs = "~2.7"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-reqwest = { version = "0.12", features = ["json", "stream", "socks"] }
+# 0.13 起默认 TLS 后端换 rustls；native-tls 维持 SChannel 行为。
+# query/form 在 0.13 变为 opt-in feature（account_service 用到 .query）。
+reqwest = { version = "0.13", features = ["json", "stream", "socks", "native-tls", "query"] }
 futures-util = "0.3"
 urlencoding = "2"
 tokio = { version = "1", features = ["full"] }
-thiserror = "1"
-dirs = "5"
+thiserror = "2"
+dirs = "7"
 chrono = { version = "0.4", features = ["serde"] }
 # tauri-plugin-updater 已依赖 time 0.3；这里显式引入以格式化 Rfc3339
 # （commands/updater.rs 把 OffsetDateTime 转成 JS 可解析的 ISO 字符串）。
 time = { version = "0.3", features = ["formatting"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["fmt"] }
-aes = "0.8"
-cbc = "0.1"
-ecb = "0.1"
-hmac = "0.12"
-sha2 = "0.10"
-md-5 = "0.10"
-digest = "0.10"
-des = "0.8"
+aes = "0.9"
+cbc = "0.2"
+ecb = "0.2"
+hmac = "0.13"
+# 0.11 digest 生态（cipher 0.5）。rsa 0.9 仍绑 digest 0.10，两个生态并存，
+# 等 rsa 0.10 稳定后统一（见 docs/backend_development.md 的加密栈说明）。
+sha2 = "0.11"
+md-5 = "0.11"
+digest = "0.11"
+des = "0.9"
 rsa = "0.9"
-flate2 = { version = "1.0", features = ["zlib"] }
-base64 = "0.22"
+flate2 = { version = "1.1", features = ["zlib"] }
+base64 = "0.23"
 bytes = "1"
 http = "1"
 uuid = { version = "1.6", features = ["v4"] }
 hex = "0.4"
-rand = "0.8"
+rand = "0.10"
 indexmap = { version = "2.0", features = ["serde"] }
 tauri-plugin-process = "~2.4"
-tauri-plugin-single-instance = "~2.4"
+tauri-plugin-single-instance = "~2.5"
 walkdir = "2"
-rfd = "0.15"
-sysinfo = "0.38.4"
-zip = { version = "4.6.1", default-features = false, features = ["aes-crypto", "deflate-flate2"] }
+rfd = "0.18"
+sysinfo = "0.40"
+zip = { version = "9", default-features = false, features = ["aes-crypto", "deflate-flate2"] }
 # 仪表盘快照：窗口截图落盘为 PNG（commands/window.rs）
-png = "0.17"
+png = "0.18"
 # 机密存储：OS 凭据库（Windows Credential Manager / macOS Keychain / Linux Secret Service）
 keyring = { version = "4.2", features = ["v1"] }
 # 机密存储降级后端：AES-256-GCM 加密文件
@@ -94,5 +98,5 @@ windows-native-keyring-store = "1.1"
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_UI_WindowsAndMessaging", "Win32_Storage_Xps", "Win32_System_Com", "Win32_UI_Shell", "Win32_System_Threading", "Win32_System_Power", "Win32_System_Performance", "Win32_Security", "Win32_Security_Cryptography", "Win32_Security_Cryptography_Catalog", "Win32_Security_Cryptography_Sip", "Win32_Security_WinTrust", "Win32_System_Registry", "Win32_System_Environment", "Win32_System_Console", "Win32_System_Diagnostics_Debug", "Win32_System_Diagnostics_ToolHelp", "Win32_System_JobObjects", "Win32_System_LibraryLoader", "Win32_Storage_FileSystem", "Win32_System_RestartManager"] }
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
-tauri-plugin-updater = "~2.13"
+tauri-plugin-updater = "~2.14"
 

@@ -235,7 +235,7 @@ export function AppearanceSettings() {
       b: "241",
     },
   );
-  const [bgImagePath, setBgImagePath] = useState<string | null>(null);
+  const [, setBgImagePath] = useState<string | null>(null);
   const [bgImageOpacity, setBgImageOpacity] = useState(0.5);
   const DEFAULT_BG_IMAGE_OPACITY = 0.5;
   const [bgBlur, setBgBlur] = useState(16);
@@ -679,7 +679,7 @@ export function AppearanceSettings() {
 
   if (isLoading) return null;
 
-  const modeOptions: { value: ThemeMode; label: string; icon: JSX.Element }[] =
+  const modeOptions: { value: ThemeMode; label: string; icon: React.ReactElement }[] =
     [
       {
         value: "light",

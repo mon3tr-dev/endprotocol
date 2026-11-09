@@ -203,7 +203,12 @@ GlassModalWithSub.Body = Body;
 GlassModalWithSub.Footer = Footer;
 GlassModalWithSub.CloseTrigger = CloseTrigger;
 
-export { GlassModal, GlassModalWithSub as GlassModalCompound };
+export {
+  // WithSub 与 GlassModal 是同一对象（静态子组件运行时存在），
+  // 统一导出带静态子组件声明的类型，让 `GlassModal.Backdrop` 等用法通过类型检查。
+  GlassModalWithSub as GlassModal,
+  GlassModalWithSub as GlassModalCompound,
+};
 export type { ModalProps as GlassModalProps };
 
 /* ======================================================
@@ -355,5 +360,8 @@ GlassAlertDialogWithSub.Body = AlertDialogBody;
 GlassAlertDialogWithSub.Footer = AlertDialogFooter;
 GlassAlertDialogWithSub.CloseTrigger = AlertDialogCloseTrigger;
 
-export { GlassAlertDialog, GlassAlertDialogWithSub as GlassAlertDialogCompound };
+export {
+  GlassAlertDialogWithSub as GlassAlertDialog,
+  GlassAlertDialogWithSub as GlassAlertDialogCompound,
+};
 export type { AlertDialogProps as GlassAlertDialogProps };

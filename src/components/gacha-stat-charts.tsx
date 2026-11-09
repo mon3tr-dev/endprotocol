@@ -83,7 +83,7 @@ function useEchart(ref: React.RefObject<HTMLDivElement | null>) {
 /** 按时间从旧到新排列当前分类的全部抽卡记录 */
 function useChronoRecords(
   records: GachaRecord[],
-  pools: Record<string, { poolType: string }>,
+  pools: Record<string, { poolType?: string }>,
   category: GachaCategory,
 ): GachaRecord[] {
   return useMemo(() => {
@@ -98,7 +98,7 @@ function useChronoRecords(
 }
 
 /** 记录所属卡池类型：优先用 pools 元信息，缺失时按 poolId 前缀推断 */
-function poolKindOf(rec: GachaRecord, pools: Record<string, { poolType: string }>): GachaPoolKind {
+function poolKindOf(rec: GachaRecord, pools: Record<string, { poolType?: string }>): GachaPoolKind {
   const poolType = pools[rec.poolId]?.poolType;
   if (poolType) {
     if (poolType.includes("Joint")) return "joint";
@@ -175,7 +175,7 @@ export default function GachaStatCharts({
   isZh,
 }: {
   records: GachaRecord[];
-  pools: Record<string, { poolType: string }>;
+  pools: Record<string, { poolType?: string; poolName?: string }>;
   category: GachaCategory;
   isWeapon: boolean;
   isZh: boolean;
