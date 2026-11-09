@@ -37,6 +37,12 @@ pub const ACCOUNT_TOKEN_PREFIX: &str = "account_token_";
 /// 代理配置的键名。
 pub const PROXY_CONFIG_KEY: &str = "proxy_config";
 
+/// 旧版本按角色存放 u8token 的键前缀。
+///
+/// **已废弃**：u8token 现在完全不做持久化（每次同步现换），授权只是 `roles[].u8Authorized`
+/// 开关。这个常量仅用于启动时清理遗留的 `role_u8token_*` 键与凭据库条目。
+pub const ROLE_U8TOKEN_PREFIX: &str = "role_u8token_";
+
 /// 机密字段登记表。
 ///
 /// 按 `(键, 子字段)` 二元组登记。`key` 支持两种形态：
@@ -44,6 +50,10 @@ pub const PROXY_CONFIG_KEY: &str = "proxy_config";
 /// - 前缀通配（以 `*` 结尾，如 `account_token_*`）
 ///
 /// 登记项当前全部是 A 类（机密），B 类按用户决定保持明文。
+///
+/// ⚠️ 机密值必须是**对象里的子字段**：`write_secret_fields` 对非对象值直接跳过，
+/// `strip_secret_fields` 按字段名剥离。所以「整个键都是机密」的写法（`field: ""`）
+/// 目前不生效 —— 新增机密一律用「键 + 固定子字段名」的形式。
 pub const SECRET_FIELDS: &[SecretField] = &[
     // ---- 森空岛 / 鹰角账户凭据 ----
     SecretField {
@@ -58,6 +68,8 @@ pub const SECRET_FIELDS: &[SecretField] = &[
         key: "account_token_*",
         field: "hytoken",
     },
+    // ⚠️ 账号级 u8token 已废弃 —— 保留登记**只为了清理**：升级时凭据库里可能还留着
+    // 旧值，`migrate_legacy_u8token` 会把它连同字段一起删除。代码里不再写入该字段。
     SecretField {
         key: "account_token_*",
         field: "u8token",
@@ -69,6 +81,12 @@ pub const SECRET_FIELDS: &[SecretField] = &[
     SecretField {
         key: "account_token_*",
         field: "phone",
+    },
+    // ⚠️ 按角色的 u8token 也已废弃：令牌不落盘（每次同步现换），授权只是
+    // `roles[].u8Authorized` 开关。保留登记同样只为清理遗留凭据。
+    SecretField {
+        key: "role_u8token_*",
+        field: "token",
     },
     // ---- 网络代理凭据 ----
     SecretField {
@@ -205,6 +223,21 @@ mod tests {
         assert!(!has_secret_fields("theme_mode"));
         assert!(!has_secret_fields("card_settings.abc"));
         assert!(!has_secret_fields("dashboard_tabs"));
+    }
+
+    #[test]
+    fn role_u8token_is_secret() {
+        assert!(matches_secret_key("role_u8token_123456"));
+        assert!(is_secret_field("role_u8token_123456", "token"));
+        // 同键下的非机密子字段（渠道 / 授权时间）保持明文，便于界面展示状态
+        for f in ["serverId", "channelMasterId", "authorizedAt"] {
+            assert!(
+                !is_secret_field("role_u8token_123456", f),
+                "expected {f} to stay plaintext"
+            );
+        }
+        // 角色令牌的配置键不属于账号键，两者不要互相串味
+        assert!(!matches_secret_key("account_role_u8token"));
     }
 
     #[test]

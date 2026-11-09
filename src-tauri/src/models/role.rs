@@ -68,4 +68,20 @@ pub struct RoleDisplayInfo {
     pub nickname: String,
     pub level: i32,
     pub avatar_url: String,
+    /// 该角色所属的**渠道绑定 uid**（官服 / B 服各一个）。
+    /// 换取 u8token 必须用它：同一个鹰角通行证换出的多把 token 各自只能读自己 uid 的记录。
+    #[serde(default)]
+    pub binding_uid: String,
+    /// 渠道主 ID（1 = 官服，2 = B 服），仅用于展示与本地文件区分
+    #[serde(default)]
+    pub channel_master_id: String,
+    /// 渠道名（来自绑定接口的 `channelName`），仅用于展示
+    #[serde(default)]
+    pub channel_name: String,
+    /// 该角色是否已授权抽卡数据访问。
+    ///
+    /// 与 `roles[].u8Authorized` 同一个开关 —— 构建角色列表时由后端从配置回填，
+    /// 否则前端每次重新拉角色集都会显示成「未授权」。
+    #[serde(default)]
+    pub u8_authorized: bool,
 }

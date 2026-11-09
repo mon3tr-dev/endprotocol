@@ -15,6 +15,12 @@ use crate::{log_debug, log_info};
 
 /// ef-webview 抽卡记录服务基础 URL
 const EF_WEBVIEW_BASE: &str = "https://ef-webview.hypergryph.com";
+/// record/content 接口的 `server_id`：国服恒为 `"1"`。
+///
+/// 渠道（官服 / B 服）不是靠这个参数区分的，而是由 u8token 所属的渠道绑定 uid 决定；
+/// 往请求里塞 `channel`/`subChannel` 或真实的 B 服 serverId 都不会生效。
+/// 本地记录文件仍按角色真实 serverId 分开存放，避免官服与 B 服互相覆盖。
+const EF_RECORD_SERVER_ID: &str = "1";
 
 /// 与抓包一致的客户端 UA
 const GACHA_USER_AGENT: &str = "Mozilla/5.0 (Windows NT 6.2; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) QtWebEngine/5.15.8 Chrome/87.0.4280.144 Safari/537.36 PC/WIN/HGSDK HGWebPC/1.38.1";
@@ -743,12 +749,17 @@ impl GachaService {
 
     /// 统一 GET（UA/referer 与抓包一致），校验 code==0 后返回 data
     /// 所有参数（尤其 token）经 query_pairs_mut 做 URL 编码，避免 u8token 中的 +/ 被服务端误解析
+    ///
+    /// ⚠️ `server_id` 传的是**渠道偏向的服务器号**，但 record 接口本身只认「国服 = 1」：
+    /// 渠道（官服 / B 服）完全由 `u8token` 所属的 uid 表达，接口不接受 channel 参数。
+    /// 因此这里发出去的永远是 [`EF_RECORD_SERVER_ID`]，本地文件仍按角色真实 serverId 分目录
+    /// （由调用方用 user_id + server_id 拼路径），两者故意分开。
     async fn get_api<T: DeserializeOwned>(
         &self,
         endpoint: &str,
         params: &[(&str, &str)],
         u8token: &str,
-        server_id: &str,
+        _server_id: &str,
     ) -> Result<T, AppError> {
         let mut url =
             reqwest::Url::parse(&format!("{}{}", EF_WEBVIEW_BASE, endpoint)).map_err(|e| {
@@ -760,14 +771,14 @@ impl GachaService {
         url.query_pairs_mut()
             .append_pair("lang", "zh-cn")
             .append_pair("token", u8token)
-            .append_pair("server_id", server_id)
+            .append_pair("server_id", EF_RECORD_SERVER_ID)
             .extend_pairs(params.iter().copied());
 
         let referer = format!(
             "{}/page/gacha_char?u8_token={}&channel=1&lang=zh-cn&platform=Windows&server={}&subChannel=1",
             EF_WEBVIEW_BASE,
             urlencoding::encode(u8token),
-            urlencoding::encode(server_id),
+            urlencoding::encode(EF_RECORD_SERVER_ID),
         );
         let client = http_client::create_client();
         log_debug!("gacha: GET {}", crate::utils::redact::redact_url(url.as_str()));

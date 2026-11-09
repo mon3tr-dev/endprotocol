@@ -3,8 +3,8 @@ use tauri::State;
 use tokio::sync::Mutex;
 
 use crate::models::account::{
-    AccountInfo, AccountLoginResult, AccountRefreshResult, SklandAccountInfo, SklandGameInfo,
-    SklandUserInfo,
+    AccountInfo, AccountLoginResult, AccountRefreshResult, RoleU8AuthResult, SklandAccountInfo,
+    SklandGameInfo, SklandUserInfo,
 };
 use crate::models::login::{
     CodeLoginRequest, LoginRequest, ScanLoginInfo, ScanStatus, SendCodeRequest,
@@ -165,6 +165,20 @@ pub async fn logout_account(
         .await)
 }
 
+/// 彻底删除一个森空岛账户（父账户 + 全部角色绑定 + 凭据）
+///
+/// 与 `logout_account` 不同：后者只解绑单个角色、保留父账户。
+#[tauri::command]
+pub async fn delete_skland_account(
+    state: State<'_, Arc<Mutex<AccountService>>>,
+    user_id: String,
+) -> Result<bool, String> {
+    let service = state.lock().await;
+    service
+        .delete_skland_account(&user_id)
+        .map_err(|e| e.to_string())
+}
+
 /// 批量登出账户
 #[tauri::command]
 pub async fn batch_logout(
@@ -316,6 +330,32 @@ pub async fn set_lazy_load_enabled(
         .await
         .map_err(|e| e.to_string())?;
     Ok(true)
+}
+
+/// 按角色授权 u8token（抽卡令牌）
+///
+/// 需要该账号已持有设备令牌；没有时返回 `status = "device_required"`，
+/// 由前端引导用户针对这个角色单独登录一次。渠道服暂不支持（`unsupported`）。
+#[tauri::command]
+pub async fn authorize_role_u8token(
+    state: State<'_, Arc<Mutex<AccountService>>>,
+    role_id: String,
+) -> Result<RoleU8AuthResult, String> {
+    let service = state.lock().await;
+    service
+        .authorize_role_u8token(&role_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// 取消某个角色的 u8token 授权
+#[tauri::command]
+pub async fn revoke_role_u8token(
+    state: State<'_, Arc<Mutex<AccountService>>>,
+    role_id: String,
+) -> Result<bool, String> {
+    let service = state.lock().await;
+    Ok(service.revoke_role_u8token(&role_id))
 }
 
 /// 获取懒加载状态

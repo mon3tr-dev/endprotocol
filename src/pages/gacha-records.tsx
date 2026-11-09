@@ -46,6 +46,31 @@ const RARITY_OPTIONS: { value: number | null; label: string }[] = [
   { value: 4, label: "4★" },
 ];
 
+/**
+ * 后端在「该角色未授权抽卡令牌」时的报错文案。
+ *
+ * u8token 改为按角色授权后，未授权的角色会遇到这里；给用户一个能照着做的提示，
+ * 而不是把后端英文原文丢到界面上。
+ */
+function isU8UnauthorizedError(error: unknown): boolean {
+  const raw = String(error);
+  return (
+    raw.includes("not authorized for roleId") ||
+    raw.includes("Please authorize it on the account page") ||
+    raw.includes("Please re-authorize it on the account page")
+  );
+}
+
+/** 把同步失败的错误转成面向用户的文案 */
+function describeGachaSyncError(error: unknown, isZh: boolean): string {
+  if (isU8UnauthorizedError(error)) {
+    return isZh
+      ? "该角色还没有授权抽卡数据访问。请到「账户」页展开它所属的森空岛账户，点该角色的「授权抽卡」后再同步；渠道服角色暂不支持。"
+      : "This role has not authorized gacha data access. Open the Accounts page, expand its Skland account and click \"Authorize\" on the role, then sync again (channel-server roles are not supported yet).";
+  }
+  return String(error);
+}
+
 /** 记录所属卡池类型：优先用 pools 元信息，缺失时按 poolId 前缀推断 */
 function poolKindOf(rec: GachaRecord, pools: Record<string, { poolType: string }>): GachaPoolKind {
   const poolType = pools[rec.poolId]?.poolType;
@@ -236,8 +261,9 @@ export default function GachaRecordsPage() {
         // 丢弃过期请求的错误
         if (requestSeq !== syncRequestRef.current) return;
         logError("[Gacha] Sync failed:", e);
-        addMessage({ type: "urgent", title: i18n.language === "zh" ? "抽卡记录同步失败" : "Gacha Sync Failed", body: String(e), tag: "gacha" });
-        setSyncError(String(e));
+        const friendly = describeGachaSyncError(e, i18n.language === "zh");
+        addMessage({ type: "urgent", title: i18n.language === "zh" ? "抽卡记录同步失败" : "Gacha Sync Failed", body: friendly, tag: "gacha" });
+        setSyncError(friendly);
         setSyncing(false);
         // 出错时重新打开进度窗口展示错误
         setProgressModalOpen(true);

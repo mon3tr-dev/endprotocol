@@ -17,7 +17,7 @@ use crate::models::char_detail::CharDetailResponse;
 use crate::models::role::{BindingResponse, GameBinding};
 use crate::services::config_service::ConfigService;
 use crate::utils::{api_health, capture, http_client, AppError};
-use crate::{log_debug, log_info, log_warn};
+use crate::{log_debug, log_error, log_info, log_warn};
 
 type HmacSha256 = Hmac<Sha256>;
 
@@ -33,6 +33,13 @@ fn parse_http_date(value: &str) -> Option<chrono::DateTime<Utc>> {
 }
 
 const ORG: &str = "UWXspnCCJN4sfYlNfqps";
+
+/// 抽卡域 OAuth grant 的 appCode（`type: 1`）。与换 skland cred 的 `4ca99fa6b56cc2ba`
+/// （`type: 0`）不是同一个，混用会直接拿不到 token。
+const U8_GRANT_APP_CODE: &str = "be36d44aa36bfb5b";
+
+/// 账号绑定域名（`binding_list` / `u8_token_by_uid`）。
+const BINDING_API_HOST: &str = "binding-api-account-prod.hypergryph.com";
 const PUB_KEY_DER: &str = "MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQCmxMNr7n8ZeT0tE1R9j/mPixoinPkeM+k4VGIn/s0k7N5rJAfnZ0eMER+QhwFvshzo0LNmeUkpR8uIlU/GEVr8mN28sKmwd2gpygqj0ePnBmOW4v0ZVwbSYK+izkhVFk2V/doLoMbWy6b+UnA8mkjvg0iYWRByfRsK2gdl7llqCwIDAQAB";
 
 /// Skland 服务
@@ -879,48 +886,23 @@ impl SklandService {
         Ok(is_valid)
     }
 
-    /// 使用 hytoken 重新换取 cred、token 以及 u8 token
+    /// 使用 hytoken 重新换取 cred 与 token
+    ///
+    /// 只换森空岛凭据，**不碰 u8token** —— 抽卡令牌按角色单独授权，
+    /// 入口是 [`crate::services::account_service::AccountService::authorize_role_u8token`]。
     pub async fn refresh_cred_by_hytoken(
         &self,
         hytoken: &str,
-        device_token: Option<&str>,
-    ) -> Result<(String, String, Option<String>, String), AppError> {
+        _device_token: Option<&str>,
+    ) -> Result<(String, String, String), AppError> {
         api_health::ensure_available()?;
         // Step 1: OAuth grant（hytoken → skland sk_code）
         let sk_code = self.oauth_grant_to_sk_code(hytoken).await?;
 
-        // Step 1.5: 使用 u8 grant 获取 u8 token（失败不阻断，保留旧值）
-        let u8_token = match device_token {
-            Some(device_token) => match self.u8_grant_to_sk_code(hytoken, device_token).await {
-                Ok(u8_sk_code) => match self.get_u8_token_by_channel(&u8_sk_code).await {
-                    Ok((u8_token, _)) => {
-                        log_debug!(
-                            "refresh_cred_by_hytoken: u8 token fetched (len={})",
-                            u8_token.len()
-                        );
-                        Some(u8_token)
-                    }
-                    Err(e) => {
-                        log_warn!(
-                            "refresh_cred_by_hytoken: u8 token fetch FAILED (non-fatal): {}",
-                            e
-                        );
-                        None
-                    }
-                },
-                Err(e) => {
-                    log_warn!(
-                        "refresh_cred_by_hytoken: u8 grant FAILED (non-fatal): {}",
-                        e
-                    );
-                    None
-                }
-            },
-            None => {
-                log_warn!("refresh_cred_by_hytoken: no device_token, skipping u8 token refresh");
-                None
-            }
-        };
+        // 注意：这里**不再**顺带获取 u8token。u8token 已改为按角色单独授权
+        // （见 AccountService::authorize_role_u8token），令牌由用户显式授权才获取，
+        // 避免「刷新一次 cred 就把用户刚取消的授权又悄悄装回去」。
+        // `device_token` 形参保留是为了不动调用方签名，换 cred 本身不需要它。
 
         // Step 2: 使用 sk_code 换取新的 cred 和 token
         let client = http_client::create_client();
@@ -999,133 +981,40 @@ impl SklandService {
             })?
             .to_string();
 
-        Ok((cred, token, u8_token, user_id))
+        Ok((cred, token, user_id))
     }
 
-    /// 使用 sk_code 换取 u8 token（渠道登录 token）
-    pub async fn get_u8_token_by_channel(
+    /// 换取抽卡接口（`ef-webview`）使用的 u8 token。
+    ///
+    /// 走鹰角通行证链路，一条 hytoken 可为该通行证下**每一个已绑定的渠道 uid** 各换一把：
+    ///
+    /// 1. `POST https://as.hypergryph.com/user/oauth2/v2/grant`
+    ///    body `{ type: 1, appCode: "be36d44aa36bfb5b", token: hytoken }` → `data.token`（L2）
+    /// 2. `POST https://binding-api-account-prod.hypergryph.com/account/binding/v1/u8_token_by_uid`
+    ///    body `{ uid, token: L2 }` → `data.token`（u8 token）
+    ///
+    /// **不需要 device token**，也**不需要渠道参数**：官服与 B 服的差异完全落在 `uid` 上
+    /// （同一个通行证换出的多把 token 值不同，各自只能读自己那个 uid 的记录）。
+    /// u8 token 生命周期很短，调用方不应持久化，每次同步现换。
+    pub async fn get_u8_token_by_uid(
         &self,
-        sk_code: &str,
-    ) -> Result<(String, String), AppError> {
-        let client = http_client::create_client();
+        hytoken: &str,
+        binding_uid: &str,
+    ) -> Result<String, AppError> {
+        let oauth_token = self.u8_oauth_token(hytoken).await?;
+        self.u8_token_by_uid(&oauth_token, binding_uid).await
+    }
 
-        let channel_token = serde_json::json!({
-            "code": sk_code,
+    /// 一步：hytoken → 抽卡域 OAuth token（type=1，与换 cred 的 type=0 不同）
+    pub async fn u8_oauth_token(&self, hytoken: &str) -> Result<String, AppError> {
+        let client = http_client::create_client();
+        let payload = serde_json::json!({
             "type": 1,
-            "isSuc": true
-        });
-        let payload = serde_json::json!({
-            "appCode": "4df8f5a7c2ad711b497a",
-            "channelMasterId": "1",
-            "channelToken": channel_token.to_string(),
-            "type": 0,
-            "platform": 2
-        });
-
-        let start_time = std::time::Instant::now();
-        log_info!("=== HTTP REQUEST: 获取U8Token ===");
-        log_info!("Method: POST");
-        log_info!("URL: https://u8.hypergryph.com/u8/user/auth/v2/token_by_channel_token");
-
-        let response = capture::send(
-            &client,
-            client
-                .post("https://u8.hypergryph.com/u8/user/auth/v2/token_by_channel_token")
-                .header(
-                    "User-Agent",
-                    "UnityPlayer/2021.3.34f5 (UnityWebRequest/1.0, libcurl/8.4.0-DEV)",
-                )
-                .header("X-Unity-Version", "2021.3.34f5")
-                .header("Accept", "*/*")
-                .header("Accept-Encoding", "deflate, gzip")
-                .json(&payload),
-        )
-        .await
-        .map_err(|e| AppError::AuthError {
-            message: format!("U8 token request failed: {}", e),
-        })?;
-
-        let elapsed = start_time.elapsed();
-        let status = response.status();
-        let resp_headers = response.headers().clone();
-
-        let json: serde_json::Value = response.json().await.map_err(|e| AppError::AuthError {
-            message: format!("Failed to parse U8 token response: {}", e),
-        })?;
-
-        log_info!("=== HTTP RESPONSE: 获取U8Token ===");
-        log_info!("Status: {}", status);
-        log_info!("Time: {:?}", elapsed);
-        log_debug!("Response Headers:");
-        for (name, value) in resp_headers.iter() {
-            if let Ok(value_str) = value.to_str() {
-                log_debug!("  {}: {}", name, value_str);
-            }
-        }
-
-        if json.get("status").and_then(|v| v.as_i64()) != Some(0) {
-            let msg = json
-                .get("msg")
-                .and_then(|v| v.as_str())
-                .unwrap_or("Unknown error");
-            return Err(AppError::AuthError {
-                message: format!("U8 token failed: {}", msg),
-            });
-        }
-
-        let data = json.get("data").ok_or_else(|| AppError::AuthError {
-            message: "Data not found in U8 token response".to_string(),
-        })?;
-
-        let token = data
-            .get("token")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| AppError::AuthError {
-                message: "Token not found in U8 response".to_string(),
-            })?
-            .to_string();
-
-        let uid = data.get("uid").map(|v| v.to_string()).unwrap_or_default();
-
-        log_debug!(
-            "get_u8_token_by_channel: token_len={}, uid_len={}",
-            token.len(),
-            uid.len()
-        );
-
-        Ok((token, uid))
-    }
-
-    /// 使用 hytoken 获取 u8 token（仅获取，不刷新 cred）
-    pub async fn get_u8_token_by_hytoken(
-        &self,
-        hytoken: &str,
-        device_token: &str,
-    ) -> Result<String, AppError> {
-        let sk_code = self.u8_grant_to_sk_code(hytoken, device_token).await?;
-        let (u8_token, _) = self.get_u8_token_by_channel(&sk_code).await?;
-        Ok(u8_token)
-    }
-
-    /// u8 grant：hytoken + device_token → u8 channel code
-    async fn u8_grant_to_sk_code(
-        &self,
-        hytoken: &str,
-        device_token: &str,
-    ) -> Result<String, AppError> {
-        let client = http_client::create_client();
-
-        let start_time = std::time::Instant::now();
-        let payload = serde_json::json!({
-            "appCode": "dd7b852d5f1dd9da",
-            "deviceToken": device_token,
+            "appCode": U8_GRANT_APP_CODE,
             "token": hytoken,
-            "type": 0
         });
-        log_info!("=== HTTP REQUEST: U8 OAuth Grant ===");
-        log_info!("Method: POST");
-        log_info!("URL: https://as.hypergryph.com/user/oauth2/v2/grant");
 
+        log_info!("=== HTTP REQUEST: 抽卡 OAuth Grant (type=1) ===");
         let response = capture::send(
             &client,
             client
@@ -1134,43 +1023,101 @@ impl SklandService {
         )
         .await
         .map_err(|e| AppError::AuthError {
-            message: format!("U8 OAuth grant failed: {}", e),
+            message: format!("Gacha OAuth grant failed: {}", e),
         })?;
-
-        let elapsed = start_time.elapsed();
-        let status = response.status();
-        let resp_headers = response.headers().clone();
 
         let json: serde_json::Value = response.json().await.map_err(|e| AppError::AuthError {
-            message: format!("Failed to parse U8 OAuth response: {}", e),
+            message: format!("Failed to parse gacha OAuth response: {}", e),
         })?;
 
-        log_info!("=== HTTP RESPONSE: U8 OAuth Grant ===");
-        log_info!("Status: {}", status);
-        log_info!("Time: {:?}", elapsed);
-        log_debug!("Response Headers:");
-        for (name, value) in resp_headers.iter() {
-            if let Ok(value_str) = value.to_str() {
-                log_debug!("  {}: {}", name, value_str);
-            }
-        }
         if json.get("status").and_then(|v| v.as_i64()) != Some(0) {
             let msg = json
                 .get("msg")
                 .and_then(|v| v.as_str())
                 .unwrap_or("Unknown error");
+            // appCode 失效与 token 过期都会走到这里，日志里保留原始 msg 便于排查
+            log_error!("u8_oauth_token: grant rejected: {}", msg);
             return Err(AppError::AuthError {
-                message: format!("U8 OAuth grant failed: {}", msg),
+                message: format!("Gacha OAuth grant failed: {}", msg),
             });
         }
 
         json.get("data")
-            .and_then(|d| d.get("code"))
+            .and_then(|d| d.get("token"))
             .and_then(|c| c.as_str())
-            .ok_or_else(|| AppError::AuthError {
-                message: "Code not found in U8 OAuth response".to_string(),
-            })
+            .filter(|s| !s.is_empty())
             .map(|s| s.to_string())
+            .ok_or_else(|| AppError::AuthError {
+                message: "OAuth token not found in grant response".to_string(),
+            })
+    }
+
+    /// 二步：OAuth token + 绑定 uid → u8 token
+    ///
+    /// 官服与 B 服各用自己的 `uid` 换，换出来的值不同、互不通用 —— 这是国服多渠道的
+    /// 唯一差异点，因此这里**不接受任何渠道参数**。
+    pub async fn u8_token_by_uid(
+        &self,
+        oauth_token: &str,
+        binding_uid: &str,
+    ) -> Result<String, AppError> {
+        let client = http_client::create_client();
+        let payload = serde_json::json!({
+            "uid": binding_uid,
+            "token": oauth_token,
+        });
+
+        log_info!(
+            "=== HTTP REQUEST: u8_token_by_uid (uid_len={}) ===",
+            binding_uid.len()
+        );
+        let response = capture::send(
+            &client,
+            client
+                .post(format!(
+                    "https://{}/account/binding/v1/u8_token_by_uid",
+                    BINDING_API_HOST
+                ))
+                .json(&payload),
+        )
+        .await
+        .map_err(|e| AppError::AuthError {
+            message: format!("u8_token_by_uid request failed: {}", e),
+        })?;
+
+        let json: serde_json::Value = response.json().await.map_err(|e| AppError::AuthError {
+            message: format!("Failed to parse u8_token_by_uid response: {}", e),
+        })?;
+
+        let token = json
+            .get("data")
+            .and_then(|d| d.get("token"))
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
+            .ok_or_else(|| {
+                let msg = json
+                    .get("msg")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("no token in response");
+                log_error!(
+                    "u8_token_by_uid: no token for uid (len={}), msg={}",
+                    binding_uid.len(),
+                    msg
+                );
+                AppError::AuthError {
+                    message: format!(
+                        "u8_token_by_uid failed for binding uid ({}). The account may not be bound \
+                         to this channel: {}",
+                        binding_uid, msg
+                    ),
+                }
+            })?;
+
+        log_debug!(
+            "u8_token_by_uid: SUCCESS (token_len={})",
+            token.len()
+        );
+        Ok(token.to_string())
     }
 
     /// OAuth grant：hytoken → sk_code
@@ -1235,7 +1182,13 @@ impl SklandService {
     }
 
     /// 提取终末地角色列表
-    pub fn extract_endfield_roles(bindings: &[GameBinding]) -> Vec<(String, String, String)> {
+    ///
+    /// 返回 `(binding_uid, channel_master_id, channel_name, server_id, role_id)`。
+    /// 第一条 `binding_uid` 是**换 u8token 必须的键** —— 同一个通行证下官服与 B 服
+    /// 各有一条绑定记录、各有一个 uid，绝不能丢。
+    pub fn extract_endfield_roles(
+        bindings: &[GameBinding],
+    ) -> Vec<(String, String, String, String, String)> {
         let mut roles = Vec::new();
 
         for binding in bindings {
@@ -1244,6 +1197,8 @@ impl SklandService {
                     for role in &role_info.roles {
                         roles.push((
                             role_info.uid.clone(),
+                            role_info.channel_master_id.clone(),
+                            role_info.channel_name.clone(),
                             role.server_id.clone(),
                             role.role_id.clone(),
                         ));

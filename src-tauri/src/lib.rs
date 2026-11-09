@@ -159,6 +159,7 @@ pub fn run() {
             commands::account::get_skland_games,
             commands::account::add_account,
             commands::account::logout_account,
+            commands::account::delete_skland_account,
             commands::account::batch_logout,
             commands::account::refresh_accounts,
             commands::account::send_verification_code,
@@ -170,6 +171,8 @@ pub fn run() {
             commands::account::get_selected_account,
             commands::account::set_selected_account,
             commands::account::check_and_refresh_cred,
+            commands::account::authorize_role_u8token,
+            commands::account::revoke_role_u8token,
             // Card config commands
             commands::card_config::get_card_settings,
             commands::card_config::save_card_settings,

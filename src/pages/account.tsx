@@ -44,6 +44,7 @@ import {
   getSelectedAccount,
   refreshAccountData,
   logoutAccount as apiLogoutAccount,
+  deleteSklandAccount,
   addAccount,
   sendVerificationCode,
   addAccountByCode,
@@ -54,9 +55,12 @@ import {
   setSelectedAccount as apiSetSelectedAccount,
   getSklandUserInfoByCred,
   applyApiHealthSnapshot,
+  authorizeRoleU8Token,
+  revokeRoleU8Token,
   Account,
   LoginResult,
   RoleDisplayInfo,
+  RoleU8AuthStatus,
   SklandAccount,
   SklandGameInfo,
   SklandUserInfo,
@@ -114,6 +118,10 @@ function GameRoleRow({
   isDisabled,
   onSetActive,
   onAction,
+  u8Authorized,
+  isAuthBusy,
+  onAuthorizeU8,
+  onRevokeU8,
 }: {
   role: RoleDisplayInfo;
   isBound: boolean;
@@ -123,8 +131,15 @@ function GameRoleRow({
   isDisabled: boolean;
   onSetActive?: () => void;
   onAction: () => void;
+  /** 该角色是否已授权 u8token（抽卡令牌）；仅已绑定角色会传 */
+  u8Authorized?: boolean;
+  isAuthBusy?: boolean;
+  onAuthorizeU8?: () => void;
+  onRevokeU8?: () => void;
 }) {
   const { i18n } = useTranslation();
+  const zh = i18n.language === "zh";
+  const showU8Actions = isBound && Boolean(onAuthorizeU8 || onRevokeU8);
 
   return (
     <div className="lg-material-row flex min-w-0 items-center gap-3 rounded-lg border border-separator/60 p-2.5">
@@ -149,7 +164,68 @@ function GameRoleRow({
           Lv.{role.level} · {resolveServerLabel(role.serverId, i18n.language)}
         </p>
       </div>
-      <div className="flex shrink-0 items-center gap-2">
+      {/*
+        按钮区：窄容器下允许换行，并给昵称留一个最小宽度（`min-w-[7rem]`），
+        否则「授权抽卡 + 设为当前 + 解绑」会把名字压成一两个字。
+      */}
+      <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+        {/*
+          「抽卡」只占一个按钮：未授权时是实心「授权抽卡」，已授权时变成带勾的
+          描边按钮（再点即取消）。原先「已授权抽卡」徽标 +「取消授权」按钮 +
+          「设为当前」+「解绑」四个控件挤在一行，会把昵称压成一两个字。
+        */}
+        {showU8Actions && (
+          <GlassButton
+            size="sm"
+            variant={u8Authorized ? "outline" : "primary"}
+            isDisabled={isDisabled}
+            isLoading={isAuthBusy}
+            startContent={
+              u8Authorized ? (
+                <svg
+                  width={14}
+                  height={14}
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth={2.5}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M20 6L9 17l-5-5" />
+                </svg>
+              ) : undefined
+            }
+            onPress={u8Authorized ? onRevokeU8 : onAuthorizeU8}
+            aria-label={
+              u8Authorized
+                ? zh
+                  ? "已授权抽卡，点击取消"
+                  : "Gacha authorized, click to revoke"
+                : zh
+                  ? "授权访问抽卡记录"
+                  : "Authorize gacha record access"
+            }
+            title={
+              u8Authorized
+                ? zh
+                  ? "点击取消授权"
+                  : "Click to revoke"
+                : zh
+                  ? "点击授权抽卡"
+                  : "Click to authorize"
+            }
+          >
+            {u8Authorized
+              ? zh
+                ? "抽卡已授权"
+                : "Gacha on"
+              : zh
+                ? "授权抽卡"
+                : "Authorize"}
+          </GlassButton>
+        )}
         {isBound &&
           (isActive ? (
             <span className="rounded-full bg-success/15 px-2 py-1 text-[10px] font-semibold text-success-text">
@@ -564,10 +640,29 @@ export default function AccountPage() {
     null,
   );
 
+  /**
+   * 绑定完成后的「授权抽卡数据」步骤。
+   *
+   * 授权只是一个开关（`roles[].u8Authorized`），**不保存任何令牌** —— 令牌每次同步现换。
+   * 官服与 B 服走同一条鹰角通行证链路，差异只在渠道绑定 uid，所以两者都能直接授权。
+   * 用户也可以直接跳过，之后在账号页随时授权或取消授权。
+   */
+  const [authRoles, setAuthRoles] = useState<RoleDisplayInfo[]>([]);
+  const [authStatuses, setAuthStatuses] = useState<
+    Record<string, RoleU8AuthStatus | "idle">
+  >({});
+  const [authBusyRoleId, setAuthBusyRoleId] = useState<string | null>(null);
+  /** 授权页展示中 */
+  const isAuthStepOpen = authRoles.length > 0;
+
   // 登出确认（选择是否保留设备认证）
   const [logoutTarget, setLogoutTarget] = useState<Account | null>(null);
   const [keepDeviceAuth, setKeepDeviceAuth] = useState(true);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+
+  // 删除森空岛账户确认（不可撤销，连父账户与全部凭据一起删）
+  const [deleteTarget, setDeleteTarget] = useState<SklandAccount | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // 组件卸载时清理扫码轮询
   useEffect(() => {
@@ -996,6 +1091,80 @@ export default function AccountPage() {
     }
   };
 
+  /**
+   * 删除一个森空岛账户（父账户 + 全部角色 + 全部凭据）。
+   *
+   * 删除后重新拉取账户列表与森空岛账号列表，并同步当前选中账户 ——
+   * 后端已经把 `selected_account_id` 改选到剩余账户，这里只跟随它的结果。
+   */
+  const handleConfirmDeleteAccount = async () => {
+    if (!deleteTarget) return;
+    setIsDeleting(true);
+    try {
+      const ok = await deleteSklandAccount(deleteTarget.userId);
+      if (!ok) {
+        setGlobalAlert({
+          type: "danger",
+          message:
+            i18n.language === "zh" ? "删除账户失败" : "Failed to delete account",
+        });
+        setTimeout(() => setGlobalAlert(null), 5000);
+        return;
+      }
+
+      // 重新拉取两份列表，并跟随后端改选后的 selected_account_id
+      const [freshAccounts, freshSklandAccounts, selectedId] = await Promise.all([
+        getAccounts(),
+        getSklandAccounts(),
+        getSelectedAccount(),
+      ]);
+      setAccounts(freshAccounts || []);
+      setSklandAccounts(freshSklandAccounts);
+      setCurrentAccountId(selectedId ?? null);
+
+      // 把被删账户相关的本地 UI 状态一并清掉
+      setExpandedSklandId((previous) =>
+        previous === deleteTarget.userId ? null : previous,
+      );
+      setSklandRoleSets((previous) => {
+        if (!(deleteTarget.userId in previous)) return previous;
+        const next = { ...previous };
+        delete next[deleteTarget.userId];
+        return next;
+      });
+      setSklandUserInfos((previous) => {
+        if (!(deleteTarget.userId in previous)) return previous;
+        const next = { ...previous };
+        delete next[deleteTarget.userId];
+        return next;
+      });
+
+      window.dispatchEvent(new CustomEvent("accountChanged"));
+
+      setGlobalAlert({
+        type: "success",
+        message: t("settings.account.delete_account_success"),
+      });
+      addMessage({
+        type: "info",
+        title: t("settings.account.delete_account"),
+        body: t("settings.account.delete_account_success"),
+        tag: "account",
+      });
+      setTimeout(() => setGlobalAlert(null), 5000);
+    } catch (error) {
+      logError("Failed to delete Skland account:", error);
+      setGlobalAlert({
+        type: "danger",
+        message: String(error),
+      });
+      setTimeout(() => setGlobalAlert(null), 5000);
+    } finally {
+      setIsDeleting(false);
+      setDeleteTarget(null);
+    }
+  };
+
   // 查看详情
   const handleViewDetails = (account: Account) => {
     setSelectedAccount(account);
@@ -1025,6 +1194,7 @@ export default function AccountPage() {
     setReloginTarget(null);
     setReloginMismatchUserId("");
     setReloginProfile(null);
+    resetAuthStep();
     setIsAddModalOpen(true);
   };
 
@@ -1057,7 +1227,169 @@ export default function AccountPage() {
     setLoginCred("");
     setLoginToken("");
     setLoginUserId("");
+    resetAuthStep();
     setIsAddModalOpen(false);
+  };
+
+  /** 清空「授权抽卡数据」步骤的全部状态 */
+  const resetAuthStep = () => {
+    setAuthRoles([]);
+    setAuthStatuses({});
+    setAuthBusyRoleId(null);
+  };
+
+  /**
+   * 把抽卡授权的结果写进**消息中心**（messageStore），不再用页面浮层 Alert。
+   *
+   * 授权是「点一下就完成」的轻量操作，弹浮层会打断视线、还要等它自己消失；
+   * 消息中心能留痕，用户想回看时也找得到。
+   */
+  const pushResultMessage = (
+    tone: "success" | "danger",
+    body: string,
+  ) => {
+    addMessage({
+      type: tone === "success" ? "info" : "warn",
+      title:
+        tone === "success"
+          ? t("settings.account.u8_auth_title")
+          : t("settings.account.u8_authorize_failed"),
+      body,
+      tag: "account",
+    });
+  };
+
+  /**
+   * 进入「授权抽卡数据」页面（仅在绑定角色成功后使用）。
+   *
+   * 初始状态直接来自后端的 `RoleDisplayInfo.u8Authorized`：已授权的显示「已授权」，
+   * 其余待用户点一下授权。官服与渠道服都能直接授权，没有「不支持」的分支。
+   * 每个角色自带 `userId`，所以这里不需要再传账号 ID。
+   */
+  const openAuthStep = (roles: RoleDisplayInfo[]) => {
+    const statuses: Record<string, RoleU8AuthStatus | "idle"> = {};
+    roles.forEach((role) => {
+      statuses[role.roleId] = role.u8Authorized ? "authorized" : "idle";
+    });
+    setShowSklandConfirmation(false);
+    setIsRoleSelectionOpen(false);
+    setAuthRoles(roles);
+    setAuthStatuses(statuses);
+    setAuthBusyRoleId(null);
+    setLoginError("");
+    setIsAddModalOpen(true);
+  };
+
+  /** 同步某个角色在账号页展开区里的授权标记 */
+  const patchRoleAuthFlag = (
+    userId: string,
+    roleId: string,
+    authorized: boolean,
+  ) => {
+    setSklandRoleSets((previous) => {
+      const entry = previous[userId];
+      if (!entry) return previous;
+      return {
+        ...previous,
+        [userId]: {
+          ...entry,
+          roles: entry.roles.map((role) =>
+            role.roleId === roleId ? { ...role, u8Authorized: authorized } : role,
+          ),
+        },
+      };
+    });
+  };
+
+  /**
+   * 授权页内为某个角色开启抽卡授权。
+   *
+   * 后端会先用该角色的渠道绑定 uid 现换一次令牌做校验（令牌不保存），
+   * 成功才把开关记下来 —— 所以这里的失败通常意味着通行证没绑定该渠道或 hytoken 过期。
+   *
+   * ⚠️ `userId` 必须由调用方显式传入，不要读 `authUserId` state：
+   * `setState` 是异步的，同一轮事件里紧接着调用会读到旧值，
+   * 导致 `patchRoleAuthFlag` 匹配不到条目（表现为「提示授权成功、界面没变化」）。
+   */
+  const runAuthorizeRole = async (roleId: string, userId: string) => {
+    setAuthBusyRoleId(roleId);
+    try {
+      const result = await authorizeRoleU8Token(roleId);
+      setAuthStatuses((previous) => ({ ...previous, [roleId]: result.status }));
+      if (result.status === "authorized") {
+        patchRoleAuthFlag(userId, roleId, true);
+        pushResultMessage("success", t("settings.account.u8_authorized_ok"));
+      } else {
+        pushResultMessage(
+          "danger",
+          result.message || t("settings.account.u8_authorize_failed"),
+        );
+      }
+      return result;
+    } finally {
+      setAuthBusyRoleId(null);
+    }
+  };
+
+  /** 授权页内：取消某个角色的授权 */
+  const revokeFromAuthStep = async (roleId: string, userId: string) => {
+    setAuthBusyRoleId(roleId);
+    try {
+      const revoked = await revokeRoleU8Token(roleId);
+      if (revoked) {
+        setAuthStatuses((previous) => ({ ...previous, [roleId]: "idle" }));
+        patchRoleAuthFlag(userId, roleId, false);
+        pushResultMessage("success", t("settings.account.u8_revoked_ok"));
+      } else {
+        pushResultMessage("danger", t("settings.account.u8_revoke_failed"));
+      }
+    } finally {
+      setAuthBusyRoleId(null);
+    }
+  };
+
+  /**
+   * 账号页：为一个已绑定角色授权。
+   *
+   * **就地完成，不打开任何弹窗** —— 点一下按钮 → 后端校验并记下开关 →
+   * 按钮直接变成「抽卡已授权」，结果写消息中心。只有绑完角色后那一步
+   * （`openAuthStep`）才会用弹窗列出多个角色让用户逐个决定。
+   */
+  const handleAuthorizeRoleFromAccount = async (
+    userId: string,
+    role: RoleDisplayInfo,
+  ) => {
+    setAuthBusyRoleId(role.roleId);
+    try {
+      const result = await authorizeRoleU8Token(role.roleId);
+      if (result.status === "authorized") {
+        patchRoleAuthFlag(userId, role.roleId, true);
+        pushResultMessage("success", t("settings.account.u8_authorized_ok"));
+      } else {
+        pushResultMessage(
+          "danger",
+          result.message || t("settings.account.u8_authorize_failed"),
+        );
+      }
+    } finally {
+      setAuthBusyRoleId(null);
+    }
+  };
+
+  /** 账号页：取消某个角色的 u8token 授权 */
+  const handleRevokeRoleU8 = async (userId: string, role: RoleDisplayInfo) => {
+    setAuthBusyRoleId(role.roleId);
+    try {
+      const revoked = await revokeRoleU8Token(role.roleId);
+      if (revoked) {
+        patchRoleAuthFlag(userId, role.roleId, false);
+        pushResultMessage("success", t("settings.account.u8_revoked_ok"));
+      } else {
+        pushResultMessage("danger", t("settings.account.u8_revoke_failed"));
+      }
+    } finally {
+      setAuthBusyRoleId(null);
+    }
   };
 
   /**
@@ -1412,7 +1744,9 @@ export default function AccountPage() {
         loginMethod === "phone" &&
         result.errorMessage === "NEW_DEVICE_VERIFICATION_REQUIRED"
       ) {
-        // 新设备需要验证 - 让用户选择验证码登录或扫码登录
+        // 密码接口拒绝新设备（此时还没拿到 hytoken，只能换一种方式验证）：
+        // 让用户在验证码登录 / 扫码登录之间选择。注意这只发生在「密码登录」，
+        // 绑定账户本身不再强制新设备验证。
         setIsNewDeviceVerify(true);
         setVerificationCode("");
         setIsOtpInvalid(false);
@@ -1653,12 +1987,26 @@ export default function AccountPage() {
         window.dispatchEvent(new CustomEvent("accountChanged"));
       }
 
-      // 关闭模态并清空表单
-      handleCloseAddModal();
+      // 关闭模态并清空表单；新绑定的角色改为进入「按角色授权 u8token」页面
+      // （用户可直接跳过，之后在账号页随时授权）
+      const roleDetailsSnapshot = roleDetails;
+      if (!isManagingSklandRoles && roleDetailsSnapshot.length > 0) {
+        setAvailableRoles([]);
+        setSelectedRoles([]);
+        setLoginCred("");
+        setLoginToken("");
+        setLoginUserId("");
+      } else {
+        handleCloseAddModal();
+      }
 
       // 登录/绑定完成：清除账户不可用状态（refreshData 会同时解除后端 API 熔断守卫）
       clearAccountUnavailable();
       await refreshData();
+
+      if (!isManagingSklandRoles && roleDetailsSnapshot.length > 0) {
+        openAuthStep(roleDetailsSnapshot);
+      }
 
       setGlobalAlert({
         type: "success",
@@ -2324,6 +2672,32 @@ export default function AccountPage() {
                     </button>
                     <button
                       type="button"
+                      onClick={() =>
+                        setDeleteTarget(sklandAccount)
+                      }
+                      aria-label={t("settings.account.delete_account")}
+                      title={t("settings.account.delete_account")}
+                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-separator/60 text-muted transition-colors lg-hoverable hover:text-danger-text active:scale-95"
+                    >
+                      <svg
+                        width={16}
+                        height={16}
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth={2}
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        aria-hidden="true"
+                      >
+                        <path d="M3 6h18" />
+                        <path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2" />
+                        <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                        <path d="M10 11v6M14 11v6" />
+                      </svg>
+                    </button>
+                    <button
+                      type="button"
                       aria-expanded={isExpanded}
                       onClick={() =>
                         handleExpandSklandAccount(sklandAccount.userId)
@@ -2386,6 +2760,20 @@ export default function AccountPage() {
                                     )}
                                     isBusy={savingRoleKey === key}
                                     isDisabled={savingRoleKey !== null}
+                                    u8Authorized={role.u8Authorized}
+                                    isAuthBusy={authBusyRoleId === role.roleId}
+                                    onAuthorizeU8={() =>
+                                      void handleAuthorizeRoleFromAccount(
+                                        sklandAccount.userId,
+                                        role,
+                                      )
+                                    }
+                                    onRevokeU8={() =>
+                                      void handleRevokeRoleU8(
+                                        sklandAccount.userId,
+                                        role,
+                                      )
+                                    }
                                     onSetActive={() =>
                                       handleSelectAccount(role.roleId)
                                     }
@@ -3012,6 +3400,88 @@ export default function AccountPage() {
         </CustomModalFooter>
       </CustomModal>
 
+      {/* 删除森空岛账户确认（不可撤销） */}
+      <CustomModal
+        isOpen={!!deleteTarget}
+        onClose={() => {
+          if (!isDeleting) setDeleteTarget(null);
+        }}
+        size="sm"
+      >
+        <CustomModalHeader
+          onClose={() => {
+            if (!isDeleting) setDeleteTarget(null);
+          }}
+        >
+          {t("settings.account.delete_account")}
+        </CustomModalHeader>
+        <CustomModalBody>
+          <div className="space-y-4">
+            {/* 要删的是哪个账号：头像 + 昵称 + userId 一行说清 */}
+            {deleteTarget && (
+              <div className="lg-material-sub flex items-center gap-3 rounded-lg border border-separator p-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full border border-separator/60 bg-content2/30 text-sm font-semibold text-muted">
+                  {deleteTarget.avatar ? (
+                    <Img
+                      src={deleteTarget.avatar}
+                      alt={
+                        deleteTarget.nickname ||
+                        t("settings.account.skland_account")
+                      }
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    (deleteTarget.nickname || deleteTarget.userId)
+                      .charAt(0)
+                      .toUpperCase()
+                  )}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-foreground">
+                    {deleteTarget.nickname ||
+                      t("settings.account.skland_account")}
+                  </p>
+                  <p className="truncate text-xs text-muted">
+                    {deleteTarget.userId} ·{" "}
+                    {t("settings.account.bound_role_count", {
+                      count: deleteTarget.gameRoleCount,
+                    })}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* 后果：一句话 + 一行补充，不再是一大段凭据清单 */}
+            <div className="space-y-1.5">
+              <p className="text-sm font-medium text-danger-text">
+                {t("settings.account.delete_account_warning")}
+              </p>
+              <p className="text-xs leading-relaxed text-muted">
+                {t("settings.account.delete_account_desc")}
+              </p>
+            </div>
+          </div>
+        </CustomModalBody>
+        <CustomModalFooter>
+          <GlassButton
+            variant="outline"
+            onPress={() => setDeleteTarget(null)}
+            isDisabled={isDeleting}
+          >
+            {t("settings.account.cancel")}
+          </GlassButton>
+          <GlassButton
+            variant="danger"
+            onPress={handleConfirmDeleteAccount}
+            isDisabled={isDeleting}
+          >
+            {isDeleting
+              ? t("settings.account.loading")
+              : t("settings.account.delete_account_confirm")}
+          </GlassButton>
+        </CustomModalFooter>
+      </CustomModal>
+
       {/* Skland Profile Modal（森空岛用户资料详情） */}
       <CustomModal
         isOpen={!!profileSklandId}
@@ -3057,25 +3527,27 @@ export default function AccountPage() {
         onClose={handleCloseAddModal}
         size="lg"
         height={
-          isRoleSelectionOpen && availableRoles.length > 3 ? "fixed" : "auto"
+          (isRoleSelectionOpen || isAuthStepOpen) &&
+          availableRoles.length + authRoles.length > 3
+            ? "fixed"
+            : "auto"
         }
         disableBackdropClick={
-          showSklandConfirmation ||
-          (isRoleSelectionOpen && availableRoles.length > 0)
+          showSklandConfirmation || isAuthStepOpen
         }
       >
         <CustomModalHeader onClose={handleCloseAddModal}>
           {showSklandConfirmation
             ? t("settings.account.confirm_skland_binding")
-            : isManagingSklandRoles
-              ? t("settings.account.manage_game_roles")
-              : reloginTarget
-                ? t("settings.account.relogin_title", {
-                    account:
-                      reloginTarget.nickname ||
-                      reloginTarget.userId,
-                  })
-                : t("settings.account.add_account")}
+            : isAuthStepOpen
+              ? t("settings.account.u8_auth_title")
+              : isManagingSklandRoles
+                ? t("settings.account.manage_game_roles")
+                : reloginTarget
+                  ? t("settings.account.relogin_title", {
+                      account: reloginTarget.nickname || reloginTarget.userId,
+                    })
+                  : t("settings.account.add_account")}
         </CustomModalHeader>
         <CustomModalBody
           className={
@@ -3225,6 +3697,97 @@ export default function AccountPage() {
               <p className="text-sm text-muted">
                 {t("settings.account.no_game_roles")}
               </p>
+            </div>
+          ) : isAuthStepOpen ? (
+            // 抽卡授权：可逐个开启，也可直接跳过
+            <div className="space-y-3">
+              <p className="text-sm text-muted">
+                {t("settings.account.u8_auth_desc")}
+              </p>
+
+              <div className="space-y-2">
+                {authRoles.map((role) => {
+                  const status = authStatuses[role.roleId] ?? "idle";
+                  const isBusy = authBusyRoleId === role.roleId;
+                  const statusLabel =
+                    status === "authorized"
+                      ? t("settings.account.u8_status_authorized")
+                      : status === "failed"
+                        ? t("settings.account.u8_status_failed")
+                        : null;
+
+                  return (
+                    <div
+                      key={role.roleId}
+                      className="lg-material flex items-center gap-3 rounded-lg border border-separator/70 p-3"
+                    >
+                      <div className="h-9 w-9 shrink-0 overflow-hidden rounded-md border border-separator/50 bg-content2/30">
+                        {role.avatarUrl ? (
+                          <Img
+                            src={role.avatarUrl}
+                            alt={role.nickname}
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          <div className="flex h-full items-center justify-center text-sm font-semibold text-muted">
+                            {role.nickname.charAt(0).toUpperCase()}
+                          </div>
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium text-foreground">
+                          {role.nickname}
+                        </p>
+                        <p className="truncate text-xs text-muted">
+                          Lv.{role.level} ·{" "}
+                          {resolveServerLabel(role.serverId, i18n.language)}
+                          {statusLabel && (
+                            <>
+                              {" · "}
+                              <span
+                                className={
+                                  status === "authorized"
+                                    ? "text-success-text"
+                                    : "text-danger-text"
+                                }
+                              >
+                                {statusLabel}
+                              </span>
+                            </>
+                          )}
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-2">
+                        {/*
+                          一个按钮表示「抽卡」授权状态：已授权时显示为已开启态，
+                          点击即切换。避免「已授权抽卡 + 取消授权」两个标签挤在一行。
+                        */}
+                        <GlassButton
+                          size="sm"
+                          variant={status === "authorized" ? "outline" : "primary"}
+                          isDisabled={authBusyRoleId !== null}
+                          isLoading={isBusy}
+                          onPress={() =>
+                            void (status === "authorized"
+                              ? revokeFromAuthStep(role.roleId, role.userId)
+                              : runAuthorizeRole(role.roleId, role.userId))
+                          }
+                        >
+                          {status === "authorized"
+                            ? t("settings.account.u8_authorized_btn")
+                            : t("settings.account.u8_authorize")}
+                        </GlassButton>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {loginError && (
+                <p className="text-sm text-danger-text" role="alert">
+                  {loginError}
+                </p>
+              )}
             </div>
           ) : !loginMethod ? (
             // 登录方式选择（重新登录时也走这里：只需选择方式，不必输入手机号）
@@ -3893,6 +4456,17 @@ export default function AccountPage() {
                 {isLoading
                   ? t("settings.account.loading")
                   : t("settings.account.confirm")}
+              </GlassButton>
+            </>
+          ) : isAuthStepOpen ? (
+            // 「跳过」和「关闭」做的是同一件事，只留一个
+            <>
+              <GlassButton
+                variant="primary"
+                onPress={handleCloseAddModal}
+                isDisabled={authBusyRoleId !== null}
+              >
+                {t("settings.account.u8_skip")}
               </GlassButton>
             </>
           ) : isRoleSelectionOpen ? (

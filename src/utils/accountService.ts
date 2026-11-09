@@ -130,6 +130,30 @@ export interface RoleDisplayInfo {
   nickname: string;
   level: number;
   avatarUrl: string;
+  /**
+   * 该角色所属的**渠道绑定 uid**（官服 / B 服各一个）。
+   * 抽卡令牌按它换取，官服与 B 服因此能各拿各的令牌。
+   */
+  bindingUid?: string;
+  /** 渠道主 ID（1 = 官服，2 = B 服），仅用于展示 */
+  channelMasterId?: string;
+  /** 渠道名（来自绑定接口 `channelName`），仅用于展示 */
+  channelName?: string;
+  /** 该角色是否已授权抽卡数据访问（纯开关，不含凭据） */
+  u8Authorized?: boolean;
+}
+
+/**
+ * 按角色授权抽卡数据的结果
+ *
+ * - `authorized`：已验证该角色能换到抽卡令牌，授权已记下（令牌不落盘，每次同步现换）
+ * - `failed`：换取失败，通常是通行证未绑定该渠道或 hytoken 已过期
+ */
+export type RoleU8AuthStatus = "authorized" | "failed";
+
+export interface RoleU8AuthResult {
+  status: RoleU8AuthStatus;
+  message?: string;
 }
 
 /**
@@ -520,6 +544,24 @@ export async function setSelectedAccount(accountId: string): Promise<boolean> {
 }
 
 /**
+ * 彻底删除一个森空岛账户（父账户 + 全部角色绑定 + 全部凭据）
+ *
+ * 与 `logoutAccount` 的区别：后者只解绑**单个角色**、保留父账户与凭据。
+ * 删除只作用于本机，不会去鹰角/森空岛注销任何东西。
+ *
+ * @param userId 森空岛用户 ID
+ * @returns 是否确实删除成功
+ */
+export async function deleteSklandAccount(userId: string): Promise<boolean> {
+  try {
+    return await invoke<boolean>('delete_skland_account', { userId });
+  } catch (error) {
+    logError('Failed to delete Skland account:', error);
+    return false;
+  }
+}
+
+/**
  * 检查并刷新指定用户的 cred
  * @param userId 用户 ID
  * @returns 新的 cred 和 token（如果刷新了），或 null（如果无需刷新）
@@ -530,5 +572,37 @@ export async function checkAndRefreshCred(userId: string): Promise<[string, stri
   } catch (error) {
     logger.error('Failed to check and refresh cred: ' + error, "AccountService");
     throw error;
+  }
+}
+
+/**
+ * 为某个角色授权 / 取消授权抽卡数据访问
+ *
+ * 授权只记一个开关，**不保存任何令牌**：u8token 生命周期很短，每次同步现换。
+ * 官方服与渠道服走同一条链路、同一个 hytoken，差异只在渠道绑定 uid，
+ * 因此渠道服角色同样可以直接授权。
+ *
+ * @param roleId 角色 ID
+ */
+export async function authorizeRoleU8Token(roleId: string): Promise<RoleU8AuthResult> {
+  try {
+    return await invoke<RoleU8AuthResult>('authorize_role_u8token', { roleId });
+  } catch (error) {
+    logError('Failed to authorize gacha access:', error);
+    return { status: 'failed', message: String(error) };
+  }
+}
+
+/**
+ * 取消某个角色的 u8token 授权
+ * @param roleId 角色 ID
+ * @returns 是否确实删掉了授权
+ */
+export async function revokeRoleU8Token(roleId: string): Promise<boolean> {
+  try {
+    return await invoke<boolean>('revoke_role_u8token', { roleId });
+  } catch (error) {
+    logError('Failed to revoke u8token:', error);
+    return false;
   }
 }

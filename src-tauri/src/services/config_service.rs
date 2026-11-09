@@ -138,6 +138,16 @@ impl ConfigService {
         removed
     }
 
+    /// 删除某个配置键下的**单个**机密字段（配置值里的同名子字段由调用方自行移除）。
+    ///
+    /// 只把子字段从配置值里删掉是不够的：凭据条目仍留在系统凭据库里，而且下次启动
+    /// `reload_secrets` 还会把它读回内存缓存。迁移废弃字段时必须同时调这个。
+    pub fn remove_secret_field(&mut self, key: &str, field: &str) {
+        if let Err(e) = self.secrets.remove(key, field) {
+            crate::log_warn!("[config] failed to remove secret {key}.{field}: {e}");
+        }
+    }
+
     /// 获取所有配置（**含机密字段明文**）
     ///
     /// ⚠️ 仅供后端内部使用。暴露给前端的请用 [`ConfigService::get_all_public`]。

@@ -176,3 +176,18 @@ pub struct AccountLoginResult {
     pub token: Option<String>,
     pub user_id: Option<String>,
 }
+
+/// 按角色授权 u8token 的结果
+///
+/// `status` 取值：
+/// - `authorized`：已验证该角色能换到抽卡令牌，并已记下授权（令牌本身不落盘）
+/// - `failed`：换取失败（`message` 为原因，常见是通行证未绑定该渠道或 hytoken 过期）
+///
+/// 注：旧的 `device_required` / `unsupported` 已随新链路（`u8_token_by_uid`）取消 ——
+/// 官服与渠道服走同一条链路、同一个 hytoken，不需要设备令牌。
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct RoleU8AuthResult {
+    pub status: String,
+    pub message: Option<String>,
+}

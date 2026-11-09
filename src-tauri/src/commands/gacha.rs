@@ -14,70 +14,115 @@ use crate::{log_error, log_info, log_warn};
 /// 无法匹配的名称导致每次打开抽卡页都重新拉取整份目录。
 const TOTAL_CATALOG_REFRESH_COOLDOWN: Duration = Duration::from_secs(6 * 60 * 60);
 
-/// 根据 roleId 在配置中查找对应的 userId、serverId 和 u8token
-fn lookup_u8token(
+/// 一个角色在抽卡侧的归属信息
+struct RoleOwner {
+    user_id: String,
+    /// 渠道绑定 uid —— 换 u8token 的键（官服 / B 服各一个）
+    binding_uid: String,
+    #[allow(dead_code)]
+    channel_master_id: String,
+    server_id: String,
+    /// 用户是否在账号页为这个角色打开了抽卡授权
+    authorized: bool,
+}
+
+/// 根据 roleId 找到它所属的账号、渠道绑定 uid 与服务器
+///
+/// 授权改成 `roles[].u8Authorized` 开关后，这里**只查归属、不查令牌**（令牌不落盘）。
+fn lookup_role_owner(
     config_service: &Arc<SyncMutex<ConfigService>>,
     role_id: &str,
-) -> Result<(String, String, String), AppError> {
+) -> Result<RoleOwner, AppError> {
     let config = config_service.lock().map_err(|e| AppError::ConfigError {
         message: format!("Lock failed: {}", e),
     })?;
-    let all_config = config.get_all();
 
-    for (key, value) in &all_config {
-        if key.starts_with("account_token_") {
-            let u8token = value
-                .get("u8token")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string());
-            let user_id = key.trim_start_matches("account_token_").to_string();
-
-            if let Some(ref u8t) = u8token {
-                if let Some(roles) = value.get("roles").and_then(|v| v.as_array()) {
-                    for role in roles {
-                        if let Some(rid) = role.get("roleId").and_then(|v| v.as_str()) {
-                            if rid == role_id {
-                                if let Some(sid) = role.get("serverId").and_then(|v| v.as_str()) {
-                                    return Ok((user_id, sid.to_string(), u8t.clone()));
-                                }
-                            }
-                        }
-                    }
-                }
+    for (key, value) in config.get_all() {
+        if !key.starts_with("account_token_") {
+            continue;
+        }
+        let Some(roles) = value.get("roles").and_then(|v| v.as_array()) else {
+            continue;
+        };
+        for role in roles {
+            if role.get("roleId").and_then(|v| v.as_str()) != Some(role_id) {
+                continue;
             }
+            let read = |field: &str| {
+                role.get(field)
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_string()
+            };
+            return Ok(RoleOwner {
+                user_id: key.trim_start_matches("account_token_").to_string(),
+                binding_uid: read("bindingUid"),
+                channel_master_id: read("channelMasterId"),
+                server_id: read("serverId"),
+                authorized: role
+                    .get("u8Authorized")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false),
+            });
         }
     }
 
     Err(AppError::AuthError {
-        message: format!("No u8token found for roleId: {}. Please re-login.", role_id),
+        message: format!("No account found for roleId: {}. Please re-login.", role_id),
     })
 }
 
-/// 同步前确保 u8token 新鲜：先检查/刷新 cred，再主动重新获取一次 u8token（成功则使用新值），返回最新 u8token
-async fn ensure_fresh_u8token(
+/// 同步前现换一个 u8token（**不缓存、不落盘**）。
+///
+/// 未授权角色直接报错，提示用户去账号页授权 —— 不会因为一次同步就替用户把授权装回去。
+/// 令牌生命周期很短，因此每次同步都换新的，也不做「失败回退旧值」——旧值多半已经失效，
+/// 拿着它继续请求只会得到更难理解的错误。
+async fn fresh_u8token(
     account_service: &AccountService,
-    config_service: &Arc<SyncMutex<ConfigService>>,
-    user_id: &str,
+    owner: &RoleOwner,
     role_id: &str,
 ) -> Result<String, AppError> {
-    match account_service.check_and_refresh_user_cred(user_id).await {
+    if !owner.authorized {
+        return Err(AppError::AuthError {
+            message: format!(
+                "u8token not authorized for roleId: {}. Please authorize it on the account page.",
+                role_id
+            ),
+        });
+    }
+
+    match account_service
+        .check_and_refresh_user_cred(&owner.user_id)
+        .await
+    {
         Ok(_) => {}
         Err(e) => {
             log_warn!(
                 "gacha: cred refresh failed (non-fatal) for user {}: {}",
-                user_id,
+                owner.user_id,
                 e
             );
         }
     }
 
-    // 每次同步前主动刷新 u8token，避免旧 token 过期导致接口返回非 JSON（error decoding response body）
-    if let Some(fresh) = account_service.refresh_u8token_for_user(user_id).await? {
-        return Ok(fresh);
-    }
+    account_service
+        .fetch_role_u8token(&owner.user_id, &owner.binding_uid)
+        .await
+        .map_err(|e| {
+            log_error!("gacha: fetch u8token failed for role {}: {}", role_id, e);
+            e
+        })
+}
 
-    let (_, _, u8token) = lookup_u8token(config_service, role_id)?;
-    Ok(u8token)
+/// 取「已授权 + 现换令牌 + 服务器信息」三件套，供同步类命令使用
+async fn prepare_u8token(
+    account_service: &AccountService,
+    config_service: &Arc<SyncMutex<ConfigService>>,
+    role_id: &str,
+) -> Result<(RoleOwner, String), AppError> {
+    let owner = lookup_role_owner(config_service, role_id)?;
+    let token = fresh_u8token(account_service, &owner, role_id).await?;
+    Ok((owner, token))
 }
 
 /// 获取可用卡池 Tab（meta），供前端展示卡池切换
@@ -91,17 +136,15 @@ pub async fn get_gacha_pool_meta(
     let account = account_state.lock().await;
     let config_service = account.get_config_service().clone();
 
-    let (user_id, server_id, _u8token) =
-        lookup_u8token(&config_service, &role_id).map_err(|e| {
-            log_error!("get_gacha_pool_meta: lookup failed: {}", e);
+    let (owner, u8token) = prepare_u8token(&account, &config_service, &role_id)
+        .await
+        .map_err(|e| {
+            log_error!("get_gacha_pool_meta: prepare failed: {}", e);
             e.to_string()
         })?;
-    let u8token = ensure_fresh_u8token(&account, &config_service, &user_id, &role_id)
-        .await
-        .map_err(|e| e.to_string())?;
 
     let meta = gacha_state
-        .get_pool_meta(&u8token, &server_id)
+        .get_pool_meta(&u8token, &owner.server_id)
         .await
         .map_err(|e| {
             log_error!("get_gacha_pool_meta: FAILED for role_id={}: {}", role_id, e);
@@ -123,17 +166,15 @@ pub async fn sync_gacha_records(
     let account = account_state.lock().await;
     let config_service = account.get_config_service().clone();
 
-    let (user_id, server_id, _u8token) =
-        lookup_u8token(&config_service, &role_id).map_err(|e| {
-            log_error!("sync_gacha_records: lookup failed: {}", e);
+    let (owner, u8token) = prepare_u8token(&account, &config_service, &role_id)
+        .await
+        .map_err(|e| {
+            log_error!("sync_gacha_records: prepare failed: {}", e);
             e.to_string()
         })?;
-    let u8token = ensure_fresh_u8token(&account, &config_service, &user_id, &role_id)
-        .await
-        .map_err(|e| e.to_string())?;
 
     let result = gacha_state
-        .sync_records(&user_id, &server_id, &u8token)
+        .sync_records(&owner.user_id, &owner.server_id, &u8token)
         .await
         .map_err(|e| {
             log_error!("sync_gacha_records: FAILED for role_id={}: {}", role_id, e);
@@ -155,10 +196,11 @@ pub async fn get_saved_gacha_records(
     let account = account_state.lock().await;
     let config_service = account.get_config_service().clone();
 
-    let (user_id, server_id, _) = lookup_u8token(&config_service, &role_id).map_err(|e| {
+    let owner = lookup_role_owner(&config_service, &role_id).map_err(|e| {
         log_error!("get_saved_gacha_records: lookup failed: {}", e);
         e.to_string()
     })?;
+    let (user_id, server_id) = (owner.user_id, owner.server_id);
 
     let data = gacha_state
         .load_records_or_empty(&user_id, &server_id)
@@ -186,17 +228,15 @@ pub async fn sync_weapon_gacha_records(
     let account = account_state.lock().await;
     let config_service = account.get_config_service().clone();
 
-    let (user_id, server_id, _u8token) =
-        lookup_u8token(&config_service, &role_id).map_err(|e| {
-            log_error!("sync_weapon_gacha_records: lookup failed: {}", e);
+    let (owner, u8token) = prepare_u8token(&account, &config_service, &role_id)
+        .await
+        .map_err(|e| {
+            log_error!("sync_weapon_gacha_records: prepare failed: {}", e);
             e.to_string()
         })?;
-    let u8token = ensure_fresh_u8token(&account, &config_service, &user_id, &role_id)
-        .await
-        .map_err(|e| e.to_string())?;
 
     let result = gacha_state
-        .sync_weapon_records(&user_id, &server_id, &u8token)
+        .sync_weapon_records(&owner.user_id, &owner.server_id, &u8token)
         .await
         .map_err(|e| {
             log_error!(
@@ -225,10 +265,11 @@ pub async fn get_saved_weapon_gacha_records(
     let account = account_state.lock().await;
     let config_service = account.get_config_service().clone();
 
-    let (user_id, server_id, _) = lookup_u8token(&config_service, &role_id).map_err(|e| {
+    let owner = lookup_role_owner(&config_service, &role_id).map_err(|e| {
         log_error!("get_saved_weapon_gacha_records: lookup failed: {}", e);
         e.to_string()
     })?;
+    let (user_id, server_id) = (owner.user_id, owner.server_id);
 
     let data = gacha_state
         .load_weapon_records_or_empty(&user_id, &server_id)
@@ -366,10 +407,11 @@ pub async fn resolve_gacha_avatar_map(
     let account = account_state.lock().await;
     let config_service = account.get_config_service().clone();
 
-    let (user_id, server_id, _) = lookup_u8token(&config_service, &role_id).map_err(|e| {
+    let owner = lookup_role_owner(&config_service, &role_id).map_err(|e| {
         log_error!("resolve_gacha_avatar_map: lookup failed: {}", e);
         e.to_string()
     })?;
+    let (user_id, server_id) = (owner.user_id, owner.server_id);
 
     let saved = gacha_state
         .load_records_or_empty(&user_id, &server_id)
@@ -525,10 +567,11 @@ pub async fn get_gacha_record_stats(
     let account = account_state.lock().await;
     let config_service = account.get_config_service().clone();
 
-    let (user_id, server_id, _) = lookup_u8token(&config_service, &role_id).map_err(|e| {
+    let owner = lookup_role_owner(&config_service, &role_id).map_err(|e| {
         log_error!("get_gacha_record_stats: lookup failed: {}", e);
         e.to_string()
     })?;
+    let (user_id, server_id) = (owner.user_id, owner.server_id);
 
     let saved = gacha_state
         .load_records_or_empty(&user_id, &server_id)

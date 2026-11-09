@@ -6,8 +6,8 @@ use tauri::async_runtime;
 use tauri::{AppHandle, Emitter};
 
 use crate::models::account::{
-    AccountInfo, AccountLoginResult, AccountRefreshResult, AccountSummary, SklandAccountInfo,
-    SklandGameInfo, SklandUserInfo,
+    AccountInfo, AccountLoginResult, AccountRefreshResult, AccountSummary, RoleU8AuthResult,
+    SklandAccountInfo, SklandGameInfo, SklandUserInfo,
 };
 use crate::models::login::{
     CodeLoginRequest, LoginRequest, ScanLoginInfo, ScanStatus, SendCodeRequest,
@@ -16,6 +16,7 @@ use crate::models::role::RoleDisplayInfo;
 use crate::services::avatar_cache_service::AvatarCacheService;
 use crate::services::config_service::ConfigService;
 use crate::services::network_service::{NetworkService, PreloadRoleInfo};
+use crate::services::secret_registry::ROLE_U8TOKEN_PREFIX;
 use crate::services::skland_service::SklandService;
 use crate::utils::{capture, http_client, AppError};
 use crate::{log_debug, log_error, log_info, log_warn};
@@ -24,6 +25,16 @@ use crate::{log_debug, log_error, log_info, log_warn};
 const SKLAND_GAMES_CACHE_KEY: &str = "skland_games_cache";
 /// 森空岛游戏列表缓存有效期（12 小时）
 const SKLAND_GAMES_CACHE_TTL_SECS: i64 = 12 * 60 * 60;
+
+/// 某个角色的归属信息（换 u8token 需要渠道绑定 uid）
+struct RoleOwner {
+    user_id: String,
+    binding_uid: String,
+    #[allow(dead_code)]
+    channel_master_id: String,
+    #[allow(dead_code)]
+    server_id: String,
+}
 
 /// 当前 Unix 时间戳（秒）
 fn now_unix_secs() -> i64 {
@@ -48,11 +59,11 @@ impl AsyncAccountService {
         // 获取当前用户的配置
         let token_key = format!("account_token_{}", user_id);
 
-        let (token_data, cred, token, hytoken, u8token, device_token) = {
+        let (token_data, cred, token, hytoken, device_token) = {
             let config = self.config_service.lock().unwrap();
             let token_data: Option<serde_json::Value> = config.get(&token_key);
 
-            let (cred, token, hytoken, u8token, device_token) = match &token_data {
+            let (cred, token, hytoken, device_token) = match &token_data {
                 Some(data) => {
                     let cred = data
                         .get("cred")
@@ -66,20 +77,16 @@ impl AsyncAccountService {
                         .get("hytoken")
                         .and_then(|v| v.as_str())
                         .map(|s| s.to_string());
-                    let u8token = data
-                        .get("u8token")
-                        .and_then(|v| v.as_str())
-                        .map(|s| s.to_string());
                     let device_token = data
                         .get("device_token")
                         .and_then(|v| v.as_str())
                         .map(|s| s.to_string());
-                    (cred, token, hytoken, u8token, device_token)
+                    (cred, token, hytoken, device_token)
                 }
                 None => return Ok(None),
             };
 
-            (token_data, cred, token, hytoken, u8token, device_token)
+            (token_data, cred, token, hytoken, device_token)
         }; // MutexGuard 在这里被释放
 
         let cred = match cred {
@@ -100,48 +107,8 @@ impl AsyncAccountService {
                     "check_and_refresh_user_cred: Cred is VALID for user {}",
                     user_id
                 );
-
-                // 若 u8token 缺失，则补充获取（为升级前已存在的账号迁移）
-                if u8token.is_none() {
-                    if let (Some(hyt), Some(dev_tok)) = (&hytoken, &device_token) {
-                        log_info!(
-                            "check_and_refresh_user_cred: u8token MISSING for user {}, backfilling...",
-                            user_id
-                        );
-                        match self
-                            .skland_service
-                            .get_u8_token_by_hytoken(hyt, dev_tok)
-                            .await
-                        {
-                            Ok(u8t) => {
-                                log_debug!(
-                                    "check_and_refresh_user_cred: u8token backfill SUCCESS (len={})",
-                                    u8t.len()
-                                );
-                                let mut config = self.config_service.lock().unwrap();
-                                let mut updated_data = token_data.unwrap();
-                                if let Some(obj) = updated_data.as_object_mut() {
-                                    obj.insert("u8token".to_string(), json!(u8t));
-                                }
-                                config.set(token_key, updated_data)?;
-                                log_debug!(
-                                    "check_and_refresh_user_cred: u8token backfill saved to config"
-                                );
-                            }
-                            Err(e) => {
-                                log_warn!(
-                                    "check_and_refresh_user_cred: u8token backfill FAILED (non-fatal): {}",
-                                    e
-                                );
-                            }
-                        }
-                    } else {
-                        log_warn!(
-                            "check_and_refresh_user_cred: u8token missing, but hytoken/device_token not found, cannot backfill"
-                        );
-                    }
-                }
-
+                // 注意：这里不再回填 u8token。抽卡令牌按角色单独授权，
+                // 见 AccountService::authorize_role_u8token。
                 Ok(None)
             }
             Ok(false) => {
@@ -175,7 +142,7 @@ impl AsyncAccountService {
                     .refresh_cred_by_hytoken(&hytoken, device_token.as_deref())
                     .await
                 {
-                    Ok((new_cred, new_token, new_u8token, _)) => {
+                    Ok((new_cred, new_token, _)) => {
                         log_debug!("check_and_refresh_user_cred: refresh_cred_by_hytoken SUCCESS, new_cred_len={}, new_token_len={}", new_cred.len(), new_token.len());
                         // 更新配置中的 cred 和 token
                         let mut config = self.config_service.lock().unwrap();
@@ -183,12 +150,6 @@ impl AsyncAccountService {
                         if let Some(obj) = updated_data.as_object_mut() {
                             obj.insert("cred".to_string(), json!(new_cred));
                             obj.insert("token".to_string(), json!(new_token));
-                            if let Some(u8t) = new_u8token {
-                                obj.insert("u8token".to_string(), json!(u8t));
-                                log_debug!(
-                                    "check_and_refresh_user_cred: Updated u8token in config"
-                                );
-                            }
                             log_debug!(
                                 "check_and_refresh_user_cred: Updated cred and token in config"
                             );
@@ -242,19 +203,13 @@ impl AsyncAccountService {
                     .refresh_cred_by_hytoken(&hytoken, device_token.as_deref())
                     .await
                 {
-                    Ok((new_cred, new_token, new_u8token, _)) => {
+                    Ok((new_cred, new_token, _)) => {
                         log_debug!("check_and_refresh_user_cred: Refresh succeeded despite check_cred failure");
                         let mut config = self.config_service.lock().unwrap();
                         let mut updated_data = token_data.unwrap();
                         if let Some(obj) = updated_data.as_object_mut() {
                             obj.insert("cred".to_string(), json!(new_cred));
                             obj.insert("token".to_string(), json!(new_token));
-                            if let Some(u8t) = new_u8token {
-                                obj.insert("u8token".to_string(), json!(u8t));
-                                log_debug!(
-                                    "check_and_refresh_user_cred: Updated u8token in config"
-                                );
-                            }
                         }
                         config.set(token_key, updated_data)?;
 
@@ -280,15 +235,6 @@ impl AsyncAccountService {
             }
         }
     }
-}
-
-/// 当已获取 hytoken 但缺少 device token（新设备）时的处理策略
-enum MissingDeviceTokenPolicy {
-    /// 不发送验证码，仅返回 NEW_DEVICE_VERIFICATION_REQUIRED，
-    /// 由前端引导用户在验证码登录/扫码登录之间选择继续（密码登录）
-    RequireUserVerification,
-    /// 无短信验证码渠道，继续登录但不记录 u8token（验证码/扫码登录）
-    ContinueWithoutDeviceToken,
 }
 
 /// 账户服务
@@ -321,6 +267,12 @@ impl AccountService {
             let config = config_service.lock().unwrap();
             config.get("lazy_load_enabled").unwrap_or(true)
         };
+
+        // 旧版本把 u8token 存在账号级字段里（渠道写死官服），启动时迁移到
+        // 按角色存放的 role_u8token_* 下，避免「一个账号只能有一个渠道令牌」的粒度问题。
+        if let Err(error) = Self::migrate_legacy_u8token(&config_service) {
+            log_warn!("Failed to migrate legacy u8token: {}", error);
+        }
 
         Self {
             config_service,
@@ -669,97 +621,317 @@ impl AccountService {
         Ok(())
     }
 
-    /// 为指定用户设置 u8 token（在登录成功后调用）
-    pub async fn set_u8token_for_user(&self, user_id: &str, u8token: &str) -> Result<(), AppError> {
-        log_debug!(
-            "set_u8token_for_user: START for user_id={}, u8token_len={}",
-            user_id,
-            u8token.len()
-        );
+    /// 该角色是否已单独授权（`role_u8token_{roleId}.token` 存在且非空）
+    /// 按角色「授权」抽卡数据访问。
+    ///
+    /// **不再持久化 u8token**：令牌生命周期很短，每次同步现换即可（见
+    /// [`crate::services::skland_service::SklandService::get_u8_token_by_uid`]）。
+    /// 这里只做两件事：确认这个角色确实能换到令牌（即时验证一次），然后把
+    /// `roles[].u8Authorized` 记成 `true` —— 它只是一个开关，不含任何凭据。
+    ///
+    /// 官服与 B 服走同一条链路、同一个 hytoken，差异只在渠道绑定 uid，
+    /// 因此**不再需要设备令牌，也没有「渠道服不支持」这回事**。
+    pub async fn authorize_role_u8token(&self, role_id: &str) -> Result<RoleU8AuthResult, AppError> {
+        log_info!("authorize_role_u8token: START for role_id={}", role_id);
+
+        let owner = self.find_role_owner(role_id)?;
+        let user_id = owner.user_id;
+
+        match self.fetch_role_u8token(&user_id, &owner.binding_uid).await {
+            Ok(_) => {
+                self.set_role_u8_authorized(&user_id, role_id, true)?;
+                Ok(RoleU8AuthResult {
+                    status: "authorized".to_string(),
+                    message: None,
+                })
+            }
+            Err(error) => {
+                log_warn!(
+                    "authorize_role_u8token: failed for role {} (binding_uid len={}): {}",
+                    role_id,
+                    owner.binding_uid.len(),
+                    error
+                );
+                Ok(RoleU8AuthResult {
+                    status: "failed".to_string(),
+                    message: Some(error.to_string()),
+                })
+            }
+        }
+    }
+
+    /// 取消某个角色的抽卡数据授权（只翻转开关，无需删除任何凭据）
+    ///
+    /// ⚠️ 全程只持有一把锁：`std::sync::Mutex` 不可重入，之前「先 lock 读、再 lock 写」
+    /// 会让第二次 lock 永久阻塞（表现为点取消授权后整个后端卡死）。
+    pub fn revoke_role_u8token(&self, role_id: &str) -> bool {
         let mut config = self.config_service.lock().unwrap();
-        let token_key = format!("account_token_{}", user_id);
 
-        let mut token_data: serde_json::Value = config.get(&token_key).unwrap_or(json!({}));
-        log_debug!(
-            "set_u8token_for_user: Current token_data keys: {:?}",
-            token_data
-                .as_object()
-                .map(|obj| obj.keys().collect::<Vec<_>>())
-        );
+        let target = config
+            .get_all()
+            .into_iter()
+            .find_map(|(key, value)| {
+                let user_id = key.strip_prefix("account_token_")?.to_string();
+                value
+                    .get("roles")
+                    .and_then(|v| v.as_array())
+                    .is_some_and(|roles| {
+                        roles.iter().any(|role| {
+                            role.get("roleId").and_then(|v| v.as_str()) == Some(role_id)
+                        })
+                    })
+                    .then_some(user_id)
+            });
+        let Some(user_id) = target else {
+            return false;
+        };
 
-        if let Some(obj) = token_data.as_object_mut() {
-            obj.insert("u8token".to_string(), json!(u8token));
-            log_debug!("set_u8token_for_user: u8token inserted successfully");
-        } else {
-            log_error!("set_u8token_for_user: token_data is not an object!");
-            return Err(AppError::ConfigError {
-                message: "token_data is not a valid JSON object".to_string(),
+        let key = format!("account_token_{}", user_id);
+        let Some(mut data) = config.get::<serde_json::Value>(&key) else {
+            return false;
+        };
+
+        let mut changed = false;
+        if let Some(roles) = data.get_mut("roles").and_then(|v| v.as_array_mut()) {
+            for role in roles.iter_mut() {
+                if role.get("roleId").and_then(|v| v.as_str()) != Some(role_id) {
+                    continue;
+                }
+                if let Some(obj) = role.as_object_mut() {
+                    changed = obj.remove("u8Authorized").is_some();
+                }
+            }
+        }
+        if !changed {
+            return false;
+        }
+
+        if config.set(key, data).is_err() {
+            return false;
+        }
+        log_info!("revoke_role_u8token: role_id={} revoked", role_id);
+        true
+    }
+
+    /// 该角色是否已授权抽卡数据访问（纯开关，不代表持有令牌）
+    pub fn is_role_u8_authorized(&self, role_id: &str) -> bool {
+        let config = self.config_service.lock().unwrap();
+        config
+            .get_all()
+            .into_iter()
+            .filter(|(key, _)| key.starts_with("account_token_"))
+            .any(|(_, value)| {
+                value
+                    .get("roles")
+                    .and_then(|v| v.as_array())
+                    .is_some_and(|roles| {
+                        roles.iter().any(|role| {
+                            role.get("roleId").and_then(|v| v.as_str()) == Some(role_id)
+                                && role
+                                    .get("u8Authorized")
+                                    .and_then(|v| v.as_bool())
+                                    .unwrap_or(false)
+                        })
+                    })
+            })
+    }
+
+    /// 为某个角色现换一个 u8token（**不落盘**，交给调用方即时使用）。
+    ///
+    /// 抽卡同步前调用；调用方必须已通过 [`Self::is_role_u8_authorized`] 检查授权。
+    pub async fn fetch_role_u8token(&self, user_id: &str, binding_uid: &str) -> Result<String, AppError> {
+        if binding_uid.is_empty() {
+            return Err(AppError::AuthError {
+                message: "binding uid is unknown for this role; please re-bind the account".to_string(),
             });
         }
 
-        config.set(token_key, token_data)?;
-        log_debug!("set_u8token_for_user: Config saved successfully");
-        Ok(())
-    }
-
-    /// 主动刷新指定用户的 u8 token（每次同步前调用，避免旧 token 过期导致接口返回非 JSON）。
-    /// 成功时保存并返回新 u8 token；缺少 hytoken/device_token 或获取失败时返回 None（非致命，保留旧值）。
-    pub async fn refresh_u8token_for_user(
-        &self,
-        user_id: &str,
-    ) -> Result<Option<String>, AppError> {
-        log_info!("refresh_u8token_for_user: START for user_id={}", user_id);
-
-        let (hytoken, device_token) = {
+        let hytoken = {
             let config = self.config_service.lock().unwrap();
-            let token_key = format!("account_token_{}", user_id);
-            let value: Option<serde_json::Value> = config.get(&token_key);
-            let hytoken = value
+            let value: Option<serde_json::Value> =
+                config.get(&format!("account_token_{}", user_id));
+            value
                 .as_ref()
                 .and_then(|v| v.get("hytoken"))
                 .and_then(|v| v.as_str())
-                .map(|s| s.to_string())
-                .filter(|s| !s.is_empty());
-            let device_token = value
-                .as_ref()
-                .and_then(|v| v.get("device_token"))
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string())
-                .filter(|s| !s.is_empty());
-            (hytoken, device_token)
-        };
+                .map(str::to_string)
+                .filter(|s| !s.is_empty())
+        }
+        .ok_or_else(|| AppError::AuthError {
+            message: format!(
+                "hytoken not found for user {}, cannot fetch u8token. Please re-login.",
+                user_id
+            ),
+        })?;
 
-        let (hytoken, device_token) = match (hytoken, device_token) {
-            (Some(hyt), Some(dev_tok)) => (hyt, dev_tok),
-            _ => {
-                log_warn!(
-                    "refresh_u8token_for_user: hytoken/device_token MISSING for user {}, skip refresh",
-                    user_id
-                );
-                return Ok(None);
-            }
-        };
-
-        match self
-            .skland_service
-            .get_u8_token_by_hytoken(&hytoken, &device_token)
+        self.skland_service
+            .get_u8_token_by_uid(&hytoken, binding_uid)
             .await
-        {
-            Ok(u8t) => {
-                log_debug!(
-                    "refresh_u8token_for_user: u8token refresh SUCCESS (len={})",
-                    u8t.len()
-                );
-                self.set_u8token_for_user(user_id, &u8t).await?;
-                log_info!("refresh_u8token_for_user: SUCCESS for user_id={}", user_id);
-                Ok(Some(u8t))
+    }
+
+    /// 把 `roles[].u8Authorized` 设为指定值并落盘
+    fn set_role_u8_authorized(
+        &self,
+        user_id: &str,
+        role_id: &str,
+        authorized: bool,
+    ) -> Result<(), AppError> {
+        let mut config = self.config_service.lock().unwrap();
+        let key = format!("account_token_{}", user_id);
+        let mut data: serde_json::Value = config.get(&key).unwrap_or_else(|| json!({}));
+        let Some(roles) = data.get_mut("roles").and_then(|v| v.as_array_mut()) else {
+            return Err(AppError::ConfigError {
+                message: format!("roles not found for user {}", user_id),
+            });
+        };
+        let mut found = false;
+        for role in roles.iter_mut() {
+            if role.get("roleId").and_then(|v| v.as_str()) == Some(role_id) {
+                if let Some(obj) = role.as_object_mut() {
+                    obj.insert("u8Authorized".to_string(), json!(authorized));
+                    found = true;
+                }
             }
-            Err(e) => {
-                log_warn!(
-                    "refresh_u8token_for_user: u8token refresh FAILED (non-fatal): {}",
-                    e
-                );
-                Ok(None)
+        }
+        if !found {
+            return Err(AppError::ConfigError {
+                message: format!("role {} not found for user {}", role_id, user_id),
+            });
+        }
+        config.set(key, data)
+    }
+
+    /// 按 roleId 找到它所属的账号、渠道绑定 uid 与渠道信息
+    fn find_role_owner(&self, role_id: &str) -> Result<RoleOwner, AppError> {
+        let config = self.config_service.lock().unwrap();
+        for (key, value) in config.get_all() {
+            if !key.starts_with("account_token_") {
+                continue;
+            }
+            let Some(roles) = value.get("roles").and_then(|v| v.as_array()) else {
+                continue;
+            };
+            for role in roles {
+                if role.get("roleId").and_then(|v| v.as_str()) != Some(role_id) {
+                    continue;
+                }
+                let read = |field: &str| {
+                    role.get(field)
+                        .and_then(|v| v.as_str())
+                        .unwrap_or_default()
+                        .to_string()
+                };
+                return Ok(RoleOwner {
+                    user_id: key.trim_start_matches("account_token_").to_string(),
+                    binding_uid: read("bindingUid"),
+                    channel_master_id: read("channelMasterId"),
+                    server_id: read("serverId"),
+                });
+            }
+        }
+
+        Err(AppError::AuthError {
+            message: format!("No account found for roleId: {}. Please re-login.", role_id),
+        })
+    }
+
+    /// 清理历史遗留的抽卡令牌。
+    ///
+    /// 旧版本曾把令牌存在 `account_token_*.u8token`（账号级）与 `role_u8token_*`（按角色），
+    /// 现在两个都不再用：令牌不落盘，授权只是 `roles[].u8Authorized` 开关。
+    /// 这里把遗留字段与凭据库条目一并删除，避免旧令牌继续躺在凭据库里。
+    fn migrate_legacy_u8token(
+        config_service: &Arc<Mutex<ConfigService>>,
+    ) -> Result<(), AppError> {
+        let mut config = config_service.lock().unwrap();
+
+        // 1) 按角色存放的旧令牌：直接删键（ConfigService::remove 会清理凭据库）
+        let legacy_role_keys: Vec<String> = config
+            .get_all()
+            .keys()
+            .filter(|k| k.starts_with(ROLE_U8TOKEN_PREFIX))
+            .cloned()
+            .collect();
+        for key in legacy_role_keys {
+            config.remove(&key);
+            log_info!("migrate_legacy_u8token: removed legacy role token key {}", key);
+        }
+
+        // 2) 账号级的旧 u8token 字段
+        let account_keys: Vec<String> = config
+            .get_all()
+            .keys()
+            .filter(|k| k.starts_with("account_token_"))
+            .cloned()
+            .collect();
+        for key in account_keys {
+            let Some(mut value) = config.get::<serde_json::Value>(&key) else {
+                continue;
+            };
+            if value.get("u8token").is_none() {
+                continue;
+            }
+            if let Some(object) = value.as_object_mut() {
+                object.remove("u8token");
+            }
+            config.set(key.clone(), value)?;
+            config.remove_secret_field(&key, "u8token");
+            log_info!(
+                "migrate_legacy_u8token: removed legacy account-level u8token for {}",
+                key
+            );
+        }
+
+        Ok(())
+    }
+
+    /// 把渠道绑定 uid 回填到 `roles[]`（老数据没有这个字段时的懒迁移）。
+    ///
+    /// 没有 `bindingUid` 就无法为角色换 u8token，所以每次拿到 binding 列表时顺手补上。
+    fn backfill_binding_uid(
+        &self,
+        user_id: &str,
+        bindings: &[(String, String, String, String, String)],
+    ) {
+        let mut config = self.config_service.lock().unwrap();
+        let key = format!("account_token_{}", user_id);
+        let Some(mut data) = config.get::<serde_json::Value>(&key) else {
+            return;
+        };
+        let Some(roles) = data.get_mut("roles").and_then(|v| v.as_array_mut()) else {
+            return;
+        };
+
+        let mut changed = false;
+        for role in roles.iter_mut() {
+            let Some(role_id) = role.get("roleId").and_then(|v| v.as_str()) else {
+                continue;
+            };
+            let needs_backfill = role
+                .get("bindingUid")
+                .and_then(|v| v.as_str())
+                .is_none_or(|s| s.is_empty());
+            if !needs_backfill {
+                continue;
+            }
+            // 同一 roleId 可能出现在多个渠道？实际上 roleId 在国服唯一，直接按 roleId 匹配
+            if let Some((uid, channel_id, channel_name, _, _)) =
+                bindings.iter().find(|(_, _, _, _, rid)| rid == role_id)
+            {
+                if let Some(obj) = role.as_object_mut() {
+                    obj.insert("bindingUid".to_string(), json!(uid));
+                    obj.insert("channelMasterId".to_string(), json!(channel_id));
+                    obj.insert("channelName".to_string(), json!(channel_name));
+                    changed = true;
+                }
+            }
+        }
+
+        if changed {
+            if let Err(error) = config.set(key, data) {
+                log_warn!("backfill_binding_uid: failed to save: {}", error);
+            } else {
+                log_info!("backfill_binding_uid: backfilled for user {}", user_id);
             }
         }
     }
@@ -1276,7 +1448,7 @@ impl AccountService {
                                     .refresh_cred_by_hytoken(&hyt, device_token.as_deref())
                                     .await
                                 {
-                                    Ok((new_cred, new_token, new_u8token, _)) => {
+                                    Ok((new_cred, new_token, _)) => {
                                         log_debug!("get_accounts: Auto-refresh succeeded, retrying get_role_detail...");
 
                                         // 更新配置中的 cred 和 token
@@ -1287,9 +1459,6 @@ impl AccountService {
                                             if let Some(obj) = token_data.as_object_mut() {
                                                 obj.insert("cred".to_string(), json!(new_cred));
                                                 obj.insert("token".to_string(), json!(new_token));
-                                                if let Some(u8t) = new_u8token {
-                                                    obj.insert("u8token".to_string(), json!(u8t));
-                                                }
                                             }
                                             let _ = config.set(hytoken_key, token_data);
                                         }
@@ -1426,10 +1595,13 @@ impl AccountService {
 
     /// 添加账户（密码登录）
     ///
-    /// 密码登录无法直接拿到 device token（新设备）时：
-    /// 先用 hytoken 访问森空岛 API 换取 userId，再用 userId 在本地匹配已保存的
-    /// device token。命中则直接登录；未命中则返回 NEW_DEVICE_VERIFICATION_REQUIRED，
-    /// 由前端引导用户改用验证码登录或扫码登录完成身份验证。
+    /// 密码登录成功后拿到 hytoken，交给 [`Self::complete_login_from_token`] 换取
+    /// 森空岛 cred/token。**不再因为缺少 device token 而中断登录**：拿不到设备令牌
+    /// 也照样完成绑定，只是该账号暂时无法获取 u8token（改由用户按角色单独授权）。
+    ///
+    /// 例外：密码接口自身拒绝新设备（错误文案命中 [`Self::is_new_device_verification_error`]）
+    /// 时根本没有 hytoken 可用，只能返回 `NEW_DEVICE_VERIFICATION_REQUIRED`，
+    /// 由前端引导用户改用验证码或扫码登录。
     pub async fn add_account(
         &self,
         login_request: LoginRequest,
@@ -1474,11 +1646,12 @@ impl AccountService {
         };
 
         // 后续流程（hytoken → skland code/cred → 用 userId 本地匹配 device token →
-        // 保存凭证 → 获取角色列表）在 complete_login_from_token 中统一处理
+        // 保存凭证）在 complete_login_from_token 中统一处理。
+        // 密码登录拿不到 deviceToken 时也照样完成绑定（不再强制改用验证码/扫码），
+        // u8token 留给绑定后的「按角色授权」步骤。
         self.complete_login_from_token(
             hy_token,
             device_token,
-            MissingDeviceTokenPolicy::RequireUserVerification,
             login_request.expected_user_id,
             Some(login_request.phone.clone()),
         )
@@ -1545,12 +1718,92 @@ impl AccountService {
             self.clear_account_cache(&user_id);
         }
 
+        // 角色已解绑，它的抽卡授权随之失效（授权是角色上的开关，随角色一起消失）
+        log_info!(
+            "logout_account: role {} unbound, its gacha authorization is gone with it",
+            account_id
+        );
+
         // 更新 account_list（如果需要的话）
         let mut account_list: Vec<String> = config.get("account_list").unwrap_or_default();
         account_list.retain(|id| id != &account_id);
         let _ = config.set("account_list".to_string(), json!(account_list));
 
         true
+    }
+
+    /// 彻底删除一个森空岛账户（父账户 + 全部角色绑定 + 全部凭据）
+    ///
+    /// 与 [`Self::logout_account`] 的区别：后者只解绑**单个角色**、保留父账户与凭据；
+    /// 这里是账号级删除 —— 删掉 `account_token_{user_id}` 整条配置（`ConfigService::remove`
+    /// 会连带清理该键在凭据库里的 cred/token/hytoken/device_token/phone 条目），
+    /// 从 `account_list` 移除它的所有角色，清掉内存缓存，并在必要时改选当前账户。
+    ///
+    /// **不联网**：删除是本机操作，不会去鹰角/森空岛注销任何东西。
+    pub fn delete_skland_account(&self, user_id: &str) -> Result<bool, AppError> {
+        let mut config = self.config_service.lock().unwrap();
+        let token_key = format!("account_token_{}", user_id);
+
+        let Some(value) = config.get::<serde_json::Value>(&token_key) else {
+            log_warn!("delete_skland_account: {} not found", token_key);
+            return Ok(false);
+        };
+
+        // 收集该账号下所有 roleId，稍后从 account_list 里一并移除
+        let role_ids: Vec<String> = value
+            .get("roles")
+            .and_then(|v| v.as_array())
+            .map(|roles| {
+                roles
+                    .iter()
+                    .filter_map(|role| {
+                        role.get("roleId")
+                            .and_then(|v| v.as_str())
+                            .map(str::to_string)
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        // remove 会连带清理凭据库里该键的全部机密字段
+        config.remove(&token_key);
+
+        if !role_ids.is_empty() {
+            let mut account_list: Vec<String> = config.get("account_list").unwrap_or_default();
+            account_list.retain(|id| !role_ids.contains(id));
+            config.set("account_list".to_string(), json!(account_list))?;
+        }
+
+        // 当前选中的角色若属于这个账号，改选剩余的任意一个（没有就清空）
+        let selected: Option<String> = config.get("selected_account_id");
+        if selected
+            .as_deref()
+            .is_some_and(|id| role_ids.iter().any(|rid| rid == id))
+        {
+            let account_list: Vec<String> = config.get("account_list").unwrap_or_default();
+            match account_list.first() {
+                Some(next) => {
+                    config.set("selected_account_id".to_string(), json!(next))?;
+                    log_info!(
+                        "delete_skland_account: selected account moved from deleted to {}",
+                        next
+                    );
+                }
+                None => {
+                    config.set("selected_account_id".to_string(), json!(""))?;
+                }
+            }
+        }
+
+        drop(config);
+        self.clear_account_cache(user_id);
+
+        log_info!(
+            "delete_skland_account: user {} deleted ({} role(s) unbound, credentials cleared)",
+            user_id,
+            role_ids.len()
+        );
+        Ok(true)
     }
 
     /// 批量登出账户
@@ -1761,7 +2014,7 @@ impl AccountService {
                                     .refresh_cred_by_hytoken(&hyt, device_token.as_deref())
                                     .await
                                 {
-                                    Ok((new_cred, new_token, new_u8token, _)) => {
+                                    Ok((new_cred, new_token, _)) => {
                                         log_debug!("refresh_accounts: Auto-refresh succeeded, retrying get_role_detail...");
 
                                         // 更新配置中的 cred 和 token
@@ -1772,9 +2025,6 @@ impl AccountService {
                                             if let Some(obj) = token_data.as_object_mut() {
                                                 obj.insert("cred".to_string(), json!(new_cred));
                                                 obj.insert("token".to_string(), json!(new_token));
-                                                if let Some(u8t) = new_u8token {
-                                                    obj.insert("u8token".to_string(), json!(u8t));
-                                                }
                                             }
                                             let _ = config.set(hytoken_key, token_data);
                                         }
@@ -2016,12 +2266,12 @@ impl AccountService {
         };
 
         // 后续流程（hytoken → skland code/cred → 用 userId 本地匹配 device token →
-        // 保存凭证 → 获取角色列表）在 complete_login_from_token 中统一处理。
-        // 验证码登录无短信验证码渠道，缺少 device token 时继续登录但不记录 u8token
+        // 保存凭证）在 complete_login_from_token 中统一处理。
+        // 验证码登录通常会下发 deviceToken —— 有了它，官服角色就能「直接获取」u8token，
+        // 不需要再单独登录一次。
         self.complete_login_from_token(
             hy_token,
             device_token,
-            MissingDeviceTokenPolicy::ContinueWithoutDeviceToken,
             login_request.expected_user_id,
             Some(login_request.phone.clone()),
         )
@@ -2267,7 +2517,7 @@ impl AccountService {
         };
 
         // 服务器未返回 deviceToken 时，后续在 complete_login_from_token 中
-        // 用 userId 在本地匹配；扫码登录无法发送验证码，继续登录但不记录 u8token
+        // 用 userId 在本地匹配；扫码登录没有手机号可记录
         let device_token = if device_token.is_empty() {
             None
         } else {
@@ -2275,27 +2525,24 @@ impl AccountService {
         };
 
         // 扫码没有手机号可记录；expected_user_id 用于重新登录时的账户身份校验
-        self.complete_login_from_token(
-            hy_token,
-            device_token,
-            MissingDeviceTokenPolicy::ContinueWithoutDeviceToken,
-            expected_user_id,
-            None,
-        )
-        .await
+        self.complete_login_from_token(hy_token, device_token, expected_user_id, None)
+            .await
     }
 
-    /// 登录获取 token 后的公共流程（获取 skland code/cred、保存 token、获取角色列表）
+    /// 登录获取 token 后的公共流程（获取 skland code/cred、保存 token）
     ///
     /// `expected_user_id`/`phone` 仅用于「账户不可用后的重新登录」：扫码或验证码/
     /// 密码登录都不再要求用户先输入手机号，授权成功后在这里校验登录结果是否就是
     /// 目标森空岛账户，不是则整单拦截（不保存任何凭证）。校验通过时把手机号记到
     /// `account_token_{user_id}.phone`，供下次短信/密码重登自动填充。
+    ///
+    /// **不再强制新设备验证、也不再获取 u8token**：拿不到 deviceToken 时照样完成绑定
+    /// （cred/token/hytoken 都能用，签到与角色数据不受影响）；u8token 改由用户在
+    /// 绑定后的「按角色授权」页面显式获取（见 [`Self::authorize_role_u8token`]）。
     async fn complete_login_from_token(
         &self,
         hy_token: String,
         device_token: Option<String>,
-        missing_policy: MissingDeviceTokenPolicy,
         expected_user_id: Option<String>,
         phone: Option<String>,
     ) -> Result<AccountLoginResult, AppError> {
@@ -2366,34 +2613,12 @@ impl AccountService {
             }
         }
 
-        // 仍无 device token → 按策略处理
-        let device_token = match device_token {
-            Some(d) => Some(d),
-            None => match missing_policy {
-                MissingDeviceTokenPolicy::RequireUserVerification => {
-                    log_warn!(
-                        "complete_login_from_token: No device_token for user {} (new device), requiring user verification",
-                        user_id
-                    );
-                    return Ok(AccountLoginResult {
-                        success: false,
-                        error_message: Some("NEW_DEVICE_VERIFICATION_REQUIRED".to_string()),
-                        account: None,
-                        available_roles: None,
-                        cred: None,
-                        token: None,
-                        user_id: None,
-                    });
-                }
-                MissingDeviceTokenPolicy::ContinueWithoutDeviceToken => {
-                    log_warn!(
-                        "complete_login_from_token: No device_token for user {} from server or local cache, u8 token will be unavailable",
-                        user_id
-                    );
-                    None
-                }
-            },
-        };
+        if device_token.is_none() {
+            log_warn!(
+                "complete_login_from_token: No device_token for user {} (new device); binding continues without it, u8token stays unauthorized until the user authorizes a role",
+                user_id
+            );
+        }
 
         // 保存 hytoken（与 cred 同级存储）
         log_debug!("About to save hytoken for user_id={}", user_id);
@@ -2411,7 +2636,8 @@ impl AccountService {
             }
         }
 
-        // 保存 device token（与 cred 同级存储，失败不阻断登录）
+        // 保存 device token（与 cred 同级存储，失败不阻断登录）。
+        // 它决定该账号的官服角色能否「直接获取」u8token，而不需要再单独登录一次。
         if let Some(dev_tok) = &device_token {
             log_debug!("About to save device_token for user_id={}", user_id);
             if let Err(e) = self.set_device_token_for_user(&user_id, dev_tok).await {
@@ -2419,37 +2645,6 @@ impl AccountService {
                 log_error!("Failed to save device_token: {}", e);
             } else {
                 log_debug!("device_token saved successfully");
-            }
-        }
-
-        // 保存 u8 token（与 cred 同级存储，失败不阻断登录）
-        log_debug!("About to fetch u8 token for user_id={}", user_id);
-        match device_token.as_deref() {
-            Some(dev_tok) => {
-                match self
-                    .skland_service
-                    .get_u8_token_by_hytoken(&hy_token, dev_tok)
-                    .await
-                {
-                    Ok(u8_token) => {
-                        log_debug!("u8 token fetched (len={})", u8_token.len());
-                        if let Err(e) = self.set_u8token_for_user(&user_id, &u8_token).await {
-                            tracing::warn!("Failed to save u8token for user {}: {}", user_id, e);
-                            log_error!("Failed to save u8token: {}", e);
-                        } else {
-                            log_debug!("u8token saved successfully");
-                        }
-                    }
-                    Err(e) => {
-                        log_warn!("Failed to fetch u8 token for user {}: {}", user_id, e);
-                    }
-                }
-            }
-            None => {
-                log_warn!(
-                    "No device_token, skipping u8 token fetch for user {}",
-                    user_id
-                );
             }
         }
 
@@ -2474,9 +2669,16 @@ impl AccountService {
     ) -> Result<Vec<RoleDisplayInfo>, AppError> {
         let bindings = self.skland_service.get_player_binding(cred, token).await?;
         let game_roles = SklandService::extract_endfield_roles(&bindings);
+
+        // 老账号的 roles[] 没有渠道 uid，拿到 binding 列表时顺手回填
+        self.backfill_binding_uid(user_id, &game_roles);
+
         let mut roles = Vec::new();
 
-        for (_game_uid, server_id, role_id) in game_roles {
+        for (binding_uid, channel_master_id, channel_name, server_id, role_id) in game_roles {
+            // 授权状态存在 account_token_*.roles[].u8Authorized，不在 binding 里，
+            // 必须在这里回填 —— 否则前端拿到的永远是「未授权」。
+            let u8_authorized = self.is_role_u8_authorized(&role_id);
             match self
                 .skland_service
                 .get_role_detail(cred, token, &role_id, &server_id, user_id)
@@ -2490,12 +2692,16 @@ impl AccountService {
                         .await
                         .unwrap_or_else(|_| base.avatar_url.clone());
                     roles.push(RoleDisplayInfo {
-                        role_id,
+                        role_id: role_id.clone(),
                         user_id: user_id.to_string(),
                         server_id,
                         nickname: base.name.clone(),
                         level: base.level,
                         avatar_url,
+                        binding_uid,
+                        channel_master_id,
+                        channel_name,
+                        u8_authorized,
                     });
                 }
                 Err(error) => {
@@ -2766,16 +2972,12 @@ impl AccountService {
             // 保存或更新 account_token_{user_id}
             let token_key = format!("account_token_{}", user_id);
 
-            // 先读取现有配置，保留 hytoken、u8token 和 device_token（如果存在）
+            // 先读取现有配置，保留 hytoken、device_token、phone 与已缓存的 user_info
+            // （后两者以前会被重建覆盖掉：重新登录不再自动填手机号、账号卡的昵称头像消失）
             let existing_data: Option<serde_json::Value> = config.get(&token_key);
             let hytoken = existing_data
                 .as_ref()
                 .and_then(|d| d.get("hytoken"))
-                .and_then(|h| h.as_str())
-                .map(|s| s.to_string());
-            let u8token = existing_data
-                .as_ref()
-                .and_then(|d| d.get("u8token"))
                 .and_then(|h| h.as_str())
                 .map(|s| s.to_string());
             let device_token = existing_data
@@ -2783,6 +2985,15 @@ impl AccountService {
                 .and_then(|d| d.get("device_token"))
                 .and_then(|h| h.as_str())
                 .map(|s| s.to_string());
+            let phone = existing_data
+                .as_ref()
+                .and_then(|d| d.get("phone"))
+                .and_then(|p| p.as_str())
+                .map(|s| s.to_string());
+            let user_info = existing_data
+                .as_ref()
+                .and_then(|d| d.get("user_info"))
+                .cloned();
             let existing_role_ids: Vec<String> = existing_data
                 .as_ref()
                 .and_then(|data| data.get("roles"))
@@ -2804,15 +3015,11 @@ impl AccountService {
                 hytoken.is_some()
             );
             log_debug!(
-                "save_selected_roles: Existing u8token exists: {}",
-                u8token.is_some()
-            );
-            log_debug!(
                 "save_selected_roles: Existing device_token exists: {}",
                 device_token.is_some()
             );
 
-            // 构建 roles 列表
+            // 构建 roles 列表（渠道 uid 是换抽卡令牌的必需信息，务必落盘）
             let roles: Vec<serde_json::Value> = selected_roles
                 .iter()
                 .map(|role| {
@@ -2820,7 +3027,10 @@ impl AccountService {
                         "userId": role.user_id,
                         "serverId": role.server_id,
                         "roleId": role.role_id,
-                        "app": "endfield"
+                        "app": "endfield",
+                        "bindingUid": role.binding_uid,
+                        "channelMasterId": role.channel_master_id,
+                        "channelName": role.channel_name,
                     })
                 })
                 .collect();
@@ -2835,18 +3045,24 @@ impl AccountService {
                 token_data_obj.insert("hytoken".to_string(), json!(hyt));
                 log_debug!("save_selected_roles: Preserved hytoken in config");
             }
-            if let Some(u8t) = u8token {
-                token_data_obj.insert("u8token".to_string(), json!(u8t));
-                log_debug!("save_selected_roles: Preserved u8token in config");
-            }
             if let Some(dev_tok) = device_token {
                 token_data_obj.insert("device_token".to_string(), json!(dev_tok));
                 log_debug!("save_selected_roles: Preserved device_token in config");
+            }
+            if let Some(phone) = phone {
+                token_data_obj.insert("phone".to_string(), json!(phone));
+                log_debug!("save_selected_roles: Preserved phone in config");
+            }
+            if let Some(user_info) = user_info {
+                token_data_obj.insert("user_info".to_string(), user_info);
+                log_debug!("save_selected_roles: Preserved cached user_info in config");
             }
             let token_data = serde_json::Value::Object(token_data_obj);
 
             config.set(token_key, token_data)?;
             log_debug!("save_selected_roles: Config saved successfully");
+
+            // 解绑掉的角色的抽卡授权随 roles[] 一起消失，无需额外清理（令牌本就不落盘）
 
             // 更新 account_list
             let mut account_list: Vec<String> = config.get("account_list").unwrap_or_default();
