@@ -2,13 +2,19 @@
 
 > 逐行精读源码生成。行号基于当前工作区版本，仅用于快速定位。
 
-**文件职责**：`src-tauri/src/services/account_service.rs`（3096 行 / 131402 字节）是账户与状态中枢，集中管理「Hypergryph 登录（密码/验证码/扫码）→ 森空岛 cred/token → 角色列表与角色详情」的完整链路，并承担凭据持久化、双版本账户缓存（完整版/精简版）、懒加载开关、自动签到定时任务与前端事件通知。
+**文件职责**：`src-tauri/src/services/account_service.rs`（约 3320 行）是账户与状态中枢，集中管理「Hypergryph 登录（密码/验证码/扫码）→ 森空岛 cred/token → 角色列表与角色详情」的完整链路，并承担凭据持久化、双版本账户缓存（完整版/精简版）、懒加载开关、**按角色授权 u8token**、自动签到定时任务与前端事件通知。
+
+> **u8token 粒度与来源（2026-11 二次改版）**：u8token（抽卡令牌）**完全不持久化**，每次同步现换。授权只是 `roles[].u8Authorized` 一个布尔开关，不含任何凭据。
+>
+> 换取走鹰角通行证链路：`hytoken` →（grant `type:1`, appCode `be36d44aa36bfb5b`）→ L2 →（`u8_token_by_uid {uid}`）→ u8token。**官服与 B 服同一条链、同一个 hytoken，差异只在渠道绑定 uid**，换出的两把 token 互不通用 —— 因此 `roles[]` 必须保存 `bindingUid`，否则无法为角色换令牌。
+>
+> 旧的两条路线都已删除：① 账号级 `account_token_*.u8token`（渠道写死官服）；② `role_u8token_{roleId}`（按角色持久化令牌，但仍走 `channelMasterId=1` 的旧链）。启动时 `migrate_legacy_u8token` 会把它们的遗留字段与凭据库条目一并清掉。
 
 **状态注册方式**：`lib.rs:199` 调用 `AccountService::new(config_service, skland_service, avatar_cache_service, network_service, app.handle().clone())`；`lib.rs:206` 包装为 `Arc::new(Mutex::new(account_service))`（其中 `Mutex` 为 `tokio::sync::Mutex`，见 `lib.rs:3`），`lib.rs:207` 执行 `app.manage(managed_service)`。因此所有 command 以 `State<'_, Arc<Mutex<AccountService>>>` 注入并在 `.lock().await` 后调用；`lib.rs:215` 另把克隆传给 `AccountService::start_auto_refresh` 启动后台定时器。注意：服务内部持有的 `config_service` 是 `std::sync::Mutex<ConfigService>`（`lib.rs:151`），与外层 tokio Mutex 不同。
 
 **主要依赖**：
-- services：`ConfigService`（配置读写，`account_token_*` 等键）、`SklandService`（`check_cred` / `refresh_cred_by_hytoken` / `get_u8_token_by_hytoken` / `get_role_detail` / `get_player_binding` / `extract_endfield_roles` / `get_user_info` / `get_game_list` / `call_skland_api`）、`AvatarCacheService`（`get_or_download_avatar` 下载头像转 base64）、`NetworkService`（`char_detail_service().get_with_cache`、`set_current_role_id`、`retain_only_char_detail`、`preload_all_char_details`、`query_role_data`、`get_current_role_id`）。
-- models：`account::{AccountInfo, AccountLoginResult, AccountRefreshResult, AccountSummary, SklandAccountInfo, SklandGameInfo, SklandUserInfo}`、`login::{CodeLoginRequest, LoginRequest, ScanLoginInfo, ScanStatus, SendCodeRequest}`、`role::RoleDisplayInfo`。
+- services：`ConfigService`（配置读写，`account_token_*` 等键）、`SklandService`（`check_cred` / `refresh_cred_by_hytoken` / `get_u8_token_by_uid` / `get_role_detail` / `get_player_binding` / `extract_endfield_roles` / `get_user_info` / `get_game_list` / `call_skland_api`）、`AvatarCacheService`（`get_or_download_avatar` 下载头像转 base64）、`NetworkService`（`char_detail_service().get_with_cache`、`set_current_role_id`、`retain_only_char_detail`、`preload_all_char_details`、`query_role_data`、`get_current_role_id`）。
+- models：`account::{AccountInfo, AccountLoginResult, AccountRefreshResult, AccountSummary, RoleU8AuthResult, SklandAccountInfo, SklandGameInfo, SklandUserInfo}`、`login::{CodeLoginRequest, LoginRequest, ScanLoginInfo, ScanStatus, SendCodeRequest}`、`role::RoleDisplayInfo`。
 - utils：`http_client::create_client`、`capture::send`（HTTP 请求 + 抓包日志）、`AppError`；日志宏 `log_debug! / log_info! / log_warn! / log_error!` 与 `tracing`。
 - 外部 crate：`serde_json`、`chrono`（刷新时间戳）、`tauri::{AppHandle, Emitter, async_runtime}`、`tokio`。
 
@@ -18,20 +24,22 @@
 | --- | --- |
 | 1-21 行 | `use` 导入（models / services / utils / 日志宏 / tauri） |
 | 24-26 行 | 常量 `SKLAND_GAMES_CACHE_KEY = "skland_games_cache"`、`SKLAND_GAMES_CACHE_TTL_SECS = 12*60*60` |
-| 28-34 行 | 自由函数 `now_unix_secs()`（当前 Unix 秒） |
-| 36-41 行 | `struct AsyncAccountService`：供 async spawn 使用的精简克隆（仅 2 个服务引用） |
-| 43-284 行 | `AsyncAccountService::check_and_refresh_user_cred`：cred 校验、过期刷新、u8token 回填 |
-| 286-293 行 | `enum MissingDeviceTokenPolicy`：新设备缺 device token 的两种处理策略 |
-| 295-309 行 | `pub struct AccountService` 结构体与 8 个字段 |
-| 311-336 行 | `new` 构造函数（读取 `lazy_load_enabled`，默认 true） |
+| 24-46 行 | 常量与 `RoleOwner` 结构体（`user_id` / `binding_uid` / `channel_master_id` / `server_id`） |
+| 43-48 行 | 自由函数 `now_unix_secs()`（当前 Unix 秒） |
+| 50-55 行 | `struct AsyncAccountService`：供 async spawn 使用的精简克隆（仅 2 个服务引用） |
+| 57-297 行 | `AsyncAccountService::check_and_refresh_user_cred`：cred 校验、过期刷新（**不再顺带取 u8token**） |
+| 310-323 行 | `pub struct AccountService` 结构体与 8 个字段 |
+| 325-360 行 | `new` 构造函数（读取 `lazy_load_enabled`，默认 true；调用 `migrate_legacy_u8token`） |
 | 338-351 行 | 3 个服务访问器：`get_config_service` / `skland_service` / `avatar_cache_service` |
 | 353-481 行 | `set_lazy_load_enabled`：懒加载开关切换 + 双缓存互转 + 角色详情预载/裁剪 |
 | 483-494 行 | `is_lazy_load_enabled`、`set_current_role_id` |
 | 496-557 行 | 账户缓存读写：`cache_account_list` / `cache_account_summary` / `get_cached_accounts` / `clear_account_cache` |
 | 559-600 行 | `gather_preload_role_infos`：遍历 `account_token_*` 收集预加载所需角色+凭据 |
 | 602-617 行 | `clone_for_async` 与对外的 `check_and_refresh_user_cred`（转发） |
-| 619-685 行 | `set_hytoken_for_user`、`set_u8token_for_user`（凭据字段写入） |
-| 686-746 行 | `refresh_u8token_for_user`：同步前主动刷新 u8token |
+| 32-341 行 | 各服务访问器、懒加载开关与双缓存、`gather_preload_role_infos`、`clone_for_async`、`check_and_refresh_user_cred` |
+| 342-630 行 | 凭据字段写入器：`set_hytoken_for_user`、`set_phone_for_user`、`set_device_token_for_user`、`get_local_device_token`、`notify_cache_refreshed`、`cache_accounts_by_user` |
+| 632-940 行 | **抽卡授权**：`authorize_role_u8token`、`revoke_role_u8token`、`is_role_u8_authorized`、`fetch_role_u8token`、`set_role_u8_authorized`、`find_role_owner`、`migrate_legacy_u8token`、`backfill_binding_uid` |
+| 约 1663-1810 行 | 账号移除：`logout_account`（解绑单角色）、`delete_skland_account`（删整账号）、`batch_logout` |
 | 747-781 行 | `get_local_device_token`（私有）、`set_device_token_for_user` |
 | 783-817 行 | `notify_cache_refreshed`（emit `accounts-refreshed`）、`cache_accounts_by_user` |
 | 819-973 行 | 自动签到三件套：`get_auto_sign_roles` / `check_attendance_today` / `do_attendance_for_role` |
@@ -76,7 +84,7 @@
 | `config_service` | `Arc<Mutex<ConfigService>>` | 与主服务共享的配置服务 |
 | `skland_service` | `Arc<SklandService>` | cred 校验/刷新所需 |
 
-`MissingDeviceTokenPolicy`（286-293 行，私有枚举）：`RequireUserVerification`（密码登录专用：不发验证码，仅返回 `NEW_DEVICE_VERIFICATION_REQUIRED` 由前端引导换验证码/扫码）、`ContinueWithoutDeviceToken`（验证码/扫码专用：继续登录但不记录 u8token）。
+`MissingDeviceTokenPolicy`（286-293 行，私有枚举）：已删除。绑定流程不再因为缺 device token 中断，只有「密码接口自身拒绝新设备」会返回 `NEW_DEVICE_VERIFICATION_REQUIRED`（此时还没拿到 hytoken，无法继续）。
 
 ## 方法清单（必须完整）
 
@@ -85,7 +93,7 @@
 | 方法 | 位置 | 说明（输入 → 做什么 → 输出；调用的外部 API/命令） |
 | --- | --- | --- |
 | `now_unix_secs()`（私有自由函数） | 29 | 无输入 → 取当前 Unix 秒（失败返回 0）→ `i64` |
-| `AsyncAccountService::check_and_refresh_user_cred`（私有） | 44 | `user_id` → 读 `account_token_{user_id}` 取 cred/token/hytoken/u8token/device_token；`SklandService::check_cred` 有效则（u8token 缺失时）调 `get_u8_token_by_hytoken` 回填并返回 `Ok(None)`；失效或 `check_cred` 调用失败则调 `refresh_cred_by_hytoken` 换新 cred/token/u8token 写回配置 → `Ok(Some((cred, token)))`；缺 hytoken → `AppError::AuthError` |
+| `AsyncAccountService::check_and_refresh_user_cred`（私有） | 45 | `user_id` → 读 `account_token_{user_id}` 取 cred/token/hytoken/device_token；`SklandService::check_cred` 有效 → `Ok(None)`（**不再回填 u8token**）；失效或 `check_cred` 调用失败则调 `refresh_cred_by_hytoken`（返回三元组）换新 cred/token 写回配置 → `Ok(Some((cred, token)))`；缺 hytoken → `AppError::AuthError` |
 | `new` | 312 | 4 个服务 + `AppHandle` → 读 `lazy_load_enabled`（默认 true）、初始化空缓存与开关 → `AccountService` |
 | `get_config_service` | 338 | 无 → 返回 `&Arc<Mutex<ConfigService>>`（供 command 直接读写配置，如 `selected_account_id`） |
 | `skland_service` | 343 | 无 → 返回 `&Arc<SklandService>`（commands/attendance.rs 借此调 `call_skland_api`） |
@@ -101,8 +109,16 @@
 | `clone_for_async`（私有） | 602 | 无 → 构造 `AsyncAccountService`（克隆 2 个 Arc）→ 供 spawn 使用 |
 | `check_and_refresh_user_cred` | 610 | `user_id` → `clone_for_async()` 后转发同名私有方法 → `Result<Option<(String, String)>, AppError>`；被 command `check_and_refresh_cred`、attendance/gacha command 调用 |
 | `set_hytoken_for_user` | 619 | `user_id, hytoken` → 在 `account_token_{user_id}` 对象写入 `hytoken` 字段（非对象则 `ConfigError`）→ `Ok(())` |
-| `set_u8token_for_user` | 652 | `user_id, u8token` → 写入 `u8token` 字段 → `Ok(())` |
-| `refresh_u8token_for_user` | 686 | `user_id` → 读 hytoken+device_token（缺失跳过）→ `SklandService::get_u8_token_by_hytoken` → 成功则 `set_u8token_for_user` 并 `Ok(Some(u8))`；失败/缺字段 → `Ok(None)`（非致命，保留旧值）；被 commands/gacha.rs:70 在同步抽卡前调用 |
+| `set_u8token_for_user` | — | **已删除**。u8token 不再持久化 |
+| `refresh_u8token_for_user` | — | **已删除**。改为抽卡同步前现换：`fetch_role_u8token` |
+| `is_role_u8_authorized` | 700 附近 | `role_id` → 遍历 `account_token_*` 的 `roles[]`，看该角色的 `u8Authorized` 是否为 `true` → `bool` |
+| `authorize_role_u8token` | 640 | `role_id` → `find_role_owner` 取 `user_id` + `binding_uid` → `fetch_role_u8token` 现换一次令牌做校验（**不保存**）→ 成功则 `set_role_u8_authorized(true)` 返回 `authorized`，失败返回 `failed` + 原因 → `RoleU8AuthResult`；command `authorize_role_u8token` |
+| `revoke_role_u8token` | 672 | `role_id` → 找到所属账号，把该角色 `roles[].u8Authorized` 移除并落盘 → `bool`；command `revoke_role_u8token` |
+| `fetch_role_u8token`（pub） | 736 | `user_id, binding_uid` → 读 `account_token_{user_id}.hytoken`（缺失报 `AuthError`）→ `SklandService::get_u8_token_by_uid` → `String`（**调用方不得持久化**）；抽卡同步前调用 |
+| `set_role_u8_authorized`（私有） | 770 | `user_id, role_id, authorized` → 改 `roles[].u8Authorized` 并落盘 |
+| `find_role_owner`（私有） | 800 | 遍历 `account_token_*` 的 `roles[]` 找 roleId → `RoleOwner { user_id, binding_uid, channel_master_id, server_id }`；找不到 `AuthError` |
+| `migrate_legacy_u8token`（私有静态） | 836 | 启动时清理遗留：删除所有 `role_u8token_*` 键（含凭据库条目）+ 删除 `account_token_*.u8token` 字段与条目 |
+| `backfill_binding_uid`（私有） | 890 | 拿到 binding 列表时，为老数据里缺 `bindingUid` 的角色按 roleId 回填 uid / channelMasterId / channelName |
 | `get_local_device_token`（私有） | 747 | `user_id` → 读 `account_token_{user_id}.device_token`（空串视为无）→ `Option<String>` |
 | `set_device_token_for_user` | 759 | `user_id, device_token` → 写入 `device_token` 字段 → `Ok(())` |
 | `set_phone_for_user` | 652 | `user_id, phone` → 写入 `account_token_{user_id}.phone`（仅用于重新登录时短信/密码方式自动填充，不参与鉴权）→ `Ok(())` |
@@ -114,7 +130,8 @@
 | `start_auto_refresh`（静态） | 975 | `Arc<tokio::sync::Mutex<AccountService>>` → `async_runtime::spawn` 每 300 秒：`refresh_accounts()` → 对 `card_auto_sign_users` 中未签到角色执行 `do_attendance_for_role` → 无；由 `lib.rs:215` 启动 |
 | `get_accounts` | 1018 | 无 → 遍历 `account_token_*` 收集 roles → 逐角色 `check_and_refresh_user_cred` → `network_service.char_detail_service().get_with_cache(...)` → 成功取昵称/等级并 `avatar_cache_service.get_or_download_avatar` → 失败按错误串判定 `HYTOKEN_EXPIRED`/`FAILED`，并可用 hytoken `refresh_cred_by_hytoken` 后重试一次 → 按懒加载写缓存 → `Vec<AccountInfo>` |
 | `add_account` | 1401 | `LoginRequest`（含可选 `expectedUserId`）→ `get_hypergryph_token`(密码) →（新设备错误经 `is_new_device_verification_error` 判定）返回 `error_message = "NEW_DEVICE_VERIFICATION_REQUIRED"` → 否则 `complete_login_from_token(RequireUserVerification, expected_user_id, Some(phone))` → `AccountLoginResult`；command `add_account` |
-| `logout_account` | 1457 | `account_id`（实为 roleId）+ `keep_device_token` → 从各 `account_token_*` 的 `roles[]` 移除该角色；roles 清空且 `keep_device_token=false` 时删除 `device_token`；清对应用户缓存；从 `account_list` 移除 → 恒 `true`；command `logout_account` |
+| `logout_account` | 约 1663 | `account_id`（实为 roleId）+ `keep_device_token` → 从各 `account_token_*` 的 `roles[]` 移除该角色；roles 清空且 `keep_device_token=false` 时删除 `device_token`；清对应用户缓存；从 `account_list` 移除 → 恒 `true`；command `logout_account`。**只解绑角色，保留父账户** |
+| `delete_skland_account` | 约 1737 | `user_id` → `config.remove("account_token_{user_id}")`（连带清凭据库）→ 从 `account_list` 移除该账号全部 roleId → 清缓存 → `selected_account_id` 指向被删账号时改选剩余第一个（无则置空）→ `Result<bool>`；command `delete_skland_account` |
 | `batch_logout` | 1523 | `account_ids` → 从 `account_list` 移除，并 `config.remove("account_token_{id}")` → 恒 `true`；command `batch_logout` |
 | `refresh_accounts` | 1540 | 无 → 同 `get_accounts` 的收集/刷新逻辑，但角色详情走 `skland_service.get_role_detail`（绕过 char_detail 缓存），含 hytoken 自动刷新重试；完成后 `cache_accounts_by_user` + `notify_cache_refreshed`（emit）→ `AccountRefreshResult`；command `refresh_accounts` 与定时器 |
 | `send_verification_code` | 1842 | `SendCodeRequest` → `POST https://as.hypergryph.com/general/v1/send_phone_code`（body: phone/type）→ `status==0` → `Ok(true)`；command `send_verification_code` |
@@ -124,8 +141,8 @@
 | `scan_status` | 2063 | `scan_id` → `GET https://as.hypergryph.com/general/v1/scan_status?scanId=...` → `ScanStatus { status, scan_code, msg }`；command `scan_status` |
 | `token_by_scan_code`（私有） | 2120 | `scan_code` → `POST https://as.hypergryph.com/user/auth/v1/token_by_scan_code`（带 `X-AppCode/X-DeviceId/X-DeviceId2/X-DeviceModel/X-DeviceType/X-OSVer` 头）→ `(token, deviceToken, Option<hgld>)` |
 | `add_account_by_scan` | 2211 | `scan_code, expected_user_id` → 上一步换 hytoken（deviceToken 空转 None）→ `complete_login_from_token(ContinueWithoutDeviceToken, expected_user_id, None)` → `AccountLoginResult`；command `add_account_by_scan`（参数 `scanCode` + 可选 `expectedUserId`） |
-| `complete_login_from_token`（私有） | 2255 | `hy_token, device_token, missing_policy, expected_user_id, phone` → Step2 `get_skland_code`、Step3 `get_skland_cred` → **Step3.1 若 `expected_user_id` 非空且与登录得到的 `user_id` 不同，返回 `error_message = "ACCOUNT_MISMATCH:<实际userId>"` 且不落盘任何凭证** → 无 deviceToken 时用 userId 走 `get_local_device_token` 本地匹配 → 仍无则按策略返回 `NEW_DEVICE_VERIFICATION_REQUIRED` 或继续 → `set_hytoken_for_user` / `set_phone_for_user`（有手机号时）/ `set_device_token_for_user` / `get_u8_token_by_hytoken`+`set_u8token_for_user` → `AccountLoginResult { success: true, cred, token, user_id }`（不返回角色，等用户确认绑定） |
-| `fetch_endfield_roles`（私有） | 2392 | `cred, token, user_id` → `get_player_binding` + `SklandService::extract_endfield_roles` → 逐角色 `get_role_detail` + 头像缓存 → `Vec<RoleDisplayInfo>`（单角色失败仅记日志跳过） |
+| `complete_login_from_token`（私有） | 2432 | `hy_token, device_token, expected_user_id, phone` → Step2 `get_skland_code`、Step3 `get_skland_cred` → **Step3.1 若 `expected_user_id` 非空且与登录得到的 `user_id` 不同，返回 `error_message = "ACCOUNT_MISMATCH:<实际userId>"` 且不落盘任何凭证** → 无 deviceToken 时用 userId 走 `get_local_device_token` 本地匹配；**仍无也不中断**（只记 warn，`u8token` 留待用户按角色授权）→ `set_hytoken_for_user` / `set_phone_for_user`（有手机号时）/ `set_device_token_for_user`（有时）→ `AccountLoginResult { success: true, cred, token, user_id }`（不返回角色，也不取 u8token） |
+| `fetch_endfield_roles`（私有） | 2618 | `cred, token, user_id` → `get_player_binding` + `SklandService::extract_endfield_roles` → 逐角色 `get_role_detail` + 头像缓存 → `Vec<RoleDisplayInfo>`（单角色失败仅记日志跳过）；每个角色的 `u8_authorized` 由 `is_role_u8_authorized` 回填 |
 | `read_skland_credentials`（私有） | 2434 | `user_id` → 读 `account_token_{user_id}` 的 cred/token → `(String, String)`；缺失抛 `AuthError`（"Skland account/cred/token was not found"） |
 | `cache_skland_user_info`（私有） | 2459 | `user_id, &SklandUserInfo` → 序列化写入 `account_token_{user_id}.user_info` → `Ok(())` |
 | `get_skland_user_info` | 2485 | `user_id` → `check_and_refresh_user_cred` → `read_skland_credentials` → `SklandService::get_user_info` → 缓存 `user_info`（失败仅告警）→ `SklandUserInfo`；command `get_skland_user_info` |
@@ -136,7 +153,7 @@
 | `get_skland_account_roles` | 2575 | `user_id` → 刷新 cred → `read_skland_credentials` → `fetch_endfield_roles` → `AccountLoginResult { available_roles: Some(..) }`；command `get_skland_account_roles` |
 | `get_skland_accounts` | 2601 | 无 → 扫描 `account_token_*`，`skland_account_bound`（缺省时以 roles 非空判定）为真才收录，附带 `user_info` 的昵称/头像与首次登录记录的 `phone` → `Vec<SklandAccountInfo>`；command `get_skland_accounts` |
 | `save_skland_account` | 2628 | `cred, token, user_id` → 写 `cred`/`token`/`skland_account_bound=true`，并保证 `roles` 存在（默认 `[]`）→ `Ok(())`；command `save_skland_account` |
-| `save_selected_roles` | 2654 | `cred, token, user_id, selected_roles` → 先 `migrate_roles_app_field`；读旧数据保留 `hytoken/u8token/device_token`；写入 `roles[{userId,serverId,roleId,app:"endfield"}]`、`skland_account_bound=true`；更新 `account_list`（移除旧 roleId、追加新 roleId）；锁释放后逐角色下载头像 → 写完整+精简双缓存 → `Vec<AccountInfo>`；command `save_selected_roles` |
+| `save_selected_roles` | 2654 | `cred, token, user_id, selected_roles` → 先 `migrate_roles_app_field`；读旧数据保留 `hytoken/device_token/phone/user_info`；写入 `roles[{userId,serverId,roleId,app:"endfield"}]`、`skland_account_bound=true`；**删除被解绑角色的 `role_u8token_*`**；更新 `account_list`（移除旧 roleId、追加新 roleId）；锁释放后逐角色下载头像 → 写完整+精简双缓存 → `Vec<AccountInfo>`；command `save_selected_roles` |
 | `migrate_roles_app_field`（私有静态） | 2812 | `&mut ConfigService` → 遍历 `account_token_*`，为缺少 `app` 的 role 补 `"endfield"` 并写回 → `Ok(())` |
 | `get_hypergryph_token`（私有） | 2849 | `phone, password` → `POST https://as.hypergryph.com/user/auth/v1/token_by_phone_password` → `(token, Option<deviceToken>, Option<hgld>)` |
 | `is_new_device_verification_error`（私有静态） | 2922 | `&AppError` → 关键词匹配（"新设备"/"需要验证"/"设备验证"/"verify"/"verification"）→ `bool` |
@@ -155,8 +172,18 @@
 ### 登录：扫码（1996-2247 行）
 `gen_scan_login`（`POST /general/v1/gen_scan/login`）产出二维码 `scanUrl` → 前端轮询 `scan_status`（`GET /general/v1/scan_status`）取 `scanCode` → `add_account_by_scan(scan_code)` → `token_by_scan_code`（`POST /user/auth/v1/token_by_scan_code`，附固定 X-Device* 头）→ `complete_login_from_token(ContinueWithoutDeviceToken)`。
 
-### 登录公共流程与新设备策略（286-293、2255-2404 行）
-Step 2 `get_skland_code`（`POST /user/oauth2/v2/grant`）→ Step 3 `get_skland_cred`（`POST zonai.skland.com/.../generate_cred_by_code`）得 `(cred, token, user_id)` → **Step 3.1 重新登录校验**（`expected_user_id` 非空且与实际 `user_id` 不同 → 返回 `ACCOUNT_MISMATCH:<实际userId>`，不保存任何凭证，用于「扫码/短信授权到了别的账号」的拦截；前端据此清空本次登录结果并提示）→ Step 3.5 服务器未下发 deviceToken 时用 `get_local_device_token(user_id)` 本地匹配 → 仍缺失时按 `MissingDeviceTokenPolicy` 分流（密码登录：返回 `NEW_DEVICE_VERIFICATION_REQUIRED`；验证码/扫码：继续但不取 u8token）→ 依次落盘 `hytoken`、`phone`（本次登录带手机号时）、`device_token`、`u8token`（`get_u8_token_by_hytoken`，失败不阻断）→ 返回父级凭据，角色绑定推迟到 `save_selected_roles`。
+### 登录公共流程与设备令牌（2432-2620 行）
+Step 2 `get_skland_code`（`POST /user/oauth2/v2/grant`）→ Step 3 `get_skland_cred`（`POST zonai.skland.com/.../generate_cred_by_code`）得 `(cred, token, user_id)` → **Step 3.1 重新登录校验**（`expected_user_id` 非空且与实际 `user_id` 不同 → 返回 `ACCOUNT_MISMATCH:<实际userId>`，不保存任何凭证，用于「扫码/短信授权到了别的账号」的拦截；前端据此清空本次登录结果并提示）→ Step 3.5 服务器未下发 deviceToken 时用 `get_local_device_token(user_id)` 本地匹配 → **仍缺失也继续绑定**（只记 warn；该账号暂时无法获取 u8token）→ 依次落盘 `hytoken`、`phone`（本次登录带手机号时）、`device_token`（有时）→ 返回父级凭据，角色绑定推迟到 `save_selected_roles`。
+
+> 改版说明：`device_token` **与抽卡令牌无关**了（新链路不需要它）。缺它不再阻断登录，也不再触发强制新设备验证。
+
+### 抽卡令牌授权与换取（640-940 行）
+- `authorize_role_u8token(role_id)`：`find_role_owner` 拿到 `binding_uid` → **现换一次令牌做校验**（令牌不保存）→ 成功才把 `roles[].u8Authorized = true` 落盘。所以「授权」= 验证一次 + 记一个开关。
+- `revoke_role_u8token(role_id)`：只移除 `u8Authorized` 开关，没有凭据需要删除。
+- 抽卡同步前由 `fetch_role_u8token(user_id, binding_uid)` 现换令牌；同步命令还会先检查 `u8Authorized`，未授权的角色直接报错提示去账号页授权。
+- **官服与渠道服没有分支**：同一条 `u8_token_by_uid` 链路，差异只在 `binding_uid`。
+- 解绑/登出：授权开关随 `roles[]` 一起消失（令牌本就不落盘）。
+- `backfill_binding_uid` 负责把老数据的渠道 uid 补上（否则旧账号无法换令牌）。
 
 ### 账户不可用与重新登录（前端配合）
 账户数据获取频繁失败时应用照常进入（`api_health` 的 `app:api-health` 只收起 Splash，非致命），账户页与侧边栏展示「账号不可用」并提供「重新登录」入口：
@@ -164,10 +191,11 @@ Step 2 `get_skland_code`（`POST /user/oauth2/v2/grant`）→ Step 3 `get_skland
 - 扫码方式在授权成功后用 `expected_user_id` 校验是否为同一森空岛账户，不一致即拦截（上方 Step 3.1），凭证不会落盘。
 - 数美设备指纹接口连续失败（`ApiFailureKind::DeviceFingerprint`）时前端提示「重启电脑并同步时区」；修复后点击重试会调用 `reset_api_health` 解除熔断。
 
-### token 与 cred 刷新（43-284、610-781 行）
-- 主入口 `check_and_refresh_user_cred`（610）转发到 `AsyncAccountService`（44）：`check_cred` 有效 → 顺带回填缺失的 u8token；失效或 `check_cred` 报错 → `refresh_cred_by_hytoken(hyt token, device_token)` 换新 cred/token/u8token 并写回 `account_token_{user_id}`；无 hytoken → `AuthError`（提示 re-login）。
+### token 与 cred 刷新（57-297、610-781 行）
+- 主入口 `check_and_refresh_user_cred`（610）转发到 `AsyncAccountService`（57）：`check_cred` 有效 → 直接返回 `Ok(None)`（**不再回填 u8token**）；失效或 `check_cred` 报错 → `refresh_cred_by_hytoken(hyt token, device_token)` 换新 cred/token 并写回 `account_token_{user_id}`；无 hytoken → `AuthError`（提示 re-login）。
+- `refresh_cred_by_hytoken` 已删除 u8 分支（原 Step 1.5），返回 `(cred, token, user_id)` 三元组 —— 换 cred 不再有任何「顺手取令牌」的副作用。
 - `get_accounts` / `refresh_accounts` 内部：每次取角色详情前刷新；错误串含 `hytoken/OAuth/grant failed` → 标记 `HYTOKEN_EXPIRED`；错误串含 `API error/Failed to parse JSON/HTTP request failed` → 视为同步失败，再用 hytoken 自动刷新并重试一次详情接口。
-- `refresh_u8token_for_user`（686）供抽卡同步前主动续期 u8token；`set_hytoken_for_user` / `set_u8token_for_user` / `set_device_token_for_user`（619/652/759）为登录成功后的字段写入器。
+- u8token 不再「续期」，而是每次同步前用 `fetch_role_u8token` 现换（不缓存、不落盘）。
 
 ### 角色数据查询与缓存（496-600、1018-1399、1540-1840、3064-3096 行）
 - `get_accounts`（1018）：走 `network_service.char_detail_service().get_with_cache`（带角色详情缓存），结果按 `user_id` 分组后按懒加载状态写入完整/精简缓存。
@@ -179,7 +207,7 @@ Step 2 `get_skland_code`（`POST /user/oauth2/v2/grant`）→ Step 3 `get_skland
 `get_skland_user_info` → 刷新 cred → `read_skland_credentials` → `SklandService::get_user_info` → 写 `account_token_{user_id}.user_info`（供 `get_skland_accounts` 列表展示昵称/头像）。`get_skland_games` → `skland_games_cache`（12 小时 TTL，`force` 可绕过；刷新失败回退旧缓存）。`get_skland_account_roles` → `fetch_endfield_roles`（binding → 逐角色 detail → 头像）。
 
 ### 账户持久化（1457-1538、2628-2810、2812-2847 行）
-- 绑定：`save_skland_account` 写 `cred/token/skland_account_bound/roles`；`save_selected_roles` 写 `roles[]`（含 `app:"endfield"`）、保留 hytoken/u8token/device_token、同步 `account_list` 并写双缓存。
+- 绑定：`save_skland_account` 写 `cred/token/skland_account_bound/roles`；`save_selected_roles` 写 `roles[]`（含 `app:"endfield"`）、**保留 `hytoken` / `device_token` / `phone` / 已缓存的 `user_info`**、同步 `account_list`、清理被解绑角色的 `role_u8token_*`，并写双缓存。
 - 解绑：`logout_account` 按 roleId 从 `roles[]` 移除（可选删除 `device_token`）并清缓存；`batch_logout` 清 `account_list` 与 `account_token_{id}`。
 - 迁移：`migrate_roles_app_field` 给旧角色补 `app` 字段（在 `save_selected_roles` 开头执行）。
 
@@ -192,12 +220,16 @@ Step 2 `get_skland_code`（`POST /user/oauth2/v2/grant`）→ Step 3 `get_skland
 ## 备注
 
 **配置键（本文件读写）**
-- `account_token_{user_id}`：核心凭据对象，字段含 `cred`、`token`、`hytoken`、`u8token`、`device_token`、`roles[{userId,serverId,roleId,app}]`、`skland_account_bound`、`user_info`（SklandUserInfo 序列化）。
+- `account_token_{user_id}`：核心凭据对象，字段含 `cred`、`token`、`hytoken`、`device_token`、`phone`、`roles[{userId,serverId,roleId,app}]`、`skland_account_bound`、`user_info`（SklandUserInfo 序列化）。
+  - ⚠️ 账号级 `u8token` **已废弃**：启动时由 `migrate_legacy_u8token` 删除；`secret_registry` 仍登记它只为能清理旧凭据。
+  - `save_selected_roles` 重建该对象时会保留 `hytoken` / `device_token` / `phone` / `user_info`（后两者以前会被覆盖丢失，已修正），并**写入每个角色的 `bindingUid` / `channelMasterId` / `channelName`**。
+- `role_u8token_{roleId}`：**已废弃**，启动时由 `migrate_legacy_u8token` 删除（含凭据库条目）。
+- **抽卡授权**：不存在独立配置键 —— 它就是 `account_token_{user_id}.roles[].u8Authorized`（布尔，明文）。**u8token 本身从不落盘**。
 - `skland_games_cache`：森空岛游戏列表缓存（常量 `SKLAND_GAMES_CACHE_KEY`，TTL 12 小时，结构 `{fetched_at, games}`）。
 - `lazy_load_enabled`：懒加载开关（bool，默认 true）。
 - `card_auto_sign_users`：开启自动签到的 role_id 列表（只读）。
 - `account_list`：角色 ID 列表（登出/绑定时增删）。
-- `selected_account_id`：当前选中账户，由 `commands/account.rs:260/274` 通过 `get_config_service()` 读写，**本文件不涉及**（仓库中不存在 `selected_account` 键）。
+- `selected_account_id`：当前选中账户，由 `commands/account.rs` 通过 `get_config_service()` 读写，**本文件不涉及**（仓库中不存在 `selected_account` 键）。
 
 **HTTP 端点（本文件直接请求，均经 `http_client::create_client` + `capture::send`）**
 - `POST https://as.hypergryph.com/general/v1/send_phone_code`（1857）
@@ -216,15 +248,16 @@ Step 2 `get_skland_code`（`POST /user/oauth2/v2/grant`）→ Step 3 `get_skland
 - listen：无。
 
 **调用方（command / 内部）**
-- `commands/account.rs`：`get_accounts`、`get_skland_accounts`、`save_skland_account`、`get_skland_account_roles`、`get_skland_user_info`、`get_skland_user_info_by_cred`、`get_skland_games`、`add_account`、`logout_account`、`batch_logout`、`refresh_accounts`、`send_verification_code`、`add_account_by_code`、`gen_scan_login`、`scan_status`、`add_account_by_scan`、`save_selected_roles`、`get_selected_account`/`set_selected_account`（仅经 `get_config_service`）、`check_and_refresh_cred`、`set_lazy_load_enabled`、`is_lazy_load_enabled`、`set_current_role_id`、`query_role_data`。
+- `commands/account.rs`：`get_accounts`、`get_skland_accounts`、`save_skland_account`、`get_skland_account_roles`、`get_skland_user_info`、`get_skland_user_info_by_cred`、`get_skland_games`、`add_account`、`logout_account`、`batch_logout`、`refresh_accounts`、`send_verification_code`、`add_account_by_code`、`gen_scan_login`、`scan_status`、`add_account_by_scan`、`save_selected_roles`、`get_selected_account`/`set_selected_account`（仅经 `get_config_service`）、`check_and_refresh_cred`、`set_lazy_load_enabled`、`is_lazy_load_enabled`、`set_current_role_id`、`query_role_data`、**`authorize_role_u8token` / `revoke_role_u8token`（新增）**。
 - `commands/attendance.rs`：`get_attendance`/`do_attendance` 使用 `get_config_service`、`check_and_refresh_user_cred`、`skland_service`、`avatar_cache_service`。
-- `commands/gacha.rs`：`check_and_refresh_user_cred`、`refresh_u8token_for_user`、`query_role_data`（`wiki_catalog`）、`get_config_service`。
+- `commands/gacha.rs`：`check_and_refresh_user_cred`、**`fetch_role_u8token`（现换令牌）**、`query_role_data`（`wiki_catalog`）、`get_config_service`。
 - `commands/card_config.rs`：仅 `get_config_service`。
 - 内部定时器 `start_auto_refresh`：`refresh_accounts`、`get_auto_sign_roles`、`check_attendance_today`、`do_attendance_for_role`（这三者未暴露为 command）。
 
 **发现的异常/注意点**
 1. 任务提示中的 `selected_account` 在仓库中实际为 `selected_account_id`，且只出现在 `commands/account.rs`。
-2. `batch_logout`（1523）把入参当作 user_id 拼 `account_token_{id}` 删除，而 `logout_account`（1457）把同名入参当作 roleId 处理，两者语义不一致，`batch_logout` 多半删不掉真实凭据键。
-3. `set_lazy_load_enabled` 内两个分支的锁顺序相反（约 371-392 先完整后精简；约 414-423 先精简后完整），并发调用存在理论上的锁顺序风险。
-4. `save_selected_roles` 中 `data.as_object_mut().expect("object checked above")`（约 2642）为可 panic 点；`get_accounts` 等处 `&role_id[..8.min(role_id.len())]` 按字节截断，非 ASCII roleId 会 panic。
-5. `get_network_service`（原 3071）与访问器 `network_service`（原 355）为死代码，已删除；`AsyncAccountService` 的 `avatar_cache_service` 字段（原 78）亦未使用，已删除。
+2. `batch_logout`（约 1595）把入参当作 user_id 拼 `account_token_{id}` 删除，而 `logout_account`（约 1490）把同名入参当作 roleId 处理，两者语义不一致，`batch_logout` 多半删不掉真实凭据键。
+3. `set_lazy_load_enabled` 内两个分支的锁顺序相反（先完整后精简 / 先精简后完整），并发调用存在理论上的锁顺序风险。
+4. `save_selected_roles` 中 `data.as_object_mut().expect("object checked above")` 为可 panic 点；`get_accounts` 等处 `&role_id[..8.min(role_id.len())]` 按字节截断，非 ASCII roleId 会 panic。
+5. `get_network_service` 与访问器 `network_service` 为死代码，已删除；`AsyncAccountService` 的 `avatar_cache_service` 字段亦未使用，已删除。
+6. **渠道服已打通**：官服与 B 服共用同一条 `u8_token_by_uid` 链路（同一个 hytoken / appCode），差异只在 `roles[].bindingUid`。代价是 appCode `be36d44aa36bfb5b` 属于鹰角前端硬编码值，存在轮换风险。

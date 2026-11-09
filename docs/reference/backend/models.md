@@ -197,6 +197,17 @@
 | `token` | `Option<String>` | — | 返回的 token |
 | `user_id` | `Option<String>` | — | 返回的 user_id |
 
+### `struct RoleU8AuthResult`
+- 位置：account.rs:181 附近（新增）
+- derive：`Serialize, Deserialize, Clone, Debug`，容器 `rename_all = "camelCase"`
+- 用途：`authorize_role_u8token` 命令的返回结果（按角色获取抽卡令牌）。
+- 字段：
+
+| 字段 | 类型 | serde | 含义 |
+| --- | --- | --- | --- |
+| `status` | `String` | — | `authorized` / `failed` |
+| `message` | `Option<String>` | — | 失败原因（成功为 None） |
+
 ---
 
 ## `src-tauri/src/models/char_detail.rs`
@@ -1301,3 +1312,7 @@ derive 均为 `Serialize, Deserialize, Clone, Debug` + 容器 `rename_all = "cam
 | `nickname` | `String` | — | 昵称 |
 | `level` | `i32` | — | 等级 |
 | `avatar_url` | `String` | — | 头像地址 |
+| `binding_uid` | `String` | `default` | 该角色所属的**渠道绑定 uid**（官服 / B 服各一个），换 u8token 的必需键 |
+| `channel_master_id` | `String` | `default` | 渠道主 ID（1 = 官服，2 = B 服），仅展示 |
+| `channel_name` | `String` | `default` | 渠道名（绑定接口的 `channelName`），仅展示 |
+| `u8_authorized` | `bool` | `default` | 该角色是否已授权抽卡数据访问。构建角色列表时由 `AccountService::is_role_u8_authorized` 回填 —— **漏掉这个回填会导致前端永远显示「未授权」** |

@@ -45,7 +45,37 @@
    - 生成设备标识（`dId`，逻辑在 `services/skland_service.rs` 的 `fetch_new_did`，见 [services_skland.md](reference/backend/services_skland.md)）
    - 发送验证码 → 提交登录请求 → 获取 `token` 与 `cred`
    - 写入内存状态（`AccountService`）并按 `account_token_{user_id}` 持久化到配置
-3. **持久化**：登录成功后由配置服务 `ConfigService` 写入本地 `app_config.json`；选中账户存在键 `selected_account_id`。
+3. **持久化**：登录成功后由配置服务 `ConfigService` 写入本地 `app_config.json`（机密字段实际进 OS 凭据库）；选中账户存在键 `selected_account_id`。
+
+> **绑定不再要求新设备验证**：扫码/验证码/密码任何方式都能完成绑定，缺 `device_token` 也会照样保存 cred/token/hytoken，只是该账号暂时无法获取抽卡令牌。唯一例外是密码接口自身拒绝新设备（此时尚未拿到 hytoken），前端引导改用验证码或扫码。
+
+### 3.1.1 抽卡令牌（u8token）：不落盘，每次现换
+
+u8token 不参与森空岛签名，只用于 `ef-webview.hypergryph.com` 的抽卡接口，并且**生命周期很短**，因此不做任何持久化。
+
+**获取链**（鹰角通行证侧，一条 hytoken 覆盖该通行证下所有已绑定渠道）：
+
+```
+hytoken
+  └─(A1) POST https://as.hypergryph.com/user/oauth2/v2/grant
+           body { type:1, appCode:"be36d44aa36bfb5b", token }        → data.token（L2）
+       └─(A2) POST https://binding-api-account-prod.hypergryph.com
+                  /account/binding/v1/u8_token_by_uid
+                  body { uid:<渠道绑定 uid>, token:L2 }               → data.token（u8token）
+```
+
+**官服与 B 服走的是同一条链**：同域名、同 appCode、同一份 hytoken，唯一差异是 A2 里的 `uid`。换出的两把 token 值不同、互不通用 —— 所以「一个账号存一把 token」不可能同时覆盖两个渠道。前提是该通行证绑定了对应渠道（未绑定时 `binding_list` 不返回那条记录）。
+
+**授权 = 一个开关**：
+
+1. 绑定角色后，账户页弹窗进入「授权抽卡数据」步骤，也可直接跳过。
+2. 点授权 → `authorize_role_u8token` → 后端用该角色的 `bindingUid` **现换一次令牌做校验**（令牌用完即弃）→ 成功则把 `roles[].u8Authorized = true` 落盘。
+3. `revoke_role_u8token` 只清掉这个开关 —— 没有任何凭据需要删除。
+4. 抽卡同步（`sync_gacha_records` 等）前检查开关，再 `fetch_role_u8token` 现换令牌；未授权角色直接报错提示去账号页授权。
+
+> 渠道（官服 / B 服）不通过请求参数表达：`record/*` 接口的 `server_id` 恒为 `1`，渠道完全由 u8token 所属的 uid 决定。本地记录文件仍按角色真实 `serverId` 分开存放，避免两渠道互相覆盖。
+>
+> ⚠️ `be36d44aa36bfb5b` 是鹰角前端硬编码的 appCode，存在轮换风险；失效时 A1 会报 `Gacha OAuth grant failed`。
 
 > 前端调用方、返回值与失败兜底策略见 [utils_services_a.md](reference/frontend/utils_services_a.md#srcutilsaccountservicets)。
 

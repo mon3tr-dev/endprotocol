@@ -28,12 +28,12 @@
 | 694-713 | `get_player_binding`（`/api/v1/game/player/binding`） |
 | 715-742 | `get_role_detail`（`/api/v1/game/endfield/card/detail`） |
 | 744-786 | `check_cred`（`/api/v1/user/check`，仅带 cred 头） |
-| 788-908 | `refresh_cred_by_hytoken`（grant → 可选 u8 → generate_cred_by_code） |
-| 910-1013 | `get_u8_token_by_channel`、`get_u8_token_by_hytoken` |
-| 1015-1140 | 私有 `u8_grant_to_sk_code`、`oauth_grant_to_sk_code`（同一个 as.hypergryph grant 端点） |
-| 1142-1164 | `extract_endfield_roles`（纯数据提取，无网络） |
-| 1166-1189 | 自由函数 `des_encrypt_3des`（单 DES ECB + Zero Padding + Base64） |
-| 1191-1397 | `mod tests`：dId 格式测试、用户资料/游戏列表解析测试（内嵌抓包样本 JSON） |
+| 788-908 | `refresh_cred_by_hytoken`（grant → generate_cred_by_code；**不再顺带取 u8token**） |
+| 980-1120 | 抽卡令牌新链路：`get_u8_token_by_uid`、`u8_oauth_token`、`u8_token_by_uid` |
+| 1150-1210 | 私有 `oauth_grant_to_sk_code`（换 skland cred 用，appCode `4ca99fa6b56cc2ba` / type 0） |
+| 1212-1240 | `extract_endfield_roles`（纯数据提取，返回含渠道 uid 的五元组） |
+| 1240-1270 | 自由函数 `des_encrypt_3des`（单 DES ECB + Zero Padding + Base64） |
+| 1270-1470 | `mod tests`：dId 格式测试、用户资料/游戏列表解析测试（内嵌抓包样本 JSON） |
 
 ## 方法清单（必须完整）
 
@@ -53,13 +53,14 @@
 | `get_player_binding(&self, cred, token)` pub async | 694-713 | cred+token → `GET /api/v1/game/player/binding` → 整体反序列化为 `BindingResponse`（704-707）→ `response.data.list: Vec<GameBinding>` |
 | `get_role_detail(&self, cred, token, role_id, server_id, user_id)` pub async | 715-742 | 3 个 id → `GET /api/v1/game/endfield/card/detail?roleId=&serverId=&userId=`（723-727）→ 反序列化 `CharDetailResponse`（731-734）→ `CharDetailResponse` |
 | `check_cred(&self, cred)` pub async | 744-786 | cred → `GET https://zonai.skland.com/api/v1/user/check`（仅 cred + Content-Type，无 sign）→ `code==0` 判定（784）→ `bool` |
-| `refresh_cred_by_hytoken(&self, hytoken, device_token)` pub async | 788-908 | hytoken(+device_token) → ①`oauth_grant_to_sk_code`（795）②可选 `u8_grant_to_sk_code`+`get_u8_token_by_channel`，失败仅告警不阻断（798-828）③`POST generate_cred_by_code`，payload `{kind:1, code}`（833-836），校验 `code==0`（869-877），取 `cred`/`token`/`userId`（883-905）→ `(cred, token, Option<u8_token>, user_id)` |
-| `get_u8_token_by_channel(&self, sk_code)` pub async | 910-1002 | sk_code → `POST https://u8.hypergryph.com/u8/user/auth/v2/token_by_channel_token`（payload 922-928，Unity UA 939-945）→ 校验 `status==0`（971），取 `data.token`（985-991）与 `data.uid`（993，用 `Value::to_string()`）→ `(token, uid)` |
-| `get_u8_token_by_hytoken(&self, hytoken, device_token)` pub async | 1004-1013 | hytoken+device_token → `u8_grant_to_sk_code` → `get_u8_token_by_channel` → 丢弃 uid → `Ok(u8_token)` |
-| `u8_grant_to_sk_code(&self, hytoken, device_token)` 私有 async | 1015-1079 | hytoken+device_token → `POST https://as.hypergryph.com/user/oauth2/v2/grant`，payload `{appCode:"dd7b852d5f1dd9da", deviceToken, token, type:0}`（1024-1029）→ `status==0` 校验（1062）→ `data.code` |
-| `oauth_grant_to_sk_code(&self, hytoken)` 私有 async | 1081-1140 | hytoken → 同一 grant 端点，payload `{token, appCode:"4ca99fa6b56cc2ba", type:0}`（1086-1090）→ `status==0` 校验（1123）→ `data.code` |
-| `extract_endfield_roles(bindings)` pub（无 `self`） | 1142-1164 | `&[GameBinding]` → 无网络 → 过滤 `app_code=="endfield"`，展平 `binding_list[].roles[]` → `Vec<(uid, server_id, role_id)>` |
-| `des_encrypt_3des(key, data)` 自由函数 | 1166-1189 | 8 字节 Zero Padding（1172-1175）→ 单 DES 加密每个 8 字节块（1178-1186）→ Base64 字符串 |
+| `refresh_cred_by_hytoken(&self, hytoken, device_token)` pub async | 883-1003 | hytoken(+device_token) → ①`oauth_grant_to_sk_code` ②`POST generate_cred_by_code`，payload `{kind:1, code}`，校验 `code==0`，取 `cred`/`token`/`userId` → `(cred, token, user_id)` 三元组。**u8 分支（原 Step 1.5）已移除**：换 cred 不再顺带取 u8token |
+| `get_u8_token_by_uid(&self, hytoken, binding_uid)` pub async | 980-1000 | hytoken + 渠道绑定 uid → `u8_oauth_token` + `u8_token_by_uid` 两步 → `String`。**不需要 device token，也没有渠道参数** |
+| `u8_oauth_token(&self, hytoken)` pub async | 1002-1060 | `POST https://as.hypergryph.com/user/oauth2/v2/grant`，payload `{type:1, appCode:"be36d44aa36bfb5b", token}`，取 `data.token`（L2） |
+| `u8_token_by_uid(&self, oauth_token, binding_uid)` pub async | 1062-1120 | `POST https://binding-api-account-prod.hypergryph.com/account/binding/v1/u8_token_by_uid`，payload `{uid, token:L2}`，取 `data.token`（u8 token） |
+| `u8_grant_to_sk_code(&self, hytoken, device_token)` 私有 async | **已删除** | 旧链路（`dd7b852d5f1dd9da` + deviceToken → channel code）随 `get_u8_token_by_channel` 一并移除 |
+| `oauth_grant_to_sk_code(&self, hytoken)` 私有 async | 1150-1210 | hytoken → 同一 grant 端点，payload `{token, appCode:"4ca99fa6b56cc2ba", type:0}` → `data.code`（换 skland cred 用） |
+| `extract_endfield_roles(bindings)` pub（无 `self`） | 1212-1240 | `&[GameBinding]` → 无网络 → 过滤 `app_code=="endfield"`，展平 `binding_list[].roles[]` → `Vec<(binding_uid, channel_master_id, channel_name, server_id, role_id)>`（**渠道 uid 不再丢弃**） |
+| `des_encrypt_3des(key, data)` 自由函数 | 1240-1270 | 8 字节 Zero Padding → 单 DES 加密每个 8 字节块 → Base64 字符串 |
 
 合计：impl 内 20 个方法（pub 13）+ 1 个自由加密函数 = 21 个可调用项；另有 5 个测试函数（1201、1312、1342、1382、1399）与 2 个测试常量（1221、1348）。
 
@@ -75,9 +76,9 @@
 | `GET /api/v1/game/endfield/card/detail?roleId=&serverId=&userId=` | 终末地角色详情 | `get_role_detail` | 723-727 |
 | `GET https://zonai.skland.com/api/v1/user/check` | 校验 cred 是否有效 | `check_cred` | 756 |
 | `POST https://zonai.skland.com/api/v1/user/auth/generate_cred_by_code` | sk_code → cred / token / userId | `refresh_cred_by_hytoken` | 843（payload 833-836） |
-| `POST https://u8.hypergryph.com/u8/user/auth/v2/token_by_channel_token` | channel code → u8 渠道登录 token | `get_u8_token_by_channel` | 937（payload 922-928） |
+| `POST https://binding-api-account-prod.hypergryph.com/account/binding/v1/u8_token_by_uid` | L2 + 渠道 uid → u8token | `u8_token_by_uid` | 约 1075（payload `{uid, token}`） |
 | `POST https://as.hypergryph.com/user/oauth2/v2/grant` | hytoken → code（skland 场景 appCode=`4ca99fa6b56cc2ba`） | `oauth_grant_to_sk_code` | 1097（payload 1086-1090） |
-| `POST https://as.hypergryph.com/user/oauth2/v2/grant` | hytoken+deviceToken → u8 channel code（appCode=`dd7b852d5f1dd9da`） | `u8_grant_to_sk_code` | 1036（payload 1024-1029） |
+| `POST https://as.hypergryph.com/user/oauth2/v2/grant` | hytoken → 抽卡域 L2（appCode=`be36d44aa36bfb5b`, type=1） | `u8_oauth_token` | 约 1013（payload `{type:1, appCode, token}`） |
 
 非端点 URL（仅作数据）：`https://www.skland.com/` 为指纹 target 的 `url` 字段（143）；`https://game.skland.com` 为 Origin/Referer 头（450-451）；测试样本中的 bbs.hycdn.cn 图片（1215-1389）。
 
@@ -121,9 +122,31 @@ sign = md5_hex( hmac_hex.as_bytes() )      # 32 位小写 hex
 ### 3. token / cred 的分工
 
 - **cred**：身份凭证，放 `cred` 头；`check_cred` 仅凭它即可校验有效性；`refresh_cred_by_hytoken` 返回的第一个值。
-- **token**：仅作签名 HMAC 的密钥（411），不直接出现在头里；`refresh_cred_by_hytoken` 返回的第二个值。签到场景会额外把它作为 `token` 头透传（attendance.rs:95、217）。
-- **dId**：设备指纹，参与 header JSON 与签名；缓存在配置键 `did_cache`，失败时清缓存重取（503-510）。
-- **hytoken**：Hypergryph 账号 token，只能通过 grant 换 code，再换 cred/token/u8 token，本身不用于签名。
+- **token**：仅作签名 HMAC 的密钥（411），不直接出现在头里；`refresh_cred_by_hytoken` 返回的第二个值。签到场景会额外把它作为 `token` 头透传（attendance.rs:96、222）。
+- **dId**：设备指纹，参与 header JSON 与签名；缓存在配置键 `did_cache`，失败时清缓存重取（约 503-510）。
+- **hytoken**：Hypergryph 账号 token，只能通过 grant 换 code，再换 cred/token，本身不用于签名。
+- **u8token**：抽卡接口（`ef-webview.hypergryph.com`）的令牌，**不参与森空岛签名**，也**不落盘**（每次同步现换）。
+  获取链（一条 hytoken 可为通行证下每个已绑定渠道 uid 各换一把）：
+
+  ```
+  hytoken
+    └─(A1) POST https://as.hypergryph.com/user/oauth2/v2/grant
+             body {type:1, appCode:"be36d44aa36bfb5b", token}      → data.token = L2
+         └─(A2) POST https://binding-api-account-prod.hypergryph.com
+                    /account/binding/v1/u8_token_by_uid
+                    body {uid:<渠道绑定 uid>, token:L2}            → data.token = u8token
+  ```
+
+  - **官服与 B 服走完全相同的一条链**：同域名、同 appCode、同一份 hytoken，
+    唯一差异是 A2 里的 `uid`（官服 uid / B 服 uid）。换出的两把 token 值不同，
+    各自只能读自己 uid 的记录 —— 所以「一把 token 覆盖全账号」是不成立的。
+  - **不需要 device token**：旧的 `token_by_channel_token` 链路（需 `channelMasterId`、
+    写死官服）已彻底删除。
+  - 前提是通行证已绑定该渠道：[user.hypergryph.com/bindCharacters?game=endfield](https://user.hypergryph.com/bindCharacters?game=endfield)。
+    未绑定时 `binding_list` 不返回那条记录，表现为「只出现官服角色」而不是报错。
+  - ⚠️ `be36d44aa36bfb5b` 是鹰角前端硬编码值，存在轮换风险；失效时 A1 会直接报
+    `Gacha OAuth grant failed`（`appCode` 失效与 token 过期都会命中这里）。
+  - 代码位置：`U8_GRANT_APP_CODE` / `BINDING_API_HOST` 常量 + `u8_oauth_token` / `u8_token_by_uid` / `get_u8_token_by_uid`。
 
 ### 4. dId（数美指纹）生成链（`fetch_new_did`，72-393）
 
@@ -142,7 +165,7 @@ sign = md5_hex( hmac_hex.as_bytes() )      # 32 位小写 hex
 
 - **缓存键**：`did_cache`（写 65、读 47、删 509），存于 `ConfigService`；全文件仅此一个缓存键。
 - **错误处理**：统一 `AppError`——`ConfigError`（锁失败）与 `AuthError`（其余全部：网络、JSON 解析、密码学、业务 code）。`call_skland_api` 内部失败不立即返回，而是累计 `last_err` 并进入第 2 次尝试，两次耗尽后返回最后一条错误。每次失败都会上报 `utils::api_health::record_failure`（HTTP→Network、JSON→Parse、业务 code→按 sign/auth/server 分类），任一成功响应则 `record_success` 清零连续计数；`is_benign_business_error` 命中的「请勿重复签到」等幂等结果按成功处理，不计失败/不重试（否则自动签到会把熔断计数刷满并弹出虚假告警）；连续失败或服务器时间偏差 ≥180 秒会触发全局熔断（`app:api-health` 事件），后续 `call_skland_api` 立即返回「API requests are paused」，避免前端一直等待。`refresh_cred_by_hytoken` 中 u8 token 分支的任何失败都只 `log_warn` 且返回 `None`，不阻断主流程。日志中 dId/cred/token 不打印明文（cred 只打 `cred=***`）。
-- **被哪些 command 调用**（间接）：`commands/attendance.rs:88-107`（`get_attendance`）与 `:210-230`（`do_attendance`）**直接**调用 `call_skland_api`（path `/web/v1/game/endfield/attendance`）；`commands/account.rs` 的 `get_accounts`/`get_skland_account_roles`/`get_skland_user_info`/`get_skland_games`/`refresh_accounts`/`check_and_refresh_cred`/`query_role_data` 经 `AccountService` 走到 `get_role_detail`、`get_player_binding`、`get_user_info`、`get_game_list`、`check_cred`、`refresh_cred_by_hytoken`、`get_u8_token_by_hytoken`。
+- **被哪些 command 调用**（间接）：`commands/attendance.rs`（`get_attendance` / `do_attendance`）**直接**调用 `call_skland_api`（path `/web/v1/game/endfield/attendance`）；`commands/account.rs` 的账户类命令经 `AccountService` 走到 `get_role_detail`、`get_player_binding`、`get_user_info`、`get_game_list`、`check_cred`、`refresh_cred_by_hytoken`、`get_u8_token_by_uid`（后者仅由 `authorize_role_u8token` 与抽卡同步前的 `fetch_role_u8token` 触发）。
 - **跨服务复用 `call_skland_api`**：`network_service.rs:103/111/119/127`、`char_detail_service.rs:503`、`char_wiki_detail_service.rs:93`、`account_service.rs:877/960`。
-- **发现的异常**：① `get_u8_token_by_channel` 的 uid 用 `Value::to_string()`（993），JSON 字符串会带引号，且两处调用方（805、1011）均以 `_` 丢弃该返回值；② `get_user_info` 文档注释称请求头为 `platform: 3`（~600），实际实现写死 `platform: 1`（447）；③ `des_encrypt_3des` 名称/注释为 3DES，实际使用 `des::Des` 单密钥 DES（1178）；④ `check_cred` 不带 sign/timestamp，与其余 zonai 接口的鉴权方式不一致（756-759）；⑤ AES/DES 的 `if pad_len < N` 判断（263-268、1172-1175）在长度恰为块倍数时不补零，依赖上游 Python 同样行为。
+- **发现的异常**：① 旧链路已删除，此项不再适用；② `get_user_info` 文档注释称请求头为 `platform: 3`（~600），实际实现写死 `platform: 1`（447）；③ `des_encrypt_3des` 名称/注释为 3DES，实际使用 `des::Des` 单密钥 DES（1178）；④ `check_cred` 不带 sign/timestamp，与其余 zonai 接口的鉴权方式不一致（756-759）；⑤ AES/DES 的 `if pad_len < N` 判断（263-268、1172-1175）在长度恰为块倍数时不补零，依赖上游 Python 同样行为。
 - **已清除的死代码**：`fetch_new_did_with_retry`（原 76-95，全仓无调用方）已删除；顶部未使用的 `aes::cipher::{BlockEncryptMut, KeyIvInit}` 与 `flate2::{Compression, GzBuilder}`、`std::io::Write` 导入，以及 `fetch_new_did` 内的重复 `use` 已删除。

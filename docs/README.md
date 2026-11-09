@@ -21,6 +21,8 @@
 | 账户不可用 / 重新登录（不强制输手机号、扫码校验账户身份） | `src/utils/accountAvailability.ts`、`src/pages/account.tsx`（`handleOpenRelogin` / `finishRelogin`）、后端 `AccountService::complete_login_from_token` 的 `expected_user_id` 校验 | [utils_services_b.md](reference/frontend/utils_services_b.md)、[pages_account.md](reference/frontend/pages_account.md)、[services_account.md](reference/backend/services_account.md) |
 | 数美设备指纹频繁失败（重启电脑 + 同步时区提示） | `src-tauri/src/services/skland_service.rs`（`fetch_new_did`）、`src-tauri/src/utils/api_health.rs`（`DeviceFingerprint`）、`src/utils/crashReporting.ts` | [services_skland.md](reference/backend/services_skland.md)、[utils.md](reference/backend/utils.md)、[utils_services_b.md](reference/frontend/utils_services_b.md) |
 | 森空岛用户资料（昵称/头像/游戏等级） | `src/utils/accountService.ts` → `get_skland_user_info` | [services_account.md](reference/backend/services_account.md)、[services_skland.md](reference/backend/services_skland.md) |
+| **抽卡数据授权（u8token 不落盘，每次现换；官服/B服同一链路）** | `src/pages/account.tsx`（`openAuthStep` / `runAuthorizeRole` / `handleRevokeRoleU8`）、后端 `AccountService::authorize_role_u8token` / `revoke_role_u8token` / `fetch_role_u8token`，命令 `authorize_role_u8token` / `revoke_role_u8token`，`SklandService::get_u8_token_by_uid` | [services_account.md](reference/backend/services_account.md)、[services_skland.md](reference/backend/services_skland.md)、[pages_account.md](reference/frontend/pages_account.md)、[api_communication.md](api_communication.md) |
+| **删除森空岛账户（父账户 + 全部角色 + 凭据）** | `src/pages/account.tsx`（`handleConfirmDeleteAccount` + 删除确认弹窗）、后端 `AccountService::delete_skland_account`，命令 `delete_skland_account`；与「解绑单个角色」的 `logout_account` 不同 | [pages_account.md](reference/frontend/pages_account.md)、[services_account.md](reference/backend/services_account.md)、[commands.md](reference/backend/commands.md) |
 | 角色（干员）数据查询与缓存 | `src/utils/roleDataService.ts`、`roleDetailService.ts` | [utils_services_a.md](reference/frontend/utils_services_a.md)、`query_role_data` 见 [commands.md](reference/backend/commands.md) |
 | 干员列表卡片 / 选择弹窗（实际生效实现） | `src/components/cards/character-list/char-select-modal.tsx` | [cards_character_list.md](reference/frontend/cards_character_list.md) |
 | 卡片自动发现与注册 | `src/components/cards/registry/loader.ts` | [cards_core.md](reference/frontend/cards_core.md) |
@@ -61,7 +63,7 @@
 
 | 需求 | 位置 | 详细参考 |
 | --- | --- | --- |
-| **IPC 命令在哪定义 / 前端谁调用** | 生成的对照表 | [ipc_index.md](reference/ipc_index.md)（137 个命令全表） |
+| **IPC 命令在哪定义 / 前端谁调用** | 生成的对照表 | [ipc_index.md](reference/ipc_index.md)（140 个命令全表） |
 | 新增/修改一个 Tauri 命令 | `src-tauri/src/commands/`、`src-tauri/src/lib.rs` | [commands.md](reference/backend/commands.md)、[bootstrap.md](reference/backend/bootstrap.md)、[backend_development.md](backend_development.md) |
 | 错误类型与转换 | `src-tauri/src/utils/error.rs` | [utils.md](reference/backend/utils.md) |
 | 加密与签名（RSA/AES/DES/HMAC） | `src-tauri/src/utils/hg_crypto.rs`、`services/skland_service.rs` | [utils.md](reference/backend/utils.md)、[services_skland.md](reference/backend/services_skland.md) |
@@ -102,7 +104,7 @@
 | 文件 | 覆盖范围 |
 | --- | --- |
 | [reference/backend/bootstrap.md](reference/backend/bootstrap.md) | `main.rs`、`lib.rs`（含全部命令注册清单）、`tray.rs`、`build.rs`、`Cargo.toml`、`tauri.conf.json`、`capabilities/*`、`examples/sign_test.rs` |
-| [reference/backend/commands.md](reference/backend/commands.md) | `commands/` 全部 18 个文件、**141 处 `#[tauri::command]` 注解（137 个命令名）**：参数、返回值、内部调用链（含 `proxy.rs` 的 5 个代理命令、`window.rs` 的快照命令） |
+| [reference/backend/commands.md](reference/backend/commands.md) | `commands/` 全部 18 个文件、**144 处 `#[tauri::command]` 注解（140 个命令名）**：参数、返回值、内部调用链（含 `proxy.rs` 的 5 个代理命令、`window.rs` 的快照命令、`account.rs` 的按角色 u8token 授权命令） |
 | [reference/backend/models.md](reference/backend/models.md) | `models/` 全部 7 个文件：79 个结构体/枚举的字段与 serde 映射 |
 | [reference/backend/services_account.md](reference/backend/services_account.md) | `services/account_service.rs`（约 3100 行）：登录、凭证刷新、角色数据、状态中枢 |
 | [reference/backend/services_skland.md](reference/backend/services_skland.md) | `services/skland_service.rs`：森空岛 API 端点总表、签名与加密流程 |

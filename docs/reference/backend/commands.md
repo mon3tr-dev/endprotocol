@@ -15,7 +15,8 @@
 | `get_skland_user_info_by_cred` | commands/account.rs:129 | `state`、`cred: String`、`token: String` | `Result<SklandUserInfo, String>` | `AccountService::get_skland_user_info_by_cred` |
 | `get_skland_games` | commands/account.rs:115 | `state`、`user_id: String`、`force: Option<bool>` | `Result<Vec<SklandGameInfo>, String>` | `AccountService::get_skland_games` |
 | `add_account` | commands/account.rs:143 | `state`、`login_request: LoginRequest` | `Result<AccountLoginResult, String>` | `AccountService::add_account` |
-| `logout_account` | commands/account.rs:156 | `state`、`account_id: String`、`keep_device_token: Option<bool>` | `Result<bool, String>` | `AccountService::logout_account` |
+| `logout_account` | commands/account.rs | `state`、`account_id: String`、`keep_device_token: Option<bool>` | `Result<bool, String>` | `AccountService::logout_account`（**只解绑单个角色**，保留父账户与凭据） |
+| `delete_skland_account` | commands/account.rs:171 | `state`、`user_id: String` | `Result<bool, String>` | `AccountService::delete_skland_account`（**彻底删除父账户 + 全部角色 + 全部凭据**） |
 | `batch_logout` | commands/account.rs:169 | `state`、`account_ids: Vec<String>` | `Result<bool, String>` | `AccountService::batch_logout` |
 | `refresh_accounts` | commands/account.rs:179 | `state` | `Result<AccountRefreshResult, String>` | `AccountService::refresh_accounts` |
 | `send_verification_code` | commands/account.rs:188 | `state`、`request: SendCodeRequest` | `Result<bool, String>` | `AccountService::send_verification_code` |
@@ -27,6 +28,8 @@
 | `get_selected_account` | commands/account.rs:266 | `state` | `Result<Option<String>, String>` | `AccountService::get_config_service` → `ConfigService::get("selected_account_id")` |
 | `set_selected_account` | commands/account.rs:277 | `state`、`account_id: String` | `Result<bool, String>` | `ConfigService::set("selected_account_id", …)` |
 | `check_and_refresh_cred` | commands/account.rs:295 | `state`、`user_id: String` | `Result<Option<(String, String)>, String>` | `AccountService::check_and_refresh_user_cred` |
+| `authorize_role_u8token` | commands/account.rs:325 | `state`、`role_id: String` | `Result<RoleU8AuthResult, String>` | `AccountService::authorize_role_u8token` |
+| `revoke_role_u8token` | commands/account.rs:338 | `state`、`role_id: String` | `Result<bool, String>` | `AccountService::revoke_role_u8token` |
 | `set_lazy_load_enabled` | commands/account.rs:308 | `state`、`enabled: bool` | `Result<bool, String>` | `AccountService::set_lazy_load_enabled` |
 | `is_lazy_load_enabled` | commands/account.rs:322 | `state` | `Result<bool, String>` | `AccountService::is_lazy_load_enabled` |
 | `set_current_role_id` | commands/account.rs:331 | `state`、`role_id: Option<String>` | `Result<bool, String>` | `AccountService::set_current_role_id` |
@@ -59,13 +62,13 @@
 | `clear_proxy_settings` | commands/proxy.rs:80 | `state` | `bool` | `ConfigService::remove_proxy_config` + 全局代理缓存置空 |
 | `read_system_proxy` | commands/proxy.rs:14 | 无 | `SystemProxyInfo` | `utils::proxy::read_system_proxy`：Windows 读 `HKCU\...\Internet Settings`（`ProxyEnable`/`ProxyServer`/`AutoConfigURL`），失败回退 `HTTP(S)_PROXY`/`ALL_PROXY` 环境变量 |
 | `test_proxy_connection` | commands/proxy.rs:30 | `state`、`config: Option<Value>`、`url: Option<String>` | `Result<TestConnectionResult, String>` | 取传入配置，缺省回退已保存的 `proxy_config`；`utils::proxy::test_connection`（15s 超时，默认探测 `https://www.gstatic.com/generate_204`，返回 `{status, duration_ms}`） |
-| `get_gacha_pool_meta` | commands/gacha.rs:84 | `account_state`、`gacha_state: State<Arc<GachaService>>`、`role_id: String` | `Result<serde_json::Value, String>` | 本地 `lookup_u8token`/`ensure_fresh_u8token`、`GachaService::get_pool_meta` |
-| `sync_gacha_records` | commands/gacha.rs:116 | `account_state`、`gacha_state`、`role_id: String` | `Result<serde_json::Value, String>` | `ensure_fresh_u8token`、`GachaService::sync_records` |
-| `get_saved_gacha_records` | commands/gacha.rs:148 | `account_state`、`gacha_state`、`role_id: String` | `Result<serde_json::Value, String>` | `GachaService::load_records_or_empty`（不联网） |
-| `sync_weapon_gacha_records` | commands/gacha.rs:179 | `account_state`、`gacha_state`、`role_id: String` | `Result<serde_json::Value, String>` | `ensure_fresh_u8token`、`GachaService::sync_weapon_records` |
-| `get_saved_weapon_gacha_records` | commands/gacha.rs:215 | `account_state`、`gacha_state`、`role_id: String` | `Result<serde_json::Value, String>` | `GachaService::load_weapon_records_or_empty`（不联网） |
-| `resolve_gacha_avatar_map` | commands/gacha.rs:359 | `account_state`、`gacha_state`、`role_id: String` | `Result<serde_json::Value, String>` | `GachaService::{load_records_or_empty, load_weapon_records_or_empty, load_avatar_map, save_avatar_map, load_total_catalog, save_total_catalog, total_catalog_is_stale}`、`AccountService::{check_and_refresh_user_cred, query_role_data}`、本地 `resolve_missing_from_catalog` |
-| `get_gacha_record_stats` | commands/gacha.rs:518 | `account_state`、`gacha_state`、`role_id: String` | `Result<serde_json::Value, String>` | `GachaService::{load_records_or_empty, group_records_by_pool, count_by_rarity, count_by_char}` |
+| `get_gacha_pool_meta` | commands/gacha.rs:129 | `account_state`、`gacha_state: State<Arc<GachaService>>`、`role_id: String` | `Result<serde_json::Value, String>` | `prepare_u8token`、`GachaService::get_pool_meta` |
+| `sync_gacha_records` | commands/gacha.rs:159 | `account_state`、`gacha_state`、`role_id: String` | `Result<serde_json::Value, String>` | `prepare_u8token`、`GachaService::sync_records` |
+| `get_saved_gacha_records` | commands/gacha.rs:189 | `account_state`、`gacha_state`、`role_id: String` | `Result<serde_json::Value, String>` | `GachaService::load_records_or_empty`（不联网） |
+| `sync_weapon_gacha_records` | commands/gacha.rs:221 | `account_state`、`gacha_state`、`role_id: String` | `Result<serde_json::Value, String>` | `prepare_u8token`、`GachaService::sync_weapon_records` |
+| `get_saved_weapon_gacha_records` | commands/gacha.rs:255 | `account_state`、`gacha_state`、`role_id: String` | `Result<serde_json::Value, String>` | `GachaService::load_weapon_records_or_empty`（不联网） |
+| `resolve_gacha_avatar_map` | commands/gacha.rs:400 | `account_state`、`gacha_state`、`role_id: String` | `Result<serde_json::Value, String>` | `GachaService::{load_records_or_empty, load_weapon_records_or_empty, load_avatar_map, save_avatar_map, load_total_catalog, save_total_catalog, total_catalog_is_stale}`、`AccountService::{check_and_refresh_user_cred, query_role_data}`、本地 `resolve_missing_from_catalog` |
+| `get_gacha_record_stats` | commands/gacha.rs:560 | `account_state`、`gacha_state`、`role_id: String` | `Result<serde_json::Value, String>` | `GachaService::{load_records_or_empty, group_records_by_pool, count_by_rarity, count_by_char}` |
 | `read_image_file` | commands/image.rs:18 | `path: String` | `Result<tauri::ipc::Response, String>`（原始字节） | `fs::read` |
 | `get_image_cache_dir` | commands/image.rs:16 | 无 | `Result<String, String>` | `utils::paths::image_cache_dir` |
 | `download_image` | commands/image.rs:29 | `url: String`、`cache_dir: String`、`sub_dir: String` | `Result<String, String>` | `resolve_url_subdir`/`all_sub_dir_names`、本地 `extract_filename_from_url`、`capture::send`（reqwest GET，带 Referer） |
@@ -243,6 +246,13 @@
 - 返回：`Result<bool, String>`
 - 逻辑：以 `keep_device_token.unwrap_or(true)` 调用 `AccountService::logout_account`（默认保留设备令牌），返回是否成功。
 
+### `delete_skland_account`
+- 位置：account.rs:171（async）
+- 参数：`state`、`user_id: String`
+- 返回：`Result<bool, String>`（账号不存在时返回 `false`）
+- 逻辑：调用 `AccountService::delete_skland_account(&user_id)`。删除 `account_token_{user_id}` 整条配置（`ConfigService::remove` 连带清理凭据库中的 `cred`/`token`/`hytoken`/`device_token`/`phone`），把该账号所有 roleId 从 `account_list` 移除，清内存缓存；若 `selected_account_id` 指向被删账号则改选剩余第一个（没有则置空）。**不联网**，不影响鹰角通行证与游戏账号
+- 与 `logout_account` 的区别：后者按 **roleId** 只解绑单个角色、保留父账户
+
 ### `batch_logout`
 - 位置：account.rs:169（async）
 - 参数：`state`、`account_ids: Vec<String>`
@@ -310,6 +320,20 @@
 - 参数：`state`、`user_id: String`
 - 返回：`Result<Option<(String, String)>, String>`（新 `(cred, token)`）
 - 逻辑：调用 `AccountService::check_and_refresh_user_cred(&user_id)`，检查凭据有效性并在需要时刷新。
+
+### `authorize_role_u8token`
+- 位置：account.rs:325（async）
+- 参数：`state`、`role_id: String`
+- 返回：`Result<RoleU8AuthResult, String>`，`status` ∈ `authorized` / `failed`，另有 `message`
+- 逻辑：调用 `AccountService::authorize_role_u8token(&role_id)`。后端用该角色的**渠道绑定 uid** 现换一次令牌做校验（`u8_oauth_token` → `u8_token_by_uid`，令牌用完即弃、**不落盘**），成功则把 `roles[].u8Authorized` 记为 `true`
+- 说明：官服与 B 服走同一条链，没有「渠道服不支持」分支，也不需要设备令牌
+- 配置键：无独立键（写在 `account_token_{userId}.roles[].u8Authorized`）
+
+### `revoke_role_u8token`
+- 位置：account.rs:338（async）
+- 参数：`state`、`role_id: String`
+- 返回：`Result<bool, String>`（是否确实取消成功）
+- 逻辑：调用 `AccountService::revoke_role_u8token(&role_id)`，只移除 `roles[].u8Authorized` 开关 —— 没有凭据需要删除
 
 ### `set_lazy_load_enabled`
 - 位置：account.rs:308（async）
@@ -483,61 +507,62 @@
 
 ### 内部结构
 - 1-15：导入 + `TOTAL_CATALOG_REFRESH_COOLDOWN` 常量（全量 Wiki 目录刷新冷却 6 小时）。
-- 18-54：`lookup_u8token(config_service, role_id)` —— 遍历 `account_token_*`，按 `roles[].roleId` 匹配，返回 `(user_id, server_id, u8token)`，否则 `AppError::AuthError`。
-- 56-81：`ensure_fresh_u8token(account_service, config_service, user_id, role_id)` —— 先非致命地 `check_and_refresh_user_cred`，再 `refresh_u8token_for_user` 主动换新 u8token（避免过期导致非 JSON 响应），失败回退 `lookup_u8token` 读缓存值。
-- 84-113：`get_gacha_pool_meta`；116-145：`sync_gacha_records`；148-176：`get_saved_gacha_records`。
-- 179-212：`sync_weapon_gacha_records`；215-249：`get_saved_weapon_gacha_records`。
-- 251-350：`resolve_missing_from_catalog`（私有辅助：从 Wiki 目录按名称补齐头像，见下）。
-- 359-515：`resolve_gacha_avatar_map`（本文件最长逻辑，见下）。
-- 518-565：`get_gacha_record_stats`。
+- 22-52：`lookup_role_owner(config_service, role_id)` —— 遍历 `account_token_*`，按 `roles[].roleId` 匹配，返回 `RoleOwner { user_id, binding_uid, channel_master_id, server_id, authorized }`。**不要求授权、不读令牌**。
+- 54-100：`fresh_u8token(account_service, owner, role_id)` —— 先检查 `owner.authorized`（未授权直接报错），非致命刷新 cred，再 `AccountService::fetch_role_u8token` **现换令牌**（不缓存、不落盘、失败不回退旧值）。
+- 118-130：`prepare_u8token(account_service, config_service, role_id)` —— 上面两者的组合，返回 `(RoleOwner, String)`，供同步类命令使用。
+- 139-168：`get_gacha_pool_meta`；171-200：`sync_gacha_records`；203-231：`get_saved_gacha_records`。
+- 234-267：`sync_weapon_gacha_records`；270-298：`get_saved_weapon_gacha_records`。
+- 306-405：`resolve_missing_from_catalog`（私有辅助：从 Wiki 目录按名称补齐头像，见下）。
+- 414-570：`resolve_gacha_avatar_map`（本文件最长逻辑，见下）。
+- 573-620：`get_gacha_record_stats`。
 
 ### `get_gacha_pool_meta`
-- 位置：gacha.rs:84（async）
+- 位置：gacha.rs:129（async）
 - 参数：`account_state: State<Arc<Mutex<AccountService>>>`、`gacha_state: State<Arc<GachaService>>`、`role_id: String`
 - 返回：`Result<serde_json::Value, String>`
-- 逻辑：`lookup_u8token` 定位账号 → `ensure_fresh_u8token` 拿新鲜 token → `GachaService::get_pool_meta(&u8token, &server_id)` 取卡池 meta → `serde_json::to_value` 返回。配置键：`account_token_*`。
+- 逻辑：`lookup_role_owner` 定位账号并检查 `u8Authorized`（未授权即报错）→ `fresh_u8token` 现换令牌 → `GachaService::get_pool_meta(&u8token, &server_id)` 取卡池 meta → `serde_json::to_value` 返回。配置键：`account_token_*`（`roles[].u8Authorized` / `bindingUid`）。
 
 ### `sync_gacha_records`
-- 位置：gacha.rs:116（async）
+- 位置：gacha.rs:159（async）
 - 参数：同上（`account_state`、`gacha_state`、`role_id`）
 - 返回：`Result<serde_json::Value, String>`
-- 逻辑：刷新 u8token 后调 `GachaService::sync_records(&user_id, &server_id, &u8token)`，做**增量**同步（从最新读到上次保存的最后一条并合并），返回同步结果统计。
+- 逻辑：`prepare_u8token` 取归属并现换令牌 → `GachaService::sync_records(&user_id, &server_id, &u8token)`，做**增量**同步（从最新读到上次保存的最后一条并合并），返回同步结果统计。未授权角色直接报错（提示去账号页授权）。
 
 ### `get_saved_gacha_records`
-- 位置：gacha.rs:148（async）
+- 位置：gacha.rs:189（async）
 - 参数：同上
 - 返回：`Result<serde_json::Value, String>`
-- 逻辑：仅 `lookup_u8token`（不刷新、不联网），调 `GachaService::load_records_or_empty(&user_id, &server_id)` 读本地记录，无记录返回空结构。
+- 逻辑：仅 `lookup_role_owner`（**不读令牌、不刷新、不联网**），调 `GachaService::load_records_or_empty(&user_id, &server_id)` 读本地记录，无记录返回空结构。未授权（甚至刚取消授权）也能看到已同步的记录。
 
 ### `sync_weapon_gacha_records`
-- 位置：gacha.rs:179（async）
+- 位置：gacha.rs:221（async）
 - 参数：同上
 - 返回：`Result<serde_json::Value, String>`
 - 逻辑：与 `sync_gacha_records` 相同流程，改调 `GachaService::sync_weapon_records(...)`（武器寻访）。
 
 ### `get_saved_weapon_gacha_records`
-- 位置：gacha.rs:215（async）
+- 位置：gacha.rs:255（async）
 - 参数：同上
 - 返回：`Result<serde_json::Value, String>`
-- 逻辑：调 `GachaService::load_weapon_records_or_empty(&user_id, &server_id)` 读本地武器寻访记录。
+- 逻辑：仅 `lookup_role_owner`（不读令牌、不联网），调 `GachaService::load_weapon_records_or_empty(&user_id, &server_id)` 读本地武器寻访记录。
 
 ### `resolve_missing_from_catalog`
-- 位置：gacha.rs:251（私有函数）
+- 位置：gacha.rs:292（私有函数）
 - 参数：`catalog: &serde_json::Value`、`needed: &HashMap<String,String>`（id → 显示名）、`unresolved: &mut Vec<String>`、`map: &mut HashMap<String,String>`
 - 返回：`usize`（本次新解析数量）
 - 逻辑：遍历 `data.catalog[].typeSub[].items[]` 建「显示名 → 图标」表。条目类型优先取 `brief.associate.type`（`char`/`weapon`）；新干员/武器在目录中可能仍是**预览条目**（`brief.associate` 为 `null`，`brief.dotType == "label_type_preview"`），此时回退到所属 `typeSub.id`（`"1"` = 干员、`"2"` = 武器）归类，名称回退 `brief.name` → `item.name`，图标取 `brief.cover`。随后仅对 `unresolved` 中仍无映射的 id 按显示名补齐，命中者写入 `map` 并从 `unresolved` 移除。
 
 ### `resolve_gacha_avatar_map`
-- 位置：gacha.rs:359（async）
+- 位置：gacha.rs:400（async）
 - 参数：同上
 - 返回：`Result<serde_json::Value, String>`（`{角色/武器 id: 图标 URL}` 映射）
-- 逻辑：① 读本地角色+武器记录，筛出 `rarity == 6` 且 `is_draw()` 的条目，构建 `id → 显示名` 的 `needed` 表；② `GachaService::load_avatar_map()` 读已有映射（文件 `gacha_avatar_map.json`，与 `app_config.json` 同级），算出 `missing`；③ 有缺失时先非致命 `check_and_refresh_user_cred`，再用 `load_total_catalog()` 读本地 `total.json` 缓存并调 `resolve_missing_from_catalog` 解析；④ 若仍有未解析 id 且（缓存缺失或已过 `TOTAL_CATALOG_REFRESH_COOLDOWN` 冷却期），则 `AccountService::query_role_data(&role_id, "wiki_catalog", &[])` 重新拉取全量 Wiki 目录、`save_total_catalog` 写盘并再次解析（这样新干员/武器不会因缓存是历史快照而永久缺头像，同时避免无法匹配的名称导致每次打开页面都拉取目录）；⑤ 有新增则 `save_avatar_map` 回写文件，最后返回完整 map。
+- 逻辑：① 仅 `lookup_role_owner` 定位账号，读本地角色+武器记录，筛出 `rarity == 6` 且 `is_draw()` 的条目，构建 `id → 显示名` 的 `needed` 表；② `GachaService::load_avatar_map()` 读已有映射（文件 `gacha_avatar_map.json`，与 `app_config.json` 同级），算出 `missing`；③ 有缺失时先非致命 `check_and_refresh_user_cred`，再用 `load_total_catalog()` 读本地 `total.json` 缓存并调 `resolve_missing_from_catalog` 解析；④ 若仍有未解析 id 且（缓存缺失或已过 `TOTAL_CATALOG_REFRESH_COOLDOWN` 冷却期），则 `AccountService::query_role_data(&role_id, "wiki_catalog", &[])` 重新拉取全量 Wiki 目录、`save_total_catalog` 写盘并再次解析（这样新干员/武器不会因缓存是历史快照而永久缺头像，同时避免无法匹配的名称导致每次打开页面都拉取目录）；⑤ 有新增则 `save_avatar_map` 回写文件，最后返回完整 map。
 
 ### `get_gacha_record_stats`
-- 位置：gacha.rs:518（async）
+- 位置：gacha.rs:560（async）
 - 参数：同上
 - 返回：`Result<serde_json::Value, String>`
-- 逻辑：`load_records_or_empty` 后在命令层组装统计 JSON：`user_id`、`server_id`、`last_sync_time`、`total_records`、`total_draws`、`total_gifts`、`by_pool`（`GachaService::group_records_by_pool` 取长度）、`by_rarity`（`count_by_rarity`）、`by_char`（`count_by_char`）。不发起网络请求。
+- 逻辑：仅 `lookup_role_owner` 定位账号（不读令牌），`load_records_or_empty` 后在命令层组装统计 JSON：`user_id`、`server_id`、`last_sync_time`、`total_records`、`total_draws`、`total_gifts`、`by_pool`（`GachaService::group_records_by_pool` 取长度）、`by_rarity`（`count_by_rarity`）、`by_char`（`count_by_char`）。不发起网络请求。
 
 ---
 
@@ -941,6 +966,6 @@
 
 - 命令总数：**137**（account 24、launcher 28、capture 7、gacha 7、tray 8、updater 9、image 6、config 8、proxy 6、window 6、card_config 3、attendance 2、color_picker 2、logs 2、system_resource 1、browser 5、diagnostics 6、startup 7；`mod.rs` 0。源码 141 处注解，`capture_screen`/`finish_screen_pick`/`run_installer`/`save_tab_snapshot` 各含一对 `cfg` 门控版本，按名去重计）。
 - 事件 emit：`launcher-progress`（launcher.rs）、`download-progress`（updater.rs）。
-- 关键配置键：`account_token_*`（含 `cred`/`token`/`u8token`/`roles[]`）、`selected_account_id`、`card_settings.{card_id}`、`tray_user_info`、`proxy_config`（代理设置，写入后同步刷新全局代理缓存），以及前端侧的 `system_resource_defaults` / `todo_lists` / `todo_defaults`（经 config 命令读写）；相关本地文件：`gacha_avatar_map.json`、`total.json`、`backgrounds/bg.webp`。
+- 关键配置键：`account_token_*`（含 `cred`/`token`/`hytoken`/`device_token`/`roles[]`/`user_info`；`roles[]` 内含 `bindingUid` 与 `u8Authorized`）、`selected_account_id`、`card_settings.{card_id}`、`tray_user_info`、`proxy_config`（代理设置，写入后同步刷新全局代理缓存），以及前端侧的 `system_resource_defaults` / `todo_lists` / `todo_defaults`（经 config 命令读写）；相关本地文件：`gacha_avatar_map.json`、`total.json`、`backgrounds/bg.webp`。
 - 主要状态（managed state）：`Arc<std::sync::Mutex<ConfigService>>`（config/tray/proxy 直接用）、`Arc<tokio::sync::Mutex<AccountService>>`（account/attendance/card_config/gacha）、`Arc<GachaService>`、`Arc<GameLauncherService>`（无外层锁，长任务由内部 `write_gate` 串行）、`Arc<std::sync::Mutex<SystemResourceService>>`（见 `lib.rs` 的 `setup`）。
 

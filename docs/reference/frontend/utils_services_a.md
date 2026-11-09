@@ -33,16 +33,20 @@
 | `getSelectedAccount` | accountService.ts:498 | invoke `get_selected_account`，无参，返回 `string \| null`（当前选中账户 ID）；启动 Splash 跟踪期间计入初始任务；失败记录日志并返回 `null` |
 | `setSelectedAccount` | accountService.ts:512 | invoke `set_selected_account`，参数 `{accountId}`，返回 `boolean`；失败返回 `false` |
 | `checkAndRefreshCred` | accountService.ts:526 | invoke `check_and_refresh_cred`，参数 `{userId}`，返回 `[cred, token] \| null`（`null` 表示无需刷新）；失败记录日志后**重新 throw** |
+| `deleteSklandAccount` | accountService.ts（新增） | invoke `delete_skland_account`，参数 `{userId}`，返回 `boolean`（账号不存在为 `false`）；**彻底删除**父账户 + 全部角色 + 全部凭据，与 `logoutAccount`（只解绑单角色）不同 |
+| `authorizeRoleU8Token` | accountService.ts（新增） | invoke `authorize_role_u8token`，参数 `{roleId}`，返回 `RoleU8AuthResult`（`status` ∈ `authorized` / `failed`，另有 `message`）；失败返回 `{status:"failed", message}` |
+| `revokeRoleU8Token` | accountService.ts（新增） | invoke `revoke_role_u8token`，参数 `{roleId}`，返回 `boolean`（是否确实取消了授权）；失败返回 `false` |
 
 **内部结构**：
 
 | 区间 | 内容 |
 | --- | --- |
-| accountService.ts:1-211 | 全部接口/类型定义（账户、森空岛资料、登录/扫码/验证码请求与结果；`SklandAccount.phone`、`LoginRequest.expectedUserId`、`CodeLoginRequest.expectedUserId`） |
-| accountService.ts:203-536 | 各 IPC 包装函数实现 |
+| accountService.ts:1-211 | 全部接口/类型定义（账户、森空岛资料、登录/扫码/验证码请求与结果；`SklandAccount.phone`、`RoleDisplayInfo`（含 `bindingUid` / `channelName` / `u8Authorized`）、`RoleU8AuthStatus` / `RoleU8AuthResult`、`LoginRequest.expectedUserId`、`CodeLoginRequest.expectedUserId`） |
+| accountService.ts:203-536 | 各 IPC 包装函数实现（含新增的 `authorizeRoleU8Token` / `revokeRoleU8Token`） |
 
 **备注**：
-- 封装的 invoke 命令：`get_accounts`、`get_skland_accounts`、`save_skland_account`、`get_skland_account_roles`、`get_skland_user_info`、`get_skland_user_info_by_cred`、`get_skland_games`、`add_account`、`logout_account`、`batch_logout`、`refresh_accounts`、`send_verification_code`、`add_account_by_code`、`gen_scan_login`、`scan_status`、`add_account_by_scan`、`save_selected_roles`、`get_selected_account`、`set_selected_account`、`check_and_refresh_cred`（共 20 个）。
+- 封装的 invoke 命令：`get_accounts`、`get_skland_accounts`、`save_skland_account`、`get_skland_account_roles`、`get_skland_user_info`、`get_skland_user_info_by_cred`、`get_skland_games`、`add_account`、`logout_account`、`delete_skland_account`、`batch_logout`、`refresh_accounts`、`send_verification_code`、`add_account_by_code`、`gen_scan_login`、`scan_status`、`add_account_by_scan`、`save_selected_roles`、`get_selected_account`、`set_selected_account`、`check_and_refresh_cred`、**`authorize_role_u8token`、`revoke_role_u8token`**（共 23 个）。
+- **抽卡授权**：`authorizeRoleU8Token` / `revokeRoleU8Token` 是唯一入口，前端从不接触令牌明文 —— u8token 不落盘、每次同步由后端现换。官服与 B 服走同一条链路，没有「渠道服不支持」分支。
 - 配置键：本文件**不直接**读写任何配置键；选中账户由后端命令 `get_selected_account`/`set_selected_account` 管理（对应后端配置键在 Rust 侧，前端未出现字面量）。
 - 缓存策略：无前端缓存，每次调用直接 IPC；森空岛游戏列表的缓存由后端负责（`getSklandGames` 的 `force` 参数控制强制刷新）。
 - 错误处理不统一：`getSklandUserInfo`、`getSklandGames` 不捕获错误；`saveSelectedRoles`、`checkAndRefreshCred` 记录日志后 rethrow；其余函数均吞掉错误并返回空值/false。

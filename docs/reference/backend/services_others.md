@@ -89,7 +89,7 @@
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
-| `SECRET_FIELDS` | secret_registry.rs:56 | A 类机密字段登记：`account_token_*` 的 `cred`/`token`/`hytoken`/`u8token`/`device_token`/`phone`；`proxy_config` 的 `username`/`password`/`host`/`port`。 |
+| `SECRET_FIELDS` | secret_registry.rs | A 类机密字段登记：`account_token_*` 的 `cred`/`token`/`hytoken`/`u8token`（已废弃，仅用于迁移）/`device_token`/`phone`；**`role_u8token_*` 的 `token`**（按角色抽卡令牌）；`proxy_config` 的 `username`/`password`/`host`/`port`。 |
 | `matches_secret_key` | secret_registry.rs:117 | 键匹配（支持 `*` 结尾前缀通配），用于快速筛掉无关键。 |
 | `is_secret_field` | secret_registry.rs:126 | 判断某键下某子字段是否机密。 |
 | `has_secret_fields` | secret_registry.rs:137 | 某键下是否存在机密子字段。 |
@@ -384,7 +384,7 @@
   - `gacha_avatar_map.json`
 - `total.json` 是历史快照：`commands/gacha.rs::resolve_gacha_avatar_map` 在缓存未能补齐全部缺失头像、且缓存超过 6 小时冷却期时会重新拉取目录并覆盖。目录中「预览」条目（`brief.associate == null`）按所属 `typeSub.id`（`"1"`=干员、`"2"`=武器）归类，名称取 `brief.name`，避免新干员/武器因尚未生成 `associate` 而缺头像。
 - 事件：`gacha-sync-progress`（`GachaSyncProgress`：user_id、server_id、tab_index、tab_count、tab_key、page、tab_fetched、total_fetched、done）。
-- 被命令调用：`commands/gacha.rs` 中 `get_gacha_pool_meta`、`sync_gacha_records`、`get_saved_gacha_records`、`sync_weapon_gacha_records`、`get_saved_weapon_gacha_records`、`resolve_gacha_avatar_map`、`get_gacha_record_stats`（全部以 `State<'_, Arc<GachaService>>` 注入）。u8token 来自同文件 `lookup_u8token` / `ensure_fresh_u8token`（读 `ConfigService` 并按需刷新 cred）。
+- 被命令调用：`commands/gacha.rs` 中 `get_gacha_pool_meta`、`sync_gacha_records`、`get_saved_gacha_records`、`sync_weapon_gacha_records`、`get_saved_weapon_gacha_records`、`resolve_gacha_avatar_map`、`get_gacha_record_stats`（全部以 `State<'_, Arc<GachaService>>` 注入）。u8token 由 `lookup_role_owner`（定位账号/渠道 uid/授权开关）+ `fresh_u8token`（经 `AccountService::fetch_role_u8token` 现换，**不缓存不落盘**）提供；本地读取类命令只用 `lookup_role_owner`，不要求授权。
 
 ## `src-tauri/src/services/system_resource_service.rs`
 **职责**：本机系统资源采集（CPU / 内存 / GPU / 磁盘 / 网络），由 `commands/system_resource.rs::get_system_snapshot` 调用。基于 `sysinfo`，GPU 通过 `nvidia-smi` 尽力采集；所有子项失败都降级为「空数据 + `errors` 文案」，不 panic。

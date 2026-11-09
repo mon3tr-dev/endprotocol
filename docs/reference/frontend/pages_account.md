@@ -29,12 +29,14 @@
 | 865-901 行 | `refreshData`：手动刷新账户 + 强制刷新森空岛资料/游戏图标，并派发 `manualRefresh` 让侧边栏显示骨架屏 |
 | 903-914 行 | `retrySyncAccount`：同步失败账户的重试入口（复用 refreshData） |
 | 916-985 行 | 登出：`handleLogout` 记录目标 + `handleConfirmLogout` 执行并给出全局/消息中心提示 |
+| **删除森空岛账户** | `handleConfirmDeleteAccount`（调 `delete_skland_account` → 重拉两份列表 + `getSelectedAccount` 跟随后端改选 → 清本地展开态/角色集/资料缓存 → 派发 `accountChanged`）；入口是账户卡片头部的删除按钮，`deleteTarget` / `isDeleting` 驱动确认弹窗。弹窗版式：**账号信息卡（头像 + 昵称 + `userId · 已绑定 N 个`）在上，危险提示一行 + 补充说明一行在下**；不再使用占半屏的 `GlassAlert` 包裹整段凭据清单 |
 | 987-1080 行 | `handleViewDetails`、`handleOpenAddModal`、`handleOpenRelogin`、`handleCloseAddModal`（后两者完整重置/预填登录态并设置重新登录目标） |
 | 1082-1162 行 | 验证码：`handleSendCodeAndShowOtp`（校验手机号 → 发码 → 60s 倒计时 → 进入 OTP）、`handleVerifyWithCode`、`handleVerifyWithScan` |
 | 1164-1270 行 | `handleLogin`：密码登录 / 验证码登录的统一入口，含手机号正则校验与 OTP 拦截；重新登录时把 `reloginTarget.userId` 作为 `expectedUserId` 传给后端 |
 | 1272-1429 行 | `processLoginResult`：登录结果状态机（重新登录直接写回凭证 / 成功直接入库 / 需确认森空岛绑定 / 需选角色 / 新设备验证 / `ACCOUNT_MISMATCH` 账户不匹配拦截 / 失败） |
 | 1431-1504 行 | 扫码登录：`stopQrPolling`、`handleStartQrLogin`、`startQrPolling`（1s 轮询）、`handleScanSuccess`（带 `expectedUserId`，授权到别的账户会被拦截） |
 | 1506-1706 行 | 角色与确认：`handleConfirmRoles`、`loadReloginProfile`（用 cred/token 拉确认页头像）、`finishRelogin`、`handleConfirmSklandAccount`、`saveRoles`、`handleManageSklandRoles` |
+| **↑ 之后新增** | **抽卡授权步骤**：`resetAuthStep` / `openAuthStep`（构建 `authRoles` + 初始状态）/ `patchRoleAuthFlag` / `runAuthorizeRole` / `revokeFromAuthStep` / `handleAuthorizeRoleFromAccount` / `handleRevokeRoleU8`，状态 `authRoles` / `authUserId` / `authStatuses` / `authBusyRoleId` / `isAuthStepOpen` |
 | 1708-1764 行 | 森空岛资料按需加载：`ensureSklandUserInfo`、`ensureSklandGames`、`handleOpenSklandProfile` |
 | 1766-1854 行 | `handleExpandSklandAccount`（展开时拉角色集）、`handleToggleGameRole`（单角色绑定/解绑） |
 | 1856-1916 行 | `handleRoleToggle`、`handleSelectAccount`（切换当前账户、按配置刷新、派发 accountChanged、300ms 动画） |
@@ -90,7 +92,14 @@
 | `handleScanSuccess` | account.tsx:1488 | 用 scanCode 调 `add_account_by_scan` 换账户，再交给 `processLoginResult` |
 | `handleConfirmRoles` | account.tsx:1506 | 校验至少选一个角色（管理态豁免），取完整角色对象后 `saveRoles` |
 | `handleConfirmSklandAccount` | account.tsx:1591 | `save_skland_account` 保存主账号 → 重拉账号列表 → `get_skland_account_roles` 取角色集并预选已绑定项 → 进入角色选择 |
-| `saveRoles` | account.tsx:1620 | `save_selected_roles` → 刷新账户/森空岛列表 → 按管理态或 userId 选中优先账户（失败则清空选中）→ 派发 `accountChanged` → 关弹窗 + 成功 Alert |
+| `saveRoles` | account.tsx:1626 附近 | `save_selected_roles` → 刷新账户/森空岛列表 → 按管理态或 userId 选中优先账户（失败则清空选中）→ 派发 `accountChanged`；**绑定成功后不再直接关弹窗，而是 `openAuthStep(roleDetails, userId)` 进入「授权抽卡数据」步骤**（管理态仍直接关闭） |
+| `openAuthStep` | account.tsx（新增） | 构建授权页：`authRoles=roles`、按 `role.u8Authorized` 预填 `authStatuses`（`authorized` / `idle`）。官服与渠道服没有区别 |
+| `runAuthorizeRole` | account.tsx（新增） | `runAuthorizeRole(roleId, userId)`：调 `authorize_role_u8token`；`authorized` → 标记已授权；`failed` → 提示。结果统一走 `pushResultMessage` 写消息中心。**`userId` 必须由调用方显式传入**——从账号页直接授权时 `openAuthStep` 刚 `setAuthUserId`，此刻读 `authUserId` 仍是旧值，`patchRoleAuthFlag` 会匹配不到条目（表现为「提示授权成功、界面没变化」） |
+| `revokeFromAuthStep` | account.tsx（新增） | `revokeFromAuthStep(roleId, userId)`：调 `revoke_role_u8token`，成功则状态回到 `idle` 并同步账号页标记 |
+| `pushResultMessage` | account.tsx（新增） | 把授权结果写入 messageStore（`addMessage`），**不再用浮层 `globalAlert`** —— 授权是轻量操作，弹浮层会打断视线且需自消；消息中心可留痕回看 |
+| `handleAuthorizeRoleFromAccount` | account.tsx（新增） | 账号页已绑定角色行的「授权抽卡」入口：**就地授权，不打开弹窗** —— 直接调 `authorize_role_u8token`，成功后 `patchRoleAuthFlag` 让按钮立刻变成「抽卡已授权」，结果写消息中心 |
+| `handleRevokeRoleU8` | account.tsx（新增） | 调 `revoke_role_u8token`，成功后 `patchRoleAuthFlag(userId, roleId, false)` |
+| `patchRoleAuthFlag` | account.tsx（新增） | 把授权状态回写到 `sklandRoleSets[userId].roles[].u8Authorized`，驱动行内徽标 |
 | `handleManageSklandRoles` | account.tsx:1678 | 从外部进入的「管理游戏角色」入口，拉角色集后打开弹窗（当前无调用点） |
 | `ensureSklandUserInfo` | account.tsx:1708 | 带 `Set` 去重与缓存判断拉取 `get_skland_user_info`，错误按 userId 单独记录，失败不阻塞列表 |
 | `ensureSklandGames` | account.tsx:1743 | 拉取 `get_skland_games`（后端 12 小时缓存），失败降级文字占位 |
@@ -136,6 +145,21 @@
 ### 森空岛资料弹窗（account.tsx:193-424、1708-1764、2826-2863）
 按 userId 惰性拉取 `get_skland_user_info`（带请求去重与错误缓存，可 force 重试）和 `get_skland_games`（后端 12h 缓存）。展示头像 + 挂件（挂件存在时容器放大到 104px 以套住 64px 头像）、昵称/UID/IP 归属地/创作者标识、简介、游戏等级网格（等级 0 不显示，优先用等级图标）、6 宫格社区数据。
 
+### 抽卡授权（account.tsx，绑定后新增步骤）
+绑定角色成功（`saveRoles`）后不直接关闭弹窗，而是进入「授权抽卡数据」页：
+
+- 每个已选角色一行，状态来自后端 `RoleDisplayInfo.u8Authorized`：已授权 / 未授权 / 授权失败。
+- **一个按钮表示授权状态**：未授权时是实心「授权」，已授权时变成描边「抽卡已授权」，再点即取消 —— 不再让「已授权」徽标与「取消授权」按钮各占一格。
+- 状态文案只在「已授权 / 失败」时追加到角色副标题行，未授权不占位（保持列表清爽）。
+- 说明文案只有一句（`u8_auth_desc`），不再罗列渠道链路细节；底部只留一个「暂时跳过」按钮 —— 「跳过」与「关闭」语义相同，合二为一。
+- 点「授权」：后端用该角色的**渠道绑定 uid** 现换一次令牌做校验（**令牌不保存、不落盘**），成功才记下开关。
+- 结果通过 `pushResultMessage` 写入**消息中心**，不弹浮层。
+- 官服与 B 服**没有区别**：同一条鹰角通行证链路、同一个 hytoken，差异只在渠道 uid，因此渠道服角色也能直接授权。
+- 底栏是「暂时跳过 / 关闭」——跳过不影响绑定结果，之后可随时在账号页授权或取消。
+- 账号页展开区的已绑定角色行同样只占**一个**按钮（未授权实心 / 已授权描边带勾），**点一下就地授权、不弹窗**，按钮立即变为已授权态；与「设为当前」「解绑」并排，按钮区允许换行，避免把昵称压成一两个字。
+- **弹窗只在「绑定角色后」出现一次**（`openAuthStep`），用于列多个角色逐个决定；账号页的授权/取消都是就地切换。
+- **未授权不影响其它功能**：只是不能同步抽卡记录（本地已同步的记录仍可查看）。
+
 ### 账户不可用与重新登录（account.tsx:594-622、1056-1080、1272-1429、1538-1590、2182-2450）
 账户数据获取频繁失败时应用照常进入：`accountAvailability` 记录 `{reason, message, since}`（`auth` / `network` / `fingerprint` / `unknown`），账户页在每个森空岛账户卡片顶部显示红色提示条与「重新登录」按钮；若连已缓存账户都没有，则在列表区显示整体不可用提示与「重试」。
 
@@ -160,11 +184,12 @@
 **备注**：
 
 - **调用的全部 invoke 命令名**（页面直接 `invoke("get_api_health")` / `invoke("reset_api_health")`，其余经 utils 封装间接调用）：
-  - accountService：`get_accounts`、`get_skland_accounts`、`save_skland_account`、`get_skland_account_roles`、`get_skland_user_info`、`get_skland_user_info_by_cred`、`get_skland_games`、`get_selected_account`、`set_selected_account`、`refresh_accounts`、`logout_account`、`add_account`、`send_verification_code`、`add_account_by_code`、`add_account_by_scan`、`gen_scan_login`、`scan_status`、`save_selected_roles`
+  - accountService：`get_accounts`、`get_skland_accounts`、`save_skland_account`、`get_skland_account_roles`、`get_skland_user_info`、`get_skland_user_info_by_cred`、`get_skland_games`、`get_selected_account`、`set_selected_account`、`refresh_accounts`、`logout_account`、**`delete_skland_account`**、`add_account`、`send_verification_code`、`add_account_by_code`、`add_account_by_scan`、`gen_scan_login`、`scan_status`、`save_selected_roles`、**`authorize_role_u8token`、`revoke_role_u8token`**
   - configService：`get_config`
   - roleDetailService：`set_current_role_id`
   - （accountService 还导出 `batch_logout`、`check_and_refresh_cred`，但本文件未使用，故页面**没有批量登出**功能）
 - **涉及的配置键**：`refresh_on_account_switch`（切换账户时是否强制刷新）、`account_list`（推算骨架屏条数）。账户不可用状态存于 `sessionStorage` 键 `account_unavailable_state`（见 `src/utils/accountAvailability.ts`），手机号由后端 `account_token_{userId}.phone` 提供。
+- **u8token（抽卡令牌）**：**不持久化**，每次同步现换；授权只是 `roles[].u8Authorized` 开关，前端经 `authorize_role_u8token` / `revoke_role_u8token` 两个命令读写，从不接触令牌明文。
 - **i18n key 前缀**：`settings.account.*`（主前缀，含 title/subtitle/refresh_data/add_account/skland_*/login/qr_*/logout/close/cancel/confirm/back，以及新增的 `account_unavailable_*` / `relogin*` / `retry_later`）、`common.pagination.*`（分页上一页/下一页，仅禁用区块使用）。另有大量 `i18n.language === "zh" ? 中文 : English` 的硬编码双语文案（未走 `t()`），如提示、错误、服务器名「官服/BiliBili服」、OTP 区文案、`alert()` 提示等。
 - **事件**：Tauri 监听 `accounts-refreshed`；window 监听 `accountChanged`；window 派发 `accountChanged`（4 处）与 `manualRefresh`（带 `{count}` detail）；模块级订阅 `accountAvailability` 状态变化。
 - **异常/注意点**：

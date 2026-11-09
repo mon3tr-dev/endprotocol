@@ -69,23 +69,30 @@
 
 | 配置键 | 子字段 | 写入位置 | 为什么是机密 |
 |---|---|---|---|
-| `account_token_{userId}` | `cred` | `account_service.rs:2739`、`:2830` | 森空岛鉴权凭据，等价于密码 |
-| `account_token_{userId}` | `token` | `account_service.rs:2740`、`:2831` | 森空岛访问令牌 |
-| `account_token_{userId}` | `hytoken` | `account_service.rs:646`（`set_hytoken_for_user`） | 鹰角会话令牌，用于刷新 cred |
-| `account_token_{userId}` | `u8token` | `account_service.rs:700`（`set_u8token_for_user`） | 抽卡 API 令牌（实测 584 字节），可直接读出游戏抽卡记录 |
-| `account_token_{userId}` | `device_token` | `account_service.rs:804`（`set_device_token_for_user`） | 设备绑定令牌 |
-| `account_token_{userId}` | `phone` | `account_service.rs:660`（`set_phone_for_user`） | 用户手机号，PII |
+| `account_token_{userId}` | `cred` | `account_service.rs`（`save_skland_account`、`save_selected_roles`） | 森空岛鉴权凭据，等价于密码 |
+| `account_token_{userId}` | `token` | 同上 | 森空岛访问令牌 |
+| `account_token_{userId}` | `hytoken` | `set_hytoken_for_user` | 鹰角会话令牌，用于刷新 cred |
+| `account_token_{userId}` | `u8token` | **已废弃**（仅保留登记以便清理） | 旧版账号级抽卡令牌；启动时删除 |
+| `account_token_{userId}` | `device_token` | `set_device_token_for_user` | 设备绑定令牌 |
+| `account_token_{userId}` | `phone` | `set_phone_for_user` | 用户手机号，PII |
+| `role_u8token_{roleId}` | `token` | **已废弃**（仅保留登记以便清理） | 旧版按角色的抽卡令牌；启动时删除 |
 | `proxy_config` | `username` | `commands/config.rs` → `set_proxy_config` | 代理服务器账号 |
 | `proxy_config` | `password` | 同上 | 代理服务器口令 |
 | `proxy_config` | `host` | 同上 | 网络拓扑信息（弱机密） |
 | `proxy_config` | `port` | 同上 | 网络拓扑信息（弱机密） |
+
+> **抽卡令牌不再持久化**。u8token 生命周期很短，现在每次同步现换（`SklandService::get_u8_token_by_uid`），
+> 授权只是 `account_token_{userId}.roles[].u8Authorized` 一个布尔开关，明文即可 —— 因此
+> **抽卡令牌不占用任何凭据库条目**。上面两条「已废弃」登记只为升级时清理旧凭据。
+>
+> ⚠️ 机密判定只对「对象里的子字段」生效：`write_secret_fields` 遇到非对象值直接跳过，`strip_secret_fields` 按字段名剥离。所以「整个键都是机密」（`field: ""`）的写法目前不生效 —— 新增机密一律用「键前缀 + 固定子字段名」的形式。
 
 ### 3.2 B 类 · 隐私（保持明文，用户已确认）
 
 | 配置键 | 子字段 | 说明 |
 |---|---|---|
 | `account_token_{userId}` | `user_info` | 森空岛用户资料（2048 字节 JSON），含 hg_id、IP 属地、生日、性别 |
-| `account_token_{userId}` | `roles` | 角色绑定关系（userId / serverId / roleId） |
+| `account_token_{userId}` | `roles` | 角色绑定关系（userId / serverId / roleId / app / bindingUid / channelMasterId / channelName / u8Authorized） |
 | `did_cache` | 整值 | 数美设备指纹 |
 | `account_list` | 整值 | 账户 ID 列表 |
 
@@ -114,7 +121,11 @@
 2. 在本文档 §3.1 的表格里补一行（写清写入位置与判定理由）；
 3. 在 `secret_registry.rs` 的 `mod tests` 里补一条单元测试；
 4. 若该字段有子字段混合（同一键下既有 A 类又有 B 类），确认
-   `strip_secret_fields` 的按字段剥离行为符合预期。
+   `strip_secret_fields` 的按字段剥离行为符合预期；
+5. 需要「按角色 / 按实例」隔离的机密，**每个实例单独一个键**（键前缀 + 固定子字段名），
+   并保持固定的子字段名（如 `token`）。不要试图把整条记录当机密值塞进一个键。
+6. 先问一句「这个值必须落盘吗」。短寿命令牌（如抽卡 u8token）应每次现换，
+   授权只记一个布尔开关 —— 这样既不占凭据库、也不留泄漏面。
 
 ## 5. 实现要点
 
@@ -163,9 +174,9 @@ service = cn.msk-network.endprotocol
 user    = {配置键}::{子字段}
 ```
 
-实例：`account_token_4718764::u8token`、`proxy_config::password`。
+实例：`account_token_4718764::hytoken`、`account_token_4718764::device_token`、`proxy_config::password`。
 
-> Windows 上 TargetName 形如 `account_token_4718764::u8token.cn.msk-network.endprotocol`。
+> Windows 上 TargetName 形如 `account_token_4718764::hytoken.cn.msk-network.endprotocol`。
 > 注意 service 名里的 `.` 会与 Windows 凭据库的默认分隔符冲突 —— 任何依赖
 > service/user 解析的逻辑（如 `Entry::search`）都会把 service 切成 `endprotocol`。
 > 读写与删除走完整 TargetName，不受影响。

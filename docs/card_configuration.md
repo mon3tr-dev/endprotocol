@@ -36,7 +36,8 @@
 ```
 
 > ⚠️ **凭据不在这个文件里**。`account_token_*` 的 `cred` / `token` / `hytoken` /
-> `u8token` / `device_token` / `phone` 与代理凭据存放在**操作系统凭据库**
+> `device_token` / `phone`（旧的账号级 `u8token` 仅用于迁移）、按角色的
+> 与代理凭据存放在**操作系统凭据库**（抽卡令牌不落盘，每次现换）
 > （Windows Credential Manager / macOS Keychain / Linux Secret Service），
 > 配置文件里只保留 `roles` / `user_info` 等非机密子字段。
 > 详见 [`secure_storage.md`](secure_storage.md)。
