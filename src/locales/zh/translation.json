@@ -527,6 +527,7 @@
       "u8_auth_desc": "开启后即可同步该角色的抽卡记录。可不开启，之后在账户页随时调整。",
       "u8_authorize": "授权",
       "u8_skip": "暂时跳过",
+      "u8_done": "完成",
       "u8_status_authorized": "已授权",
       "u8_status_failed": "授权失败",
       "u8_authorized_ok": "已开启该角色的抽卡授权。",

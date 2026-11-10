@@ -702,6 +702,16 @@ export default function AccountPage() {
   const [authBusyRoleId, setAuthBusyRoleId] = useState<string | null>(null);
   /** 授权页展示中 */
   const isAuthStepOpen = authRoles.length > 0;
+  /**
+   * 授权页里是否每个角色都已授权 —— 决定底栏唯一的按钮显示「完成」还是「暂时跳过」。
+   * 两者点击行为相同（关闭弹窗、结束绑定流程），只是全部授权后再写「暂时跳过」
+   * 会让人以为自己漏做了什么。授权失败/未授权的角色仍按「暂时跳过」。
+   */
+  const allAuthRolesAuthorized =
+    authRoles.length > 0 &&
+    authRoles.every(
+      (role) => (authStatuses[role.roleId] ?? "idle") === "authorized",
+    );
 
   // 登出确认（选择是否保留设备认证）
   const [logoutTarget, setLogoutTarget] = useState<Account | null>(null);
@@ -4516,14 +4526,16 @@ export default function AccountPage() {
               </GlassButton>
             </>
           ) : isAuthStepOpen ? (
-            // 「跳过」和「关闭」做的是同一件事，只留一个
+            // 「跳过」和「关闭」做的是同一件事，只留一个；全部授权后文案换成「完成」
             <>
               <GlassButton
                 variant="primary"
                 onPress={handleCloseAddModal}
                 isDisabled={authBusyRoleId !== null}
               >
-                {t("settings.account.u8_skip")}
+                {allAuthRolesAuthorized
+                  ? t("settings.account.u8_done")
+                  : t("settings.account.u8_skip")}
               </GlassButton>
             </>
           ) : isRoleSelectionOpen ? (

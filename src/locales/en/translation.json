@@ -527,6 +527,7 @@
       "u8_auth_desc": "Enable to sync gacha records for these roles. You can skip this and change it anytime on the Accounts page.",
       "u8_authorize": "Authorize",
       "u8_skip": "Skip for now",
+      "u8_done": "Done",
       "u8_status_authorized": "Authorized",
       "u8_status_failed": "Authorization failed",
       "u8_authorized_ok": "Gacha access enabled for this role.",
