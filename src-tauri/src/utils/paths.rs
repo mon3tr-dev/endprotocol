@@ -83,3 +83,13 @@ pub fn gacha_records_file_path_legacy(
 pub fn gacha_avatar_map_file_path() -> Result<PathBuf, &'static str> {
     app_data_dir().map(|d| d.join("gacha_avatar_map.json"))
 }
+
+/// 《明日方舟》数据缓存目录
+///
+/// `player/info` 单账号就有几百 KB（实测 B 服账号 242 名干员约 600 KB），
+/// 塞进 `app_config.json` 会让每次配置读写都搬运这份数据，因此**独立成文件**——
+/// 与抽卡记录（`gacha_records/`）同一套做法。
+/// 目录内的文件名由 [`crate::services::arknights_service::ArknightsService`] 决定。
+pub fn arknights_cache_dir() -> Result<PathBuf, &'static str> {
+    app_data_dir().map(|d| d.join("arknights"))
+}

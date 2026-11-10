@@ -11,6 +11,9 @@ pub struct AccountSummary {
     pub server: String,
     pub status: String,              // online/offline/loading
     pub sync_status: Option<String>, // SYNCING/FAILED/null
+    /// 所属游戏：`endfield` / `arknights`（老缓存缺该字段时按终末地处理）
+    #[serde(default = "default_game")]
+    pub game: String,
 }
 
 /// 森空岛账户摘要（父级账户，游戏角色通过 user_id 关联）
@@ -137,6 +140,14 @@ pub struct AccountInfo {
     pub token: Option<String>,
     pub user_id: Option<String>,
     pub server_id: Option<String>,
+    /// 所属游戏：`endfield` / `arknights`（老缓存缺该字段时按终末地处理）
+    #[serde(default = "default_game")]
+    pub game: String,
+}
+
+/// 缺省游戏标识（兼容没有 `game` 字段的老缓存/老配置）
+fn default_game() -> String {
+    crate::models::role::GAME_ENDFIELD.to_string()
 }
 
 impl AccountInfo {
@@ -150,6 +161,7 @@ impl AccountInfo {
             server: self.server.clone(),
             status: self.status.clone(),
             sync_status: self.sync_status.clone(),
+            game: self.game.clone(),
         }
     }
 }

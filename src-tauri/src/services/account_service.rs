@@ -12,7 +12,10 @@ use crate::models::account::{
 use crate::models::login::{
     CodeLoginRequest, LoginRequest, ScanLoginInfo, ScanStatus, SendCodeRequest,
 };
-use crate::models::role::RoleDisplayInfo;
+use crate::models::role::{
+    GameRoleBinding, RoleDisplayInfo, GAME_ARKNIGHTS, GAME_ENDFIELD,
+};
+use crate::services::arknights_service::ArknightsService;
 use crate::services::avatar_cache_service::AvatarCacheService;
 use crate::services::config_service::ConfigService;
 use crate::services::network_service::{NetworkService, PreloadRoleInfo};
@@ -34,6 +37,81 @@ struct RoleOwner {
     channel_master_id: String,
     #[allow(dead_code)]
     server_id: String,
+}
+
+/// 待拉取数据/刷新的角色目标（来自配置 `account_token_*.roles[]`）
+///
+/// 带上 `app` 与绑定时已存的 `nickname` / `level`：
+/// 明日方舟角色没有终末地的详情接口，账户列表要直接用这两项展示。
+struct RoleTarget {
+    role_id: String,
+    server_id: String,
+    user_id: String,
+    /// `endfield` / `arknights`（配置里没有该字段的老数据按终末地处理）
+    game: String,
+    /// 渠道绑定 uid（明日方舟的 player/info 靠它寻址；终末地换抽卡令牌也用它）
+    binding_uid: String,
+    nickname: String,
+    level: i32,
+    cred: Option<String>,
+    token: Option<String>,
+}
+
+/// 从配置里收集所有待处理的角色目标
+fn collect_role_targets(config: &ConfigService) -> Vec<RoleTarget> {
+    let all_config = config.get_all();
+    let mut targets = Vec::new();
+
+    for (key, value) in &all_config {
+        let Some(user_id) = key.strip_prefix("account_token_") else {
+            continue;
+        };
+        let cred = value
+            .get("cred")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        let token = value
+            .get("token")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+
+        let Some(roles) = value.get("roles").and_then(|v| v.as_array()) else {
+            continue;
+        };
+        for role in roles {
+            let (Some(role_id), Some(server_id)) = (
+                role.get("roleId").and_then(|v| v.as_str()),
+                role.get("serverId").and_then(|v| v.as_str()),
+            ) else {
+                continue;
+            };
+            targets.push(RoleTarget {
+                role_id: role_id.to_string(),
+                server_id: server_id.to_string(),
+                user_id: user_id.to_string(),
+                game: role
+                    .get("app")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or(GAME_ENDFIELD)
+                    .to_string(),
+                binding_uid: role
+                    .get("bindingUid")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_string(),
+                nickname: role
+                    .get("nickname")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_string(),
+                level: role.get("level").and_then(|v| v.as_i64()).unwrap_or(0) as i32,
+                cred: cred.clone(),
+                token: token.clone(),
+            });
+        }
+    }
+
+    targets
 }
 
 /// 当前 Unix 时间戳（秒）
@@ -249,6 +327,8 @@ pub struct AccountService {
     account_summary_cache: Arc<Mutex<HashMap<String, Vec<AccountSummary>>>>,
     // 懒加载开关
     lazy_load_enabled: Arc<Mutex<bool>>,
+    // 《明日方舟》数据服务（player/info、cultivate、attendance 的拉取与缓存）
+    arknights_service: Arc<ArknightsService>,
     // Tauri AppHandle，用于向前端发送事件通知
     app_handle: Option<AppHandle>,
 }
@@ -274,6 +354,11 @@ impl AccountService {
             log_warn!("Failed to migrate legacy u8token: {}", error);
         }
 
+        let arknights_service = Arc::new(ArknightsService::new(
+            skland_service.clone(),
+            avatar_cache_service.clone(),
+        ));
+
         Self {
             config_service,
             skland_service,
@@ -282,8 +367,14 @@ impl AccountService {
             account_list_cache: Arc::new(Mutex::new(HashMap::new())),
             account_summary_cache: Arc::new(Mutex::new(HashMap::new())),
             lazy_load_enabled: Arc::new(Mutex::new(lazy_load)),
+            arknights_service,
             app_handle: Some(app_handle),
         }
+    }
+
+    /// 获取《明日方舟》数据服务引用
+    pub fn arknights_service(&self) -> &Arc<ArknightsService> {
+        &self.arknights_service
     }
 
     /// 获取配置服务引用
@@ -402,6 +493,7 @@ impl AccountService {
                             token: token.clone(),
                             user_id: Some(user_id.clone()),
                             server_id: Some(s.server.clone()),
+                            game: s.game.clone(),
                         })
                         .collect();
 
@@ -482,6 +574,7 @@ impl AccountService {
                         token: None,
                         user_id: Some(user_id.to_string()),
                         server_id: Some(s.server.clone()),
+                        game: s.game.clone(),
                     })
                     .collect();
                 return Some(accounts);
@@ -509,6 +602,9 @@ impl AccountService {
     }
 
     /// 收集所有角色的预加载信息
+    ///
+    /// 只收终末地角色：预加载走的是 `/api/v1/game/endfield/card/detail`，
+    /// 明日方舟角色在这个接口上没有数据，预加载它们只会白跑一遍请求。
     async fn gather_preload_role_infos(&self) -> Vec<PreloadRoleInfo> {
         let config = self.config_service.lock().unwrap();
         let all_config = config.get_all();
@@ -528,6 +624,13 @@ impl AccountService {
 
                 if let Some(roles) = value.get("roles").and_then(|v| v.as_array()) {
                     for role in roles {
+                        let game = role
+                            .get("app")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or(GAME_ENDFIELD);
+                        if game == GAME_ARKNIGHTS {
+                            continue;
+                        }
                         if let (Some(role_id), Some(server_id)) = (
                             role.get("roleId").and_then(|v| v.as_str()),
                             role.get("serverId").and_then(|v| v.as_str()),
@@ -801,9 +904,164 @@ impl AccountService {
         config.set(key, data)
     }
 
-    /// 按 roleId 找到它所属的账号、渠道绑定 uid 与渠道信息
-    fn find_role_owner(&self, role_id: &str) -> Result<RoleOwner, AppError> {
+    /// 解析一个《明日方舟》角色所需的凭据：(森空岛 userId, 渠道绑定 uid)
+    ///
+    /// 明日方舟的所有数据接口都靠**渠道绑定 uid** 寻址（`roles[].bindingUid`），
+    /// 而 cred/token 是按森空岛父账户（userId）存的，所以两者都要拿出来。
+    fn resolve_arknights_target(&self, role_id: &str) -> Result<(String, String), AppError> {
         let config = self.config_service.lock().unwrap();
+        for (key, value) in config.get_all() {
+            let Some(user_id) = key.strip_prefix("account_token_") else {
+                continue;
+            };
+            let Some(roles) = value.get("roles").and_then(|v| v.as_array()) else {
+                continue;
+            };
+            for role in roles {
+                if role.get("roleId").and_then(|v| v.as_str()) != Some(role_id) {
+                    continue;
+                }
+                let game = role
+                    .get("app")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or(GAME_ENDFIELD);
+                if game != GAME_ARKNIGHTS {
+                    return Err(AppError::ConfigError {
+                        message: format!(
+                            "Role {} belongs to {}; arknights data source only serves Arknights roles",
+                            role_id, game
+                        ),
+                    });
+                }
+                let uid = role
+                    .get("bindingUid")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_string();
+                if uid.is_empty() {
+                    return Err(AppError::ConfigError {
+                        message: format!(
+                            "binding uid missing for arknights role {}; please re-bind the account",
+                            role_id
+                        ),
+                    });
+                }
+                return Ok((user_id.to_string(), uid));
+            }
+        }
+
+        Err(AppError::AuthError {
+            message: format!("No account found for roleId: {}. Please re-login.", role_id),
+        })
+    }
+
+    /// 取一个明日方舟角色的 cred/token（必要时自动刷新 cred）
+    async fn arknights_credentials(
+        &self,
+        user_id: &str,
+    ) -> Result<(String, String), AppError> {
+        let (cred, token) = self.read_skland_credentials(user_id)?;
+        match self.check_and_refresh_user_cred(user_id).await {
+            Ok(Some((new_cred, new_token))) => Ok((new_cred, new_token)),
+            Ok(None) => Ok((cred, token)),
+            Err(error) => {
+                log_warn!(
+                    "arknights_credentials: cred refresh failed for user {} (using existing): {}",
+                    user_id,
+                    error
+                );
+                Ok((cred, token))
+            }
+        }
+    }
+
+    /// 获取《明日方舟》玩家全量数据
+    ///
+    /// `force = false` 时优先返回缓存（绑定/上次刷新时落的），缓存缺失才联网。
+    /// 联网成功后写缓存，并同步更新 account_list 的展示数据。
+    pub async fn get_arknights_player_info(
+        &self,
+        role_id: String,
+        force: bool,
+    ) -> Result<serde_json::Value, AppError> {
+        let (user_id, uid) = self.resolve_arknights_target(&role_id)?;
+
+        if !force {
+            if let Some(cached) = self.arknights_service.get_cached_player_info(&uid) {
+                log_debug!(
+                    "get_arknights_player_info: cache hit for role {} (uid={})",
+                    role_id,
+                    uid
+                );
+                return serde_json::to_value(&cached).map_err(|error| {
+                    AppError::ConfigError {
+                        message: format!("Failed to serialize cached arknights info: {}", error),
+                    }
+                });
+            }
+        }
+
+        let (cred, token) = self.arknights_credentials(&user_id).await?;
+        let info = self
+            .arknights_service
+            .refresh_player_info(&cred, &token, &uid)
+            .await?;
+
+        serde_json::to_value(&info).map_err(|error| AppError::ConfigError {
+            message: format!("Failed to serialize arknights info: {}", error),
+        })
+    }
+
+    /// 获取《明日方舟》养成数据（干员 + 仓库）
+    pub async fn get_arknights_cultivate(
+        &self,
+        role_id: String,
+    ) -> Result<serde_json::Value, AppError> {
+        let (user_id, uid) = self.resolve_arknights_target(&role_id)?;
+        let (cred, token) = self.arknights_credentials(&user_id).await?;
+        let cultivate = self
+            .arknights_service
+            .fetch_cultivate(&cred, &token, &uid)
+            .await?;
+        serde_json::to_value(&cultivate).map_err(|error| AppError::ConfigError {
+            message: format!("Failed to serialize arknights cultivate: {}", error),
+        })
+    }
+
+    /// 获取《明日方舟》签到状态
+    pub async fn get_arknights_attendance(
+        &self,
+        role_id: String,
+    ) -> Result<serde_json::Value, AppError> {
+        let (user_id, uid) = self.resolve_arknights_target(&role_id)?;
+        let (cred, token) = self.arknights_credentials(&user_id).await?;
+        let attendance = self
+            .arknights_service
+            .attendance_status(&cred, &token, &uid)
+            .await?;
+        serde_json::to_value(&attendance).map_err(|error| AppError::ConfigError {
+            message: format!("Failed to serialize arknights attendance: {}", error),
+        })
+    }
+
+    /// 执行《明日方舟》签到
+    pub async fn do_arknights_attendance(
+        &self,
+        role_id: String,
+    ) -> Result<serde_json::Value, AppError> {
+        let (user_id, uid) = self.resolve_arknights_target(&role_id)?;
+        let (cred, token) = self.arknights_credentials(&user_id).await?;
+        let awards = self
+            .arknights_service
+            .do_attendance(&cred, &token, &uid)
+            .await?;
+        serde_json::to_value(&awards).map_err(|error| AppError::ConfigError {
+            message: format!("Failed to serialize arknights awards: {}", error),
+        })
+    }
+
+    /// 按 roleId 找到它所属的账号、渠道绑定 uid 与渠道信息
+    fn find_role_owner(&self, role_id: &str) -> Result<RoleOwner, AppError> {        let config = self.config_service.lock().unwrap();
         for (key, value) in config.get_all() {
             if !key.starts_with("account_token_") {
                 continue;
@@ -885,14 +1143,11 @@ impl AccountService {
         Ok(())
     }
 
-    /// 把渠道绑定 uid 回填到 `roles[]`（老数据没有这个字段时的懒迁移）。
+    /// 把渠道绑定 uid / 游戏标识回填到 `roles[]`（老数据缺字段时的懒迁移）。
     ///
-    /// 没有 `bindingUid` 就无法为角色换 u8token，所以每次拿到 binding 列表时顺手补上。
-    fn backfill_binding_uid(
-        &self,
-        user_id: &str,
-        bindings: &[(String, String, String, String, String)],
-    ) {
+    /// 没有 `bindingUid` 就无法为角色换 u8token；没有 `app` 就无法区分游戏，
+    /// 因此每次拿到 binding 列表时顺手补上。
+    fn backfill_binding_uid(&self, user_id: &str, bindings: &[GameRoleBinding]) {
         let mut config = self.config_service.lock().unwrap();
         let key = format!("account_token_{}", user_id);
         let Some(mut data) = config.get::<serde_json::Value>(&key) else {
@@ -907,23 +1162,30 @@ impl AccountService {
             let Some(role_id) = role.get("roleId").and_then(|v| v.as_str()) else {
                 continue;
             };
-            let needs_backfill = role
+            // 同一 roleId 可能出现在多个渠道？实际上 roleId 在国服唯一，直接按 roleId 匹配
+            let Some(bound) = bindings.iter().find(|bound| bound.role_id == role_id) else {
+                continue;
+            };
+            let Some(obj) = role.as_object_mut() else {
+                continue;
+            };
+
+            let needs_uid = obj
                 .get("bindingUid")
                 .and_then(|v| v.as_str())
                 .is_none_or(|s| s.is_empty());
-            if !needs_backfill {
-                continue;
+            if needs_uid {
+                obj.insert("bindingUid".to_string(), json!(bound.binding_uid));
+                obj.insert("channelMasterId".to_string(), json!(bound.channel_master_id));
+                obj.insert("channelName".to_string(), json!(bound.channel_name));
+                changed = true;
             }
-            // 同一 roleId 可能出现在多个渠道？实际上 roleId 在国服唯一，直接按 roleId 匹配
-            if let Some((uid, channel_id, channel_name, _, _)) =
-                bindings.iter().find(|(_, _, _, _, rid)| rid == role_id)
-            {
-                if let Some(obj) = role.as_object_mut() {
-                    obj.insert("bindingUid".to_string(), json!(uid));
-                    obj.insert("channelMasterId".to_string(), json!(channel_id));
-                    obj.insert("channelName".to_string(), json!(channel_name));
-                    changed = true;
-                }
+
+            // 旧数据没有 app 字段：按绑定列表里的游戏补上
+            let needs_app = obj.get("app").and_then(|v| v.as_str()).is_none_or(str::is_empty);
+            if needs_app {
+                obj.insert("app".to_string(), json!(bound.game));
+                changed = true;
             }
         }
 
@@ -1218,6 +1480,74 @@ impl AccountService {
         });
     }
 
+    /// 构造一个《明日方舟》角色的账户条目
+    ///
+    /// 明日方舟没有终末地的 `card/detail` 接口，头像/昵称/等级只能用绑定接口给的
+    /// 那份数据（绑定时已写进 `roles[]`）。昵称缺失时回退成 `角色 <短 id>`，
+    /// 避免列表里出现空白条目。
+    #[allow(clippy::too_many_arguments)]
+    fn arknights_account(
+        &self,
+        role_id: &str,
+        server_id: &str,
+        user_id: &str,
+        game: &str,
+        nickname: &str,
+        level: i32,
+        binding_uid: &str,
+        cred: String,
+        token: String,
+    ) -> AccountInfo {
+        let fallback = format!("Role {}", &role_id[..8.min(role_id.len())]);
+
+        // 昵称/等级/头像优先取 player/info 缓存（绑定或上次刷新时落的），
+        // 缓存缺失才回退到 roles[] 里的绑定快照。明日方舟没有终末地那套详情接口，
+        // 这几项只能来自 player/info。
+        let cached = self
+            .arknights_service
+            .get_cached_player_info(binding_uid);
+        let (nickname, level, avatar) = match cached {
+            Some(info) => (
+                if info.status.name.is_empty() {
+                    nickname.to_string()
+                } else {
+                    info.status.name.clone()
+                },
+                if info.status.level > 0 {
+                    info.status.level
+                } else {
+                    level
+                },
+                info.status
+                    .avatar
+                    .as_ref()
+                    // AccountInfo.avatar 在终末地那边也是 base64（或 URL），前端 Img 两者都能吃
+                    .map(|a| a.base64.clone().unwrap_or_else(|| a.url.clone()))
+                    .unwrap_or_default(),
+            ),
+            None => (nickname.to_string(), level, String::new()),
+        };
+
+        AccountInfo {
+            id: role_id.to_string(),
+            avatar,
+            nickname: if nickname.is_empty() {
+                fallback
+            } else {
+                nickname
+            },
+            level,
+            server: server_id.to_string(),
+            status: "online".to_string(),
+            sync_status: None,
+            cred: Some(cred),
+            token: Some(token),
+            user_id: Some(user_id.to_string()),
+            server_id: Some(server_id.to_string()),
+            game: game.to_string(),
+        }
+    }
+
     /// 获取所有账户（同步获取完整数据）
     pub async fn get_accounts(&self) -> Vec<AccountInfo> {
         log_debug!("get_accounts: START");
@@ -1225,59 +1555,9 @@ impl AccountService {
         // 先收集所有需要获取详情的角色信息
         let role_infos = {
             let config = self.config_service.lock().unwrap();
-            let all_config = config.get_all();
-
-            log_debug!(
-                "get_accounts: all_config keys = {:?}",
-                all_config.keys().collect::<Vec<_>>()
-            );
-
-            let mut role_infos = Vec::new();
-
-            // 遍历所有 account_token_* 配置项
-            for (key, value) in &all_config {
-                if key.starts_with("account_token_") {
-                    // 提取 userId (key 的格式是 account_token_{userId})
-                    let user_id = key.trim_start_matches("account_token_");
-
-                    let cred = value
-                        .get("cred")
-                        .and_then(|v| v.as_str())
-                        .map(|s| s.to_string());
-                    let token = value
-                        .get("token")
-                        .and_then(|v| v.as_str())
-                        .map(|s| s.to_string());
-
-                    log_debug!(
-                        "get_accounts: user_id={}, cred_len={}, token_len={}",
-                        user_id,
-                        cred.as_ref().map(|s| s.len()).unwrap_or(0),
-                        token.as_ref().map(|s| s.len()).unwrap_or(0)
-                    );
-
-                    // 获取 roles 数组
-                    if let Some(roles) = value.get("roles").and_then(|v| v.as_array()) {
-                        for role in roles {
-                            if let (Some(role_id), Some(server_id)) = (
-                                role.get("roleId").and_then(|v| v.as_str()),
-                                role.get("serverId").and_then(|v| v.as_str()),
-                            ) {
-                                role_infos.push((
-                                    role_id.to_string(),
-                                    server_id.to_string(),
-                                    user_id.to_string(),
-                                    cred.clone(),
-                                    token.clone(),
-                                ));
-                            }
-                        }
-                    }
-                }
-            }
-
-            log_debug!("get_accounts: found {} roles to fetch", role_infos.len());
-            role_infos
+            let targets = collect_role_targets(&config);
+            log_debug!("get_accounts: found {} roles to fetch", targets.len());
+            targets
             // config 在这里被自动 drop
         };
 
@@ -1290,11 +1570,23 @@ impl AccountService {
         // 同步获取所有账户的完整数据
         let mut accounts = Vec::new();
 
-        for (role_id, server_id, user_id, cred_opt, token_opt) in role_infos {
-            if let (Some(cred), Some(token)) = (cred_opt, token_opt) {
+        for RoleTarget {
+            role_id,
+            server_id,
+            user_id,
+            game,
+            binding_uid,
+            nickname,
+            level,
+            cred,
+            token,
+        } in role_infos
+        {
+            if let (Some(cred), Some(token)) = (cred, token) {
                 log_debug!(
-                    "get_accounts: Processing role_id={}, user_id={}",
+                    "get_accounts: Processing role_id={}, game={}, user_id={}",
                     role_id,
+                    game,
                     user_id
                 );
 
@@ -1348,6 +1640,7 @@ impl AccountService {
                             token: Some(token),
                             user_id: Some(user_id.clone()),
                             server_id: Some(server_id.clone()),
+                            game: game.clone(),
                         };
                         log_debug!(
                             "get_accounts: Created account with sync_status = {:?}",
@@ -1357,6 +1650,23 @@ impl AccountService {
                         continue;
                     }
                 };
+
+                // 明日方舟角色没有终末地详情接口：昵称/等级/头像来自 player/info 缓存
+                // （绑定或上次刷新时落的），缓存缺失才回退 roles[] 里的绑定快照
+                if game == GAME_ARKNIGHTS {
+                    accounts.push(self.arknights_account(
+                        &role_id,
+                        &server_id,
+                        &user_id,
+                        &game,
+                        &nickname,
+                        level,
+                        &binding_uid,
+                        final_cred,
+                        final_token,
+                    ));
+                    continue;
+                }
 
                 match self
                     .network_service
@@ -1386,6 +1696,7 @@ impl AccountService {
                             token: Some(final_token),
                             user_id: Some(user_id.clone()),
                             server_id: Some(server_id.clone()),
+                            game: game.clone(),
                         };
                         accounts.push(account);
                     }
@@ -1403,6 +1714,7 @@ impl AccountService {
                             token: Some(final_token),
                             user_id: Some(user_id.clone()),
                             server_id: Some(server_id.clone()),
+                            game: game.clone(),
                         };
                         accounts.push(account);
                     }
@@ -1495,6 +1807,7 @@ impl AccountService {
                                                     token: Some(new_token),
                                                     user_id: Some(user_id.clone()),
                                                     server_id: Some(server_id.clone()),
+                                                    game: game.clone(),
                                                 };
                                                 accounts.push(account);
                                                 continue; // 跳过下面的 FAILED 状态创建
@@ -1516,6 +1829,7 @@ impl AccountService {
                                                     token: Some(new_token),
                                                     user_id: Some(user_id.clone()),
                                                     server_id: Some(server_id.clone()),
+                                                    game: game.clone(),
                                                 };
                                                 accounts.push(account);
                                             }
@@ -1551,6 +1865,7 @@ impl AccountService {
                             token: Some(final_token),
                             user_id: Some(user_id.clone()),
                             server_id: Some(server_id.clone()),
+                            game: game.clone(),
                         };
                         accounts.push(account);
                     }
@@ -1668,6 +1983,9 @@ impl AccountService {
         // 遍历所有 account_token_* 配置项来找到匹配的 role
         let all_config = config.get_all();
         let mut keys_to_update = Vec::new();
+        // 被解绑的**明日方舟角色**的 uid：解绑后要清掉它的 player/info 缓存，
+        // 否则重新绑定别的明日方舟账号时会读到上一个角色的数据
+        let mut arknights_uids_to_clear = Vec::new();
 
         for (key, value) in &all_config {
             if key.starts_with("account_token_") {
@@ -1678,6 +1996,23 @@ impl AccountService {
                     });
 
                     if has_role {
+                        for role in roles {
+                            if role.get("roleId").and_then(|v| v.as_str())
+                                != Some(account_id.as_str())
+                            {
+                                continue;
+                            }
+                            if role.get("app").and_then(|v| v.as_str()) == Some(GAME_ARKNIGHTS) {
+                                if let Some(uid) =
+                                    role.get("bindingUid").and_then(|v| v.as_str())
+                                {
+                                    if !uid.is_empty() {
+                                        arknights_uids_to_clear.push(uid.to_string());
+                                    }
+                                }
+                            }
+                        }
+
                         // 从 roles 数组中移除该角色
                         let mut updated_value = value.clone();
                         if let Some(roles_array) = updated_value.get_mut("roles") {
@@ -1729,6 +2064,14 @@ impl AccountService {
         account_list.retain(|id| id != &account_id);
         let _ = config.set("account_list".to_string(), json!(account_list));
 
+        // 配置锁必须先释放：`clear_cache` 内部也要锁同一把 std::sync::Mutex（不可重入）
+        drop(config);
+
+        // 解绑的明日方舟角色，其 player/info 缓存随角色一起清掉
+        for uid in arknights_uids_to_clear {
+            self.arknights_service.clear_cache(&uid);
+        }
+
         true
     }
 
@@ -1761,6 +2104,26 @@ impl AccountService {
                             .and_then(|v| v.as_str())
                             .map(str::to_string)
                     })
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        // 该账号下明日方舟角色的 uid：账号删除后 player/info 缓存也要一并清掉
+        let arknights_uids: Vec<String> = value
+            .get("roles")
+            .and_then(|v| v.as_array())
+            .map(|roles| {
+                roles
+                    .iter()
+                    .filter(|role| {
+                        role.get("app").and_then(|v| v.as_str()) == Some(GAME_ARKNIGHTS)
+                    })
+                    .filter_map(|role| {
+                        role.get("bindingUid")
+                            .and_then(|v| v.as_str())
+                            .map(str::to_string)
+                    })
+                    .filter(|uid| !uid.is_empty())
                     .collect()
             })
             .unwrap_or_default();
@@ -1798,10 +2161,16 @@ impl AccountService {
         drop(config);
         self.clear_account_cache(user_id);
 
+        // 该账号下明日方舟角色的 player/info 缓存一并清掉
+        for uid in &arknights_uids {
+            self.arknights_service.clear_cache(uid);
+        }
+
         log_info!(
-            "delete_skland_account: user {} deleted ({} role(s) unbound, credentials cleared)",
+            "delete_skland_account: user {} deleted ({} role(s) unbound, {} arknights cache(s) cleared, credentials cleared)",
             user_id,
-            role_ids.len()
+            role_ids.len(),
+            arknights_uids.len()
         );
         Ok(true)
     }
@@ -1830,60 +2199,30 @@ impl AccountService {
         // 先收集所有需要刷新的角色信息
         let role_infos = {
             let config = self.config_service.lock().unwrap();
-            let all_config = config.get_all();
-            let mut role_infos = Vec::new();
-
-            for (key, value) in &all_config {
-                if key.starts_with("account_token_") {
-                    let user_id = key.trim_start_matches("account_token_");
-                    let cred = value
-                        .get("cred")
-                        .and_then(|v| v.as_str())
-                        .map(|s| s.to_string());
-                    let token = value
-                        .get("token")
-                        .and_then(|v| v.as_str())
-                        .map(|s| s.to_string());
-
-                    log_debug!(
-                        "refresh_accounts: user_id={}, cred_len={}, token_len={}",
-                        user_id,
-                        cred.as_ref().map(|s| s.len()).unwrap_or(0),
-                        token.as_ref().map(|s| s.len()).unwrap_or(0)
-                    );
-
-                    if let Some(roles) = value.get("roles").and_then(|v| v.as_array()) {
-                        for role in roles {
-                            if let (Some(role_id), Some(server_id)) = (
-                                role.get("roleId").and_then(|v| v.as_str()),
-                                role.get("serverId").and_then(|v| v.as_str()),
-                            ) {
-                                role_infos.push((
-                                    role_id.to_string(),
-                                    server_id.to_string(),
-                                    user_id.to_string(),
-                                    cred.clone(),
-                                    token.clone(),
-                                ));
-                            }
-                        }
-                    }
-                }
-            }
-            log_debug!(
-                "refresh_accounts: found {} roles to refresh",
-                role_infos.len()
-            );
-            role_infos
+            let targets = collect_role_targets(&config);
+            log_debug!("refresh_accounts: found {} roles to refresh", targets.len());
+            targets
         };
 
         // 为每个账户获取最新的角色详情
         let mut refreshed_accounts = Vec::new();
-        for (role_id, server_id, user_id, cred_opt, token_opt) in role_infos {
-            if let (Some(cred), Some(token)) = (cred_opt, token_opt) {
+        for RoleTarget {
+            role_id,
+            server_id,
+            user_id,
+            game,
+            binding_uid,
+            nickname,
+            level,
+            cred,
+            token,
+        } in role_infos
+        {
+            if let (Some(cred), Some(token)) = (cred, token) {
                 log_debug!(
-                    "refresh_accounts: Processing role_id={}, user_id={}",
+                    "refresh_accounts: Processing role_id={}, game={}, user_id={}",
                     role_id,
+                    game,
                     user_id
                 );
 
@@ -1933,11 +2272,50 @@ impl AccountService {
                             token: Some(token),
                             user_id: Some(user_id.clone()),
                             server_id: Some(server_id.clone()),
+                            game: game.clone(),
                         };
                         refreshed_accounts.push(account);
                         continue;
                     }
                 };
+
+                // 明日方舟角色：手动/定时刷新时重新拉一次 player/info
+                // （昵称、等级、头像、基建等都在这一个接口里）
+                if game == GAME_ARKNIGHTS {
+                    match self
+                        .arknights_service
+                        .refresh_player_info(&final_cred, &final_token, &binding_uid)
+                        .await
+                    {
+                        Ok(_) => {
+                            log_debug!(
+                                "refresh_accounts: arknights player/info refreshed for uid={}",
+                                binding_uid
+                            );
+                        }
+                        Err(error) => {
+                            // 刷新失败不把账户标成 FAILED：还有缓存可用，
+                            // 标 FAILED 会让账户页误报「账号不可用」
+                            log_warn!(
+                                "refresh_accounts: arknights player/info failed for uid={}: {}",
+                                binding_uid,
+                                error
+                            );
+                        }
+                    }
+                    refreshed_accounts.push(self.arknights_account(
+                        &role_id,
+                        &server_id,
+                        &user_id,
+                        &game,
+                        &nickname,
+                        level,
+                        &binding_uid,
+                        final_cred,
+                        final_token,
+                    ));
+                    continue;
+                }
 
                 match self
                     .skland_service
@@ -1967,6 +2345,7 @@ impl AccountService {
                             token: Some(final_token),
                             user_id: Some(user_id),
                             server_id: Some(server_id.clone()),
+                            game: game.clone(),
                         };
                         refreshed_accounts.push(refreshed_account);
                     }
@@ -2061,6 +2440,7 @@ impl AccountService {
                                                     token: Some(new_token),
                                                     user_id: Some(user_id.clone()),
                                                     server_id: Some(server_id.clone()),
+                                                    game: game.clone(),
                                                 };
                                                 refreshed_accounts.push(refreshed_account);
                                                 continue; // 跳过下面的 FAILED 状态创建
@@ -2097,6 +2477,7 @@ impl AccountService {
                             token: Some(final_token),
                             user_id: Some(user_id.clone()),
                             server_id: Some(server_id),
+                            game: game.clone(),
                         };
                         refreshed_accounts.push(account);
                     }
@@ -2661,27 +3042,95 @@ impl AccountService {
         })
     }
 
-    async fn fetch_endfield_roles(
+    /// 拉取该森空岛账户下的全部游戏角色（终末地 + 明日方舟）
+    ///
+    /// - 终末地角色：调 `/api/v1/game/endfield/card/detail` 补头像与精确等级
+    /// - 明日方舟角色：**只用绑定接口给的 uid / 服务器 / 昵称 / 等级**，
+    ///   不请求终末地的详情接口（那个接口对明日方舟角色没有数据）
+    async fn fetch_game_roles(
         &self,
         cred: &str,
         token: &str,
         user_id: &str,
     ) -> Result<Vec<RoleDisplayInfo>, AppError> {
         let bindings = self.skland_service.get_player_binding(cred, token).await?;
-        let game_roles = SklandService::extract_endfield_roles(&bindings);
+        let game_roles = SklandService::extract_game_roles(&bindings);
 
         // 老账号的 roles[] 没有渠道 uid，拿到 binding 列表时顺手回填
         self.backfill_binding_uid(user_id, &game_roles);
 
         let mut roles = Vec::new();
 
-        for (binding_uid, channel_master_id, channel_name, server_id, role_id) in game_roles {
+        for bound in game_roles {
             // 授权状态存在 account_token_*.roles[].u8Authorized，不在 binding 里，
             // 必须在这里回填 —— 否则前端拿到的永远是「未授权」。
-            let u8_authorized = self.is_role_u8_authorized(&role_id);
+            let u8_authorized = self.is_role_u8_authorized(&bound.role_id);
+
+            if bound.game == GAME_ARKNIGHTS {
+                // 明日方舟：绑定接口给了昵称/等级/服务器，但**没有头像** ——
+                // 头像只在 `player/info` 的 `status.avatar.url` 里。
+                // 这里顺手拉一次 player/info 并落盘缓存（绑定流程只有一次，代价可接受），
+                // 头像一并转 base64，之后账户列表直接读缓存即可。
+                let mut nickname = bound.nickname;
+                let mut level = bound.level;
+                let mut avatar_url = String::new();
+
+                match self
+                    .arknights_service
+                    .refresh_player_info(cred, token, &bound.binding_uid)
+                    .await
+                {
+                    Ok(info) => {
+                        // player/info 的昵称/等级更权威（绑定接口的 nickName 带 #尾号）
+                        if !info.status.name.is_empty() {
+                            nickname = info.status.name.clone();
+                        }
+                        if info.status.level > 0 {
+                            level = info.status.level;
+                        }
+                        if let Some(avatar) = info.status.avatar.as_ref() {
+                            // 这里存 **URL**：`save_selected_roles` 会统一把它下载成
+                            // base64 存进 AccountInfo.avatar（与终末地角色的处理一致）。
+                            // 头像刚才在 refresh_player_info 里已经进过图片缓存，这次是本地命中。
+                            avatar_url = avatar.url.clone();
+                        }
+                        log_info!(
+                            "arknights role bound: uid={}, name={}, level={}, avatar={}",
+                            bound.binding_uid,
+                            nickname,
+                            level,
+                            !avatar_url.is_empty()
+                        );
+                    }
+                    Err(error) => {
+                        // 拉取失败不阻断绑定：昵称/等级用绑定接口那份，头像留空
+                        log_warn!(
+                            "arknights player/info failed during binding (uid={}): {}",
+                            bound.binding_uid,
+                            error
+                        );
+                    }
+                }
+
+                roles.push(RoleDisplayInfo {
+                    role_id: bound.role_id,
+                    user_id: user_id.to_string(),
+                    server_id: bound.server_id,
+                    nickname,
+                    level,
+                    avatar_url,
+                    game: bound.game,
+                    binding_uid: bound.binding_uid,
+                    channel_master_id: bound.channel_master_id,
+                    channel_name: bound.channel_name,
+                    u8_authorized,
+                });
+                continue;
+            }
+
             match self
                 .skland_service
-                .get_role_detail(cred, token, &role_id, &server_id, user_id)
+                .get_role_detail(cred, token, &bound.role_id, &bound.server_id, user_id)
                 .await
             {
                 Ok(response) => {
@@ -2692,20 +3141,25 @@ impl AccountService {
                         .await
                         .unwrap_or_else(|_| base.avatar_url.clone());
                     roles.push(RoleDisplayInfo {
-                        role_id: role_id.clone(),
+                        role_id: bound.role_id,
                         user_id: user_id.to_string(),
-                        server_id,
+                        server_id: bound.server_id,
                         nickname: base.name.clone(),
                         level: base.level,
                         avatar_url,
-                        binding_uid,
-                        channel_master_id,
-                        channel_name,
+                        game: bound.game,
+                        binding_uid: bound.binding_uid,
+                        channel_master_id: bound.channel_master_id,
+                        channel_name: bound.channel_name,
                         u8_authorized,
                     });
                 }
                 Err(error) => {
-                    log_error!("Failed to get role detail for {}: {}", role_id, error);
+                    log_error!(
+                        "Failed to get role detail for {}: {}",
+                        bound.role_id,
+                        error
+                    );
                 }
             }
         }
@@ -2873,7 +3327,7 @@ impl AccountService {
     ) -> Result<AccountLoginResult, AppError> {
         self.check_and_refresh_user_cred(&user_id).await?;
         let (cred, token) = self.read_skland_credentials(&user_id)?;
-        let available_roles = self.fetch_endfield_roles(&cred, &token, &user_id).await?;
+        let available_roles = self.fetch_game_roles(&cred, &token, &user_id).await?;
 
         Ok(AccountLoginResult {
             success: true,
@@ -3019,7 +3473,8 @@ impl AccountService {
                 device_token.is_some()
             );
 
-            // 构建 roles 列表（渠道 uid 是换抽卡令牌的必需信息，务必落盘）
+            // 构建 roles 列表（游戏标识 + 渠道 uid 必须落盘：
+            // `app` 决定前端按哪个游戏展示、`bindingUid` 是换抽卡令牌的必需信息）
             let roles: Vec<serde_json::Value> = selected_roles
                 .iter()
                 .map(|role| {
@@ -3027,7 +3482,9 @@ impl AccountService {
                         "userId": role.user_id,
                         "serverId": role.server_id,
                         "roleId": role.role_id,
-                        "app": "endfield",
+                        "app": if role.game.is_empty() { GAME_ENDFIELD } else { role.game.as_str() },
+                        "nickname": role.nickname,
+                        "level": role.level,
                         "bindingUid": role.binding_uid,
                         "channelMasterId": role.channel_master_id,
                         "channelName": role.channel_name,
@@ -3107,6 +3564,11 @@ impl AccountService {
                 token: Some(token.clone()),
                 user_id: Some(role.user_id.clone()),
                 server_id: Some(role.server_id.clone()),
+                game: if role.game.is_empty() {
+                    GAME_ENDFIELD.to_string()
+                } else {
+                    role.game.clone()
+                },
             };
             accounts.push(account);
         }
@@ -3121,6 +3583,10 @@ impl AccountService {
     }
 
     /// 迁移旧配置：为所有 account_token_* 中缺少 app 标识的角色自动补上 "endfield"
+    ///
+    /// 只有在「支持明日方舟之前」绑定的角色才会缺 `app`，那时能绑的只有终末地角色，
+    /// 因此默认值恒为 `endfield` 是安全的。缺 `nickname` / `level` 一并按终末地角色
+    /// 的状态留空 —— 它们的展示数据来自 `card/detail`，下次同步就会补齐。
     fn migrate_roles_app_field(config: &mut ConfigService) -> Result<(), AppError> {
         let keys: Vec<String> = config
             .get_all()
@@ -3140,8 +3606,13 @@ impl AccountService {
 
             let mut changed = false;
             for role in roles.iter_mut() {
-                if role.is_object() && role.get("app").is_none() {
-                    role["app"] = json!("endfield");
+                if role.is_object()
+                    && role
+                        .get("app")
+                        .and_then(|v| v.as_str())
+                        .is_none_or(str::is_empty)
+                {
+                    role["app"] = json!(GAME_ENDFIELD);
                     changed = true;
                 }
             }
@@ -3390,6 +3861,20 @@ impl AccountService {
         let account = accounts.iter().find(|acc| acc.id == role_id);
 
         if let Some(acc) = account {
+            // 明日方舟角色没有终末地的数据接口：静默失败会让人以为「数据加载中」，
+            // 这里直接给出明确错误，前端据此展示「该功能仅支持终末地角色」。
+            if acc.game == GAME_ARKNIGHTS {
+                log_error!(
+                    "query_role_data: role_id={} belongs to arknights, which has no endfield data api",
+                    role_id
+                );
+                return Err(AppError::ConfigError {
+                    message: format!(
+                        "Role {} belongs to Arknights; this data source is only available for Endfield roles",
+                        role_id
+                    ),
+                });
+            }
             if let (Some(cred), Some(token), Some(user_id), Some(server_id)) =
                 (&acc.cred, &acc.token, &acc.user_id, &acc.server_id)
             {

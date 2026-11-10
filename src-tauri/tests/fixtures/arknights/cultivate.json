@@ -1,0 +1,83 @@
+{
+    "code":  0,
+    "message":  "OK",
+    "data":  {
+                 "characters":  [
+                                    {
+                                        "equips":  [
+                                                       {
+                                                           "id":  "uniequip_002_amiya",
+                                                           "level":  0
+                                                       }
+                                                   ],
+                                        "evolvePhase":  2,
+                                        "id":  "char_002_amiya",
+                                        "level":  80,
+                                        "mainSkillLevel":  2,
+                                        "potentialRank":  0,
+                                        "skills":  [
+                                                       {
+                                                           "id":  "skcom_magic_rage[3]",
+                                                           "level":  0
+                                                       },
+                                                       {
+                                                           "id":  "skchr_amiya_2",
+                                                           "level":  0
+                                                       },
+                                                       {
+                                                           "id":  "skchr_amiya_3",
+                                                           "level":  0
+                                                       }
+                                                   ]
+                                    },
+                                    {
+                                        "equips":  [
+
+                                                   ],
+                                        "evolvePhase":  0,
+                                        "id":  "char_502_nblade",
+                                        "level":  1,
+                                        "mainSkillLevel":  1,
+                                        "potentialRank":  0,
+                                        "skills":  [
+
+                                                   ]
+                                    },
+                                    {
+                                        "equips":  [
+
+                                                   ],
+                                        "evolvePhase":  0,
+                                        "id":  "char_500_noirc",
+                                        "level":  1,
+                                        "mainSkillLevel":  1,
+                                        "potentialRank":  0,
+                                        "skills":  [
+
+                                                   ]
+                                    }
+                                ],
+                 "items":  [
+                               {
+                                   "count":  "56",
+                                   "id":  "2004"
+                               },
+                               {
+                                   "count":  "0",
+                                   "id":  "3105"
+                               },
+                               {
+                                   "count":  "10",
+                                   "id":  "30021"
+                               },
+                               {
+                                   "count":  "2",
+                                   "id":  "30135"
+                               },
+                               {
+                                   "count":  "115",
+                                   "id":  "2001"
+                               }
+                           ]
+             }
+}

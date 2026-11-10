@@ -627,6 +627,12 @@
       "already_added": "已添加"
     }
   },
+  "game": {
+    "endfield": "明日方舟：终末地",
+    "endfield_short": "终末地",
+    "arknights": "明日方舟",
+    "arknights_short": "方舟"
+  },
   "role_select": {
     "title": "选择要绑定的角色",
     "no_roles_found": "未找到可用角色",

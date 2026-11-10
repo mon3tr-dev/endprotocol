@@ -627,6 +627,12 @@
       "already_added": "Added"
     }
   },
+  "game": {
+    "endfield": "Arknights: Endfield",
+    "endfield_short": "Endfield",
+    "arknights": "Arknights",
+    "arknights_short": "AK"
+  },
   "role_select": {
     "title": "Select Roles to Bind",
     "no_roles_found": "No roles found",

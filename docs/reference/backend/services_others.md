@@ -4,26 +4,27 @@
 > 覆盖 `src-tauri/src/services/` 下除 `account_service.rs` / `skland_service.rs` / `game_launcher_service.rs` 外的全部文件。
 
 ## `src-tauri/src/services/mod.rs`
-**职责**：服务层的模块声明清单，13 行，把 13 个服务模块公开为 `pub mod`。
+**职责**：服务层的模块声明清单，14 行，把 14 个服务模块公开为 `pub mod`。
 
-**导出**：`account_service`、`avatar_cache_service`、`char_detail_service`、`char_wiki_detail_service`、`config_service`、`data_query`、`game_launcher_service`、`gacha_service`、`network_service`、`secret_registry`、`secret_store`、`skland_service`、`system_resource_service`（全部为模块，无类型/方法）。
+**导出**：`account_service`、`arknights_service`、`avatar_cache_service`、`char_detail_service`、`char_wiki_detail_service`、`config_service`、`data_query`、`game_launcher_service`、`gacha_service`、`network_service`、`secret_registry`、`secret_store`、`skland_service`、`system_resource_service`（全部为模块，无类型/方法）。
 
 **状态**：不注册任何 Tauri State，仅提供命名空间。
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
 | `pub mod account_service` | mod.rs:1 | 账户服务（其他文档负责） |
-| `pub mod avatar_cache_service` | mod.rs:2 | 图片/头像本地缓存服务 |
-| `pub mod char_detail_service` | mod.rs:3 | 角色详情获取与图片懒加载处理 |
-| `pub mod char_wiki_detail_service` | mod.rs:4 | Wiki 物品详情批量/按需缓存 |
-| `pub mod config_service` | mod.rs:5 | JSON 配置读写（app_config.json）+ 机密字段分流 |
-| `pub mod data_query` | mod.rs:6 | 数据路径解析与 API 名枚举 |
-| `pub mod game_launcher_service` | mod.rs:7 | 游戏启动器（其他文档负责） |
-| `pub mod gacha_service` | mod.rs:8 | 抽卡记录抓取与本地存储 |
-| `pub mod network_service` | mod.rs:9 | 统一数据查询入口（聚合子服务） |
-| `pub mod secret_registry` | mod.rs:10 | **机密字段登记表**（唯一判定来源） |
-| `pub mod secret_store` | mod.rs:11 | **机密存储后端**（OS 凭据库 / 加密文件降级） |
-| `pub mod skland_service` | mod.rs:12 | 森兰 API 底层调用（其他文档负责） |
+| `pub mod arknights_service` | mod.rs:2 | **《明日方舟》数据服务**（player/info、cultivate、attendance 的拉取、解析与文件缓存） |
+| `pub mod avatar_cache_service` | mod.rs:3 | 图片/头像本地缓存服务 |
+| `pub mod char_detail_service` | mod.rs:4 | 角色详情获取与图片懒加载处理 |
+| `pub mod char_wiki_detail_service` | mod.rs:5 | Wiki 物品详情批量/按需缓存 |
+| `pub mod config_service` | mod.rs:6 | JSON 配置读写（app_config.json）+ 机密字段分流 |
+| `pub mod data_query` | mod.rs:7 | 数据路径解析与 API 名枚举 |
+| `pub mod game_launcher_service` | mod.rs:8 | 游戏启动器（其他文档负责） |
+| `pub mod gacha_service` | mod.rs:9 | 抽卡记录抓取与本地存储 |
+| `pub mod network_service` | mod.rs:10 | 统一数据查询入口（聚合子服务） |
+| `pub mod secret_registry` | mod.rs:11 | **机密字段登记表**（唯一判定来源） |
+| `pub mod secret_store` | mod.rs:12 | **机密存储后端**（OS 凭据库 / 加密文件降级） |
+| `pub mod skland_service` | mod.rs:13 | 森兰 API 底层调用（其他文档负责） |
 
 **备注**：无 HTTP 端点、无配置键、无文件路径。`data_query`、`secret_registry` 是纯函数模块（含单元测试），不属于「服务实例」。
 
@@ -191,6 +192,52 @@
 | `get_value_by_path` | data_query.rs:105 | 空 segments 返回整值克隆；对象取 `Field`、数组取 `Index`，类型不匹配或缺键返回 `None`。 |
 
 **备注**：仅被 `network_service.rs:7/100/174/175` 使用；`WikiCatalogNoOnline` 为调试用 API 名。无 HTTP、无缓存、无配置键。
+
+---
+
+## `src-tauri/src/services/arknights_service.rs`
+**职责**：《明日方舟》数据服务 —— 森空岛 `player/info`、`cultivate/player`、`attendance` 三个接口的拉取、解析、**文件缓存**与头像下载。是「明日方舟账户数据」的唯一网络入口，与终末地的 `CharDetailService`（按 roleId 走 `card/detail`）平行但完全独立。
+
+**导出**：`ArknightsService`、`ArknightsCacheEntry<T>`。
+
+**主要依赖**：`SklandService`（`call_skland_api`，签名/dId/重试/熔断全在里面）、`AvatarCacheService`（头像转 base64）、`utils::paths`（`arknights_cache_dir`）、`models::arknights::{ArknightsPlayerInfo, ArknightsCultivate, ArknightsAttendance, ArknightsAward}`。
+
+**状态**：不注册 Tauri State；由 `AccountService::new`（account_service.rs:384）用 `ArknightsService::new(skland, avatar_cache)` 构造并持有，经 `AccountService::arknights_service()` 访问。**注意它不持有 `ConfigService`** —— 大块数据走独立文件，不碰 `app_config.json`。
+
+| 符号 | 位置 | 说明 |
+| --- | --- | --- |
+| `ArknightsCacheEntry<T>` | arknights_service.rs:29 | 缓存文件结构：`{ cachedAt, storeTs, data }`。`storeTs` 是森空岛侧的数据生成时间（`player/info.status.storeTs`），用于判断数据新旧 |
+| `ArknightsService::new` | arknights_service.rs:61 | 缓存目录取 `paths::arknights_cache_dir()`（`<app_data>/arknights`） |
+| `with_cache_dir` | arknights_service.rs:68 | 指定缓存目录（**测试用**，避免污染真实用户数据目录） |
+| `player_info_path`（私有） | arknights_service.rs:82 | `<cache_dir>/player_info_{uid}.json` |
+| `raw_path`（私有） | arknights_service.rs:87 | `<cache_dir>/raw_{kind}_{uid}.json` |
+| `read_cache_file` | arknights_service.rs:94 | 只读磁盘（不查内存）。文件缺失/损坏都返回 `None`；**损坏时顺手删掉**（避免下次继续踩），下次自动重拉 |
+| `write_cache_file` | arknights_service.rs:133 | 只写磁盘（不碰内存、不下载头像） |
+| `get_cached_player_info` | arknights_service.rs:154 | 内存优先，未命中读磁盘并**回填内存**。账户列表走这里 |
+| `cache_player_info` | arknights_service.rs:169 | 头像下载转 base64 → 写内存 → 写磁盘。绑定账户/刷新时调用 |
+| `cache_raw`（私有） | arknights_service.rs:218 | 原始响应留档到 `raw_{kind}_{uid}.json`，接口字段变更时可比对 |
+| `fetch_player_info` | arknights_service.rs:246 | `GET /api/v1/game/player/info?uid=` → `ArknightsPlayerInfo`（不写缓存） |
+| `refresh_player_info` | arknights_service.rs:294 | `fetch_player_info` + `cache_player_info`（绑定/刷新用这个） |
+| `fetch_cultivate` | arknights_service.rs:310 | `GET /api/v1/game/cultivate/player?uid=` → `ArknightsCultivate`（唯一增量是仓库 `items`） |
+| `attendance_status` | arknights_service.rs:344 | `GET /api/v1/game/attendance?uid=` → `ArknightsAttendance` |
+| `do_attendance` | arknights_service.rs:376 | `POST /api/v1/game/attendance`，body `{gameId: 1, uid}` → `Vec<ArknightsAward>`。今天已签到时返回**空数组**（幂等结果由 `call_skland_api` 原样放行，这里按 `code != 0` 识别） |
+| `clear_cache` | arknights_service.rs:427 | 清内存 + 删 `player_info_{uid}.json` 与三个 `raw_*_{uid}.json`。解绑角色/删除账户时调用 |
+
+**备注**：
+- **HTTP 端点**（全部经 `SklandService::call_skland_api`，基址 `https://zonai.skland.com`）：
+  - `GET /api/v1/game/player/info?uid={uid}` —— 玩家全量数据
+  - `GET /api/v1/game/cultivate/player?uid={uid}` —— 干员养成 + 仓库
+  - `GET /api/v1/game/attendance?uid={uid}` —— 签到状态
+  - `POST /api/v1/game/attendance`（body `{gameId: 1, uid}`）—— 执行签到
+  - **不发 `sk-game-role` 头**（那是终末地签到才需要的）；明日方舟把 `gameId` + `uid` 放在 body 里
+- **`uid` 是渠道绑定 uid**（`roles[].bindingUid`），不是 roleId、也不是森空岛 userId。官服与 B 服各有自己的 uid，实测不会碰撞
+- **缓存文件**（`<app_data>/arknights/`，不进 `app_config.json`）：
+  - `player_info_{uid}.json` —— 解析后的完整数据（含头像 base64）
+  - `raw_player_info_{uid}.json` / `raw_cultivate_{uid}.json` / `raw_attendance_{uid}.json` —— 原始响应留档
+  - 为什么不用配置键：单账号 `player/info` 实测就有几百 KB（B 服 242 名干员约 600 KB），
+    放进 `app_config.json` 会让每次配置读写都搬运它。这与抽卡记录（`gacha_records/`）是同一套做法
+- **响应是明文 JSON**：森空岛数据接口不做响应加密。仓库里参考实现（`skland-api/api/sm.py`）的 AES/3DES 只用于**生成 dId**（数美设备指纹请求体加密），与响应无关
+- **测试**：`#[cfg(test)] mod tests`（arknights_service.rs:445 起）用注入的临时目录覆盖缓存层 —— 写入后读回同样内容、内存未命中回退磁盘、损坏文件自愈、`clear_cache` 彻底清理、原始留档落盘。**不联网**
 
 ---
 

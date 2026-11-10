@@ -8,6 +8,7 @@ import {
 } from "@/components/custom-modal";
 import { SearchIcon } from "@/components/icons";
 import { AccountAvatar } from "@/components/ui/account-avatar";
+import { GameBadge } from "@/components/ui/game-badge";
 import { EmptyState, EmptyStateUserIcon } from "@/components/ui/empty-state";
 import { SkeletonList } from "@/components/ui/loading-block";
 import { resolveServerLabel } from "@/types";
@@ -156,6 +157,7 @@ export default function AccountSwitchModal({
                         <p className="text-sm font-semibold text-foreground truncate">
                           {account.nickname}
                         </p>
+                        <GameBadge game={account.game} variant="short" />
                         {isSelected && (
                           <span className="px-2 py-0.5 text-[10px] font-bold text-success-text bg-success/10 rounded">
                             ACTIVE

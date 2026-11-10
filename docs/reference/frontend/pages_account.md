@@ -7,7 +7,7 @@
 **导出**：`export default function AccountPage()`（account.tsx:470，页面根组件，路由级唯一导出）。
 
 **主要依赖**：
-- 项目内：`@/components/ui/glass`（GlassAlert/Button/Card/Checkbox/InputOTP/Label/Link/Skeleton/Spinner）、`@/components/custom-modal`（CustomModal 系列）、`@/components/simple-pagination`（SimplePagination）、`@/components/cards/card-container`（CONTAINER_HEIGHT）、`@/components/ui/status-dot`（StatusDot）、`@/components/ui/status-badge`（StatusBadge / SYNC_STATUS_META）、`@/components/ui/app-icon`（ChevronDownIcon / InfoIcon / LinkIcon / UnlinkIcon）、`@/utils/imageLoader`（Img）、`@/utils/accountService`（全部账户 API 封装与类型，含 `getSklandUserInfoByCred` / `applyApiHealthSnapshot`）、`@/utils/accountAvailability`（`getAccountAvailability` / `loadAccountAvailability` / `clearAccountUnavailable` / `subscribeAccountAvailability` 与类型 `AccountAvailability`）、`@/utils/crashReporting`（类型 `ApiHealthSnapshot`）、`@/utils/roleDetailService`、`@/utils/configService`（getConfig）、`@/utils/logger`（logger / logDebug / logError）、`@/utils/messageStore`（addMessage）、`@/types`（resolveServerLabel）
+- 项目内：`@/components/ui/glass`（GlassAlert/Button/Card/Checkbox/InputOTP/Label/Link/Skeleton/Spinner）、`@/components/custom-modal`（CustomModal 系列）、`@/components/ui/game-badge`（`GameBadge` / `normalizeGameId`，游戏标识徽标）、`@/components/simple-pagination`（SimplePagination）、`@/components/cards/card-container`（CONTAINER_HEIGHT）、`@/components/ui/status-dot`（StatusDot）、`@/components/ui/status-badge`（StatusBadge / SYNC_STATUS_META）、`@/components/ui/app-icon`（ChevronDownIcon / InfoIcon / LinkIcon / UnlinkIcon）、`@/utils/imageLoader`（Img）、`@/utils/accountService`（全部账户 API 封装与类型，含 `getSklandUserInfoByCred` / `applyApiHealthSnapshot`）、`@/utils/accountAvailability`（`getAccountAvailability` / `loadAccountAvailability` / `clearAccountUnavailable` / `subscribeAccountAvailability` 与类型 `AccountAvailability`）、`@/utils/crashReporting`（类型 `ApiHealthSnapshot`）、`@/utils/roleDetailService`、`@/utils/configService`（getConfig）、`@/utils/logger`（logger / logDebug / logError）、`@/utils/messageStore`（addMessage）、`@/types`（resolveServerLabel）
 - 第三方：`react`（useState/useEffect/useRef）、`react-i18next`（useTranslation）、`qrcode`（QRCode.toDataURL）、`@tauri-apps/api/event`（listen / UnlistenFn）、`@tauri-apps/api/core`（`invoke("get_api_health")` / `invoke("reset_api_health")`）
 
 ## 内部结构总览
@@ -59,9 +59,9 @@
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
-| `RoleGroup` | account.tsx:79 | 无状态分组组件：标题 + 数量角标，`count === 0` 时渲染虚线空态 |
+| `RoleGroup` | account.tsx:133 | 无状态分组组件：标题 + 数量角标，`count === 0` 时渲染虚线空态。新增可选 `badge`，用于在标题右侧挂游戏标识 |
 | `GlassFieldInput` | account.tsx:104 | 登录表单字段：玻璃材质画在包裹层（`div.lg-field`），`<input>` 自身 `bg-transparent`。**不要改回直接把 `lg-field` 挂在 input 上** —— 替换元素不渲染 `::before`，会退化成一块 88% 实底色；焦点环必须用 `focus-within:outline-*`，`.lg-field` 的非分层 `border`/`box-shadow` 会压过 `@layer utilities` 的 `ring-*`/`border-*`。密码登录（手机号 + 密码）、验证码登录手机号、新设备验证手机号共 4 处共用它 |
-| `GameRoleRow` | account.tsx:107 | 角色行：头像/首字母占位、`Lv.x · 服务器`，已绑定时显示「当前 / 设为当前」，右侧绑定或解绑按钮（`isBusy`/`isDisabled` 互斥） |
+| `GameRoleRow` | account.tsx:167 | 角色行：头像/首字母占位、**游戏徽标** + `Lv.x · 服务器`，已绑定时显示「当前 / 设为当前」，右侧绑定或解绑按钮（`isBusy`/`isDisabled` 互斥）。游戏徽标用 `GameBadge variant="short"`，取 `role.game` |
 | `SklandProfileDetails` | account.tsx:193 | 资料详情：loading / 失败重试 / 正常三态；过滤 `level > 0` 的游戏，用 gameId→iconMap 补图标，拼 6 项社区统计数据 |
 | `QRCodeImage` | account.tsx:426 | effect 内 `QRCode.toDataURL` 生成二维码，`cancelled` 标志防竞态，失败显示 "QR Error" |
 | `AccountPage` | account.tsx:481 | 默认导出的页面根组件，集中持有全部状态、副作用与四个 Modal |
@@ -141,8 +141,25 @@
 ### 登录结果与角色/森空岛绑定（account.tsx:1272-1706、2878-2991、3833-3878）
 `processLoginResult` 分四路：①直接拿到账户→刷新列表、`set_selected_account` 选中新账户、派发 `accountChanged`、5 秒成功提示；②拿到 cred/token/userId→进入「确认绑定森空岛」页（展示 userId，确认后 `save_skland_account` + `get_skland_account_roles`）；③多角色→角色多选卡片（勾选态绿色描边，Footer 显示 `确认 (n)`，未选禁用），单角色直接静默 `saveRoles`；④失败→新设备验证 / OTP 无效 / 通用错误。`saveRoles` 落库 `save_selected_roles` 后刷新并按规则选中优先账户。角色选择期间禁用遮罩点击、角色数 >3 时固定弹窗高度。
 
-### 森空岛账号列表与角色绑定管理（account.tsx:2182-2450、1766-1854）
-每个森空岛账号是一张可折叠卡片（账户不可用时顶部追加红色提示条与「重新登录」按钮）：头部显示头像/昵称/userId/已绑定角色数，右侧「资料」按钮（打开资料弹窗）与展开箭头。展开区用 `grid-template-rows 0fr/1fr` 过渡，内部分两栏 `RoleGroup`：已绑定（可「设为当前」或解绑）与未绑定（可绑定）。绑定/解绑统一由 `handleToggleGameRole` 以当前绑定集合增删单个角色后保存，期间以 `userId:serverId:roleId` 为键锁住对应行。
+### 森空岛账号列表与角色绑定管理（account.tsx:2200-3000 附近、handleExpandSklandAccount/handleToggleGameRole）
+每个森空岛账号是一张可折叠卡片（账户不可用时顶部追加红色提示条与「重新登录」按钮）：头部显示头像/昵称/userId/**已绑定游戏的图标**/已绑定角色数，右侧「资料」按钮（打开资料弹窗）、删除按钮与展开箭头。展开区用 `grid-template-rows 0fr/1fr` 过渡，内部**按游戏分组**（见下节），每组再分两栏 `RoleGroup`：已绑定（可「设为当前」或解绑）与未绑定（可绑定）。绑定/解绑统一由 `handleToggleGameRole` 以当前绑定集合增删单个角色后保存，期间以 `userId:serverId:roleId` 为键锁住对应行。
+
+### 游戏标识（终末地 / 明日方舟）
+
+一个森空岛账户可以同时绑定《明日方舟：终末地》和《明日方舟》，账户页必须能一眼分清，因此：
+
+- **账户卡片头部**：用 `GameBadge variant="icon"` 列出该账户**已绑定**的游戏图标（`boundGames`，按 `endfield → arknights` 固定顺序），不展开也能看出有没有绑明日方舟角色。没绑任何游戏时不占位。
+- **展开区按游戏切块**：`allRoles` 先按绑定状态拆成 `boundRoleDetails` / `unboundRoleDetails`，再各自按 `normalizeGameId(role.game)` 拆成 `boundByGame` / `unboundByGame`（两个游戏各一份）。每个游戏一块，块内仍是「已绑定 / 未绑定」两栏。
+- **只渲染有角色的游戏**：`gamesInAccount` 只包含真正有角色的游戏，只玩终末地的账户不会多出一条「明日方舟 0」的空分组；两个游戏都没有角色时退回只显示终末地（`visibleGames`）。
+- **游戏标题只在双游戏时出现**：`visibleGames.length > 1` 才渲染 `GameBadge variant="full" size="md"` 的分隔标题——单游戏账户的图标已经在每个角色行里，再加一行标题纯属噪音。
+- **角色行**：`GameRoleRow` 的副标题行是「游戏徽标 + Lv.x · 服务器」，徽标取 `role.game`。
+- **角色选择弹窗 / 授权页**：角色名旁边挂 `GameBadge variant="short"`。
+- **自动选中优先终末地**：`isEndfieldAccount(account)`（`account.game !== "arknights"`）。绑定/解绑后的「自动选中」与「顺位改选」都优先挑终末地角色 —— 现有仪表盘、签到、抽卡、角色数据**全部只服务终末地**，自动切成明日方舟角色会让仪表盘立刻全线报错。用户手动点「设为当前」不受此限制。
+
+> ⚠️ **明日方舟角色的标识就是 uid**：它没有 roleId（绑定接口的 `roles[]` 是空数组，角色信息在 `bindingList` 层）。后端 `extract_game_roles` 用 `bindingUid` 当 `roleId`，因此前端所有「按 roleId 匹配」的逻辑（绑定态判断、忙碌键、`account_list`）对明日方舟同样成立。早先后端只遍历 `roles[]` 导致明日方舟角色完全不可见 —— 这是「添加账户后只能找到终末地角色」的根因。
+
+> 数据来源：`RoleDisplayInfo.game` 由后端 `SklandService::extract_game_roles` 按 `app_code` 判定，`roles[].app` 落盘后再回填；明日方舟角色没有头像与终末地角色详情，昵称/等级来自森空岛绑定接口。详见 [services_account.md](../backend/services_account.md) 的「游戏分组」一节。
+
 
 ### 森空岛资料弹窗（account.tsx:193-424、1708-1764、2826-2863）
 按 userId 惰性拉取 `get_skland_user_info`（带请求去重与错误缓存，可 force 重试）和 `get_skland_games`（后端 12h 缓存）。展示头像 + 挂件（挂件存在时容器放大到 104px 以套住 64px 头像）、昵称/UID/IP 归属地/创作者标识、简介、游戏等级网格（等级 0 不显示，优先用等级图标）、6 宫格社区数据。
@@ -194,7 +211,7 @@
   - （accountService 还导出 `batch_logout`、`check_and_refresh_cred`，但本文件未使用，故页面**没有批量登出**功能）
 - **涉及的配置键**：`refresh_on_account_switch`（切换账户时是否强制刷新）、`account_list`（推算骨架屏条数）。账户不可用状态存于 `sessionStorage` 键 `account_unavailable_state`（见 `src/utils/accountAvailability.ts`），手机号由后端 `account_token_{userId}.phone` 提供。
 - **u8token（抽卡令牌）**：**不持久化**，每次同步现换；授权只是 `roles[].u8Authorized` 开关，前端经 `authorize_role_u8token` / `revoke_role_u8token` 两个命令读写，从不接触令牌明文。
-- **i18n key 前缀**：`settings.account.*`（主前缀，含 title/subtitle/refresh_data/add_account/skland_*/login/qr_*/logout/close/cancel/confirm/back，以及新增的 `account_unavailable_*` / `relogin*` / `retry_later`）、`common.pagination.*`（分页上一页/下一页，仅禁用区块使用）。另有大量 `i18n.language === "zh" ? 中文 : English` 的硬编码双语文案（未走 `t()`），如提示、错误、服务器名「官服/BiliBili服」、OTP 区文案、`alert()` 提示等。
+- **i18n key 前缀**：`settings.account.*`（主前缀，含 title/subtitle/refresh_data/add_account/skland_*/login/qr_*/logout/close/cancel/confirm/back，以及新增的 `account_unavailable_*` / `relogin*` / `retry_later`）、`game.*`（游戏名：`game.endfield` / `game.endfield_short` / `game.arknights` / `game.arknights_short`，由 `GameBadge` 内部消费）、`role_select.unknown_role`（角色选择弹窗的未知角色占位）、`common.pagination.*`（分页上一页/下一页，仅禁用区块使用）。另有大量 `i18n.language === "zh" ? 中文 : English` 的硬编码双语文案（未走 `t()`），如提示、错误、服务器名「官服/BiliBili服」、OTP 区文案、`alert()` 提示等。
 - **事件**：Tauri 监听 `accounts-refreshed`；window 监听 `accountChanged`；window 派发 `accountChanged`（4 处）与 `manualRefresh`（带 `{count}` detail）；模块级订阅 `accountAvailability` 状态变化。
 - **异常/注意点**：
   1. account.tsx:2170 起约 360 行的账号卡片列表被 `{false && (...)}` 永久关闭，导致 `renderSkeleton`、`getCurrentPageAccounts`、`totalPages`、`currentPage/itemsPerPage`、`containerRef` 及 ResizeObserver 逻辑、`StatusDot`/`StatusBadge`/`SYNC_STATUS_META`/`SimplePagination`/`CONTAINER_HEIGHT`、`handleViewDetails`、`handleLogout`、`retrySyncAccount` 与账户详情弹窗（2529-2679）实际不可达/不执行（`containerRef` 的 ref 只挂在该禁用区块内，相关 effect 因此永不命中）。

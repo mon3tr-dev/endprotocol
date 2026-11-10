@@ -9,6 +9,15 @@ import {
 import type { ApiHealthSnapshot } from "./crashReporting";
 
 /**
+ * 角色所属游戏。
+ *
+ * 与后端 `models::role::GAME_*` 常量、`AccountInfo.game` / `RoleDisplayInfo.game` 同源：
+ * - `endfield`：《明日方舟：终末地》，有 `/api/v1/game/endfield/card/detail` 详情接口
+ * - `arknights`：《明日方舟》，**没有**对应的详情接口，昵称/等级只来自森空岛绑定接口
+ */
+export type GameId = "endfield" | "arknights";
+
+/**
  * 账户信息接口
  */
 export interface Account {
@@ -23,6 +32,8 @@ export interface Account {
   token?: string;
   userId?: string;
   serverId?: string;
+  /** 所属游戏（老缓存缺该字段时按终末地处理） */
+  game?: GameId;
 }
 
 export interface SklandAccount {
@@ -130,6 +141,13 @@ export interface RoleDisplayInfo {
   nickname: string;
   level: number;
   avatarUrl: string;
+  /**
+   * 角色所属游戏（老数据缺该字段时按终末地处理）。
+   *
+   * 明日方舟角色**没有头像**（后端不请求终末地的详情接口），前端要用首字母占位，
+   * 并且不能拿它去查终末地的角色数据。
+   */
+  game?: GameId;
   /**
    * 该角色所属的**渠道绑定 uid**（官服 / B 服各一个）。
    * 抽卡令牌按它换取，官服与 B 服因此能各拿各的令牌。

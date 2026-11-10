@@ -14,7 +14,9 @@ use crate::models::account::{
     SklandBackground, SklandGameInfo, SklandPendant, SklandUserInfo, SklandUserStats,
 };
 use crate::models::char_detail::CharDetailResponse;
-use crate::models::role::{BindingResponse, GameBinding};
+use crate::models::role::{
+    BindingResponse, GameBinding, GameRoleBinding, GAME_ARKNIGHTS, GAME_ENDFIELD,
+};
 use crate::services::config_service::ConfigService;
 use crate::utils::{api_health, capture, http_client, AppError};
 use crate::{log_debug, log_error, log_info, log_warn};
@@ -1181,28 +1183,91 @@ impl SklandService {
             .map(|s| s.to_string())
     }
 
-    /// 提取终末地角色列表
+    /// 展平绑定列表里的游戏角色（终末地 + 明日方舟）
     ///
-    /// 返回 `(binding_uid, channel_master_id, channel_name, server_id, role_id)`。
-    /// 第一条 `binding_uid` 是**换 u8token 必须的键** —— 同一个通行证下官服与 B 服
-    /// 各有一条绑定记录、各有一个 uid，绝不能丢。
-    pub fn extract_endfield_roles(
-        bindings: &[GameBinding],
-    ) -> Vec<(String, String, String, String, String)> {
+    /// 返回 [`GameRoleBinding`]（含 `game` / 渠道 uid / 服务器 / 昵称 / 等级）。
+    /// 第一条记录的 `binding_uid` 是**换 u8token 必须的键** —— 同一个通行证下官服与
+    /// B 服各有一条绑定记录、各有一个 uid，绝不能丢。
+    ///
+    /// 只保留 `app_code` 能识别的游戏：`endfield`（终末地）与 `arknights`（明日方舟）。
+    /// 其余应用（未知 `app_code`）直接跳过，避免把不认识的角色混进列表。
+    ///
+    /// # ⚠️ 两个游戏的角色躺在不同层级
+    ///
+    /// - **终末地**：角色在 `bindingList[].roles[]` 里（每项有自己的 `roleId` / `serverId`）
+    /// - **明日方舟**：`bindingList[].roles` 是**空数组**！角色信息就在 `bindingList`
+    ///   这一层 —— `uid` 即角色标识（一个 uid = 一个角色，实测官服/B服各有独立 uid
+    ///   且不会碰撞），`nickName` 是昵称，`channelMasterId` 对应服务器（1=官服 2=B服）
+    ///
+    /// 早先只遍历 `roles` 的写法会**完全漏掉明日方舟角色**（前端表现为「找不到可绑定的
+    /// 明日方舟角色」），因此这里对明日方舟走单独分支：`roles` 非空就照常展开，
+    /// 为空则用绑定条目本身合成一条。
+    pub fn extract_game_roles(bindings: &[GameBinding]) -> Vec<GameRoleBinding> {
         let mut roles = Vec::new();
 
         for binding in bindings {
-            if binding.app_code == "endfield" {
-                for role_info in &binding.binding_list {
-                    for role in &role_info.roles {
-                        roles.push((
-                            role_info.uid.clone(),
-                            role_info.channel_master_id.clone(),
-                            role_info.channel_name.clone(),
-                            role.server_id.clone(),
-                            role.role_id.clone(),
-                        ));
+            let game = match binding.app_code.as_str() {
+                GAME_ENDFIELD => GAME_ENDFIELD,
+                GAME_ARKNIGHTS => GAME_ARKNIGHTS,
+                other => {
+                    log_debug!("extract_game_roles: skip unknown app_code '{}'", other);
+                    continue;
+                }
+            };
+
+            for role_info in &binding.binding_list {
+                // 已被删除的渠道绑定不再提供角色
+                if role_info.is_delete {
+                    log_debug!(
+                        "extract_game_roles: skip deleted binding for game={}, uid_len={}",
+                        game,
+                        role_info.uid.len()
+                    );
+                    continue;
+                }
+
+                // ---- 明日方舟：roles[] 为空，用绑定条目本身当角色 ----
+                if game == GAME_ARKNIGHTS && role_info.roles.is_empty() {
+                    if role_info.uid.is_empty() {
+                        log_debug!("extract_game_roles: skip arknights binding without uid");
+                        continue;
                     }
+                    log_debug!(
+                        "extract_game_roles: arknights binding uid={}, channel={}, nickname={:?}",
+                        role_info.uid,
+                        role_info.channel_name,
+                        role_info.nick_name
+                    );
+                    roles.push(GameRoleBinding {
+                        game: game.to_string(),
+                        binding_uid: role_info.uid.clone(),
+                        channel_master_id: role_info.channel_master_id.clone(),
+                        channel_name: role_info.channel_name.clone(),
+                        // 渠道主 ID 同时就是服务器标识：`resolveServerLabel` 认 "1"=官服 / "2"=B服
+                        server_id: role_info.channel_master_id.clone(),
+                        server_name: role_info.channel_name.clone(),
+                        // ★ 明日方舟没有 roleId，**uid 即角色标识**。
+                        // 已用真实账号验证 `player/info.status.uid == 绑定 uid`。
+                        role_id: role_info.uid.clone(),
+                        nickname: role_info.nick_name.clone(),
+                        // 等级只能从 `player/info.status.level` 拿（绑定接口不给）
+                        level: 0,
+                    });
+                    continue;
+                }
+
+                for role in &role_info.roles {
+                    roles.push(GameRoleBinding {
+                        game: game.to_string(),
+                        binding_uid: role_info.uid.clone(),
+                        channel_master_id: role_info.channel_master_id.clone(),
+                        channel_name: role_info.channel_name.clone(),
+                        server_id: role.server_id.clone(),
+                        server_name: role.server_name.clone(),
+                        role_id: role.role_id.clone(),
+                        nickname: role.nickname.clone(),
+                        level: role.level,
+                    });
                 }
             }
         }
@@ -1449,5 +1514,254 @@ mod tests {
     fn test_parse_game_list_response_requires_data_list() {
         let json: serde_json::Value = serde_json::json!({ "code": 0, "data": {} });
         assert!(SklandService::parse_game_list_response(&json).is_err());
+    }
+
+    /// 绑定列表样本（**结构照真实返回**）：一个通行证同时绑定了终末地与明日方舟。
+    ///
+    /// ⚠️ 关键差异：**明日方舟的 `roles` 是空数组**，角色信息在 `bindingList` 这一层
+    /// （`uid` / `nickName` / `channelMasterId`）；终末地才把角色放进 `roles[]`。
+    const BINDING_RESPONSE: &str = r#"{
+      "code": 0,
+      "message": "OK",
+      "timestamp": "1790924989",
+      "data": {
+        "list": [
+          {
+            "appCode": "arknights",
+            "appName": "明日方舟",
+            "bindingList": [
+              {
+                "uid": "700000011",
+                "isOfficial": false,
+                "isDefault": true,
+                "channelMasterId": "2",
+                "channelName": "bilibili服",
+                "nickName": "Doctor#1234",
+                "isDelete": false,
+                "gameName": "明日方舟",
+                "gameId": 1,
+                "roles": [],
+                "defaultRole": null
+              },
+              {
+                "uid": "700000022",
+                "isOfficial": true,
+                "isDefault": false,
+                "channelMasterId": "1",
+                "channelName": "官服",
+                "nickName": "Doctor#1234",
+                "isDelete": false,
+                "gameName": "明日方舟",
+                "gameId": 1,
+                "roles": [],
+                "defaultRole": null
+              },
+              {
+                "uid": "700000033",
+                "isOfficial": false,
+                "isDefault": false,
+                "channelMasterId": "2",
+                "channelName": "bilibili服",
+                "nickName": "Doctor#1234",
+                "isDelete": true,
+                "gameName": "明日方舟",
+                "gameId": 1,
+                "roles": [],
+                "defaultRole": null
+              }
+            ],
+            "defaultUid": "700000022"
+          },
+          {
+            "appCode": "endfield",
+            "appName": "明日方舟：终末地",
+            "bindingList": [
+              {
+                "uid": "3000000000000000",
+                "isOfficial": true,
+                "isDefault": true,
+                "channelMasterId": "1",
+                "channelName": "官服",
+                "nickName": "",
+                "isDelete": false,
+                "gameName": "明日方舟：终末地",
+                "gameId": 3,
+                "roles": [
+                  {
+                    "serverId": "1",
+                    "roleId": "20000000001",
+                    "nickname": "管理员",
+                    "level": 42,
+                    "isDefault": true,
+                    "isBanned": false,
+                    "serverType": "cn",
+                    "serverName": "国服"
+                  }
+                ],
+                "defaultRole": null
+              }
+            ],
+            "defaultUid": "3000000000000000"
+          }
+        ],
+        "serverDefaultBinding": {}
+      }
+    }"#;
+
+    #[test]
+    fn test_extract_game_roles_covers_both_games() {
+        let bindings: crate::models::role::BindingResponse =
+            serde_json::from_str(BINDING_RESPONSE).unwrap();
+        let roles = SklandService::extract_game_roles(&bindings.data.list);
+
+        // 终末地 1 个（走 roles[]）+ 明日方舟 2 个（走 bindingList 层，已删渠道被跳过）
+        assert_eq!(roles.len(), 3, "roles={:?}", roles);
+
+        // ---- 终末地：角色来自 roles[] ----
+        let endfield = roles.iter().find(|r| r.game == GAME_ENDFIELD).unwrap();
+        assert_eq!(endfield.role_id, "20000000001");
+        assert_eq!(endfield.nickname, "管理员");
+        assert_eq!(endfield.level, 42);
+        assert_eq!(endfield.server_id, "1");
+        assert_eq!(endfield.binding_uid, "3000000000000000");
+
+        // ---- 明日方舟：roles 为空，角色标识就是 uid ----
+        let ak_roles: Vec<_> = roles.iter().filter(|r| r.game == GAME_ARKNIGHTS).collect();
+        assert_eq!(ak_roles.len(), 2, "明日方舟角色没被识别出来: {:?}", ak_roles);
+
+        let official = ak_roles
+            .iter()
+            .find(|r| r.channel_master_id == "1")
+            .expect("缺少官服角色");
+        assert_eq!(official.binding_uid, "700000022");
+        // ★ 没有 roleId，uid 即角色标识（`player/info` 靠它寻址）
+        assert_eq!(official.role_id, "700000022");
+        assert_eq!(official.nickname, "Doctor#1234");
+        // 等级只能由 player/info 补，绑定接口不给
+        assert_eq!(official.level, 0);
+        // 渠道主 ID 同时作为 server_id，前端 resolveServerLabel 认 "1"=官服
+        assert_eq!(official.server_id, "1");
+        assert_eq!(official.server_name, "官服");
+
+        let bilibili = ak_roles
+            .iter()
+            .find(|r| r.channel_master_id == "2")
+            .expect("缺少 B 服角色");
+        assert_eq!(bilibili.binding_uid, "700000011");
+        assert_eq!(bilibili.role_id, "700000011");
+        assert_eq!(bilibili.server_id, "2");
+
+        // 已删渠道（uid 700000033）必须被跳过
+        assert!(
+            !ak_roles.iter().any(|r| r.role_id == "700000033"),
+            "isDelete=true 的渠道绑定不应产出角色"
+        );
+    }
+
+    #[test]
+    fn test_extract_game_roles_arknights_with_roles_still_works() {
+        // 万一将来接口改成把明日方舟角色放进 roles[]，也要能正常展开（向前兼容）：
+        // roles 非空时走通用分支，roleId 取 roles 里的值而不是 uid。
+        let json = r#"{
+          "code": 0,
+          "message": "OK",
+          "timestamp": "1790924989",
+          "data": {
+            "list": [
+              {
+                "appCode": "arknights",
+                "appName": "明日方舟",
+                "bindingList": [
+                  {
+                    "uid": "700000022",
+                    "isOfficial": true,
+                    "isDefault": true,
+                    "channelMasterId": "1",
+                    "channelName": "官服",
+                    "nickName": "Doctor#1234",
+                    "isDelete": false,
+                    "gameName": "明日方舟",
+                    "gameId": 1,
+                    "roles": [
+                      {
+                        "serverId": "1",
+                        "roleId": "10000000001",
+                        "nickname": "刀客塔",
+                        "level": 120,
+                        "isDefault": true,
+                        "isBanned": false,
+                        "serverType": "cn",
+                        "serverName": "官服"
+                      }
+                    ],
+                    "defaultRole": null
+                  }
+                ],
+                "defaultUid": "700000022"
+              }
+            ],
+            "serverDefaultBinding": {}
+          }
+        }"#;
+        let bindings: crate::models::role::BindingResponse = serde_json::from_str(json).unwrap();
+        let roles = SklandService::extract_game_roles(&bindings.data.list);
+
+        assert_eq!(roles.len(), 1);
+        let official = &roles[0];
+        assert_eq!(official.game, GAME_ARKNIGHTS);
+        assert_eq!(official.role_id, "10000000001");
+        assert_eq!(official.nickname, "刀客塔");
+        assert_eq!(official.level, 120);
+        assert_eq!(official.binding_uid, "700000022");
+    }
+
+    #[test]
+    fn test_extract_game_roles_skips_unknown_app() {
+        let bindings: crate::models::role::BindingResponse = serde_json::from_str(
+            r#"{
+              "code": 0,
+              "message": "OK",
+              "timestamp": "1790924989",
+              "data": {
+                "list": [
+                  {
+                    "appCode": "unknown_game",
+                    "appName": "未知游戏",
+                    "bindingList": [
+                      {
+                        "uid": "1",
+                        "isOfficial": true,
+                        "isDefault": true,
+                        "channelMasterId": "1",
+                        "channelName": "官服",
+                        "nickName": "x",
+                        "isDelete": false,
+                        "gameName": "未知游戏",
+                        "gameId": 99,
+                        "roles": [
+                          {
+                            "serverId": "1",
+                            "roleId": "9",
+                            "nickname": "y",
+                            "level": 1,
+                            "isDefault": false,
+                            "isBanned": false,
+                            "serverType": "cn",
+                            "serverName": "官服"
+                          }
+                        ],
+                        "defaultRole": null
+                      }
+                    ],
+                    "defaultUid": "1"
+                  }
+                ],
+                "serverDefaultBinding": {}
+              }
+            }"#,
+        )
+        .unwrap();
+
+        assert!(SklandService::extract_game_roles(&bindings.data.list).is_empty());
     }
 }

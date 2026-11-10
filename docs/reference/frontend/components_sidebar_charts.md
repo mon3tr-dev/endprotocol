@@ -104,7 +104,7 @@
 - 115：卡池按 `firstSixTs` 降序（最旧六星时间最新者在前；无六星按最近记录时间）。
 - 318-325 `meta`：把每个 `ChartSection` 展开为 `header` 行 + 各数据行，行高固定 `ROW_H`，即图表总高 `meta.length * 44 + 14`（625）。
 
-**内部流程要点**：205-219 `poolOptions`；221-226 `poolFilter` 状态（切分类时重置）；228-235 过滤后调 `computeSections`；238-246 收集六星 `neededIds`；253-269 **`invoke("resolve_gacha_avatar_map", { roleId })`** 合并头像映射（带 `resolvingRef` 防重入，失败仅 `logError`）；273-280 `usePinImages` 预缓存；282-304 批量 `circleAvatar` 生成圆形 dataURL；307-312 监听 `themeChange` 触发重绘；330-341 `echarts.init` + `ResizeObserver`（仅 `hasRows` 时挂载，变化即重建）；343-346 `sixCount`；349-599 生成并 `setOption(option, true)`；601-616 空数据时只渲染头部与提示。
+**内部流程要点**：205-219 `poolOptions`；221-226 `poolFilter` 状态（切分类时重置）；228-235 过滤后调 `computeSections`；238-246 收集六星 `neededIds`；253-269 **`invoke("resolve_gacha_avatar_map", { roleId })`** 合并头像映射（带 `resolvingRef` 防重入，失败仅 `logError`）；273-280 `usePinImages` 预缓存；282-304 批量 `circleAvatar` 生成圆形 dataURL；307-312 监听 `themeChange` 触发重绘；351-381 `echarts.init` + `ResizeObserver`（仅 `hasRows` 时挂载，变化即重建；**回调不直接 `chart.resize()`**，只登记一次 `requestAnimationFrame`，在帧内读出 `clientWidth/clientHeight` 并与上次比较、尺寸未变则跳过——回调里同步 resize 会在浏览器的 ResizeObserver 交付周期中写 DOM，触发 `ResizeObserver loop completed with undelivered notifications`）；382-385 `sixCount`；349-599 生成并 `setOption(option, true)`；601-616 空数据时只渲染头部与提示。
 
 **备注**：
 - **invoke 命令**：`resolve_gacha_avatar_map`（gacha-pity-chart.tsx:258，参数 `{ roleId }`，返回 `Record<string,string>` id→图片 src）。全文件仅此 1 个。
@@ -123,7 +123,7 @@
 | `WEAPON_SIX_STAR_EXPECTATION` | gacha-stat-charts.tsx:8 | 武器六星期望 `25` 抽/个 |
 | `cssVar` | gacha-stat-charts.tsx:10 | 读 CSS 变量（与 pity 图重复） |
 | `tickIntervalFor` | gacha-stat-charts.tsx:20 | **刻度密度控制**：`max(1, ceil((max-min)/10))`，强制 `axis.interval` 使刻度数 ≤ 11（含首尾） |
-| `useEchart` | gacha-stat-charts.tsx:45 | Hook：监听 `themeChange` 产生 `themeTick`（47-52），`echarts.init` + `ResizeObserver`（56-68），返回 `{ setOption, themeTick }`。**返回值必须保持稳定引用**（`useCallback` + `useMemo`，70-79）：它进了三张图的 `useEffect` 依赖数组，若每次渲染都返回新对象，任何一次重渲染都会重新执行 notMerge 的 `setOption(option, true)` 把入场动画从头重播；`themeTick` 留在依赖里以覆盖主题切换重建实例的场景 |
+| `useEchart` | gacha-stat-charts.tsx:45 | Hook：监听 `themeChange` 产生 `themeTick`（47-52），`echarts.init` + `ResizeObserver`（57-89；**回调只登记 `requestAnimationFrame`**，帧内合并 resize 并在 `clientWidth/clientHeight` 未变时跳过，避免在交付周期里写 DOM 触发 `ResizeObserver loop` 告警），返回 `{ setOption, themeTick }`。**返回值必须保持稳定引用**（`useCallback` + `useMemo`，70-79）：它进了三张图的 `useEffect` 依赖数组，若每次渲染都返回新对象，任何一次重渲染都会重新执行 notMerge 的 `setOption(option, true)` 把入场动画从头重播；`themeTick` 留在依赖里以覆盖主题切换重建实例的场景 |
 | `useChronoRecords` | gacha-stat-charts.tsx:58 | 过滤当前分类的 `draw` 记录（64-68）并按 `Number(gachaTs)` **升序**（69）；`weapon`/`all` 不分类过滤，其余用 `poolKindOf` |
 | `poolKindOf` | gacha-stat-charts.tsx:75 | 与 pity 图同名同逻辑的重复实现 |
 | `useStarDistribution` | gacha-stat-charts.tsx:88 | 按 `rarity` 计数 → `{ total, series: [rarity, count][] }`，按稀有度降序（96） |

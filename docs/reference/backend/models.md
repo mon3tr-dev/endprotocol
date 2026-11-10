@@ -5,7 +5,7 @@
 
 ## `src-tauri/src/models/mod.rs`
 **职责**：模型模块入口，仅做子模块声明，无任何类型定义。
-**导出**：`pub mod account`（:1）、`pub mod char_detail`（:2）、`pub mod gacha`（:3）、`pub mod game`（:4）、`pub mod login`（:5）、`pub mod role`（:6）。
+**导出**：`pub mod account`（:1）、`pub mod arknights`（:2）、`pub mod char_detail`（:3）、`pub mod gacha`（:4）、`pub mod game`（:5）、`pub mod login`（:6）、`pub mod role`（:7）。
 
 ---
 
@@ -28,9 +28,10 @@
 | `server` | `String` | — | 服务器名 |
 | `status` | `String` | — | 在线状态：online/offline/loading |
 | `sync_status` | `Option<String>` | — | 同步状态：SYNCING/FAILED/null |
+| `game` | `String` | `default = "default_game"` | 所属游戏：`endfield` / `arknights`；老缓存缺该字段时按终末地处理 |
 
 ### `struct SklandAccountInfo`
-- 位置：account.rs:19
+- 位置：account.rs:22
 - derive：`#[derive(Serialize, Deserialize, Clone, Debug)]`，容器 `rename_all = "camelCase"`
 - 用途：森空岛父级账户摘要，游戏角色通过 `user_id` 关联。
 - 字段：
@@ -164,9 +165,11 @@
 | `token` | `Option<String>` | — | 认证 token |
 | `user_id` | `Option<String>` | — | 森空岛 user_id |
 | `server_id` | `Option<String>` | — | 服务器 ID |
+| `game` | `String` | `default = "default_game"` | 所属游戏：`endfield` / `arknights`；老缓存缺该字段时按终末地处理 |
 
-**备注**：impl 块位于 account.rs:139。
-- `pub fn to_summary(&self) -> AccountSummary` — account.rs:141：拷贝非敏感字段转换为精简版，移除 cred/token/user_id/server_id。
+**备注**：impl 块位于 account.rs:154。
+- `pub fn to_summary(&self) -> AccountSummary` — account.rs:156：拷贝非敏感字段转换为精简版，移除 cred/token/user_id/server_id（保留 `game`）。
+- 私有 `fn default_game() -> String` — account.rs:148：返回 `GAME_ENDFIELD`，供 serde 缺省值使用。
 
 ### `struct AccountRefreshResult`
 - 位置：account.rs:157
@@ -1221,8 +1224,8 @@ derive 均为 `Serialize, Deserialize, Clone, Debug` + 容器 `rename_all = "cam
 ---
 
 ## `src-tauri/src/models/role.rs`
-**职责**：角色/绑定相关模型——森空岛绑定列表的 API 响应结构、本地配置用的角色展示结构。文件共 71 行。
-**导出**：`GameBinding`、`BindingInfo`、`RoleInfo`、`BindingResponse`、`BindingData`、`RoleDisplayInfo`。
+**职责**：角色/绑定相关模型——森空岛绑定列表的 API 响应结构、从绑定列表展平出来的 `GameRoleBinding`、本地配置用的角色展示结构。文件共 129 行。
+**导出**：`GameBinding`、`BindingInfo`、`RoleInfo`、`BindingResponse`、`BindingData`、`GameRoleBinding`、`RoleDisplayInfo`；常量 `GAME_ENDFIELD`、`GAME_ARKNIGHTS`；impl `RoleDisplayInfo::is_arknights`；私有 `default_game`。
 
 ### `struct GameBinding`
 - 位置：role.rs:6
@@ -1254,8 +1257,8 @@ derive 均为 `Serialize, Deserialize, Clone, Debug` + 容器 `rename_all = "cam
 | `is_delete` | `bool` | — | 是否已删除 |
 | `game_name` | `String` | — | 游戏名 |
 | `game_id` | `i32` | — | 游戏 ID |
-| `roles` | `Vec<RoleInfo>` | — | 该绑定下的角色列表 |
-| `default_role` | `Option<RoleInfo>` | — | 默认角色 |
+| `roles` | `Vec<RoleInfo>` | — | 该渠道下的角色列表。⚠️ **终末地有值，明日方舟恒为空数组** —— 明日方舟的角色信息在 `BindingInfo` 这一层（`uid` / `nick_name` / `channel_master_id`） |
+| `default_role` | `Option<RoleInfo>` | — | 默认角色（终末地有值，明日方舟为 null） |
 
 ### `struct RoleInfo`
 - 位置：role.rs:33
@@ -1298,10 +1301,29 @@ derive 均为 `Serialize, Deserialize, Clone, Debug` + 容器 `rename_all = "cam
 | `list` | `Vec<GameBinding>` | — | 游戏绑定列表 |
 | `server_default_binding` | `serde_json::Value` | — | 服务器默认绑定（未建模，原样保留） |
 
+### `struct GameRoleBinding`
+- 位置：role.rs:72
+- derive：`Serialize, Deserialize, Clone, Debug`，容器 `rename_all = "camelCase"`
+- 用途：从绑定接口展平出来的单条角色记录（不联网、只含绑定侧基础信息），由 `SklandService::extract_game_roles` 产出。**明日方舟角色的昵称/等级/服务器全部来自这里** —— 它没有终末地的 `card/detail` 接口。
+- ⚠️ **两个游戏的角色在不同层级**：终末地在 `bindingList[].roles[]`；**明日方舟的 `roles` 是空数组**，角色在 `bindingList` 这一层 —— `role_id` 用 `uid`、`server_id` 用 `channelMasterId`、`nickname` 用 `nickName`、`level` 留 0（由 `player/info.status.level` 补）。已用真实账号验证 `player/info.status.uid == 绑定 uid`，故「uid 即角色标识」可靠。
+- 字段：
+
+| 字段 | 类型 | serde | 含义 |
+| --- | --- | --- | --- |
+| `game` | `String` | — | `endfield` / `arknights`（来自 `GameBinding.app_code`） |
+| `binding_uid` | `String` | — | 渠道绑定 uid（官服 / B 服各一个） |
+| `channel_master_id` | `String` | — | 渠道主 ID |
+| `channel_name` | `String` | — | 渠道名 |
+| `server_id` | `String` | — | 服务器 ID。终末地取 `roles[].serverId`；**明日方舟取 `channelMasterId`**（1=官服 2=B服，前端 `resolveServerLabel` 正好认这两个值） |
+| `server_name` | `String` | — | 服务器展示名。终末地取 `roles[].serverName`（如 `China`）；明日方舟取 `channelName`（如 `官服`） |
+| `role_id` | `String` | — | 角色 ID。终末地取 `roles[].roleId`；**明日方舟没有 roleId，直接用 `uid`** |
+| `nickname` | `String` | — | 角色昵称。终末地取 `roles[].nickname`；明日方舟取 `bindingList[].nickName`（形如 `Doctor#1234`） |
+| `level` | `i32` | — | 等级。终末地取 `roles[].level`；**明日方舟绑定接口不给，恒为 0**，由 `player/info.status.level` 回填后落盘 |
+
 ### `struct RoleDisplayInfo`
-- 位置：role.rs:64
+- 位置：role.rs:90
 - derive：同上
-- 用途：面向前端的角色展示信息（被 `account.rs::AccountLoginResult.available_roles` 复用）。
+- 用途：面向前端的角色展示信息（被 `account.rs::AccountLoginResult.available_roles` 复用），也后端接收 `save_selected_roles` 的入参。
 - 字段：
 
 | 字段 | 类型 | serde | 含义 |
@@ -1311,8 +1333,111 @@ derive 均为 `Serialize, Deserialize, Clone, Debug` + 容器 `rename_all = "cam
 | `server_id` | `String` | — | 服务器 ID |
 | `nickname` | `String` | — | 昵称 |
 | `level` | `i32` | — | 等级 |
-| `avatar_url` | `String` | — | 头像地址 |
+| `avatar_url` | `String` | — | 头像地址。终末地来自 `card/detail` 的 `base.avatarUrl`；**明日方舟来自 `player/info` 的 `status.avatar.url`**（该接口是它唯一的头像来源） |
+| `game` | `String` | `default = "default_game"` | 角色所属游戏：`endfield` / `arknights`。老数据缺该字段时兜底为 `endfield` |
 | `binding_uid` | `String` | `default` | 该角色所属的**渠道绑定 uid**（官服 / B 服各一个），换 u8token 的必需键 |
 | `channel_master_id` | `String` | `default` | 渠道主 ID（1 = 官服，2 = B 服），仅展示 |
 | `channel_name` | `String` | `default` | 渠道名（绑定接口的 `channelName`），仅展示 |
 | `u8_authorized` | `bool` | `default` | 该角色是否已授权抽卡数据访问。构建角色列表时由 `AccountService::is_role_u8_authorized` 回填 —— **漏掉这个回填会导致前端永远显示「未授权」** |
+
+**备注**：`impl RoleDisplayInfo`（role.rs:124）— `pub fn is_arknights(&self) -> bool`（role.rs:126）：`game == GAME_ARKNIGHTS`。
+
+---
+
+## `src-tauri/src/models/arknights.rs`
+**职责**：《明日方舟》数据模型 —— 森空岛 `player/info` / `cultivate/player` / `attendance` 三个接口的反序列化结构。与终末地**完全分开**：终末地按 `roleId + serverId` 走 `card/detail` 一次返回一个角色，明日方舟按**渠道绑定 uid** 走 `player/info` 一次返回整个账号。文件约 470 行（含单元测试）。
+
+**导出**：`ArknightsPlayerInfo`、`ArknightsStatus`、`ArknightsAp`、`ArknightsAvatar`、`ArknightsSecretary`、`ArknightsChar`、`ArknightsSkill`、`ArknightsEquip`、`ArknightsRecruitSlot`、`ArknightsRoutine`、`ArknightsCampaign`、`ArknightsTower`、`ArknightsTowerReward`、`ArknightsBuilding`、`ArknightsLabor`、`ArknightsHire`、`ArknightsTraining`、`ArknightsTrainee`、`ArknightsTrainer`、`ArknightsTiredChar`、`ArknightsRoomSegment`、`ArknightsRoomChar`、`ArknightsCultivate`、`ArknightsCultivateChar`、`ArknightsCultivateSkill`、`ArknightsCultivateEquip`、`ArknightsItem`、`ArknightsAttendance`、`ArknightsCalendarEntry`、`ArknightsCheckinRecord`、`ArknightsAward`、`ArknightsAwardResource`、`ArknightsProgress`；私有 `one_or_many`、`string_or_i64`。
+
+> **空值约定**：真实返回里 `building.hire`（办公室未建造）与 `building.training`（无进行中专精）是 `null`。skland-api 的 `recruit.py:38` 就是因为直接下标而崩。本文件所有 `building.*` 子对象一律 `Option<T>`，容器级 `#[serde(default)]` 保证字段缺失走 `Default` 而不是整包失败。
+
+### `struct ArknightsPlayerInfo`
+- 位置：arknights.rs:118
+- derive：`Serialize, Deserialize, Clone, Debug, Default`，容器 `rename_all = "camelCase", default`
+- 用途：`GET /api/v1/game/player/info?uid=` 的 `data`。**明日方舟的唯一主数据源**（干员养成、基建、任务、剿灭、保全、公招全在里面，`cultivate` 只额外给仓库）。
+- 字段：
+
+| 字段 | 类型 | serde | 含义 |
+| --- | --- | --- | --- |
+| `status` | `ArknightsStatus` | 容器 default | 玩家基础状态（昵称/等级/理智/头像…） |
+| `chars` | `Vec<ArknightsChar>` | 容器 default | 干员养成（含精英化/等级/专精/潜能/信赖/模组/皮肤） |
+| `char_info_map` | `serde_json::Map<String, Value>` | 容器 default | 干员静态表：charId → `{id, name, profession, rarity, …}` |
+| `recruit` | `Vec<ArknightsRecruitSlot>` | 容器 default | 公开招募栏位（`state == 2` 为招募中） |
+| `routine` | `ArknightsRoutine` | 容器 default | 每日/每周任务 |
+| `campaign` | `ArknightsCampaign` | 容器 default | 剿灭作战 |
+| `tower` | `ArknightsTower` | 容器 default | 保全派驻 |
+| `building` | `ArknightsBuilding` | 容器 default | 基建（`hire`/`training` 可能为 null） |
+| `current_ts` | `i64` | 容器 default | 数据生成时间戳（该接口为数字） |
+
+> 未建模的字段（`activity`、`bannerList`、`skins`、`medal`、`sandbox`、`bossRush` 等十余个）由 serde 忽略；模型只覆盖当前需要展示/计算的部分。
+
+### `struct ArknightsStatus`
+- 位置：arknights.rs:135
+- 用途：`data.status`。
+- 字段：`name`（形如 `Sciencekill#1309`）、`uid`（渠道角色 uid，**不等于**森空岛 userId）、`level`、`exp`（`ArknightsProgress`）、`ap`（`ArknightsAp`）、`avatar`（`Option<ArknightsAvatar>`）、`char_cnt`、`skin_cnt`、`furniture_cnt`、`main_stage_progress`（如 `main_02-09`）、`resume`、`secretary`（`Option<ArknightsSecretary>`）、`server_name`（实测可能为空串）、`register_ts`、`last_online_ts`、`store_ts`（森空岛最后一次同步游戏数据的时间）、`subscription_end`
+
+### `struct ArknightsAp` / `struct ArknightsAvatar` / `struct ArknightsSecretary`
+- `ArknightsAp`（arknights.rs:163）：`current` / `max` / `last_ap_add_time`（前端按 `1/6/60` 每秒推算当前理智）/ `complete_recovery_time`
+- `ArknightsAvatar`（arknights.rs:176）：`id` / `kind`（serde `type`；实测取值 `ICON`、`ASSISTANT`）/ `url`（`web.hycdn.cn`）/ `base64`（**接口不返回**，由 `ArknightsService::cache_player_info` 下载后填充）
+- `ArknightsSecretary`（arknights.rs:192）：`char_id` / `skin_id`（看板干员）
+
+### `struct ArknightsBuilding` 及其子结构
+- 位置：arknights.rs:283
+- 用途：`data.building`。字段：`labor`（`Option<ArknightsLabor>`）、`hire`（`Option<ArknightsHire>`，**实测可为 null**）、`training`（`Option<ArknightsTraining>`，**实测可为 null**）、`tired_chars`、`control` / `powers` / `tradings` / `manufactures` / `dormitories` / `meeting`（均 `Vec<ArknightsRoomSegment>`，**经 `one_or_many` 转换**）
+
+| 子结构 | 位置 | 字段 |
+| --- | --- | --- |
+| `ArknightsLabor` | arknights.rs:311 | `value` / `max_value` / `remain_secs`（按 `lastUpdateTime` 计算）/ `last_update_time`（无人机） |
+| `ArknightsHire` | arknights.rs:322 | `refresh_count`（上限 3）/ `complete_work_time`（办公室刷新） |
+| `ArknightsTraining` | arknights.rs:331 | `trainee`（`Option`）/ `trainer`（`Option`）/ `speed`（**`f64`**）/ `remain_point`（**`f64`**）/ `remain_secs`（按请求时间计算） |
+| `ArknightsHire` | arknights.rs:322 | `refresh_count`（上限 3）/ `complete_work_time` / `level` / `slot_id` / `slot_state` / `state` / `chars` |
+| `ArknightsTrainee` | arknights.rs:346 | `char_id` / `target_skill`（-1 表示空位） |
+| `ArknightsTrainer` | arknights.rs:356 | `char_id` |
+| `ArknightsTiredChar` | arknights.rs:363 | `char_id` / `ap` / `index` / `room_slot_id` / `last_ap_add_time` / `work_time` |
+| `ArknightsRoomSegment` | arknights.rs:381 | `chars` / `level` / `slot_id` / `slot_state`（仅 `control`）/ `capacity` / `weight` / `formula_id` / `remain` / `complete` / `complete_work_time` / `last_update_time` / `speed` / `comfort` —— 不同设施给的字段不同，全部走容错缺省 |
+| `ArknightsRoomChar` | arknights.rs:414 | `char_id` / `ap`（`ap / 360000` = 心情点数）/ `index` / `last_ap_add_time` / `work_time` |
+
+> ⚠️ **浮点字段**：`training.speed` / `training.remain_point` / `room_segment.speed` 实测是**浮点**（B 服给 `1.35` / `0.45` / `1.53`，官服恰好给整数）。声明成整型会让**整个 `player/info` 解析失败** —— 接口 `code=0`、字段看着都对，但服务层拿到 `Err`，前端表现为「等级 0、没有头像」。回归测试见 `training_accepts_float_speed_and_remain_point` / `room_speed_accepts_float`。
+
+> ⚠️ **设施是「对象或数组」混用的**：实测同一响应里 `control` / `meeting` 是**对象**，而 `powers` / `tradings` / `manufactures` / `dormitories` 是**数组**。`one_or_many`（arknights.rs:11）统一收敛成 `Vec`，不兼容的话整个 `player/info` 都会解析失败。
+
+### `struct ArknightsChar` 及其子结构
+- `ArknightsChar`（arknights.rs:206）：`char_id` / `level` / `evolve_phase`（0/1/2）/ `potential_rank`（0..5）/ `main_skill_lvl`（1..7）/ `favor_percent` / `gain_time` / `exp` / `rarity` / `default_skill_id` / `default_equip_id` / `skin_id` / `skills` / `equip`
+- `ArknightsSkill`（arknights.rs:243）：`id` / `specialize_level`（0..3，**`player/info` 用这个名字**）
+- `ArknightsEquip`（arknights.rs:254）：`id` / `level` / `locked`
+
+### `struct ArknightsRoutine` / `ArknightsCampaign` / `ArknightsTower` / `ArknightsTowerReward` / `ArknightsRecruitSlot` / `ArknightsProgress`
+- `ArknightsProgress`（arknights.rs:26）：`current` / `total`（通用进度对）
+- `ArknightsRoutine`（arknights.rs:266）：`daily` / `weekly`
+- `ArknightsCampaign`（arknights.rs:275）：`reward` / `records`（未建模，原样保留）
+- `ArknightsTower`（arknights.rs:283 → 见上）：`reward` / `records`
+- `ArknightsTowerReward`：`higher_item` / `lower_item` / `term_ts`（本期结束时间）
+- `ArknightsRecruitSlot`（arknights.rs:256）：`state`（2 = 招募中）/ `start_ts` / `finish_ts`
+
+### `struct ArknightsCultivate` 及其子结构
+- 位置：arknights.rs:444
+- 用途：`GET /api/v1/game/cultivate/player?uid=` 的 `data`。干员养成 `player/info` 已经全给（还多了信赖/皮肤），**该接口唯一增量是 `items`（仓库）**。
+- 字段：`characters`（`Vec<ArknightsCultivateChar>`）、`items`（`Vec<ArknightsItem>`）
+- `ArknightsCultivateChar`：`id` / `level` / `evolve_phase` / `potential_rank` / `main_skill_level` / `skills` / `equips`
+- `ArknightsCultivateSkill`：`id` / `level`（**该接口用 `level`，不是 `specializeLevel`**）
+- `ArknightsCultivateEquip`：`id` / `level`
+- `ArknightsItem`：`id` / `count`（**字符串**，如 `"56"`）
+
+### `struct ArknightsAttendance` 及其子结构
+- 位置：arknights.rs:492
+- 用途：`GET /api/v1/game/attendance?uid=` 的 `data`。
+- 字段：`calendar`（`Vec<ArknightsCalendarEntry>`）、`records`（`Vec<ArknightsCheckinRecord>`）、`resource_info_map`（物品 id → 静态信息）、`current_ts`（**实测为字符串**，经 `string_or_i64` 接受两种写法）、`first`（`Option<Value>`，可能为 null）
+- `ArknightsCalendarEntry`：`resource_id` / `count` / `kind`（serde `type`，实测 `daily`）/ `done` / `available`
+- `ArknightsCheckinRecord`：`resource_id` / `count` / `ts`（**字符串**时间戳）/ `kind`
+
+### `struct ArknightsAward` / `ArknightsAwardResource`
+- `ArknightsAward`（arknights.rs:556）：`resource` / `count` —— `do_attendance` 成功后 `data.awards[]` 的元素
+- `ArknightsAwardResource`：`id` / `name` / `icon`
+
+### 自定义反序列化器
+- `fn one_or_many<'de, D, T>` — arknights.rs:11：`T` 或 `Vec<T>` 都接受，统一成 `Vec<T>`。用于基建设施（对象/数组混用）。
+- `fn string_or_i64<'de, D>` — arknights.rs:30：数字或数字字符串都接受，转 `i64`。用于 `attendance.currentTs`。
+
+### 测试（`#[cfg(test)] mod tests`，arknights.rs:610 起）
+**离线**，用真实抓取的响应夹具（`tests/fixtures/arknights/`，昵称/uid 已替换为占位值）：
+`player_info_parses_all_modelled_fields`（逐字段断言，防「字段名对不上 → 静默走 default → 界面空白」）、`player_info_tolerates_missing_building`、`player_info_accepts_hire_and_training_when_present`、`player_info_round_trips_without_losing_fields`、`cultivate_parses_characters_and_items`、`attendance_parses_calendar_records_and_resource_map`、`attendance_tolerates_missing_optional_parts`。

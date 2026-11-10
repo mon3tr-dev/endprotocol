@@ -64,12 +64,19 @@ EndProtocol/
 │   ├── src/main.rs                # 进程入口
 │   ├── src/lib.rs                 # 启动模式分流、完整模式单实例、驻守实例、插件/状态/托盘/命令注册
 │   ├── src/tray.rs                # 完整模式托盘与悬浮面板（驻守实例无托盘）
-│   ├── src/commands/              # 19 个文件（18 命令 + mod.rs）：IPC 命令入口
-│   ├── src/services/              # 12 个服务：account、skland、game_launcher、
+│   ├── src/commands/              # 20 个文件（19 命令 + mod.rs）：IPC 命令入口
+│   ├── src/services/              # 14 个服务：account、arknights、《明日方舟》数据、
+│   │                              #   skland、game_launcher、
 │   │                              #   gacha、char_detail、char_wiki、config、
 │   │                              #   avatar_cache、data_query、network、
+│   │                              #   secret_registry、secret_store、
 │   │                              #   system_resource
-│   ├── src/models/                # 7 个文件：序列化数据结构
+│   ├── src/models/                # 8 个文件：序列化数据结构
+│   │                              #   （account、arknights、char_detail、gacha、game、login、role、mod）
+│   ├── tests/                     # 集成测试：arknights_live（真实联网，需环境变量）、
+│   │                              #   arknights 夹具 fixtures/、secret_storage
+│   ├── examples/                  # 调试工具：arknights_probe（抓 player/info 看结构）、
+│   │                              #   sign_test、cred_cleanup
 │   ├── src/utils/                 # error、hg_crypto、http_client、
 │   │                              #   logger、official_launcher、paths、capture、
 │   │                              #   game_playtime（游戏时长统计）、process（进程探测）、

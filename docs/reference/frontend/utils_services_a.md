@@ -5,7 +5,7 @@
 
 ## `src/utils/accountService.ts`
 **职责**：封装森空岛/游戏账户相关的全部 Tauri IPC 调用（登录、登出、刷新、扫码、验证码、选中账户、凭证刷新），并定义账户相关的 TS 类型。是前端访问账户后端的唯一入口层。
-**导出**：类型 `Account`、`SklandAccount`、`SklandGameScore`、`SklandPendant`、`SklandBackground`、`SklandUserStats`、`SklandGameInfo`、`SklandUserInfo`、`RoleDisplayInfo`、`LoginRequest`、`LoginResult`、`RefreshResult`、`SendCodeRequest`、`CodeLoginRequest`、`ScanLoginInfo`、`ScanStatus`；函数 `getAccounts`、`getSklandAccounts`、`saveSklandAccount`、`getSklandAccountRoles`、`getSklandUserInfo`、`getSklandUserInfoByCred`、`getSklandGames`、`addAccount`、`logoutAccount`、`batchLogout`、`refreshAccounts`、`sendVerificationCode`、`addAccountByCode`、`genScanLogin`、`scanStatus`、`addAccountByScan`、`saveSelectedRoles`、`getSelectedAccount`、`setSelectedAccount`、`checkAndRefreshCred`、`applyApiHealthSnapshot`；别名常量 `refreshAccountData`、`batchLogoutAccounts`。
+**导出**：类型 `GameId`、`Account`、`SklandAccount`、`SklandGameScore`、`SklandPendant`、`SklandBackground`、`SklandUserStats`、`SklandGameInfo`、`SklandUserInfo`、`RoleDisplayInfo`、`LoginRequest`、`LoginResult`、`RefreshResult`、`SendCodeRequest`、`CodeLoginRequest`、`ScanLoginInfo`、`ScanStatus`；函数 `getAccounts`、`getSklandAccounts`、`saveSklandAccount`、`getSklandAccountRoles`、`getSklandUserInfo`、`getSklandUserInfoByCred`、`getSklandGames`、`addAccount`、`logoutAccount`、`batchLogout`、`refreshAccounts`、`sendVerificationCode`、`addAccountByCode`、`genScanLogin`、`scanStatus`、`addAccountByScan`、`saveSelectedRoles`、`getSelectedAccount`、`setSelectedAccount`、`checkAndRefreshCred`、`applyApiHealthSnapshot`；别名常量 `refreshAccountData`、`batchLogoutAccounts`。
 **主要依赖**：`@tauri-apps/api/core` 的 `invoke`、`./logger` 的 `logger` / `logError`、`./startupProgress` 的 `trackStartupTask`、`./accountAvailability`（`clearAccountUnavailable` / `setAccountUnavailable` / `reasonFromApiKind`）、`./crashReporting` 的类型 `ApiHealthSnapshot`。
 
 | 符号 | 位置 | 说明 |
@@ -41,11 +41,12 @@
 
 | 区间 | 内容 |
 | --- | --- |
-| accountService.ts:1-211 | 全部接口/类型定义（账户、森空岛资料、登录/扫码/验证码请求与结果；`SklandAccount.phone`、`RoleDisplayInfo`（含 `bindingUid` / `channelName` / `u8Authorized`）、`RoleU8AuthStatus` / `RoleU8AuthResult`、`LoginRequest.expectedUserId`、`CodeLoginRequest.expectedUserId`） |
+| accountService.ts:1-211 | 全部接口/类型定义（账户、森空岛资料、登录/扫码/验证码请求与结果；`GameId`、`Account.game?`、`SklandAccount.phone`、`RoleDisplayInfo`（含 `game` / `bindingUid` / `channelName` / `u8Authorized`）、`RoleU8AuthStatus` / `RoleU8AuthResult`、`LoginRequest.expectedUserId`、`CodeLoginRequest.expectedUserId`） |
 | accountService.ts:203-536 | 各 IPC 包装函数实现（含新增的 `authorizeRoleU8Token` / `revokeRoleU8Token`） |
 
 **备注**：
 - 封装的 invoke 命令：`get_accounts`、`get_skland_accounts`、`save_skland_account`、`get_skland_account_roles`、`get_skland_user_info`、`get_skland_user_info_by_cred`、`get_skland_games`、`add_account`、`logout_account`、`delete_skland_account`、`batch_logout`、`refresh_accounts`、`send_verification_code`、`add_account_by_code`、`gen_scan_login`、`scan_status`、`add_account_by_scan`、`save_selected_roles`、`get_selected_account`、`set_selected_account`、`check_and_refresh_cred`、**`authorize_role_u8token`、`revoke_role_u8token`**（共 23 个）。
+- **游戏标识**：`GameId = "endfield" | "arknights"`，对应后端 `models::role::GAME_*` 常量。`Account.game?` 与 `RoleDisplayInfo.game?` 都是可选字段，缺失时按终末地处理（后端三处结构体都带 `#[serde(default = "default_game")]`）。明日方舟角色**没有头像**（`avatarUrl` 为空串），也没有终末地那套角色数据接口。
 - **抽卡授权**：`authorizeRoleU8Token` / `revokeRoleU8Token` 是唯一入口，前端从不接触令牌明文 —— u8token 不落盘、每次同步由后端现换。官服与 B 服走同一条链路，没有「渠道服不支持」分支。
 - 配置键：本文件**不直接**读写任何配置键；选中账户由后端命令 `get_selected_account`/`set_selected_account` 管理（对应后端配置键在 Rust 侧，前端未出现字面量）。
 - 缓存策略：无前端缓存，每次调用直接 IPC；森空岛游戏列表的缓存由后端负责（`getSklandGames` 的 `force` 参数控制强制刷新）。

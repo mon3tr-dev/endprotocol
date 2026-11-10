@@ -31,7 +31,7 @@
 | 788-908 | `refresh_cred_by_hytoken`（grant → generate_cred_by_code；**不再顺带取 u8token**） |
 | 980-1120 | 抽卡令牌新链路：`get_u8_token_by_uid`、`u8_oauth_token`、`u8_token_by_uid` |
 | 1150-1210 | 私有 `oauth_grant_to_sk_code`（换 skland cred 用，appCode `4ca99fa6b56cc2ba` / type 0） |
-| 1212-1240 | `extract_endfield_roles`（纯数据提取，返回含渠道 uid 的五元组） |
+| 1219-1301 | `extract_game_roles`（纯数据提取，返回含渠道 uid + 游戏标识的 `GameRoleBinding` 列表；两个游戏的角色在不同层级，见方法表） |
 | 1240-1270 | 自由函数 `des_encrypt_3des`（单 DES ECB + Zero Padding + Base64） |
 | 1270-1470 | `mod tests`：dId 格式测试、用户资料/游戏列表解析测试（内嵌抓包样本 JSON） |
 
@@ -59,7 +59,7 @@
 | `u8_token_by_uid(&self, oauth_token, binding_uid)` pub async | 1062-1120 | `POST https://binding-api-account-prod.hypergryph.com/account/binding/v1/u8_token_by_uid`，payload `{uid, token:L2}`，取 `data.token`（u8 token） |
 | `u8_grant_to_sk_code(&self, hytoken, device_token)` 私有 async | **已删除** | 旧链路（`dd7b852d5f1dd9da` + deviceToken → channel code）随 `get_u8_token_by_channel` 一并移除 |
 | `oauth_grant_to_sk_code(&self, hytoken)` 私有 async | 1150-1210 | hytoken → 同一 grant 端点，payload `{token, appCode:"4ca99fa6b56cc2ba", type:0}` → `data.code`（换 skland cred 用） |
-| `extract_endfield_roles(bindings)` pub（无 `self`） | 1212-1240 | `&[GameBinding]` → 无网络 → 过滤 `app_code=="endfield"`，展平 `binding_list[].roles[]` → `Vec<(binding_uid, channel_master_id, channel_name, server_id, role_id)>`（**渠道 uid 不再丢弃**） |
+| `extract_game_roles(bindings)` pub（无 `self`） | 1219-1301 | `&[GameBinding]` → 无网络 → 只保留 `app_code` 为 `endfield` / `arknights` 的游戏（其余应用跳过并 debug 日志），跳过 `is_delete` 的渠道绑定 → `Vec<GameRoleBinding>`（含 `game` / `binding_uid` / `channel_master_id` / `channel_name` / `server_id` / `server_name` / `role_id` / `nickname` / `level`）。<br>⚠️ **两个游戏的角色在不同层级**：终末地在 `bindingList[].roles[]`（走通用分支，`role_id` 取 `roles[].roleId`）；**明日方舟的 `roles` 是空数组**，角色在 `bindingList` 这一层 —— `uid` 即角色标识（`roleId = uid`）、`nickName` 是昵称、`channelMasterId` 当 `server_id`（1=官服 2=B服）、`level` 给 0 由 `player/info` 补。<br>**只遍历 `roles` 会完全漏掉明日方舟角色**（前端表现为「找不到可绑定的明日方舟角色」） |
 | `des_encrypt_3des(key, data)` 自由函数 | 1240-1270 | 8 字节 Zero Padding → 单 DES 加密每个 8 字节块 → Base64 字符串 |
 
 合计：impl 内 20 个方法（pub 13）+ 1 个自由加密函数 = 21 个可调用项；另有 5 个测试函数（1201、1312、1342、1382、1399）与 2 个测试常量（1221、1348）。
@@ -74,6 +74,10 @@
 | `GET /web/v1/game` | 森空岛游戏列表（图标等） | `get_game_list` | 667 |
 | `GET /api/v1/game/player/binding` | 账号绑定的角色列表 | `get_player_binding` | 699 |
 | `GET /api/v1/game/endfield/card/detail?roleId=&serverId=&userId=` | 终末地角色详情 | `get_role_detail` | 723-727 |
+| `GET /api/v1/game/player/info?uid=` | **《明日方舟》玩家全量数据**（干员养成/基建/任务/剿灭/保全/公招/头像） | 不经本文件，见 `services/arknights_service.rs::fetch_player_info` | — |
+| `GET /api/v1/game/cultivate/player?uid=` | **《明日方舟》养成 + 仓库** | 同上（`fetch_cultivate`） | — |
+| `GET /api/v1/game/attendance?uid=` | **《明日方舟》签到状态** | 同上（`attendance_status`） | — |
+| `POST /api/v1/game/attendance`（body `{gameId:1, uid}`） | **《明日方舟》执行签到** | 同上（`do_attendance`） | — |
 | `GET https://zonai.skland.com/api/v1/user/check` | 校验 cred 是否有效 | `check_cred` | 756 |
 | `POST https://zonai.skland.com/api/v1/user/auth/generate_cred_by_code` | sk_code → cred / token / userId | `refresh_cred_by_hytoken` | 843（payload 833-836） |
 | `POST https://binding-api-account-prod.hypergryph.com/account/binding/v1/u8_token_by_uid` | L2 + 渠道 uid → u8token | `u8_token_by_uid` | 约 1075（payload `{uid, token}`） |
@@ -81,6 +85,10 @@
 | `POST https://as.hypergryph.com/user/oauth2/v2/grant` | hytoken → 抽卡域 L2（appCode=`be36d44aa36bfb5b`, type=1） | `u8_oauth_token` | 约 1013（payload `{type:1, appCode, token}`） |
 
 非端点 URL（仅作数据）：`https://www.skland.com/` 为指纹 target 的 `url` 字段（143）；`https://game.skland.com` 为 Origin/Referer 头（450-451）；测试样本中的 bbs.hycdn.cn 图片（1215-1389）。
+
+> **明日方舟的四个端点为什么不在本文件**：它们的寻址方式与终末地完全不同（用**渠道绑定 uid**、不发 `sk-game-role` 头、签到把 `gameId`+`uid` 放 body），因此单独落在 `services/arknights_service.rs`。两者共用同一个 `call_skland_api`（签名/dId/重试/熔断），**共用同一套 HTTP 栈，但数据模型与服务完全分开**。
+>
+> **响应是明文**：`/api/v1/game/player/*` 不做响应加密。本文件的 AES/3DES 代码只用于**生成 dId**（数美指纹请求体加密）。这一点已用真实账号在 `tests/arknights_live.rs` 中验证（三个接口 `code=0` 且字段可直接读取）。
 
 ## 签名与加密流程
 

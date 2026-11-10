@@ -250,8 +250,8 @@
 ---
 
 ## `src-tauri/src/utils/paths.rs`
-**职责**：集中定义应用数据目录与各业务文件/目录路径（80 行），统一基于 `dirs::data_local_dir()` + 应用目录名，返回 `Result<PathBuf, &'static str>`。
-**导出**：常量 `APP_DIR`（`const`，非 pub）、13 个 `pub fn`。
+**职责**：集中定义应用数据目录与各业务文件/目录路径（95 行），统一基于 `dirs::data_local_dir()` + 应用目录名，返回 `Result<PathBuf, &'static str>`。
+**导出**：常量 `APP_DIR`（`const`，非 pub）、14 个 `pub fn`。
 **主要依赖**：`dirs`、`std::path::PathBuf`。
 
 常量：`APP_DIR = "cn.msk-network.endprotocol"`（paths.rs:3），即 Bundle ID 风格目录名。
@@ -271,6 +271,7 @@
 | `gacha_total_catalog_file_path()` | paths.rs:65 | `<app_data_dir>/gacha_records/total.json`（全量 Wiki 目录，全局共用）。调用方：gacha_service.rs:335 |
 | `gacha_records_file_path_legacy(user_id, server_id)` | paths.rs:70 | `<app_data_dir>/gacha_records_{userId}_{serverId}.json`（**与 app_config.json 同级的旧版布局**，仅供存量数据兼容读取）。调用方：gacha_service.rs:177 |
 | `gacha_avatar_map_file_path()` | paths.rs:78 | `<app_data_dir>/gacha_avatar_map.json`。调用方：gacha_service.rs:301 |
+| `arknights_cache_dir()` | paths.rs:88 | `<app_data_dir>/arknights`（**《明日方舟》数据缓存目录**：`player_info_{uid}.json` 与 `raw_*.json` 都在里面，目录内文件名由 `ArknightsService` 决定）。调用方：arknights_service.rs:63。**为什么不进 `app_config.json`**：单账号 `player/info` 实测几百 KB（B 服 242 名干员约 600 KB），塞进配置会让每次配置读写都搬运它 —— 与抽卡记录同一套做法 |
 
 **备注**：全部函数只拼接路径、**不创建目录**（创建由调用方 `create_dir_all` 完成）；除 `app_data_dir` 的底层查询失败外无其他错误来源，故错误类型是 `&'static str`。平台差异只体现在 `data_local_dir()` 根目录，子目录结构跨平台一致。
 

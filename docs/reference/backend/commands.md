@@ -34,8 +34,12 @@
 | `is_lazy_load_enabled` | commands/account.rs:322 | `state` | `Result<bool, String>` | `AccountService::is_lazy_load_enabled` |
 | `set_current_role_id` | commands/account.rs:331 | `state`、`role_id: Option<String>` | `Result<bool, String>` | `AccountService::set_current_role_id` |
 | `query_role_data` | commands/account.rs:353 | `state`、`role_id`、`api_name`、`paths: Vec<String>` | `Result<serde_json::Value, String>` | `AccountService::query_role_data` |
-| `get_attendance` | commands/attendance.rs:60 | `state: State<Arc<Mutex<AccountService>>>`、`role_id: String` | `Result<serde_json::Value, String>` | 本地 `lookup_cred_token`、`AccountService::check_and_refresh_user_cred`、`SklandService::call_skland_api`(GET)、`AvatarCacheService::get_or_download_image` |
-| `do_attendance` | commands/attendance.rs:182 | `state`、`role_id: String` | `Result<serde_json::Value, String>` | 本地 `lookup_cred_token`、`AccountService::check_and_refresh_user_cred`、`SklandService::call_skland_api`(POST) |
+| `get_attendance` | commands/attendance.rs:60 | `state: State<Arc<Mutex<AccountService>>>`、`role_id: String` | `Result<serde_json::Value, String>` | 本地 `lookup_cred_token`、`AccountService::check_and_refresh_user_cred`、`SklandService::call_skland_api`(GET)、`AvatarCacheService::get_or_download_image`（**终末地**签到，靠 `sk-game-role` 头寻址） |
+| `do_attendance` | commands/attendance.rs:182 | `state`、`role_id: String` | `Result<serde_json::Value, String>` | 本地 `lookup_cred_token`、`AccountService::check_and_refresh_user_cred`、`SklandService::call_skland_api`(POST)（**终末地**签到） |
+| `get_arknights_player_info` | commands/arknights.rs:24 | `state`、`role_id: String`、`force: Option<bool>` | `Result<serde_json::Value, String>` | `AccountService::get_arknights_player_info` → `resolve_arknights_target`（roleId → userId + bindingUid）+ `arknights_credentials`（按需刷新 cred）→ `ArknightsService::refresh_player_info`（`GET /api/v1/game/player/info?uid=`）。`force=false` 时先用缓存（内存 → `<app_data>/arknights/player_info_{uid}.json`） |
+| `get_arknights_cultivate` | commands/arknights.rs:40 | `state`、`role_id: String` | `Result<serde_json::Value, String>` | `AccountService::get_arknights_cultivate` → `ArknightsService::fetch_cultivate`（`GET /api/v1/game/cultivate/player?uid=`）。干员养成 `player/info` 已给，**唯一增量是仓库 `items`** |
+| `get_arknights_attendance` | commands/arknights.rs:53 | `state`、`role_id: String` | `Result<serde_json::Value, String>` | `AccountService::get_arknights_attendance` → `ArknightsService::attendance_status`（`GET /api/v1/game/attendance?uid=`） |
+| `do_arknights_attendance` | commands/arknights.rs:68 | `state`、`role_id: String` | `Result<serde_json::Value, String>` | `AccountService::do_arknights_attendance` → `ArknightsService::do_attendance`（`POST /api/v1/game/attendance`，body `{gameId: 1, uid}`）。今天已签到时返回**空数组**而非报错 |
 | `capture_start` | commands/capture.rs:3 | 无 | `Result<CaptureStatus, String>` | `utils::capture::start` |
 | `capture_stop` | commands/capture.rs:8 | 无 | `Result<CaptureStatus, String>` | `utils::capture::stop` |
 | `capture_status` | commands/capture.rs:13 | 无 | `Result<CaptureStatus, String>` | `utils::capture::status` |
@@ -150,7 +154,7 @@
 ---
 
 ## `src-tauri/src/commands/mod.rs`
-**职责**：纯模块声明文件，导出 `account`、`attendance`、`browser`、`capture`、`card_config`、`color_picker`、`config`、`gacha`、`image`、`launcher`、`logs`、`startup`、`system_resource`、`tray`、`updater`、`window` 共 16 个子模块。无命令定义，无逻辑。
+**职责**：纯模块声明文件，导出 `account`、`arknights`、`attendance`、`browser`、`capture`、`card_config`、`color_picker`、`config`、`diagnostics`、`gacha`、`image`、`launcher`、`logs`、`proxy`、`startup`、`system_resource`、`tray`、`updater`、`window` 共 19 个子模块。无命令定义，无逻辑。
 
 ## `src-tauri/src/commands/startup.rs`
 **职责**：静默游戏启动命令的配置、命令行文本、Windows `.lnk` 快捷方式，以及 Steam 第三方游戏条目的参数弹窗支撑（默认值、图标提取、写入）。Steam 条目允许在 Steam 运行时写入（写完需重启 Steam 才可见）。
@@ -358,6 +362,31 @@
 - 参数：`state`、`role_id: String`、`api_name: String`、`paths: Vec<String>`
 - 返回：`Result<serde_json::Value, String>`
 - 逻辑：调用 `AccountService::query_role_data(&role_id, &api_name, &paths)` 取到 `HashMap<path, value>` 后用 `serde_json::to_value` 转成 JSON 对象（key 为请求路径，缺失路径为 null；空 `paths` 表示返回完整数据）。全过程写 `log_debug!/log_info!/log_error!`。
+
+---
+
+## `src-tauri/src/commands/arknights.rs`
+**职责**：《明日方舟》数据命令（88 行 / 4 个命令）。与终末地的 `query_role_data` 平行：终末地按 `roleId + serverId` 走 `/api/v1/game/endfield/card/detail`，明日方舟按**渠道绑定 uid** 走 `/api/v1/game/player/*` 系列。全部以 `role_id` 作入口（前端只认 roleId），由 `AccountService` 内部反查出所属森空岛账户与 `bindingUid`。
+
+> 四个命令都是薄封装：参数校验与「roleId → (userId, bindingUid)」解析、cred 刷新都在 `AccountService`（见 [services_account.md](services_account.md)），网络与解析在 `ArknightsService`（见 [services_others.md](services_others.md)）。
+
+### `get_arknights_player_info`
+- 位置：arknights.rs:24（async）
+- 参数：`state: State<'_, Arc<Mutex<AccountService>>>`、`role_id: String`、`force: Option<bool>`（默认 `false`）
+- 返回：`Result<serde_json::Value, String>`（`ArknightsPlayerInfo` 的 JSON）
+- 逻辑：`AccountService::get_arknights_player_info(role_id, force)`。`force=false` 时先读缓存（内存 → `<app_data>/arknights/player_info_{uid}.json`），未命中才联网；联网成功后写缓存并更新头像 base64。返回体包含 `status`（昵称/等级/理智/头像）、`chars[]`（干员养成）、`building`（`hire`/`training` **可能为 null**）、`routine`、`campaign`、`tower`、`recruit`、`charInfoMap`。
+
+### `get_arknights_cultivate`
+- 位置：arknights.rs:43（async）；参数：`state`、`role_id: String`；返回：`Result<serde_json::Value, String>`
+- 逻辑：`ArknightsService::fetch_cultivate` → `GET /api/v1/game/cultivate/player?uid=`。干员养成 `player/info` 已经全给（还多了信赖/皮肤），**这个接口的唯一增量是仓库 `items`**（`count` 是字符串）。
+
+### `get_arknights_attendance`
+- 位置：arknights.rs:58（async）；参数：`state`、`role_id: String`；返回：`Result<serde_json::Value, String>`
+- 逻辑：`ArknightsService::attendance_status` → `GET /api/v1/game/attendance?uid=`。返回本月签到日历、已签到记录与物品静态表（`resourceInfoMap`）。
+
+### `do_arknights_attendance`
+- 位置：arknights.rs:72（async）；参数：`state`、`role_id: String`；返回：`Result<serde_json::Value, String>`
+- 逻辑：`ArknightsService::do_attendance` → `POST /api/v1/game/attendance`，body `{gameId: 1, uid}`。与终末地签到（靠 `sk-game-role` 头、路径 `/web/v1/game/endfield/attendance`）**完全不同**。今天已签到时接口返回「请勿重复签到」类业务码，`call_skland_api` 原样放行，这里按 `code != 0` 识别并返回**空数组**。
 
 ---
 

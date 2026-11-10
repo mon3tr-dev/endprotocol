@@ -1,0 +1,743 @@
+{
+    "code":  0,
+    "message":  "OK",
+    "data":  {
+                 "status":  {
+                                "name":  "Doctor#0000",
+                                "uid":  "700000001",
+                                "level":  85,
+                                "exp":  {
+                                            "current":  3108,
+                                            "max":  36000
+                                        },
+                                "ap":  {
+                                           "completeRecoveryTime":  1794361558,
+                                           "current":  93,
+                                           "lastApAddTime":  1794321238,
+                                           "max":  205
+                                       },
+                                "avatar":  {
+                                               "id":  "char_1052_kalts2#2",
+                                               "type":  "ASSISTANT",
+                                               "url":  "https://web.hycdn.cn/arknights/game/assets/char_skin/avatar/char_1052_kalts2%232.png"
+                                           },
+                                "charCnt":  242,
+                                "skinCnt":  26,
+                                "furnitureCnt":  0,
+                                "mainStageProgress":  "",
+                                "resume":  "",
+                                "secretary":  {
+                                                  "charId":  "char_1052_kalts2",
+                                                  "skinId":  "char_1052_kalts2#2"
+                                              },
+                                "serverName":  "",
+                                "registerTs":  1558869807,
+                                "lastOnlineTs":  1794321410,
+                                "storeTs":  1794321413,
+                                "subscriptionEnd":  0,
+                                "unknownFutureField":  "should be ignored"
+                            },
+                 "chars":  [
+                               {
+                                   "charId":  "char_002_amiya",
+                                   "defaultEquipId":  "uniequip_001_amiya",
+                                   "defaultSkillId":  "skchr_amiya_2",
+                                   "equip":  [
+                                                 {
+                                                     "id":  "uniequip_001_amiya",
+                                                     "level":  1,
+                                                     "locked":  false
+                                                 },
+                                                 {
+                                                     "id":  "uniequip_002_amiya",
+                                                     "level":  1,
+                                                     "locked":  true
+                                                 }
+                                             ],
+                                   "evolvePhase":  2,
+                                   "exp":  0,
+                                   "favorPercent":  200,
+                                   "gainTime":  1558869807,
+                                   "gold":  0,
+                                   "level":  1,
+                                   "mainSkillLvl":  7,
+                                   "potentialRank":  5,
+                                   "rarity":  0,
+                                   "skills":  [
+                                                  {
+                                                      "id":  "skcom_magic_rage[3]",
+                                                      "specializeLevel":  0
+                                                  },
+                                                  {
+                                                      "id":  "skchr_amiya_2",
+                                                      "specializeLevel":  0
+                                                  },
+                                                  {
+                                                      "id":  "skchr_amiya_3",
+                                                      "specializeLevel":  0
+                                                  }
+                                              ],
+                                   "skinId":  "char_002_amiya#2",
+                                   "sortId":  0
+                               },
+                               {
+                                   "charId":  "char_1001_amiya2",
+                                   "defaultEquipId":  "uniequip_001_amiya2",
+                                   "defaultSkillId":  "skchr_amiya2_2",
+                                   "equip":  [
+                                                 {
+                                                     "id":  "uniequip_001_amiya2",
+                                                     "level":  1,
+                                                     "locked":  false
+                                                 },
+                                                 {
+                                                     "id":  "uniequip_002_amiya2",
+                                                     "level":  1,
+                                                     "locked":  true
+                                                 }
+                                             ],
+                                   "evolvePhase":  2,
+                                   "exp":  0,
+                                   "favorPercent":  200,
+                                   "gainTime":  1558869807,
+                                   "gold":  0,
+                                   "level":  1,
+                                   "mainSkillLvl":  7,
+                                   "potentialRank":  5,
+                                   "rarity":  0,
+                                   "skills":  [
+                                                  {
+                                                      "id":  "skchr_amiya2_1",
+                                                      "specializeLevel":  0
+                                                  },
+                                                  {
+                                                      "id":  "skchr_amiya2_2",
+                                                      "specializeLevel":  3
+                                                  }
+                                              ],
+                                   "skinId":  "char_1001_amiya2@sale#16",
+                                   "sortId":  0
+                               },
+                               {
+                                   "charId":  "char_1037_amiya3",
+                                   "defaultEquipId":  "uniequip_001_amiya3",
+                                   "defaultSkillId":  "skchr_amiya3_1",
+                                   "equip":  [
+                                                 {
+                                                     "id":  "uniequip_001_amiya3",
+                                                     "level":  1,
+                                                     "locked":  false
+                                                 },
+                                                 {
+                                                     "id":  "uniequip_002_amiya3",
+                                                     "level":  1,
+                                                     "locked":  true
+                                                 }
+                                             ],
+                                   "evolvePhase":  2,
+                                   "exp":  0,
+                                   "favorPercent":  200,
+                                   "gainTime":  1558869807,
+                                   "gold":  0,
+                                   "level":  1,
+                                   "mainSkillLvl":  7,
+                                   "potentialRank":  5,
+                                   "rarity":  0,
+                                   "skills":  [
+                                                  {
+                                                      "id":  "skchr_amiya3_1",
+                                                      "specializeLevel":  0
+                                                  },
+                                                  {
+                                                      "id":  "skchr_amiya3_2",
+                                                      "specializeLevel":  0
+                                                  }
+                                              ],
+                                   "skinId":  "char_1037_amiya3#2",
+                                   "sortId":  0
+                               }
+                           ],
+                 "charInfoMap":  {
+                                     "char_002_amiya":  {
+                                                            "appellation":  "Amiya",
+                                                            "displayNumber":  "R001",
+                                                            "groupId":  "",
+                                                            "id":  "char_002_amiya",
+                                                            "name":  "阿米娅",
+                                                            "nationId":  "rhodes",
+                                                            "profession":  "CASTER",
+                                                            "rarity":  4,
+                                                            "sortId":  76,
+                                                            "subProfessionId":  "corecaster",
+                                                            "subProfessionName":  "中坚术师"
+                                                        },
+                                     "char_003_kalts":  {
+                                                            "appellation":  "Kal\u0027tsit",
+                                                            "displayNumber":  "B003",
+                                                            "groupId":  "",
+                                                            "id":  "char_003_kalts",
+                                                            "name":  "凯尔希",
+                                                            "nationId":  "rhodes",
+                                                            "profession":  "MEDIC",
+                                                            "rarity":  5,
+                                                            "sortId":  164,
+                                                            "subProfessionId":  "physician",
+                                                            "subProfessionName":  "医师"
+                                                        },
+                                     "char_009_12fce":  {
+                                                            "appellation":  "12F",
+                                                            "displayNumber":  "R303",
+                                                            "groupId":  "",
+                                                            "id":  "char_009_12fce",
+                                                            "name":  "12F",
+                                                            "nationId":  "rhodes",
+                                                            "profession":  "CASTER",
+                                                            "rarity":  1,
+                                                            "sortId":  3,
+                                                            "subProfessionId":  "splashcaster",
+                                                            "subProfessionName":  "扩散术师"
+                                                        }
+                                 },
+                 "recruit":  [
+                                 {
+                                     "finishTs":  1794350577,
+                                     "startTs":  1794318177,
+                                     "state":  2
+                                 },
+                                 {
+                                     "finishTs":  1794350580,
+                                     "startTs":  1794318180,
+                                     "state":  2
+                                 },
+                                 {
+                                     "finishTs":  1794350606,
+                                     "startTs":  1794318206,
+                                     "state":  2
+                                 },
+                                 {
+                                     "finishTs":  1794350607,
+                                     "startTs":  1794318207,
+                                     "state":  2
+                                 }
+                             ],
+                 "routine":  {
+                                 "daily":  {
+                                               "current":  10,
+                                               "total":  10
+                                           },
+                                 "weekly":  {
+                                                "current":  6,
+                                                "total":  13
+                                            }
+                             },
+                 "campaign":  {
+                                  "reward":  {
+                                                 "current":  1800,
+                                                 "total":  1800
+                                             },
+                                  "records":  [
+                                                  {
+                                                      "campaignId":  "camp_01",
+                                                      "maxKills":  400
+                                                  }
+                                              ]
+                              },
+                 "tower":  {
+                               "reward":  {
+                                              "higherItem":  {
+                                                                 "current":  0,
+                                                                 "total":  24
+                                                             },
+                                              "lowerItem":  {
+                                                                "current":  0,
+                                                                "total":  60
+                                                            },
+                                              "termTs":  1794772799
+                                          },
+                               "records":  [
+                                               {
+                                                   "best":  1,
+                                                   "towerId":  "tower_tr_01"
+                                               }
+                                           ]
+                           },
+                 "building":  {
+                                  "control":  {
+                                                  "chars":  [
+                                                                {
+                                                                    "ap":  8433105,
+                                                                    "bubble":  {
+                                                                                   "assist":  {
+                                                                                                  "add":  -1,
+                                                                                                  "ts":  0
+                                                                                              },
+                                                                                   "normal":  {
+                                                                                                  "add":  -1,
+                                                                                                  "ts":  0
+                                                                                              }
+                                                                               },
+                                                                    "charId":  "char_002_amiya",
+                                                                    "index":  0,
+                                                                    "lastApAddTime":  1794321410,
+                                                                    "workTime":  3183
+                                                                },
+                                                                {
+                                                                    "ap":  8433105,
+                                                                    "bubble":  {
+                                                                                   "assist":  {
+                                                                                                  "add":  -1,
+                                                                                                  "ts":  0
+                                                                                              },
+                                                                                   "normal":  {
+                                                                                                  "add":  -1,
+                                                                                                  "ts":  0
+                                                                                              }
+                                                                               },
+                                                                    "charId":  "char_1021_kroos2",
+                                                                    "index":  1,
+                                                                    "lastApAddTime":  1794321410,
+                                                                    "workTime":  3183
+                                                                },
+                                                                {
+                                                                    "ap":  8433105,
+                                                                    "bubble":  {
+                                                                                   "assist":  {
+                                                                                                  "add":  -1,
+                                                                                                  "ts":  0
+                                                                                              },
+                                                                                   "normal":  {
+                                                                                                  "add":  -1,
+                                                                                                  "ts":  0
+                                                                                              }
+                                                                               },
+                                                                    "charId":  "char_4195_radian",
+                                                                    "index":  2,
+                                                                    "lastApAddTime":  1794321410,
+                                                                    "workTime":  3183
+                                                                },
+                                                                {
+                                                                    "ap":  8433105,
+                                                                    "bubble":  {
+                                                                                   "assist":  {
+                                                                                                  "add":  -1,
+                                                                                                  "ts":  0
+                                                                                              },
+                                                                                   "normal":  {
+                                                                                                  "add":  -1,
+                                                                                                  "ts":  0
+                                                                                              }
+                                                                               },
+                                                                    "charId":  "char_130_doberm",
+                                                                    "index":  3,
+                                                                    "lastApAddTime":  1794321410,
+                                                                    "workTime":  3183
+                                                                }
+                                                            ],
+                                                  "level":  5,
+                                                  "slotId":  "slot_34",
+                                                  "slotState":  2
+                                              },
+                                  "corridors":  [
+                                                    {
+                                                        "level":  1,
+                                                        "slotId":  "slot_29",
+                                                        "slotState":  2
+                                                    }
+                                                ],
+                                  "dormitories":  [
+                                                      {
+                                                          "chars":  [
+                                                                        {
+                                                                            "ap":  1272800,
+                                                                            "bubble":  {
+                                                                                           "assist":  {
+                                                                                                          "add":  -1,
+                                                                                                          "ts":  0
+                                                                                                      },
+                                                                                           "normal":  {
+                                                                                                          "add":  -1,
+                                                                                                          "ts":  0
+                                                                                                      }
+                                                                                       },
+                                                                            "charId":  "char_123_fang",
+                                                                            "index":  0,
+                                                                            "lastApAddTime":  1794321410,
+                                                                            "workTime":  3182
+                                                                        },
+                                                                        {
+                                                                            "ap":  1272800,
+                                                                            "bubble":  {
+                                                                                           "assist":  {
+                                                                                                          "add":  -1,
+                                                                                                          "ts":  0
+                                                                                                      },
+                                                                                           "normal":  {
+                                                                                                          "add":  -1,
+                                                                                                          "ts":  0
+                                                                                                      }
+                                                                                       },
+                                                                            "charId":  "char_121_lava",
+                                                                            "index":  1,
+                                                                            "lastApAddTime":  1794321410,
+                                                                            "workTime":  3182
+                                                                        },
+                                                                        {
+                                                                            "ap":  1495540,
+                                                                            "bubble":  {
+                                                                                           "assist":  {
+                                                                                                          "add":  -1,
+                                                                                                          "ts":  0
+                                                                                                      },
+                                                                                           "normal":  {
+                                                                                                          "add":  -1,
+                                                                                                          "ts":  0
+                                                                                                      }
+                                                                                       },
+                                                                            "charId":  "char_124_kroos",
+                                                                            "index":  2,
+                                                                            "lastApAddTime":  1794321410,
+                                                                            "workTime":  3182
+                                                                        },
+                                                                        {
+                                                                            "ap":  1272800,
+                                                                            "bubble":  {
+                                                                                           "assist":  {
+                                                                                                          "add":  -1,
+                                                                                                          "ts":  0
+                                                                                                      },
+                                                                                           "normal":  {
+                                                                                                          "add":  -1,
+                                                                                                          "ts":  0
+                                                                                                      }
+                                                                                       },
+                                                                            "charId":  "char_325_bison",
+                                                                            "index":  3,
+                                                                            "lastApAddTime":  1794321410,
+                                                                            "workTime":  3182
+                                                                        },
+                                                                        {
+                                                                            "ap":  1272800,
+                                                                            "bubble":  {
+                                                                                           "assist":  {
+                                                                                                          "add":  -1,
+                                                                                                          "ts":  0
+                                                                                                      },
+                                                                                           "normal":  {
+                                                                                                          "add":  -1,
+                                                                                                          "ts":  0
+                                                                                                      }
+                                                                                       },
+                                                                            "charId":  "char_383_snsant",
+                                                                            "index":  4,
+                                                                            "lastApAddTime":  1794321410,
+                                                                            "workTime":  3182
+                                                                        }
+                                                                    ],
+                                                          "comfort":  5000,
+                                                          "level":  5,
+                                                          "slotId":  "slot_28"
+                                                      }
+                                                  ],
+                                  "elevators":  [
+                                                    {
+                                                        "level":  1,
+                                                        "slotId":  "slot_37",
+                                                        "slotState":  2
+                                                    }
+                                                ],
+                                  "furniture":  {
+                                                    "total":  655
+                                                },
+                                  "hire":  {
+                                               "chars":  [
+                                                             {
+                                                                 "ap":  394970,
+                                                                 "bubble":  {
+                                                                                "assist":  {
+                                                                                               "add":  -1,
+                                                                                               "ts":  0
+                                                                                           },
+                                                                                "normal":  {
+                                                                                               "add":  -1,
+                                                                                               "ts":  0
+                                                                                           }
+                                                                            },
+                                                                 "charId":  "char_348_ceylon",
+                                                                 "index":  0,
+                                                                 "lastApAddTime":  1794321410,
+                                                                 "workTime":  85753
+                                                             }
+                                                         ],
+                                               "completeWorkTime":  1794359061,
+                                               "level":  3,
+                                               "refreshCount":  0,
+                                               "slotId":  "slot_23",
+                                               "slotState":  2,
+                                               "state":  1
+                                           },
+                                  "labor":  {
+                                                "lastUpdateTime":  1794321410,
+                                                "maxValue":  227,
+                                                "remainSecs":  0,
+                                                "value":  227
+                                            },
+                                  "manufactures":  [
+                                                       {
+                                                           "capacity":  54,
+                                                           "chars":  [
+                                                                         {
+                                                                             "ap":  8417190,
+                                                                             "bubble":  {
+                                                                                            "assist":  {
+                                                                                                           "add":  -1,
+                                                                                                           "ts":  0
+                                                                                                       },
+                                                                                            "normal":  {
+                                                                                                           "add":  -1,
+                                                                                                           "ts":  0
+                                                                                                       }
+                                                                                        },
+                                                                             "charId":  "char_118_yuki",
+                                                                             "index":  0,
+                                                                             "lastApAddTime":  1794321410,
+                                                                             "workTime":  3183
+                                                                         },
+                                                                         {
+                                                                             "ap":  8417190,
+                                                                             "bubble":  {
+                                                                                            "assist":  {
+                                                                                                           "add":  -1,
+                                                                                                           "ts":  0
+                                                                                                       },
+                                                                                            "normal":  {
+                                                                                                           "add":  -1,
+                                                                                                           "ts":  0
+                                                                                                       }
+                                                                                        },
+                                                                             "charId":  "char_235_jesica",
+                                                                             "index":  1,
+                                                                             "lastApAddTime":  1794321410,
+                                                                             "workTime":  3183
+                                                                         },
+                                                                         {
+                                                                             "ap":  8417190,
+                                                                             "bubble":  {
+                                                                                            "assist":  {
+                                                                                                           "add":  -1,
+                                                                                                           "ts":  0
+                                                                                                       },
+                                                                                            "normal":  {
+                                                                                                           "add":  -1,
+                                                                                                           "ts":  0
+                                                                                                       }
+                                                                                        },
+                                                                             "charId":  "char_240_wyvern",
+                                                                             "index":  2,
+                                                                             "lastApAddTime":  1794321410,
+                                                                             "workTime":  3183
+                                                                         }
+                                                                     ],
+                                                           "complete":  1,
+                                                           "completeWorkTime":  1794394461,
+                                                           "formulaId":  "4",
+                                                           "lastUpdateTime":  1794321410,
+                                                           "level":  3,
+                                                           "remain":  98,
+                                                           "slotId":  "slot_25",
+                                                           "speed":  1.53,
+                                                           "weight":  2
+                                                       }
+                                                   ],
+                                  "meeting":  {
+                                                  "chars":  [
+                                                                {
+                                                                    "ap":  8640000,
+                                                                    "bubble":  {
+                                                                                   "assist":  {
+                                                                                                  "add":  -1,
+                                                                                                  "ts":  0
+                                                                                              },
+                                                                                   "normal":  {
+                                                                                                  "add":  -1,
+                                                                                                  "ts":  0
+                                                                                              }
+                                                                               },
+                                                                    "charId":  "char_009_12fce",
+                                                                    "index":  0,
+                                                                    "lastApAddTime":  1794321410,
+                                                                    "workTime":  39984
+                                                                },
+                                                                {
+                                                                    "ap":  8640000,
+                                                                    "bubble":  {
+                                                                                   "assist":  {
+                                                                                                  "add":  -1,
+                                                                                                  "ts":  0
+                                                                                              },
+                                                                                   "normal":  {
+                                                                                                  "add":  -1,
+                                                                                                  "ts":  0
+                                                                                              }
+                                                                               },
+                                                                    "charId":  "char_301_cutter",
+                                                                    "index":  1,
+                                                                    "lastApAddTime":  1794321410,
+                                                                    "workTime":  39984
+                                                                }
+                                                            ],
+                                                  "clue":  {
+                                                               "board":  [
+                                                                             "BLACKSTEEL",
+                                                                             "KJERAG",
+                                                                             "RHODES",
+                                                                             "GLASGOW",
+                                                                             "RHINE",
+                                                                             "PENGUIN"
+                                                                         ],
+                                                               "dailyReward":  true,
+                                                               "needReceive":  0,
+                                                               "own":  10,
+                                                               "received":  0,
+                                                               "shareCompleteTime":  -1,
+                                                               "sharing":  false
+                                                           },
+                                                  "completeWorkTime":  1791513420,
+                                                  "lastUpdateTime":  1794321410,
+                                                  "level":  3,
+                                                  "slotId":  "slot_36"
+                                              },
+                                  "powers":  [
+                                                 {
+                                                     "chars":  [
+                                                                   {
+                                                                       "ap":  8385360,
+                                                                       "bubble":  {
+                                                                                      "assist":  {
+                                                                                                     "add":  -1,
+                                                                                                     "ts":  0
+                                                                                                 },
+                                                                                      "normal":  {
+                                                                                                     "add":  -1,
+                                                                                                     "ts":  0
+                                                                                                 }
+                                                                                  },
+                                                                       "charId":  "char_376_therex",
+                                                                       "index":  0,
+                                                                       "lastApAddTime":  1794321410,
+                                                                       "workTime":  3183
+                                                                   }
+                                                               ],
+                                                     "level":  3,
+                                                     "slotId":  "slot_26"
+                                                 }
+                                             ],
+                                  "tiredChars":  [
+                                                     {
+                                                         "ap":  0,
+                                                         "bubble":  {
+                                                                        "assist":  {
+                                                                                       "add":  -1,
+                                                                                       "ts":  0
+                                                                                   },
+                                                                        "normal":  {
+                                                                                       "add":  -1,
+                                                                                       "ts":  0
+                                                                                   }
+                                                                    },
+                                                         "charId":  "char_187_ccheal",
+                                                         "index":  0,
+                                                         "lastApAddTime":  1794321410,
+                                                         "roomSlotId":  "slot_32",
+                                                         "workTime":  0
+                                                     }
+                                                 ],
+                                  "tradings":  [
+                                                   {
+                                                       "chars":  [
+                                                                     {
+                                                                         "ap":  8449020,
+                                                                         "bubble":  {
+                                                                                        "assist":  {
+                                                                                                       "add":  -1,
+                                                                                                       "ts":  0
+                                                                                                   },
+                                                                                        "normal":  {
+                                                                                                       "add":  -1,
+                                                                                                       "ts":  0
+                                                                                                   }
+                                                                                    },
+                                                                         "charId":  "char_102_texas",
+                                                                         "index":  0,
+                                                                         "lastApAddTime":  1794321410,
+                                                                         "workTime":  3183
+                                                                     },
+                                                                     {
+                                                                         "ap":  8449020,
+                                                                         "bubble":  {
+                                                                                        "assist":  {
+                                                                                                       "add":  -1,
+                                                                                                       "ts":  0
+                                                                                                   },
+                                                                                        "normal":  {
+                                                                                                       "add":  -1,
+                                                                                                       "ts":  0
+                                                                                                   }
+                                                                                    },
+                                                                         "charId":  "char_278_orchid",
+                                                                         "index":  1,
+                                                                         "lastApAddTime":  1794321410,
+                                                                         "workTime":  3183
+                                                                     },
+                                                                     {
+                                                                         "ap":  8449020,
+                                                                         "bubble":  {
+                                                                                        "assist":  {
+                                                                                                       "add":  -1,
+                                                                                                       "ts":  0
+                                                                                                   },
+                                                                                        "normal":  {
+                                                                                                       "add":  -1,
+                                                                                                       "ts":  0
+                                                                                                   }
+                                                                                    },
+                                                                         "charId":  "char_4083_chimes",
+                                                                         "index":  2,
+                                                                         "lastApAddTime":  1794321410,
+                                                                         "workTime":  3183
+                                                                     }
+                                                                 ],
+                                                       "completeWorkTime":  1794330492,
+                                                       "lastUpdateTime":  1794321410,
+                                                       "level":  3,
+                                                       "slotId":  "slot_24",
+                                                       "stock":  [
+
+                                                                 ],
+                                                       "stockLimit":  11,
+                                                       "strategy":  "O_GOLD"
+                                                   }
+                                               ],
+                                  "training":  {
+                                                   "lastUpdateTime":  1794321410,
+                                                   "level":  3,
+                                                   "remainPoint":  0.45,
+                                                   "remainSecs":  0,
+                                                   "slotId":  "slot_13",
+                                                   "slotState":  2,
+                                                   "speed":  1.35,
+                                                   "trainee":  {
+                                                                   "ap":  8640000,
+                                                                   "charId":  "char_4244_tocka",
+                                                                   "lastApAddTime":  1794321410,
+                                                                   "targetSkill":  -1
+                                                               },
+                                                   "trainer":  {
+                                                                   "ap":  6933360,
+                                                                   "charId":  "char_4234_pedro",
+                                                                   "lastApAddTime":  1794321410
+                                                               }
+                                               }
+                              },
+                 "currentTs":  1794329122
+             }
+}

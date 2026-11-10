@@ -1,7 +1,7 @@
 # 通用 UI 组件库 — 文件功能参考
 
 > 逐文件精读源码生成。行号基于当前工作区版本，仅用于快速定位。
-> 覆盖 `src/components/ui/` 全部 37 个文件（新增 `radio-group.tsx`） + `src/components/` 下 3 个基础文件（共 40 个），以及 `src/components/crash-report-host.tsx` 崩溃提示宿主。
+> 覆盖 `src/components/ui/` 全部 38 个文件（新增 `radio-group.tsx`、`game-badge.tsx`） + `src/components/` 下 3 个基础文件（共 41 个），以及 `src/components/crash-report-host.tsx` 崩溃提示宿主。
 
 ## `src/components/ui/account-avatar.tsx`
 **职责**：账户头像组件，图片加载失败时回退为首字母占位符，可选显示激活状态圆点。
@@ -191,6 +191,22 @@
 | `DefaultErrorFallback` | error-boundary.tsx:66 | 内部未导出：60vh 居中错误页 + 错误消息 + Reload 按钮调用 `onReset` |
 
 **备注**：`Provider` 传入渲染函数 `(error) => <GlobalErrorFallback error={error} />`，因此根级错误展示完整诊断面板；默认兜底仅在单独使用 `ErrorBoundary` 时出现。
+
+## `src/components/ui/game-badge.tsx`
+**职责**：游戏标识徽标——一枚游戏图标（可带游戏名），用来区分账户/角色属于《明日方舟：终末地》还是《明日方舟》。账户页的账户卡片头部、角色行、角色选择弹窗、授权页、账户切换弹窗都复用它。
+**导出**：`GAME_META`、`normalizeGameId`、`GameBadge`
+**主要依赖**：`react-i18next`（`useTranslation`，文案走 `game.*` 命名空间）、`clsx`、`@/utils/accountService` 的 `GameId` 类型
+
+| 符号 | 位置 | 说明 |
+| --- | --- | --- |
+| `GAME_META` | game-badge.tsx:19 | `Record<GameId, {icon, labelKey, shortKey}>`：图标复用 `public/games/*.png`（与左侧游戏切换栏同一份资源），文案键为 `game.endfield` / `game.endfield_short` / `game.arknights` / `game.arknights_short` |
+| `normalizeGameId(game?)` | game-badge.tsx:36 | 任意字符串 → `GameId`；`"arknights"` 之外一律按 `endfield`（覆盖后端返回 `undefined` 的老缓存） |
+| `GameBadge` | game-badge.tsx:55 | props：`game?`、`variant`（`icon` 只有图标 / `short` 图标+极短名 / `full` 图标+完整游戏名，默认 `short`）、`size`（`sm`/`md`）、`className`。`title` 恒为完整游戏名，便于窄空间只露图标时仍可悬停查看 |
+
+**备注**：
+- 图标是 `<img>` 而非内联 SVG：`public/games/*.png` 已按官方启动器的超椭圆切好 alpha，`rounded-[5px]` 只做轻微收敛。
+- 项目约定「持久化图标标识而非字面量」——这里存的是 `game` id（`endfield`/`arknights`），图标路径与文案都由 `GAME_META` 查表得出，没有把 emoji 或路径写进配置。
+- 游戏文案不放硬编码中文：`game.*` 命名空间在 `src/locales/{zh,en}/translation.json` 各有一份。
 
 ## `src/components/ui/global-alert.tsx`
 **职责**：全局顶部浮层提示（toast 式 Alert），模块级发布/订阅，可在任意模块直接调用。

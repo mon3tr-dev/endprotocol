@@ -295,23 +295,24 @@
 **备注**：启动进度由 `index.html` 提供纯静态 UI，因此 React 配置初始化之前也不会显示空白页；`showStartupFailure`（私有）把 `#startup-splash-error` 面板解除隐藏，按钮文案来自 `crash.*` i18n 键。超时/失败都不会一直卡住：超时面板可直接导出诊断日志或重新加载；API 熔断时由 `crashReporting` 调用 `abortStartup` 后弹出阻塞提示。
 
 ## `src/utils/crashReporting.ts`
-**职责**：前端崩溃处理中枢（约 374 行）。安装 `error` / `unhandledrejection` 全局监听，接收后端 `app:crash` 与 API 熔断 `app:api-health` 事件，维护当前崩溃报告与订阅者；同时提供错因启发式判断、报告文本格式化与上次运行崩溃报告载入。
+**职责**：前端崩溃处理中枢（约 407 行）。安装 `error` / `unhandledrejection` 全局监听（先滤掉浏览器的 `ResizeObserver loop` 告警），接收后端 `app:crash` 与 API 熔断 `app:api-health` 事件，维护当前崩溃报告与订阅者；同时提供错因启发式判断、报告文本格式化与上次运行崩溃报告载入。
 
-**导出**：类型 `CrashSource`、`ApiFailureKind`、`ApiHealthSnapshot`、`BackendCrashEvent`、`CrashReport`、`CrashDiagnosis`；函数 `subscribeCrashReports`、`getCurrentCrashReport`、`showCrashReport`、`dismissCrashReport`、`reportCrash`、`installCrashHandlers`、`loadPendingCrashReports`、`diagnoseCrash`、`formatCrashReport`。私有：`currentReport`、`reportCounter`、`listeners`、`lastSignature`、`handleApiBlocked`、`checkApiHealth`。
+**导出**：类型 `CrashSource`、`ApiFailureKind`、`ApiHealthSnapshot`、`BackendCrashEvent`、`CrashReport`、`CrashDiagnosis`；函数 `subscribeCrashReports`、`getCurrentCrashReport`、`showCrashReport`、`dismissCrashReport`、`reportCrash`、`installCrashHandlers`、`loadPendingCrashReports`、`diagnoseCrash`、`formatCrashReport`。私有：`currentReport`、`reportCounter`、`listeners`、`lastSignature`、`BENIGN_WINDOW_ERROR`、`isBenignWindowError`、`handleApiBlocked`、`checkApiHealth`。
 
 **主要依赖**：`@tauri-apps/api/core`（`invoke`）、`@tauri-apps/api/event`（`listen`）、`@/i18n`、`./logger`、`./diagnostics`、`./accountAvailability`（动态导入）。
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
-| `CrashReport`（interface） | :42-54 | `id`、`title`、`message`、`detail?`、`stack?`、`source`、`timestamp`、`fatal`、`api?`、`crashPaths?` |
-| `reportCrash(input)` | :117 | 先 `logger.error("[Crash]...")`，相同来源+消息 2 秒内去重，然后写入当前报告并通知订阅者 |
-| `installCrashHandlers()` | :166 | 幂等安装 `window.error` / `unhandledrejection`；`listen("app:api-health")`、`listen("app:crash")`；启动后 1.5s/6s 轮询 `get_api_health` 兜底 |
-| `handleApiBlocked(snapshot)`（私有） | :135 | 动态调用 `startupProgress.abortStartup` 收起 Splash（**允许不获取账户数据也进入应用**），把账户标记为不可用（`accountAvailability.setAccountUnavailable`，原因由 `reasonFromApiKind` 映射），并生成**非致命** API 熔断报告（可关闭）；`kind === "device_fingerprint"` 时使用 `crash.api_fingerprint_body`（重启电脑 + 同步时区） |
-| `loadPendingCrashReports()` | :230 | 启动时调用 `get_pending_crash_reports`，把最近一条报告包装成「上次运行异常退出」提示 |
-| `diagnoseCrash(report)` | :250 | 依据 `api.kind`（`device_fingerprint` → `crash.cause_fingerprint` / `crash.suggestion_fingerprint`）、错误文本正则（sign/timestamp、网络、认证、权限、解析、5xx）返回 `causeKey` + `suggestionKeys`（i18n 键） |
-| `formatCrashReport(report)` | :361 | 拼接时间、来源、消息、详细栈、API 状态与崩溃文件路径，供复制/导出 context 使用 |
+| `CrashReport`（interface） | :43-54 | `id`、`title`、`message`、`detail?`、`stack?`、`source`、`timestamp`、`fatal`、`api?`、`crashPaths?` |
+| `reportCrash(input)` | :118 | 先 `logger.error("[Crash]...")`，相同来源+消息 2 秒内去重，然后写入当前报告并通知订阅者 |
+| `isBenignWindowError(message)`（私有） | :184 | 匹配 `/resizeobserver loop/i`：Chromium / WebView2 把 ResizeObserver 告警也当作 `window` error 派发，它不是故障（错因启发式还会把它误判成 API 熔断），只写 `logger.debug` 不上报 |
+| `installCrashHandlers()` | :189 | 幂等安装 `window.error` / `unhandledrejection`（两者都先过 `isBenignWindowError`）；`listen("app:api-health")`、`listen("app:crash")`；启动后 1.5s/6s 轮询 `get_api_health` 兜底 |
+| `handleApiBlocked(snapshot)`（私有） | :136 | 动态调用 `startupProgress.abortStartup` 收起 Splash（**允许不获取账户数据也进入应用**），把账户标记为不可用（`accountAvailability.setAccountUnavailable`，原因由 `reasonFromApiKind` 映射），并生成**非致命** API 熔断报告（可关闭）；`kind === "device_fingerprint"` 时使用 `crash.api_fingerprint_body`（重启电脑 + 同步时区） |
+| `loadPendingCrashReports()` | :258 | 启动时调用 `get_pending_crash_reports`，把最近一条报告包装成「上次运行异常退出」提示 |
+| `diagnoseCrash(report)` | :278 | 依据 `api.kind`（`device_fingerprint` → `crash.cause_fingerprint` / `crash.suggestion_fingerprint`）、错误文本正则（sign/timestamp、网络、认证、权限、解析、5xx）返回 `causeKey` + `suggestionKeys`（i18n 键） |
+| `formatCrashReport(report)` | :390 | 拼接时间、来源、消息、详细栈、API 状态与崩溃文件路径，供复制/导出 context 使用 |
 
-**备注**：`CrashSource` 为 `window / unhandled-rejection / react / api / backend-panic / startup`；`ApiFailureKind` 含 `device_fingerprint`（数美设备指纹接口连续失败），`app:api-health` payload 与 `ApiHealthSnapshot` 对齐（后端 `snake_case`），`app:crash` payload 含 `report_path`。该模块本身不渲染 UI，由 `src/components/crash-report-host.tsx` 订阅展示。
+**备注**：`CrashSource` 为 `window / unhandled-rejection / react / api / backend-panic / startup`；`ApiFailureKind` 含 `device_fingerprint`（数美设备指纹接口连续失败），`app:api-health` payload 与 `ApiHealthSnapshot` 对齐（后端 `snake_case`），`app:crash` payload 含 `report_path`。该模块本身不渲染 UI，由 `src/components/crash-report-host.tsx` 订阅展示。**`ResizeObserver loop` 告警不走弹窗**：图表自适应（`gacha-stat-charts.tsx` / `gacha-pity-chart.tsx`）等 ResizeObserver 回调在交付周期里写 DOM 时浏览器会派发该 error 事件，此前会被当成「应用遇到问题」弹出（并被误诊为服务端故障，只能重新加载关掉），现在仅 DEBUG 记日志。
 
 ## `src/utils/accountAvailability.ts`
 **职责**：账户数据不可用的全局状态（约 145 行）。账户数据获取频繁失败时，应用仍可正常进入，但账户页/侧边栏据此展示「账号不可用」与「重新登录」；状态通过 `sessionStorage`（键 `account_unavailable_state`）跨页面与刷新保留，并提供订阅机制通知 UI 更新。

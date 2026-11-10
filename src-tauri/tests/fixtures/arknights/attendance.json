@@ -1,0 +1,215 @@
+{
+    "code":  0,
+    "message":  "OK",
+    "data":  {
+                 "calendar":  [
+                                  {
+                                      "available":  false,
+                                      "count":  3,
+                                      "done":  true,
+                                      "resourceId":  "2002",
+                                      "type":  "daily"
+                                  },
+                                  {
+                                      "available":  false,
+                                      "count":  500,
+                                      "done":  false,
+                                      "resourceId":  "4001",
+                                      "type":  "daily"
+                                  },
+                                  {
+                                      "available":  false,
+                                      "count":  2,
+                                      "done":  false,
+                                      "resourceId":  "3302",
+                                      "type":  "daily"
+                                  },
+                                  {
+                                      "available":  false,
+                                      "count":  80,
+                                      "done":  false,
+                                      "resourceId":  "4003",
+                                      "type":  "daily"
+                                  },
+                                  {
+                                      "available":  false,
+                                      "count":  3,
+                                      "done":  false,
+                                      "resourceId":  "2002",
+                                      "type":  "daily"
+                                  }
+                              ],
+                 "records":  [
+                                 {
+                                     "count":  3,
+                                     "resourceId":  "2002",
+                                     "ts":  "1794240000",
+                                     "type":  "daily"
+                                 }
+                             ],
+                 "resourceInfoMap":  {
+                                         "2002":  {
+                                                      "buildingProductList":  [
+                                                                                  {
+                                                                                      "formulaId":  "2",
+                                                                                      "roomType":  "MANUFACTURE"
+                                                                                  }
+                                                                              ],
+                                                      "classifyType":  "MATERIAL",
+                                                      "id":  "2002",
+                                                      "name":  "初级作战记录",
+                                                      "otherSource":  [
+                                                                          "GIFT_PACKAGE"
+                                                                      ],
+                                                      "rarity":  2,
+                                                      "sortId":  70003,
+                                                      "stageDropList":  [
+                                                                            {
+                                                                                "occPer":  0,
+                                                                                "stageId":  "wk_kc_1"
+                                                                            },
+                                                                            {
+                                                                                "occPer":  0,
+                                                                                "stageId":  "main_03-05"
+                                                                            },
+                                                                            {
+                                                                                "occPer":  0,
+                                                                                "stageId":  "sub_02-10"
+                                                                            }
+                                                                        ],
+                                                      "type":  "CARD_EXP"
+                                                  },
+                                         "2003":  {
+                                                      "buildingProductList":  [
+                                                                                  {
+                                                                                      "formulaId":  "3",
+                                                                                      "roomType":  "MANUFACTURE"
+                                                                                  }
+                                                                              ],
+                                                      "classifyType":  "MATERIAL",
+                                                      "id":  "2003",
+                                                      "name":  "中级作战记录",
+                                                      "otherSource":  [
+                                                                          "GIFT_PACKAGE",
+                                                                          "SHOP"
+                                                                      ],
+                                                      "rarity":  3,
+                                                      "sortId":  70002,
+                                                      "stageDropList":  [
+                                                                            {
+                                                                                "occPer":  0,
+                                                                                "stageId":  "wk_kc_1"
+                                                                            },
+                                                                            {
+                                                                                "occPer":  0,
+                                                                                "stageId":  "main_17-08"
+                                                                            },
+                                                                            {
+                                                                                "occPer":  0,
+                                                                                "stageId":  "main_17-08#s"
+                                                                            },
+                                                                            {
+                                                                                "occPer":  0,
+                                                                                "stageId":  "main_16-01"
+                                                                            },
+                                                                            {
+                                                                                "occPer":  0,
+                                                                                "stageId":  "main_16-01#s"
+                                                                            },
+                                                                            {
+                                                                                "occPer":  0,
+                                                                                "stageId":  "main_15-07"
+                                                                            },
+                                                                            {
+                                                                                "occPer":  0,
+                                                                                "stageId":  "main_15-07#s"
+                                                                            },
+                                                                            {
+                                                                                "occPer":  0,
+                                                                                "stageId":  "main_14-06"
+                                                                            },
+                                                                            {
+                                                                                "occPer":  0,
+                                                                                "stageId":  "tough_14-06"
+                                                                            },
+                                                                            {
+                                                                                "occPer":  0,
+                                                                                "stageId":  "main_13-01"
+                                                                            },
+                                                                            {
+                                                                                "occPer":  0,
+                                                                                "stageId":  "tough_13-01"
+                                                                            },
+                                                                            {
+                                                                                "occPer":  0,
+                                                                                "stageId":  "main_12-08"
+                                                                            },
+                                                                            {
+                                                                                "occPer":  0,
+                                                                                "stageId":  "tough_12-08"
+                                                                            },
+                                                                            {
+                                                                                "occPer":  0,
+                                                                                "stageId":  "main_11-01"
+                                                                            },
+                                                                            {
+                                                                                "occPer":  0,
+                                                                                "stageId":  "tough_11-01"
+                                                                            },
+                                                                            {
+                                                                                "occPer":  0,
+                                                                                "stageId":  "main_10-01"
+                                                                            },
+                                                                            {
+                                                                                "occPer":  0,
+                                                                                "stageId":  "tough_10-01"
+                                                                            },
+                                                                            {
+                                                                                "occPer":  0,
+                                                                                "stageId":  "main_09-09"
+                                                                            },
+                                                                            {
+                                                                                "occPer":  0,
+                                                                                "stageId":  "main_08-06"
+                                                                            },
+                                                                            {
+                                                                                "occPer":  0,
+                                                                                "stageId":  "main_07-11"
+                                                                            },
+                                                                            {
+                                                                                "occPer":  0,
+                                                                                "stageId":  "sub_06-1-1"
+                                                                            },
+                                                                            {
+                                                                                "occPer":  0,
+                                                                                "stageId":  "main_04-03"
+                                                                            }
+                                                                        ],
+                                                      "type":  "CARD_EXP"
+                                                  },
+                                         "2004":  {
+                                                      "buildingProductList":  [
+
+                                                                              ],
+                                                      "classifyType":  "MATERIAL",
+                                                      "id":  "2004",
+                                                      "name":  "高级作战记录",
+                                                      "otherSource":  [
+                                                                          "GIFT_PACKAGE",
+                                                                          "SHOP"
+                                                                      ],
+                                                      "rarity":  4,
+                                                      "sortId":  70001,
+                                                      "stageDropList":  [
+                                                                            {
+                                                                                "occPer":  0,
+                                                                                "stageId":  "wk_kc_1"
+                                                                            }
+                                                                        ],
+                                                      "type":  "CARD_EXP"
+                                                  }
+                                     },
+                 "currentTs":  "1794324881",
+                 "first":  null
+             }
+}

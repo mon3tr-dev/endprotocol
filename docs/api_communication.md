@@ -80,7 +80,6 @@ hytoken
 > 前端调用方、返回值与失败兜底策略见 [utils_services_a.md](reference/frontend/utils_services_a.md#srcutilsaccountservicets)。
 
 ### 3.2 角色数据懒加载流程
-
 统一命令：**`query_role_data`**（参数 `role_id` / `api_name` / `paths`，由 `AccountService::query_role_data` 落到 `CharDetailService` 等服务）。
 
 1. **前端**：`src/utils/roleDataService.ts`（带模块级 Promise 缓存）与 `src/utils/roleDetailService.ts`（无缓存，直接 IPC）调用 `invoke('query_role_data', ...)`。
@@ -89,6 +88,59 @@ hytoken
 4. **数据返回**：返回 `serde_json::Value`，前端更新 UI 并缓存。
 
 > 详见 [utils_services_a.md](reference/frontend/utils_services_a.md)、[services_account.md](reference/backend/services_account.md)。
+
+### 3.2.1 《明日方舟》数据流程（与终末地平行、完全独立）
+
+终末地与明日方舟**共用同一个森空岛账户和同一套凭据**，但数据链路完全不同：
+
+| | 终末地 | 明日方舟 |
+| --- | --- | --- |
+| 寻址 | `roleId + serverId + userId` | **渠道绑定 uid**（`roles[].bindingUid`） |
+| 端点 | `/api/v1/game/endfield/card/detail` | `/api/v1/game/player/info`、`/cultivate/player`、`/attendance` |
+| 粒度 | 一次一个角色 | 一次整个账号（干员+基建+任务+剿灭+保全+公招） |
+| 额外头 | `sk-game-role: 3_{roleId}_{serverId}` | 无（签到把 `gameId`+`uid` 放 body） |
+| 入口命令 | `query_role_data` | `get_arknights_player_info` 等 4 个 |
+
+链路（**不需要任何新登录流程**，现成的 hytoken/cred/token 就够）：
+
+```
+account_token_{userId}.{cred, token, hytoken}
+        ↓  AccountService::arknights_credentials（按需走 check_and_refresh_user_cred）
+roles[].bindingUid  ────────→  uid
+        ↓
+ArknightsService::fetch_player_info   GET /api/v1/game/player/info?uid=
+ArknightsService::fetch_cultivate     GET /api/v1/game/cultivate/player?uid=
+ArknightsService::attendance_status   GET /api/v1/game/attendance?uid=
+ArknightsService::do_attendance       POST /api/v1/game/attendance {gameId:1, uid}
+        ↓  解析为 models/arknights.rs 结构体
+        ↓  头像转 base64 + 写内存 + 写文件
+<app_data>/arknights/player_info_{uid}.json         （解析后的完整数据）
+<app_data>/arknights/raw_{kind}_{uid}.json          （原始响应留档）
+```
+
+**为什么缓存独立成文件**：单账号 `player/info` 实测几百 KB（B 服 242 名干员约 600 KB），
+放进 `app_config.json` 会让每次配置读写都搬运它。这与抽卡记录（`gacha_records/`）是同一套做法。
+
+**绑定账户时就开始拉**：`AccountService::fetch_game_roles` 在绑定明日方舟角色时会调一次
+`refresh_player_info` —— 因为**明日方舟的头像只能从 `player/info` 的 `status.avatar` 拿到**
+（终末地的 `base.avatarUrl` 对它无效），同时把解析结果落盘，供后续展示直接读取。
+
+> ⚠️ 三个真实结构陷阱（已在 `models/arknights.rs` 兜住）：
+> ① `building.hire` / `building.training` 可能是 `null`（未建办公室 / 无进行中专精）；
+> ② 基建设施**对象与数组混用**（`control`/`meeting` 是对象，`powers`/`tradings` 是数组）；
+> ③ `training.speed` / `training.remainPoint` / 设施 `speed` 可能是**浮点**
+>   （B 服实测 `1.35` / `0.45`，官服恰好整数）。**用整型会让整个 `player/info` 解析失败**，
+>   而接口仍返回 `code=0` —— 表现为「等级 0、没有头像」，最难查。
+>
+> ⚠️ **绑定接口的角色层级差异（最容易踩的坑）**：`/api/v1/game/player/binding` 里
+> **终末地的角色在 `bindingList[].roles[]`，而明日方舟的 `roles` 是空数组** —— 角色信息
+> 直接躺在 `bindingList` 这一层（`uid` / `nickName` / `channelMasterId`）。只遍历 `roles`
+> 会**完全漏掉明日方舟角色**，前端表现为「添加账户后只能找到终末地的角色」。
+> 明日方舟没有 roleId，`SklandService::extract_game_roles` 用 **uid 当角色标识**
+> （已用真实账号验证 `player/info.status.uid == 绑定 uid`）。
+>
+> 详见 [services_others.md](reference/backend/services_others.md)（`arknights_service.rs`）、
+> [models.md](reference/backend/models.md)（`arknights.rs`）、[commands.md](reference/backend/commands.md)（`commands/arknights.rs`）。
 
 ### 3.3 仪表板配置同步（多标签页）
 

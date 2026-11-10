@@ -1,4 +1,5 @@
 pub mod account;
+pub mod arknights;
 pub mod attendance;
 pub mod browser;
 pub mod capture;

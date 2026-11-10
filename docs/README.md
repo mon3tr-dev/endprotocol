@@ -24,6 +24,8 @@
 | **抽卡数据授权（u8token 不落盘，每次现换；官服/B服同一链路）** | `src/pages/account.tsx`（`openAuthStep` / `runAuthorizeRole` / `handleRevokeRoleU8`）、后端 `AccountService::authorize_role_u8token` / `revoke_role_u8token` / `fetch_role_u8token`，命令 `authorize_role_u8token` / `revoke_role_u8token`，`SklandService::get_u8_token_by_uid` | [services_account.md](reference/backend/services_account.md)、[services_skland.md](reference/backend/services_skland.md)、[pages_account.md](reference/frontend/pages_account.md)、[api_communication.md](api_communication.md) |
 | **删除森空岛账户（父账户 + 全部角色 + 凭据）** | `src/pages/account.tsx`（`handleConfirmDeleteAccount` + 删除确认弹窗）、后端 `AccountService::delete_skland_account`，命令 `delete_skland_account`；与「解绑单个角色」的 `logout_account` 不同 | [pages_account.md](reference/frontend/pages_account.md)、[services_account.md](reference/backend/services_account.md)、[commands.md](reference/backend/commands.md) |
 | 角色（干员）数据查询与缓存 | `src/utils/roleDataService.ts`、`roleDetailService.ts` | [utils_services_a.md](reference/frontend/utils_services_a.md)、`query_role_data` 见 [commands.md](reference/backend/commands.md) |
+| **明日方舟数据（player/info、养成/仓库、签到）** | 后端 `src-tauri/src/services/arknights_service.rs`、`models/arknights.rs`、`commands/arknights.rs`；命令 `get_arknights_player_info` / `get_arknights_cultivate` / `get_arknights_attendance` / `do_arknights_attendance` | [services_others.md](reference/backend/services_others.md)、[models.md](reference/backend/models.md)、[commands.md](reference/backend/commands.md)、[api_communication.md](api_communication.md) §3.2.1 |
+| **账户的游戏标识（终末地 / 明日方舟）** | 后端 `src-tauri/src/models/role.rs`（`GAME_*` 常量、`GameRoleBinding`）、`SklandService::extract_game_roles`、`AccountService::fetch_game_roles`；前端 `src/components/ui/game-badge.tsx`、`src/pages/account.tsx`（展开区按游戏分组） | [models.md](reference/backend/models.md)、[services_account.md](reference/backend/services_account.md)、[services_skland.md](reference/backend/services_skland.md)、[ui_components.md](reference/frontend/ui_components.md)、[pages_account.md](reference/frontend/pages_account.md) |
 | 干员列表卡片 / 选择弹窗（实际生效实现） | `src/components/cards/character-list/char-select-modal.tsx` | [cards_character_list.md](reference/frontend/cards_character_list.md) |
 | 卡片自动发现与注册 | `src/components/cards/registry/loader.ts` | [cards_core.md](reference/frontend/cards_core.md) |
 | 应用启动 Splash 与初始数据加载 | `index.html`、`src/utils/startupProgress.ts` | [entry_and_app.md](reference/frontend/entry_and_app.md)、[utils_services_b.md](reference/frontend/utils_services_b.md) |
@@ -63,7 +65,7 @@
 
 | 需求 | 位置 | 详细参考 |
 | --- | --- | --- |
-| **IPC 命令在哪定义 / 前端谁调用** | 生成的对照表 | [ipc_index.md](reference/ipc_index.md)（140 个命令全表） |
+| **IPC 命令在哪定义 / 前端谁调用** | 生成的对照表 | [ipc_index.md](reference/ipc_index.md)（144 个命令全表） |
 | 新增/修改一个 Tauri 命令 | `src-tauri/src/commands/`、`src-tauri/src/lib.rs` | [commands.md](reference/backend/commands.md)、[bootstrap.md](reference/backend/bootstrap.md)、[backend_development.md](backend_development.md) |
 | 错误类型与转换 | `src-tauri/src/utils/error.rs` | [utils.md](reference/backend/utils.md) |
 | 加密与签名（RSA/AES/DES/HMAC） | `src-tauri/src/utils/hg_crypto.rs`、`services/skland_service.rs` | [utils.md](reference/backend/utils.md)、[services_skland.md](reference/backend/services_skland.md) |
@@ -104,12 +106,12 @@
 | 文件 | 覆盖范围 |
 | --- | --- |
 | [reference/backend/bootstrap.md](reference/backend/bootstrap.md) | `main.rs`、`lib.rs`（含全部命令注册清单）、`tray.rs`、`build.rs`、`Cargo.toml`、`tauri.conf.json`、`capabilities/*`、`examples/sign_test.rs` |
-| [reference/backend/commands.md](reference/backend/commands.md) | `commands/` 全部 18 个文件、**144 处 `#[tauri::command]` 注解（140 个命令名）**：参数、返回值、内部调用链（含 `proxy.rs` 的 5 个代理命令、`window.rs` 的快照命令、`account.rs` 的按角色 u8token 授权命令） |
-| [reference/backend/models.md](reference/backend/models.md) | `models/` 全部 7 个文件：79 个结构体/枚举的字段与 serde 映射 |
+| [reference/backend/commands.md](reference/backend/commands.md) | `commands/` 全部 19 个文件、**144 处 `#[tauri::command]` 注解（144 个命令名）**：参数、返回值、内部调用链（含 `proxy.rs` 的 5 个代理命令、`window.rs` 的快照命令、`account.rs` 的按角色 u8token 授权命令、**`arknights.rs` 的 4 个《明日方舟》数据命令**） |
+| [reference/backend/models.md](reference/backend/models.md) | `models/` 全部 8 个文件：`account.rs`、**`arknights.rs`（《明日方舟》player/info / cultivate / attendance 模型）**、`char_detail.rs`、`gacha.rs`、`game.rs`、`login.rs`、`role.rs` 的结构体字段与 serde 映射 |
 | [reference/backend/services_account.md](reference/backend/services_account.md) | `services/account_service.rs`（约 3100 行）：登录、凭证刷新、角色数据、状态中枢 |
 | [reference/backend/services_skland.md](reference/backend/services_skland.md) | `services/skland_service.rs`：森空岛 API 端点总表、签名与加密流程 |
 | [reference/backend/services_launcher.md](reference/backend/services_launcher.md) | `services/game_launcher_service.rs`（约 2960 行）：下载/校验/切服/进度事件 |
-| [reference/backend/services_others.md](reference/backend/services_others.md) | `gacha_service`、`char_detail_service`、`char_wiki_detail_service`、`avatar_cache_service`、`config_service`、`data_query`、`network_service`、**`secret_registry`（机密字段登记表）**、**`secret_store`（OS 凭据库封装）** |
+| [reference/backend/services_others.md](reference/backend/services_others.md) | **`arknights_service`（《明日方舟》数据服务：player/info、cultivate、attendance 的拉取/解析/文件缓存）**、`gacha_service`、`char_detail_service`、`char_wiki_detail_service`、`avatar_cache_service`、`config_service`、`data_query`、`network_service`、**`secret_registry`（机密字段登记表）**、**`secret_store`（OS 凭据库封装）** |
 | [reference/backend/utils.md](reference/backend/utils.md) | `utils/`：错误类型、加密、HTTP（含全局代理缓存）、**代理（`proxy`：配置解析/系统代理/连通性测试）**、**脱敏（`redact`：日志令牌遮罩）**、日志、路径、抓包、进程探测（`process`）、游戏时长统计（`game_playtime`）、Steam 第三方游戏注入（`steam`）、exe 图标提取（`game_icon`）、崩溃捕获（`crash`）、API 熔断（`api_health`）、诊断导出（`diagnostics`） |
 | [reference/ipc_index.md](reference/ipc_index.md) | 命令名 ↔ 后端定义位置 ↔ 前端调用方（脚本生成的对照表） |
 

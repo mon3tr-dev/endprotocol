@@ -117,6 +117,12 @@
 | `fetch_role_u8token`（pub） | 736 | `user_id, binding_uid` → 读 `account_token_{user_id}.hytoken`（缺失报 `AuthError`）→ `SklandService::get_u8_token_by_uid` → `String`（**调用方不得持久化**）；抽卡同步前调用 |
 | `set_role_u8_authorized`（私有） | 770 | `user_id, role_id, authorized` → 改 `roles[].u8Authorized` 并落盘 |
 | `find_role_owner`（私有） | 800 | 遍历 `account_token_*` 的 `roles[]` 找 roleId → `RoleOwner { user_id, binding_uid, channel_master_id, server_id }`；找不到 `AuthError` |
+| `resolve_arknights_target`（私有） | 931 | `role_id` → 遍历 `account_token_*.roles[]`，校验该角色 `app == "arknights"`（否则 `ConfigError` 提示数据源只服务明日方舟角色）→ `(user_id, bindingUid)`；`bindingUid` 为空时报「请重新绑定」 |
+| `arknights_credentials`（私有） | 979 | `user_id` → `read_skland_credentials` 取 cred/token，再尝试 `check_and_refresh_user_cred`（成功用新值；**失败回退旧值只记 warn**，不阻断数据查询）→ `(cred, token)` |
+| `get_arknights_player_info` | 998 | `role_id, force` → `resolve_arknights_target` + `arknights_credentials` → `ArknightsService::refresh_player_info`（`force=false` 时先读 `arknights_service.get_cached_player_info`）→ `serde_json::Value`；command `get_arknights_player_info` |
+| `get_arknights_cultivate` | 1035 | `role_id` → 同上解析凭据 → `ArknightsService::fetch_cultivate` → `Value`；command `get_arknights_cultivate` |
+| `get_arknights_attendance` | 1053 | `role_id` → `ArknightsService::attendance_status` → `Value`；command `get_arknights_attendance` |
+| `do_arknights_attendance` | 1071 | `role_id` → `ArknightsService::do_attendance` → `Value`（今天已签到时为空数组）；command `do_arknights_attendance` |
 | `migrate_legacy_u8token`（私有静态） | 836 | 启动时清理遗留：删除所有 `role_u8token_*` 键（含凭据库条目）+ 删除 `account_token_*.u8token` 字段与条目 |
 | `backfill_binding_uid`（私有） | 890 | 拿到 binding 列表时，为老数据里缺 `bindingUid` 的角色按 roleId 回填 uid / channelMasterId / channelName |
 | `get_local_device_token`（私有） | 747 | `user_id` → 读 `account_token_{user_id}.device_token`（空串视为无）→ `Option<String>` |
@@ -142,7 +148,7 @@
 | `token_by_scan_code`（私有） | 2120 | `scan_code` → `POST https://as.hypergryph.com/user/auth/v1/token_by_scan_code`（带 `X-AppCode/X-DeviceId/X-DeviceId2/X-DeviceModel/X-DeviceType/X-OSVer` 头）→ `(token, deviceToken, Option<hgld>)` |
 | `add_account_by_scan` | 2211 | `scan_code, expected_user_id` → 上一步换 hytoken（deviceToken 空转 None）→ `complete_login_from_token(ContinueWithoutDeviceToken, expected_user_id, None)` → `AccountLoginResult`；command `add_account_by_scan`（参数 `scanCode` + 可选 `expectedUserId`） |
 | `complete_login_from_token`（私有） | 2432 | `hy_token, device_token, expected_user_id, phone` → Step2 `get_skland_code`、Step3 `get_skland_cred` → **Step3.1 若 `expected_user_id` 非空且与登录得到的 `user_id` 不同，返回 `error_message = "ACCOUNT_MISMATCH:<实际userId>"` 且不落盘任何凭证** → 无 deviceToken 时用 userId 走 `get_local_device_token` 本地匹配；**仍无也不中断**（只记 warn，`u8token` 留待用户按角色授权）→ `set_hytoken_for_user` / `set_phone_for_user`（有手机号时）/ `set_device_token_for_user`（有时）→ `AccountLoginResult { success: true, cred, token, user_id }`（不返回角色，也不取 u8token） |
-| `fetch_endfield_roles`（私有） | 2618 | `cred, token, user_id` → `get_player_binding` + `SklandService::extract_endfield_roles` → 逐角色 `get_role_detail` + 头像缓存 → `Vec<RoleDisplayInfo>`（单角色失败仅记日志跳过）；每个角色的 `u8_authorized` 由 `is_role_u8_authorized` 回填 |
+| `fetch_game_roles`（私有） | 2762 | `cred, token, user_id` → `get_player_binding` + `SklandService::extract_game_roles` → 逐角色组装 `Vec<RoleDisplayInfo>`（单角色失败仅记日志跳过）；每个角色的 `u8_authorized` 由 `is_role_u8_authorized` 回填。**终末地角色**再调 `get_role_detail` 补头像与精确等级；**明日方舟角色**只用绑定接口给的昵称/等级/服务器（`avatar_url` 为空串） |
 | `read_skland_credentials`（私有） | 2434 | `user_id` → 读 `account_token_{user_id}` 的 cred/token → `(String, String)`；缺失抛 `AuthError`（"Skland account/cred/token was not found"） |
 | `cache_skland_user_info`（私有） | 2459 | `user_id, &SklandUserInfo` → 序列化写入 `account_token_{user_id}.user_info` → `Ok(())` |
 | `get_skland_user_info` | 2485 | `user_id` → `check_and_refresh_user_cred` → `read_skland_credentials` → `SklandService::get_user_info` → 缓存 `user_info`（失败仅告警）→ `SklandUserInfo`；command `get_skland_user_info` |
@@ -153,8 +159,8 @@
 | `get_skland_account_roles` | 2575 | `user_id` → 刷新 cred → `read_skland_credentials` → `fetch_endfield_roles` → `AccountLoginResult { available_roles: Some(..) }`；command `get_skland_account_roles` |
 | `get_skland_accounts` | 2601 | 无 → 扫描 `account_token_*`，`skland_account_bound`（缺省时以 roles 非空判定）为真才收录，附带 `user_info` 的昵称/头像与首次登录记录的 `phone` → `Vec<SklandAccountInfo>`；command `get_skland_accounts` |
 | `save_skland_account` | 2628 | `cred, token, user_id` → 写 `cred`/`token`/`skland_account_bound=true`，并保证 `roles` 存在（默认 `[]`）→ `Ok(())`；command `save_skland_account` |
-| `save_selected_roles` | 2654 | `cred, token, user_id, selected_roles` → 先 `migrate_roles_app_field`；读旧数据保留 `hytoken/device_token/phone/user_info`；写入 `roles[{userId,serverId,roleId,app:"endfield"}]`、`skland_account_bound=true`；**删除被解绑角色的 `role_u8token_*`**；更新 `account_list`（移除旧 roleId、追加新 roleId）；锁释放后逐角色下载头像 → 写完整+精简双缓存 → `Vec<AccountInfo>`；command `save_selected_roles` |
-| `migrate_roles_app_field`（私有静态） | 2812 | `&mut ConfigService` → 遍历 `account_token_*`，为缺少 `app` 的 role 补 `"endfield"` 并写回 → `Ok(())` |
+| `save_selected_roles` | 3006 | `cred, token, user_id, selected_roles` → 先 `migrate_roles_app_field`；读旧数据保留 `hytoken/device_token/phone/user_info`；写入 `roles[{userId,serverId,roleId,app,nickname,level,bindingUid,channelMasterId,channelName}]`（`app` 取 `RoleDisplayInfo.game`，空则 `endfield`）、`skland_account_bound=true`；更新 `account_list`（移除旧 roleId、追加新 roleId）；锁释放后逐角色下载头像 → 写完整+精简双缓存 → `Vec<AccountInfo>`；command `save_selected_roles` |
+| `migrate_roles_app_field`（私有静态） | 3248 | `&mut ConfigService` → 遍历 `account_token_*`，为缺少 `app` 的角色补 `"endfield"` 并写回（该字段在支持明日方舟之前不存在，那时的角色只可能来自终末地）→ `Ok(())` |
 | `get_hypergryph_token`（私有） | 2849 | `phone, password` → `POST https://as.hypergryph.com/user/auth/v1/token_by_phone_password` → `(token, Option<deviceToken>, Option<hgld>)` |
 | `is_new_device_verification_error`（私有静态） | 2922 | `&AppError` → 关键词匹配（"新设备"/"需要验证"/"设备验证"/"verify"/"verification"）→ `bool` |
 | `get_skland_code`（私有） | 2932 | `hy_token` → `POST https://as.hypergryph.com/user/oauth2/v2/grant`（appCode `4ca99fa6b56cc2ba`, type 0）→ `data.code` → `String` |
@@ -206,10 +212,35 @@ Step 2 `get_skland_code`（`POST /user/oauth2/v2/grant`）→ Step 3 `get_skland
 ### 森空岛用户资料与游戏列表（2434-2573 行）
 `get_skland_user_info` → 刷新 cred → `read_skland_credentials` → `SklandService::get_user_info` → 写 `account_token_{user_id}.user_info`（供 `get_skland_accounts` 列表展示昵称/头像）。`get_skland_games` → `skland_games_cache`（12 小时 TTL，`force` 可绕过；刷新失败回退旧缓存）。`get_skland_account_roles` → `fetch_endfield_roles`（binding → 逐角色 detail → 头像）。
 
+### 游戏分组：终末地 / 明日方舟
+
+一个森空岛账户可以同时绑定《明日方舟：终末地》和《明日方舟》，两者的角色都进同一个 `roles[]`，用 `app` 字段区分（`endfield` / `arknights`）。差异只在与「怎么拿角色展示信息」：
+
+| | 终末地 | 明日方舟 |
+| --- | --- | --- |
+| 展示数据来源 | `GET /api/v1/game/endfield/card/detail` | `GET /api/v1/game/player/info?uid=`（由 `ArknightsService` 拉取） |
+| 头像 | 详情接口的 `base.avatarUrl`，下载转 base64 | `player/info` 的 `status.avatar.url`，同样转 base64（**这是明日方舟唯一的头像来源**） |
+| 账户列表（`get_accounts`） | 走 `char_detail_service().get_with_cache` | 读 `ArknightsService` 缓存（内存 → `<app_data>/arknights/player_info_{uid}.json`），缓存缺失才回退 `roles[]` 里的绑定快照（`AccountService::arknights_account`） |
+| 手动刷新（`refresh_accounts`） | 走 `skland_service.get_role_detail` | 调 `ArknightsService::refresh_player_info` 重拉；**失败不标 FAILED**（还有缓存可用，标了会让账户页误报「账号不可用」） |
+| 懒加载预载 | 参与 | **跳过**（`gather_preload_role_infos` 过滤掉） |
+| `query_role_data` | 支持 | 直接报错（该数据源只服务终末地） |
+| 公开方法 | `query_role_data` | `get_arknights_player_info` / `get_arknights_cultivate` / `get_arknights_attendance` / `do_arknights_attendance` |
+
+关键实现：
+
+- `SklandService::extract_game_roles` 是唯一入口，按 `app_code` 识别游戏并跳过 `is_delete` 的渠道绑定；未知 `app_code` 记 debug 日志后忽略。
+- `AccountService::fetch_game_roles` 按 `game` 分支：终末地角色调 `get_role_detail` 补头像与精确等级；**明日方舟角色调 `ArknightsService::refresh_player_info`**（绑定时就拉一次，昵称/等级/头像一并确定并落盘缓存）。拉取失败**不阻断绑定**，退回绑定接口给的昵称/等级、头像留空。
+- `save_selected_roles` 把 `app` / `nickname` / `level` / `bindingUid` 一并落盘 —— `bindingUid` 既是换抽卡令牌的键，也是明日方舟所有数据接口的**寻址键**（`?uid=`）。
+- `backfill_binding_uid` 除了补 `bindingUid`，还会给缺 `app` 的老角色按绑定列表补上正确的游戏（而不只是 `endfield`）。
+- `RoleDisplayInfo.game` / `AccountInfo.game` / `AccountSummary.game` 三处都带 `#[serde(default = "default_game")]`，老缓存/老配置缺字段时按终末地处理。
+- **解绑/删号会连带清明日方舟缓存**：`logout_account` 与 `delete_skland_account` 收集该账号下 `app == "arknights"` 角色的 `bindingUid`，调 `ArknightsService::clear_cache(uid)` 删掉 `player_info_{uid}.json` 与原始留档 —— 否则换绑别的明日方舟账号会读到上一个角色的数据。注意两处都**必须先 `drop(config)` 再清缓存**（`std::sync::Mutex` 不可重入，之前的 `revoke_role_u8token` 就踩过这个坑）。
+
+> **已接入**：明日方舟的 `player/info`（干员/基建/任务/剿灭/保全/公招）、养成+仓库、签到状态与执行。**未接入**：抽卡记录（走 u8token 的终末地链路，明日方舟不适用）。前端的按游戏分流界面也尚未接入 —— 当前后端只保证数据能正确拉取、解析、缓存与标识。
+
 ### 账户持久化（1457-1538、2628-2810、2812-2847 行）
-- 绑定：`save_skland_account` 写 `cred/token/skland_account_bound/roles`；`save_selected_roles` 写 `roles[]`（含 `app:"endfield"`）、**保留 `hytoken` / `device_token` / `phone` / 已缓存的 `user_info`**、同步 `account_list`、清理被解绑角色的 `role_u8token_*`，并写双缓存。
+- 绑定：`save_skland_account` 写 `cred/token/skland_account_bound/roles`；`save_selected_roles` 写 `roles[]`（含 `app` / `nickname` / `level` / `bindingUid`）、**保留 `hytoken` / `device_token` / `phone` / 已缓存的 `user_info`**、同步 `account_list`、清理被解绑角色的 `role_u8token_*`，并写双缓存。
 - 解绑：`logout_account` 按 roleId 从 `roles[]` 移除（可选删除 `device_token`）并清缓存；`batch_logout` 清 `account_list` 与 `account_token_{id}`。
-- 迁移：`migrate_roles_app_field` 给旧角色补 `app` 字段（在 `save_selected_roles` 开头执行）。
+- 迁移：`migrate_roles_app_field` 给旧角色补 `app` 字段（在 `save_selected_roles` 开头执行）；`backfill_binding_uid` 在拿到绑定列表时按真实游戏回填 `app`。
 
 ### 懒加载（353-494 行）
 `set_lazy_load_enabled` 在两种模式间转换缓存：开启 → 精简缓存补全 + 清空完整缓存 + `retain_only_char_detail(当前角色)`；关闭 → 用 `account_token_*` 的 cred/token 合成完整缓存 + `preload_all_char_details` 预载全部角色。`set_current_role_id` 把激活角色同步给 NetworkService（影响详情缓存裁剪）。
@@ -220,7 +251,9 @@ Step 2 `get_skland_code`（`POST /user/oauth2/v2/grant`）→ Step 3 `get_skland
 ## 备注
 
 **配置键（本文件读写）**
-- `account_token_{user_id}`：核心凭据对象，字段含 `cred`、`token`、`hytoken`、`device_token`、`phone`、`roles[{userId,serverId,roleId,app}]`、`skland_account_bound`、`user_info`（SklandUserInfo 序列化）。
+- `account_token_{user_id}`：核心凭据对象，字段含 `cred`、`token`、`hytoken`、`device_token`、`phone`、`roles[{userId,serverId,roleId,app,nickname,level,bindingUid,channelMasterId,channelName}]`、`skland_account_bound`、`user_info`（SklandUserInfo 序列化）。
+  - `roles[].app` 区分游戏：`endfield`（终末地）/ `arknights`（明日方舟）；缺失时按终末地处理。
+  - `roles[].nickname` / `level` 是绑定时的快照 —— **明日方舟角色只能靠它们展示**（没有终末地详情接口）。
   - ⚠️ 账号级 `u8token` **已废弃**：启动时由 `migrate_legacy_u8token` 删除；`secret_registry` 仍登记它只为能清理旧凭据。
   - `save_selected_roles` 重建该对象时会保留 `hytoken` / `device_token` / `phone` / `user_info`（后两者以前会被覆盖丢失，已修正），并**写入每个角色的 `bindingUid` / `channelMasterId` / `channelName`**。
 - `role_u8token_{roleId}`：**已废弃**，启动时由 `migrate_legacy_u8token` 删除（含凭据库条目）。

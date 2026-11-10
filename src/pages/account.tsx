@@ -86,6 +86,7 @@ import { getConfig } from "@/utils/configService";
 import { addMessage } from "@/utils/messageStore";
 import { maskSecret } from "@/utils/redact";
 import { resolveServerLabel } from "@/types";
+import { GameBadge, normalizeGameId } from "@/components/ui/game-badge";
 import { cn } from "@/lib/utils";
 
 /**
@@ -133,17 +134,23 @@ function RoleGroup({
   title,
   count,
   emptyLabel,
+  badge,
   children,
 }: {
   title: string;
   count: number;
   emptyLabel: string;
+  /** 标题右侧的游戏标识（按游戏分组时使用） */
+  badge?: ReactNode;
   children: ReactNode;
 }) {
   return (
     <section className="min-w-0 space-y-2">
       <div className="flex items-center justify-between gap-2">
-        <h3 className="text-xs font-semibold uppercase text-muted">{title}</h3>
+        <div className="flex min-w-0 items-center gap-2">
+          <h3 className="text-xs font-semibold uppercase text-muted">{title}</h3>
+          {badge}
+        </div>
         <span className="text-xs tabular-nums text-muted">{count}</span>
       </div>
       {count === 0 ? (
@@ -157,8 +164,20 @@ function RoleGroup({
   );
 }
 
-function GameRoleRow({
-  role,
+/**
+ * 账户是否属于《明日方舟：终末地》。
+ *
+ * 现有的仪表盘/签到/抽卡/角色数据等功能**全部只服务终末地**（按游戏分流的界面
+ * 是后续工作），所以「自动选中账户」时必须优先终末地 —— 否则用户刚绑完一个
+ * 明日方舟角色，当前账户被自动切成它，整个仪表盘会立刻全线报错。
+ *
+ * 用户手动点「设为当前」不受此限制（那是显式操作）。
+ */
+function isEndfieldAccount(account: Account): boolean {
+  return account.game !== "arknights";
+}
+
+function GameRoleRow({  role,
   isBound,
   isActive,
   actionLabel,
@@ -208,9 +227,13 @@ function GameRoleRow({
         <p className="truncate text-sm font-medium text-foreground">
           {role.nickname}
         </p>
-        <p className="truncate text-xs text-muted">
-          Lv.{role.level} · {resolveServerLabel(role.serverId, i18n.language)}
-        </p>
+        <div className="flex min-w-0 items-center gap-1.5">
+          {/* 游戏标识：终末地与明日方舟的账户数据来源不同，必须能一眼分清 */}
+          <GameBadge game={role.game} variant="short" />
+          <p className="truncate text-xs text-muted">
+            Lv.{role.level} · {resolveServerLabel(role.serverId, i18n.language)}
+          </p>
+        </div>
       </div>
       {/*
         按钮区：窄容器下允许换行，并给昵称留一个最小宽度（`min-w-[7rem]`），
@@ -2031,10 +2054,15 @@ export default function AccountPage() {
       setAccounts(accounts || []);
       setSklandAccounts(await getSklandAccounts());
 
+      // 自动选中优先终末地角色：明日方舟角色的数据接口与现有卡片不兼容，
+      // 自动切成它会让仪表盘立刻全线报错（详见 isEndfieldAccount 的说明）
+      const sameUser = accounts.filter((account) => account.userId === userId);
       const preferredAccount = isManagingSklandRoles
-        ? accounts.find((account) => account.id === currentAccountId) ||
-          accounts[0]
-        : accounts.find((account) => account.userId === userId) || accounts[0];
+        ? accounts.find((account) => account.id === currentAccountId) || accounts[0]
+        : sameUser.find(isEndfieldAccount) ||
+          sameUser[0] ||
+          accounts.find(isEndfieldAccount) ||
+          accounts[0];
       if (preferredAccount) {
         await apiSetSelectedAccount(preferredAccount.id);
         setCurrentAccountId(preferredAccount.id);
@@ -2212,7 +2240,9 @@ export default function AccountPage() {
         currentAccountId &&
         !updatedAccounts.some((account) => account.id === currentAccountId)
       ) {
-        const nextAccount = updatedAccounts[0];
+        // 当前账户被解绑：顺位改选时同样优先终末地角色
+        const nextAccount =
+          updatedAccounts.find(isEndfieldAccount) || updatedAccounts[0];
         if (nextAccount) {
           await apiSetSelectedAccount(nextAccount.id);
           setCurrentAccountId(nextAccount.id);
@@ -2623,11 +2653,51 @@ export default function AccountPage() {
               );
               const boundRoleIds = new Set(boundRoles.map((role) => role.id));
               const allRoles = roleSet?.roles || [];
+
+              /*
+                按「游戏 × 绑定状态」切成四组：
+                终末地与明日方舟的角色混在一个列表里，不分游戏就分不清哪条属于哪个游戏 ——
+                两者的数据来源完全不同（明日方舟没有终末地的角色详情接口），
+                后面的卡片/页面也要按游戏走不同逻辑，列表必须先按游戏分开。
+
+                只渲染**确实有角色**的游戏分组：只玩终末地的账户不会多出一条
+                「明日方舟 0」的空分组。
+              */
               const boundRoleDetails = allRoles.filter((role) =>
                 boundRoleIds.has(role.roleId),
               );
               const unboundRoleDetails = allRoles.filter(
                 (role) => !boundRoleIds.has(role.roleId),
+              );
+              const boundByGame = {
+                endfield: boundRoleDetails.filter(
+                  (role) => normalizeGameId(role.game) === "endfield",
+                ),
+                arknights: boundRoleDetails.filter(
+                  (role) => normalizeGameId(role.game) === "arknights",
+                ),
+              };
+              const unboundByGame = {
+                endfield: unboundRoleDetails.filter(
+                  (role) => normalizeGameId(role.game) === "endfield",
+                ),
+                arknights: unboundRoleDetails.filter(
+                  (role) => normalizeGameId(role.game) === "arknights",
+                ),
+              };
+              /** 该账户实际拥有的游戏（有角色就展示，两个都没有时退回终末地） */
+              const gamesInAccount = (["endfield", "arknights"] as const).filter(
+                (game) =>
+                  boundByGame[game].length > 0 || unboundByGame[game].length > 0,
+              );
+              const visibleGames =
+                gamesInAccount.length > 0
+                  ? gamesInAccount
+                  : (["endfield"] as const);
+
+              /** 已绑定的游戏（去重、按固定顺序），用于账户卡片头部的图标 */
+              const boundGames = (["endfield", "arknights"] as const).filter(
+                (game) => boundByGame[game].length > 0,
               );
               // 账户数据不可用：
               // 1) 全局可用状态（凭证失效 / 数美指纹接口异常 / 网络故障）
@@ -2711,6 +2781,23 @@ export default function AccountPage() {
                           {sklandAccount.userId}
                         </p>
                       </div>
+                      {/*
+                        已绑定的游戏图标：不必展开就能看出这个森空岛账户
+                        有没有绑定明日方舟角色（两个游戏的角色数据来源不同，
+                        混在一起时这一点最容易漏看）。
+                      */}
+                      {boundGames.length > 0 && (
+                        <span className="flex shrink-0 items-center gap-1">
+                          {boundGames.map((game) => (
+                            <GameBadge
+                              key={game}
+                              game={game}
+                              variant="icon"
+                              size="md"
+                            />
+                          ))}
+                        </span>
+                      )}
                       <span className="hidden shrink-0 text-xs text-muted sm:block">
                         {t("settings.account.bound_role_count", {
                           count: boundRoles.length,
@@ -2797,84 +2884,114 @@ export default function AccountPage() {
                             {roleLoadErrors[sklandAccount.userId]}
                           </p>
                         ) : roleSet ? (
-                          <div className="grid gap-5 lg:grid-cols-2">
-                            <RoleGroup
-                              title={t("settings.account.bound_game_roles")}
-                              count={boundRoleDetails.length}
-                              emptyLabel={t(
-                                "settings.account.no_bound_game_roles",
-                              )}
-                            >
-                              {boundRoleDetails.map((role) => {
-                                const key = `${sklandAccount.userId}:${role.serverId}:${role.roleId}`;
-                                return (
-                                  <GameRoleRow
-                                    key={key}
-                                    role={role}
-                                    isBound={true}
-                                    isActive={currentAccountId === role.roleId}
-                                    actionLabel={t(
-                                      "settings.account.unbind_role",
+                          <div className="space-y-5">
+                            {visibleGames.map((game) => (
+                              <div key={game} className="space-y-3">
+                                {/*
+                                  游戏分组标题：一次账户同时绑定两个游戏时才有必要
+                                  单独显示（只有一个游戏时纯属噪音，图标已经出现在
+                                  每个角色行了）。
+                                */}
+                                {visibleGames.length > 1 && (
+                                  <div className="flex items-center gap-2 border-b border-separator/60 pb-2">
+                                    <GameBadge
+                                      game={game}
+                                      variant="full"
+                                      size="md"
+                                    />
+                                  </div>
+                                )}
+                                <div className="grid gap-5 lg:grid-cols-2">
+                                  <RoleGroup
+                                    title={t(
+                                      "settings.account.bound_game_roles",
                                     )}
-                                    isBusy={savingRoleKey === key}
-                                    isDisabled={savingRoleKey !== null}
-                                    u8Authorized={role.u8Authorized}
-                                    isAuthBusy={authBusyRoleId === role.roleId}
-                                    onAuthorizeU8={() =>
-                                      void handleAuthorizeRoleFromAccount(
-                                        sklandAccount.userId,
-                                        role,
-                                      )
-                                    }
-                                    onRevokeU8={() =>
-                                      void handleRevokeRoleU8(
-                                        sklandAccount.userId,
-                                        role,
-                                      )
-                                    }
-                                    onSetActive={() =>
-                                      handleSelectAccount(role.roleId)
-                                    }
-                                    onAction={() =>
-                                      handleToggleGameRole(
-                                        sklandAccount.userId,
-                                        role,
-                                        true,
-                                      )
-                                    }
-                                  />
-                                );
-                              })}
-                            </RoleGroup>
-                            <RoleGroup
-                              title={t("settings.account.unbound_game_roles")}
-                              count={unboundRoleDetails.length}
-                              emptyLabel={t(
-                                "settings.account.no_unbound_game_roles",
-                              )}
-                            >
-                              {unboundRoleDetails.map((role) => {
-                                const key = `${sklandAccount.userId}:${role.serverId}:${role.roleId}`;
-                                return (
-                                  <GameRoleRow
-                                    key={key}
-                                    role={role}
-                                    isBound={false}
-                                    isActive={false}
-                                    actionLabel={t("settings.account.bind_role")}
-                                    isBusy={savingRoleKey === key}
-                                    isDisabled={savingRoleKey !== null}
-                                    onAction={() =>
-                                      handleToggleGameRole(
-                                        sklandAccount.userId,
-                                        role,
-                                        false,
-                                      )
-                                    }
-                                  />
-                                );
-                              })}
-                            </RoleGroup>
+                                    count={boundByGame[game].length}
+                                    emptyLabel={t(
+                                      "settings.account.no_bound_game_roles",
+                                    )}
+                                  >
+                                    {boundByGame[game].map((role) => {
+                                      const key = `${sklandAccount.userId}:${role.serverId}:${role.roleId}`;
+                                      return (
+                                        <GameRoleRow
+                                          key={key}
+                                          role={role}
+                                          isBound={true}
+                                          isActive={
+                                            currentAccountId === role.roleId
+                                          }
+                                          actionLabel={t(
+                                            "settings.account.unbind_role",
+                                          )}
+                                          isBusy={savingRoleKey === key}
+                                          isDisabled={savingRoleKey !== null}
+                                          u8Authorized={role.u8Authorized}
+                                          isAuthBusy={
+                                            authBusyRoleId === role.roleId
+                                          }
+                                          onAuthorizeU8={() =>
+                                            void handleAuthorizeRoleFromAccount(
+                                              sklandAccount.userId,
+                                              role,
+                                            )
+                                          }
+                                          onRevokeU8={() =>
+                                            void handleRevokeRoleU8(
+                                              sklandAccount.userId,
+                                              role,
+                                            )
+                                          }
+                                          onSetActive={() =>
+                                            handleSelectAccount(role.roleId)
+                                          }
+                                          onAction={() =>
+                                            handleToggleGameRole(
+                                              sklandAccount.userId,
+                                              role,
+                                              true,
+                                            )
+                                          }
+                                        />
+                                      );
+                                    })}
+                                  </RoleGroup>
+                                  <RoleGroup
+                                    title={t(
+                                      "settings.account.unbound_game_roles",
+                                    )}
+                                    count={unboundByGame[game].length}
+                                    emptyLabel={t(
+                                      "settings.account.no_unbound_game_roles",
+                                    )}
+                                  >
+                                    {unboundByGame[game].map((role) => {
+                                      const key = `${sklandAccount.userId}:${role.serverId}:${role.roleId}`;
+                                      return (
+                                        <GameRoleRow
+                                          key={key}
+                                          role={role}
+                                          isBound={false}
+                                          isActive={false}
+                                          actionLabel={t(
+                                            "settings.account.bind_role",
+                                          )}
+                                          isBusy={savingRoleKey === key}
+                                          isDisabled={savingRoleKey !== null}
+                                          onAction={() =>
+                                            handleToggleGameRole(
+                                              sklandAccount.userId,
+                                              role,
+                                              false,
+                                            )
+                                          }
+                                        />
+                                      );
+                                    })}
+                                  </RoleGroup>
+                                </div>
+                              </div>
+                            ))}
                           </div>
                         ) : null}
                       </div>
@@ -3731,9 +3848,13 @@ export default function AccountPage() {
                             )}
                           </div>
                           <div className="flex-1 min-w-0">
-                            <h3 className="font-semibold text-lg truncate">
-                              {role.nickname || "未知角色"}
-                            </h3>
+                            <div className="flex min-w-0 items-center gap-2">
+                              <h3 className="truncate text-lg font-semibold">
+                                {role.nickname ||
+                                  t("role_select.unknown_role")}
+                              </h3>
+                              <GameBadge game={role.game} variant="short" />
+                            </div>
                             <p className="text-sm text-muted">
                               {i18n.language === "zh" ? "等级" : "Level"}:{" "}
                               {role.level}
@@ -3806,9 +3927,12 @@ export default function AccountPage() {
                         )}
                       </div>
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium text-foreground">
-                          {role.nickname}
-                        </p>
+                        <div className="flex min-w-0 items-center gap-1.5">
+                          <p className="truncate text-sm font-medium text-foreground">
+                            {role.nickname}
+                          </p>
+                          <GameBadge game={role.game} variant="short" />
+                        </div>
                         <p className="truncate text-xs text-muted">
                           Lv.{role.level} ·{" "}
                           {resolveServerLabel(role.serverId, i18n.language)}
