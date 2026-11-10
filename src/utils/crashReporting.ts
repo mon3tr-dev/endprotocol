@@ -172,6 +172,19 @@ async function checkApiHealth() {
   }
 }
 
+/**
+ * 浏览器把 ResizeObserver 的告警也当作 window error 派发（Chromium / WebView2 行为）：
+ * 观察回调在交付周期里写布局时就会报一次，页面本身没有出错。
+ * 这类消息必须挡在弹窗之外——否则用户会看到一个错因完全对不上的崩溃弹窗
+ *（曾被启发式判成「服务端持续返回错误」），只能靠重新加载关掉。
+ */
+const BENIGN_WINDOW_ERROR = /resizeobserver loop/i;
+
+/** 是否为浏览器噪音（非故障）错误。 */
+function isBenignWindowError(message: string): boolean {
+  return BENIGN_WINDOW_ERROR.test(message);
+}
+
 /** 安装全局 JS 错误、后端崩溃与 API 熔断事件监听。 */
 export function installCrashHandlers() {
   if (handlersInstalled || typeof window === "undefined") return;
@@ -179,9 +192,14 @@ export function installCrashHandlers() {
 
   window.addEventListener("error", (event) => {
     const error = event.error instanceof Error ? event.error : null;
+    const message = error?.message || event.message || "Unknown error";
+    if (isBenignWindowError(message)) {
+      logger.debug(`[Crash] ignored benign window error: ${message}`, undefined, "Crash");
+      return;
+    }
     reportCrash({
       title: i18n.t("crash.title"),
-      message: error?.message || event.message || "Unknown error",
+      message,
       stack: error?.stack,
       detail: event.filename
         ? `${event.filename}:${event.lineno}:${event.colno}`
@@ -193,9 +211,14 @@ export function installCrashHandlers() {
   window.addEventListener("unhandledrejection", (event) => {
     const reason = event.reason;
     const error = reason instanceof Error ? reason : null;
+    const message = error?.message || String(reason ?? "Unhandled promise rejection");
+    if (isBenignWindowError(message)) {
+      logger.debug(`[Crash] ignored benign rejection: ${message}`, undefined, "Crash");
+      return;
+    }
     reportCrash({
       title: i18n.t("crash.title"),
-      message: error?.message || String(reason ?? "Unhandled promise rejection"),
+      message,
       stack: error?.stack,
       source: "unhandled-rejection",
     });

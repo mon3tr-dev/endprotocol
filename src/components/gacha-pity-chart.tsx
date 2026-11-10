@@ -350,12 +350,32 @@ export default function GachaPityChart({
 
   // 初始化图表实例 + 自适应（数据行存在时才挂载容器，行数变化时重建）
   useEffect(() => {
-    if (!hasRows || !chartRef.current) return;
-    const chart = echarts.init(chartRef.current);
+    const el = chartRef.current;
+    if (!hasRows || !el) return;
+    const chart = echarts.init(el);
     chartInstance.current = chart;
-    const ro = new ResizeObserver(() => chart.resize());
-    ro.observe(chartRef.current);
+    // 在 ResizeObserver 回调里同步 chart.resize() 等于在浏览器的交付周期中写 DOM，
+    // 会触发 "ResizeObserver loop completed with undelivered notifications"；
+    // 因此把 resize 合并到下一帧，并跳过尺寸没变的通知。
+    let frame = 0;
+    let lastW = 0;
+    let lastH = 0;
+    const applyResize = () => {
+      frame = 0;
+      const w = el.clientWidth;
+      const h = el.clientHeight;
+      if (w === lastW && h === lastH) return;
+      lastW = w;
+      lastH = h;
+      chart.resize();
+    };
+    const ro = new ResizeObserver(() => {
+      if (frame) return;
+      frame = window.requestAnimationFrame(applyResize);
+    });
+    ro.observe(el);
     return () => {
+      if (frame) window.cancelAnimationFrame(frame);
       ro.disconnect();
       chart.dispose();
       chartInstance.current = null;

@@ -55,12 +55,32 @@ function useEchart(ref: React.RefObject<HTMLDivElement | null>) {
   const chartRef = useRef<ReturnType<typeof echarts.init> | null>(null);
 
   useEffect(() => {
-    if (!ref.current) return;
-    const chart = echarts.init(ref.current);
+    const el = ref.current;
+    if (!el) return;
+    const chart = echarts.init(el);
     chartRef.current = chart;
-    const ro = new ResizeObserver(() => chart.resize());
-    ro.observe(ref.current);
+    // 在 ResizeObserver 回调里同步 chart.resize() 等于在浏览器的交付周期中写 DOM，
+    // 会触发 "ResizeObserver loop completed with undelivered notifications"；
+    // 因此把 resize 合并到下一帧，并跳过尺寸没变的通知。
+    let frame = 0;
+    let lastW = 0;
+    let lastH = 0;
+    const applyResize = () => {
+      frame = 0;
+      const w = el.clientWidth;
+      const h = el.clientHeight;
+      if (w === lastW && h === lastH) return;
+      lastW = w;
+      lastH = h;
+      chart.resize();
+    };
+    const ro = new ResizeObserver(() => {
+      if (frame) return;
+      frame = window.requestAnimationFrame(applyResize);
+    });
+    ro.observe(el);
     return () => {
+      if (frame) window.cancelAnimationFrame(frame);
       ro.disconnect();
       chart.dispose();
       chartRef.current = null;
