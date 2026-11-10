@@ -177,6 +177,7 @@
 - **图表渲染逻辑位置**：`GachaStatCharts` 挂载 L575–L582（props：`records`/`pools`/`category`/`isWeapon`/`isZh`，星级分布、六星间隔分布、六星累计，计算在该子组件内）；`GachaPityChart` 挂载 L584–L591（props：`roleId`/`records`/`pools`/`category`/`isZh`，顺时针旋转 90° 保底柱状图，子组件内部另调 `resolve_gacha_avatar_map`）。
 - **同步逻辑位置**：`handleSync` L183–L226；进度事件监听 L169–L181；进度 Modal L765–L832（错误态 L775–L783、进行中 L784–L813、完成态 L814–L825）；`tabLabel` L62–L67 用于进度文案。
 - **事件**：Tauri event `gacha-sync-progress`（L172）；`window` `accountChanged`（L152）。
+- **筛选栏宽度约束**：稀有度分段控件（`RARITY_OPTIONS`，记录表格筛选栏内，行尾为 NEW / 赠送十连按钮）整条带 `shrink-0`，四个按钮 `flex-1 min-w-10 whitespace-nowrap`。它是该行里唯一能被压到比文字还窄的元素（卡池 `GlassSelect` 自带 `shrink-0`、搜索框有 `min-w-44` 下限），一旦被压缩，「全部」会折成两行溢出胶囊，看起来像排版坏掉；窗口更窄时由该行的 `flex-wrap` 换行承接，不要去掉这几个类。
 - 备注异常：
   1. L540 `"同步记录"` 为中英分支之外的硬编码中文字面量，英文界面会混排中文。
   2. `stats` useMemo（L248–L268）依赖数组为 `[active, category, isWeapon]`，内部使用了每渲染重建的 `isCharDraw` 闭包，未显式列入依赖（当前因 `category` 已覆盖而结果正确，但属易碎写法）。

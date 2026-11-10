@@ -651,8 +651,10 @@ export default function GachaRecordsPage() {
                   className="lg-field w-full h-9 pl-8 pr-3 rounded-lg text-sm text-foreground placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-primary/40"
                 />
               </div>
-              {/* 滑动指示器承担选中态：flex-1 等宽，指示器按格位移，切换是「滑过去」。 */}
-              <div className="relative flex items-center p-1 rounded-full lg-control">
+              {/* 滑动指示器承担选中态：flex-1 等宽，指示器按格位移，切换是「滑过去」。
+                  整条 `shrink-0` + 标签 `whitespace-nowrap`：这一行里只有它能被压到
+                  比文字还窄，一旦被压，「全部」会折成两行溢出胶囊（看着像排版坏掉）。 */}
+              <div className="relative flex shrink-0 items-center p-1 rounded-full lg-control">
                 <span
                   aria-hidden
                   className="pointer-events-none absolute top-1 bottom-1 left-1 rounded-full lg-control border border-primary/50 [transition:transform_var(--lg-dur-slow)_var(--lg-ease-glide)]"
@@ -667,7 +669,7 @@ export default function GachaRecordsPage() {
                     type="button"
                     onClick={() => setRarityFilter(opt.value)}
                     className={clsx(
-                      "relative z-10 flex-1 h-8 rounded-full text-xs font-medium transition-all duration-200",
+                      "relative z-10 flex-1 h-8 min-w-10 rounded-full text-xs font-medium whitespace-nowrap transition-all duration-200",
                       "active:scale-[0.98]",
                       rarityFilter === opt.value
                         ? "text-primary-text"
