@@ -3693,11 +3693,24 @@ export default function AccountPage() {
               </div>
             </div>
           ) : isRoleSelectionOpen ? (
-            <div className="py-8 text-center">
-              <p className="text-sm text-muted">
-                {t("settings.account.no_game_roles")}
-              </p>
-            </div>
+            /*
+              角色列表为空 ≠ 没有可绑定的角色：绑定成功后还要 `refreshData()`
+              才进入「授权抽卡数据」步骤，这段 `isLoading` 里 `availableRoles`
+              已被清空但角色仍在读取。此时直接显示「暂无可绑定的游戏角色」，
+              会被用户当成 bug（底栏同时在转「加载中」），因此先给加载态。
+            */
+            isLoading ? (
+              <div className="flex items-center justify-center gap-3 py-8 text-sm text-muted">
+                <GlassSpinner color="primary" size="sm" />
+                {t("settings.account.loading_game_roles")}
+              </div>
+            ) : (
+              <div className="py-8 text-center">
+                <p className="text-sm text-muted">
+                  {t("settings.account.no_game_roles")}
+                </p>
+              </div>
+            )
           ) : isAuthStepOpen ? (
             // 抽卡授权：可逐个开启，也可直接跳过
             <div className="space-y-3">
