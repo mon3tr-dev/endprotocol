@@ -15,6 +15,7 @@
 | 区间 | 内容 |
 | --- | --- |
 | 1-66 行 | import：UI 组件、图标、accountService 的 17 个 API 函数与 6 个类型、roleDetailService、logger、configService、messageStore、resolveServerLabel |
+| 91-126 行 | `GlassFieldInput`：登录表单的玻璃输入框（`div.lg-field` 包透明 `<input>`；替换元素不渲染 `::before`，焦点环用 `outline` 而非 `ring`） |
 | 79-105 行 | `RoleGroup`：角色分组容器（标题 + 计数 + 空态占位） |
 | 107-191 行 | `GameRoleRow`：单条游戏角色行（头像/昵称/等级/服务器 + 设为当前 + 绑定/解绑按钮） |
 | 193-424 行 | `SklandProfileDetails`：森空岛用户资料弹窗内容（基本资料、头像挂件、简介、游戏等级、社区数据） |
@@ -59,6 +60,7 @@
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
 | `RoleGroup` | account.tsx:79 | 无状态分组组件：标题 + 数量角标，`count === 0` 时渲染虚线空态 |
+| `GlassFieldInput` | account.tsx:104 | 登录表单字段：玻璃材质画在包裹层（`div.lg-field`），`<input>` 自身 `bg-transparent`。**不要改回直接把 `lg-field` 挂在 input 上** —— 替换元素不渲染 `::before`，会退化成一块 88% 实底色；焦点环必须用 `focus-within:outline-*`，`.lg-field` 的非分层 `border`/`box-shadow` 会压过 `@layer utilities` 的 `ring-*`/`border-*`。密码登录（手机号 + 密码）、验证码登录手机号、新设备验证手机号共 4 处共用它 |
 | `GameRoleRow` | account.tsx:107 | 角色行：头像/首字母占位、`Lv.x · 服务器`，已绑定时显示「当前 / 设为当前」，右侧绑定或解绑按钮（`isBusy`/`isDisabled` 互斥） |
 | `SklandProfileDetails` | account.tsx:193 | 资料详情：loading / 失败重试 / 正常三态；过滤 `level > 0` 的游戏，用 gameId→iconMap 补图标，拼 6 项社区统计数据 |
 | `QRCodeImage` | account.tsx:426 | effect 内 `QRCode.toDataURL` 生成二维码，`cancelled` 标志防竞态，失败显示 "QR Error" |

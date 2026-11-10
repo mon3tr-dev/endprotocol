@@ -20,7 +20,13 @@ import {
   SYNC_STATUS_META,
   type StatusConfig,
 } from "@/components/ui/status-badge";
-import { useState, useEffect, useRef, type ReactNode } from "react";
+import {
+  useState,
+  useEffect,
+  useRef,
+  type InputHTMLAttributes,
+  type ReactNode,
+} from "react";
 import {
   ChevronDownIcon,
   InfoIcon,
@@ -80,6 +86,48 @@ import { getConfig } from "@/utils/configService";
 import { addMessage } from "@/utils/messageStore";
 import { maskSecret } from "@/utils/redact";
 import { resolveServerLabel } from "@/types";
+import { cn } from "@/lib/utils";
+
+/**
+ * 登录表单里的玻璃输入框。
+ *
+ * **为什么包一层**：`<input>` 是替换元素，`::before` 不渲染，所以 `lg-field`
+ * 直接挂在 input 上只会退化成一块 88% 的实底色、没有玻璃质感（见 globals.css
+ * 的 `:is(input, textarea, select).lg-field`）。这里照 navbar 搜索框的做法，
+ * 把材质画在包裹用的 div 上、input 自身透明，字段就和其它控件
+ * （GlassSelect / GlassButton）用的是同一块毛玻璃。
+ *
+ * **修的是什么**：这几个字段原先用 `lg-inset`（`foreground` 40% 的实色块），
+ * 深色主题下是一块比周围亮一截、没有边缘高光的灰板，和弹窗里其余玻璃控件
+ * 完全不是一个材质。
+ *
+ * **焦点环为什么用 outline**：`.lg-field` 的 `border` / `box-shadow` 是非分层
+ * 声明，优先级高于 `@layer utilities` 里的 `ring-*` / `border-*`，写成
+ * `focus-within:ring-2` 不会显示；outline 没有这个冲突，且能跟圆角走。
+ */
+function GlassFieldInput({
+  className,
+  ...props
+}: InputHTMLAttributes<HTMLInputElement>) {
+  return (
+    <div
+      className={cn(
+        "lg-field flex h-11 w-full items-center rounded-xl px-4",
+        "[transition:box-shadow_var(--lg-dur-fast)_var(--lg-ease-standard)]",
+        "focus-within:outline-2 focus-within:outline-primary",
+        "has-[:disabled]:opacity-50",
+      )}
+    >
+      <input
+        {...props}
+        className={cn(
+          "h-full w-full min-w-0 bg-transparent text-foreground outline-none placeholder:text-muted/70",
+          className,
+        )}
+      />
+    </div>
+  );
+}
 
 function RoleGroup({
   title,
@@ -3994,7 +4042,7 @@ export default function AccountPage() {
                       {t("settings.account.phone_number")}
                     </label>
                     <div className="flex flex-col gap-1">
-                      <input
+                      <GlassFieldInput
                         type="tel"
                         value={phone}
                         onChange={(e) => {
@@ -4005,7 +4053,6 @@ export default function AccountPage() {
                         placeholder={t("settings.account.enter_phone")}
                         maxLength={11}
                         disabled={isLoggingIn || isSendingCode}
-                        className="w-full px-4 py-2.5 lg-inset border border-separator rounded-lg text-foreground placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all"
                       />
                       {phoneError && (
                         <p className="text-xs text-danger-text">{phoneError}</p>
@@ -4051,7 +4098,7 @@ export default function AccountPage() {
                       {t("settings.account.phone_number")}
                     </label>
                     <div className="flex flex-col gap-1">
-                      <input
+                      <GlassFieldInput
                         type="tel"
                         value={phone}
                         onChange={(e) => {
@@ -4066,7 +4113,6 @@ export default function AccountPage() {
                             handleLogin();
                           }
                         }}
-                        className="w-full px-4 py-2.5 lg-inset border border-separator rounded-lg text-foreground placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all"
                       />
                       {phoneError && (
                         <p className="text-xs text-danger-text">{phoneError}</p>
@@ -4084,7 +4130,7 @@ export default function AccountPage() {
                     <label className="text-sm font-medium text-foreground whitespace-nowrap justify-self-end">
                       {t("settings.account.password")}
                     </label>
-                    <input
+                    <GlassFieldInput
                       type="password"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
@@ -4094,7 +4140,6 @@ export default function AccountPage() {
                           handleLogin();
                         }
                       }}
-                      className="w-full px-4 py-2.5 lg-inset border border-separator rounded-lg text-foreground placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all"
                     />
                   </div>
                 </>
@@ -4147,7 +4192,7 @@ export default function AccountPage() {
                       {t("settings.account.phone_number")}
                     </label>
                     <div className="flex flex-col gap-1">
-                      <input
+                      <GlassFieldInput
                         type="tel"
                         placeholder={
                           i18n.language === "zh"
@@ -4171,7 +4216,6 @@ export default function AccountPage() {
                             handleSendCodeAndShowOtp();
                           }
                         }}
-                        className="w-full px-4 py-2.5 lg-inset border border-separator rounded-lg text-foreground placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all"
                       />
                       {phoneError && (
                         <p className="text-xs text-danger-text">{phoneError}</p>
