@@ -45,6 +45,7 @@ import {
   CustomModalFooter,
 } from "@/components/custom-modal";
 import { resolveServerLabel } from "@/types";
+import { AccountNameLine } from "@/components/ui/game-badge";
 import { trackStartupTask } from "@/utils/startupProgress";
 import {
   captureTabSnapshot,
@@ -631,10 +632,13 @@ export default function DashboardPage() {
                       )}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="font-medium text-sm truncate">
-                        {account.nickname || t("common.unknown") || "Unknown"}
+                      {/* 徽标紧跟名字、垂直居中；行尾留给选中勾 */}
+                      <div className="font-medium text-sm">
+                        <AccountNameLine game={account.game}>
+                          {account.nickname || t("common.unknown") || "Unknown"}
+                        </AccountNameLine>
                       </div>
-                      <div className="text-xs text-muted">
+                      <div className="text-xs text-muted truncate">
                         {resolveServerLabel(account.server, i18n.language)} · Lv.{account.level}
                       </div>
                     </div>

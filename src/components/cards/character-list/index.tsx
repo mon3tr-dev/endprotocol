@@ -8,6 +8,7 @@ import { CharDetailData, CharacterItem } from "@/types/charDetail";
 import { CharSelectModal } from "./char-select-modal";
 import { logDebug, logError } from "@/utils/logger";
 import { resolveServerLabel } from "@/types";
+import { AccountNameLine } from "@/components/ui/game-badge";
 import { useTranslation } from "react-i18next";
 import { roleDataService } from "@/utils/roleDataService";
 import { BaseCardProps } from "../registry/types";
@@ -466,8 +467,10 @@ export default function CharacterListCard({
                     )}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="font-medium text-sm truncate">
-                      {account.nickname || t("common.unknown") || "Unknown"}
+                    <div className="font-medium text-sm">
+                      <AccountNameLine game={account.game}>
+                        {account.nickname || t("common.unknown") || "Unknown"}
+                      </AccountNameLine>
                     </div>
                     <div className="text-xs text-muted">
                       {resolveServerLabel(account.server, i18n.language)} · Lv.

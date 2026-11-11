@@ -19,6 +19,7 @@ import {
 import { roleDataService } from "@/utils/roleDataService";
 import { getConfig, setConfig } from "@/utils/configService";
 import { resolveServerLabel } from "@/types";
+import { AccountNameLine } from "@/components/ui/game-badge";
 import { logError } from "@/utils/logger";
 import {
   type DomainData,
@@ -182,9 +183,14 @@ export default function DomainPage() {
               endContent={<ChevronDownIcon size={14} />}
               className="lg-material border border-separator/70 max-w-48"
             >
-              <span className="truncate">
-                {currentAccount?.nickname || t("domain_page.switch_account")}
-              </span>
+              {/* 内容整体可收缩：昵称过长时截断，徽标 `shrink-0` 保形 */}
+              {currentAccount ? (
+                <AccountNameLine game={currentAccount.game} className="max-w-full">
+                  {currentAccount.nickname}
+                </AccountNameLine>
+              ) : (
+                <span className="truncate">{t("domain_page.switch_account")}</span>
+              )}
             </GlassButton>
 
             {showRoleMenu && (
@@ -216,12 +222,13 @@ export default function DomainPage() {
                           )}
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate">
-                            {acc.nickname || t("common.unknown")}
+                          <p className="text-sm font-medium">
+                            <AccountNameLine game={acc.game}>
+                              {acc.nickname || t("common.unknown")}
+                            </AccountNameLine>
                           </p>
                           <p className="text-xs text-muted truncate">
-                            {resolveServerLabel(acc.server, i18n.language)} · Lv.
-                            {acc.level}
+                            {resolveServerLabel(acc.server, i18n.language)} · Lv.{acc.level}
                           </p>
                         </div>
                         {isSelected && (

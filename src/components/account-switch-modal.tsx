@@ -8,7 +8,7 @@ import {
 } from "@/components/custom-modal";
 import { SearchIcon } from "@/components/icons";
 import { AccountAvatar } from "@/components/ui/account-avatar";
-import { GameBadge } from "@/components/ui/game-badge";
+import { AccountNameLine } from "@/components/ui/game-badge";
 import { EmptyState, EmptyStateUserIcon } from "@/components/ui/empty-state";
 import { SkeletonList } from "@/components/ui/loading-block";
 import { resolveServerLabel } from "@/types";
@@ -154,12 +154,14 @@ export default function AccountSwitchModal({
                     />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
-                        <p className="text-sm font-semibold text-foreground truncate">
-                          {account.nickname}
+                        {/* 徽标紧跟名字、与名字垂直居中；行尾留给 ACTIVE 标示 */}
+                        <p className="text-sm font-semibold text-foreground min-w-0">
+                          <AccountNameLine game={account.game}>
+                            {account.nickname}
+                          </AccountNameLine>
                         </p>
-                        <GameBadge game={account.game} variant="short" />
                         {isSelected && (
-                          <span className="px-2 py-0.5 text-[10px] font-bold text-success-text bg-success/10 rounded">
+                          <span className="ml-auto shrink-0 px-2 py-0.5 text-[10px] font-bold text-success-text bg-success/10 rounded">
                             ACTIVE
                           </span>
                         )}

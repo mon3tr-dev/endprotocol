@@ -10,6 +10,7 @@ import { useTranslation } from "react-i18next";
 import { getAccounts, type Account } from "@/utils/accountService";
 import { Img } from "@/utils/imageLoader";
 import { resolveServerLabel } from "@/types";
+import { AccountNameLine } from "@/components/ui/game-badge";
 import { logError } from "@/utils/logger";
 
 interface AttendanceSettingsModalProps {
@@ -152,12 +153,13 @@ export function AttendanceSettingsModal({
                         )}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-sm font-medium truncate">
-                            {acc.nickname}
-                          </span>
+                        {/* 徽标紧跟名字、垂直居中；行尾留给选中勾 */}
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <div className="text-sm font-medium min-w-0">
+                            <AccountNameLine game={acc.game}>{acc.nickname}</AccountNameLine>
+                          </div>
                           {isSelected && (
-                            <svg className="w-4 h-4 text-primary-text shrink-0" fill="currentColor" viewBox="0 0 24 24">
+                            <svg className="ml-auto w-4 h-4 text-primary-text shrink-0" fill="currentColor" viewBox="0 0 24 24">
                               <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
                             </svg>
                           )}

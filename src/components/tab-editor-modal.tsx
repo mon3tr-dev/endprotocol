@@ -11,6 +11,7 @@ import { TAB_ICONS, DashboardTab } from "@/types/dashboard";
 import { getTabIcon, getIconLabel } from "@/utils/tabIcons";
 import { getAccounts, getSelectedAccount, type Account } from "@/utils/accountService";
 import { AccountAvatar } from "@/components/ui/account-avatar";
+import { AccountNameLine } from "@/components/ui/game-badge";
 import { MorphIcon } from "morphicons/react";
 import { X, Check } from "lucide";
 
@@ -214,8 +215,11 @@ export function TabEditorModal({
                       size="xs"
                     />
                     <div className="flex-1 min-w-0">
-                      <span className="text-sm font-medium">{acc.nickname}</span>
-                      <span className="text-xs text-muted ml-1.5">Lv.{acc.level}</span>
+                      {/* 徽标紧跟名字、垂直居中；行尾留给选中勾 */}
+                      <div className="text-sm font-medium">
+                        <AccountNameLine game={acc.game}>{acc.nickname}</AccountNameLine>
+                      </div>
+                      <span className="text-xs text-muted">Lv.{acc.level}</span>
                     </div>
                     {isSelected && (
                       <MorphIcon icon={Check} size={16} className="text-primary-text shrink-0" />

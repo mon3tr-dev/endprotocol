@@ -10,6 +10,7 @@ import { AccountAvatar } from "@/components/ui/account-avatar";
 import { Img } from "@/utils/imageLoader";
 import { logError } from "@/utils/logger";
 import { resolveServerLabel } from "@/types";
+import { AccountNameLine } from "@/components/ui/game-badge";
 import { useImageRequest } from "@/utils/imageCacheManager";
 import {
   CustomModal,
@@ -439,8 +440,10 @@ export default function SpaceshipCard({
                     size="sm"
                   />
                   <div className="flex-1 min-w-0">
-                    <div className="font-medium text-sm truncate">
-                      {account.nickname || t("card:spaceship_unknown_char")}
+                    <div className="font-medium text-sm">
+                      <AccountNameLine game={account.game}>
+                        {account.nickname || t("card:spaceship_unknown_char")}
+                      </AccountNameLine>
                     </div>
                     <div className="text-xs text-muted">
                       {resolveServerLabel(account.server, i18n.language)} · Lv.{account.level}

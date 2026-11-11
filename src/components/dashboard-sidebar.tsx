@@ -24,6 +24,7 @@ import { siteConfig } from "@/config/site";
 import { ThemeSwitch } from "@/components/theme-switch";
 import { LanguageSwitch } from "@/components/language-switch";
 import { AccountAvatar } from "@/components/ui/account-avatar";
+import { AccountNameLine } from "@/components/ui/game-badge";
 import { resolveServerLabel } from "@/types";
 import {
   ChevronDownIcon,
@@ -1107,8 +1108,12 @@ export const Sidebar = ({
                 )}
               >
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-foreground truncate">
-                    {selectedAccount.nickname}
+                  {/* 侧边栏是全局「当前账号」入口：两个游戏的角色都会出现在这里。
+                      徽标**紧跟名字之后**（不推到行尾），与名字垂直居中 */}
+                  <p className="text-sm font-semibold text-foreground">
+                    <AccountNameLine game={selectedAccount.game}>
+                      {selectedAccount.nickname}
+                    </AccountNameLine>
                   </p>
                   <p className="text-xs text-muted truncate">
                     Lv.{selectedAccount.level} •{" "}

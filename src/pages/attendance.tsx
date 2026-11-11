@@ -4,6 +4,7 @@ import { GlassCard, GlassProgressCircle } from "@/components/ui/glass";
 import { invoke } from "@tauri-apps/api/core";
 import { getSelectedAccount, getAccounts, type Account } from "@/utils/accountService";
 import { resolveServerLabel } from "@/types";
+import { AccountNameLine } from "@/components/ui/game-badge";
 import { AttendanceRewards } from "@/components/cards/attendance/attendance-rewards";
 import { parseAttendanceData, type AttendanceData } from "@/components/cards/attendance/index";
 import { logError } from "@/utils/logger";
@@ -69,7 +70,11 @@ export default function AttendancePage() {
         </h1>
         {selectedAccount && (
           <p className="text-foreground/70 mt-1.5 text-sm">
-            {selectedAccount.nickname} ·{" "}
+            {/* 徽标紧跟名字之后，同一行内联排版 */}
+            <AccountNameLine game={selectedAccount.game}>
+              {selectedAccount.nickname}
+            </AccountNameLine>
+            {" · "}
             {resolveServerLabel(selectedAccount.server, i18n.language)} · Lv.
             {selectedAccount.level}
           </p>

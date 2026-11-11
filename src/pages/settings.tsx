@@ -23,6 +23,7 @@ import { getConfig, setConfig } from "@/utils/configService";
 import { roleDetailService } from "@/utils/roleDetailService";
 import { isTrayAvailable, setTrayUser } from "@/utils/trayService";
 import { SettingsDivider } from "@/components/ui/settings-row";
+import { AccountNameLine } from "@/components/ui/game-badge";
 import {
   fetchRemoteVersion,
   getRemoteVersion,
@@ -59,7 +60,7 @@ export default function SettingsPage() {
   const [trayAvailable, setTrayAvailable] = useState(true);
   const [trayUserRoleId, setTrayUserRoleId] = useState<string>("");
   const [accounts, setAccounts] = useState<
-    Array<{ id: string; nickname: string; avatar: string }>
+    Array<{ id: string; nickname: string; avatar: string; game?: string }>
   >([]);
 
   const [developerMode, setDeveloperMode] = useState(false);
@@ -138,6 +139,8 @@ export default function SettingsPage() {
             id: a.id,
             nickname: a.nickname,
             avatar: a.avatar,
+            // 游戏必须一起带上：下拉里两个游戏的角色混在一起，只显示昵称分不清
+            game: a.game,
           })),
         );
       } catch {
@@ -687,7 +690,10 @@ export default function SettingsPage() {
                     placeholder={i18n.language === "zh" ? "未选择" : "None"}
                     options={accounts.map((a) => ({
                       value: a.id,
-                      label: a.nickname,
+                      // 徽标紧跟昵称之后（不再拼进文案，也不推到行尾）
+                      label: (
+                        <AccountNameLine game={a.game}>{a.nickname}</AccountNameLine>
+                      ),
                     }))}
                     onChange={handleTrayUserChange}
                   />

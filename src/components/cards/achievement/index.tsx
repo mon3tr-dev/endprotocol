@@ -13,6 +13,7 @@ import { useImageRequest, usePinImages } from "@/utils/imageCacheManager";
 import { AchievementModal } from "./achievement-modal";
 import { getAccounts } from "@/utils/accountService";
 import { resolveServerLabel } from "@/types";
+import { AccountNameLine } from "@/components/ui/game-badge";
 import {
   CustomModal,
   CustomModalHeader,
@@ -333,8 +334,10 @@ export default function AchievementCard({
                     )}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="font-medium text-sm truncate">
-                      {account.nickname || t("common.unknown") || "Unknown"}
+                    <div className="font-medium text-sm">
+                      <AccountNameLine game={account.game}>
+                        {account.nickname || t("common.unknown") || "Unknown"}
+                      </AccountNameLine>
                     </div>
                     <div className="text-xs text-muted">
                       {resolveServerLabel(account.server, i18n.language)} · Lv.{account.level}
