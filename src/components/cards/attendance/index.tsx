@@ -12,10 +12,13 @@ import { getAccounts, type Account } from "@/utils/accountService";
 import { Img } from "@/utils/imageLoader";
 import { invoke } from "@tauri-apps/api/core";
 import { logError } from "@/utils/logger";
-import { addMessage } from "@/utils/messageStore";
 import { resolveServerLabel } from "@/types";
 import { AccountNameLine } from "@/components/ui/game-badge";
-import { detectSignedToday } from "@/utils/attendanceHelpers";
+import { detectSignedToday, resolveSlotIndices } from "@/utils/attendanceHelpers";
+import {
+  fetchAttendanceRaw,
+  signInWithFeedback,
+} from "@/utils/attendanceService";
 
 const signedInRoleIds = new Set<string>();
 
@@ -46,6 +49,15 @@ export interface CalendarEntry {
   awardId: string;
   available: boolean;
   done: boolean;
+  /**
+   * 该格自己的奖励数量。
+   *
+   * ⚠️ 明日方舟同一个 `resourceId` 在不同格的数量是**不一样**的
+   * （实测 `4001` 龙门币在 30 格里 500/1000 混排），所以数量必须逐格携带，
+   * 不能按 id 去 `resourceInfoMap` 里查或累加 —— 早期版本按 id 累加，
+   * 界面上每一格都显示「整个月的总量」，是错的。
+   */
+  count: number;
 }
 
 export interface ResourceInfo {
@@ -60,7 +72,11 @@ export interface AttendanceData {
   calendar: CalendarEntry[];
   first: CalendarEntry[];
   resourceInfoMap: Record<string, ResourceInfo>;
+  /** 今天是否已签到 */
   hasToday: boolean;
+  /** 今日 / 明日奖励在 `calendar` 里的下标（越界为 null） */
+  todayIndex: number | null;
+  tomorrowIndex: number | null;
 }
 
 type AttendanceState = "loading" | "signed" | "unsigned" | "error";
@@ -73,18 +89,27 @@ type SignPhase = "idle" | "spinning" | "completing" | "done";
  *   日历项键名是 `awardId`，`resourceInfoMap[].icon` 是后端已下载好的本地路径，
  *   且自带 `hasToday`。
  * - 明日方舟 `get_arknights_attendance`（/api/v1/game/attendance）：
- *   日历项键名是 `resourceId`（count 直接在日历项上），物品图标后端不下发，
- *   `first` 可能为 null，也没有 `hasToday` —— 由前端按「当天项是否 done」推导。
+ *   日历项键名是 `resourceId`（`count` 直接在日历项上），物品图标接口**不下发**，
+ *   后端已按 `resourceId` 补成
+ *   `https://web.hycdn.cn/arknights/game/assets/item/{id}.png`；
+ *   `first` 可能为 null；`hasToday` / `todayIndex` / `tomorrowIndex` 由后端算好。
  *
- * 图标统一走 Arknights CDN（`web.hycdn.cn/arknights/game/assets/item/{id}.png`，
- * 已实测 200），经 Img/cacheManager 自动下载缓存。
+ * ⚠️ 明日方舟的 `calendar` 是「累计 30 格领取轨道」，下标与「几号」无关。
+ * 数量必须逐格取（同 id 不同格数量不同），判定与下标见
+ * `@/utils/attendanceHelpers`。
  */
 export function parseAttendanceData(json: any): AttendanceData | null {
   try {
-    const data = json?.data;
+    // 兼容两种形状：森空岛外壳 `{code, message, data}`（终末地原始响应、明日方舟
+    // 也包成同一形状）与「后端直接把 data 本身返回」。少了这层兼容，一旦某个命令
+    // 忘了包 `data`，界面只会显示「获取签到数据失败」，排查成本极高。
+    const data =
+      json?.data && typeof json.data === "object" && !Array.isArray(json.data)
+        ? json.data
+        : json;
     const rawCalendar = data?.calendar;
     const rawResourceMap = data?.resourceInfoMap;
-    if (!rawCalendar || !rawResourceMap) return null;
+    if (!Array.isArray(rawCalendar) || !rawResourceMap) return null;
 
     const isArknights = Array.isArray(rawCalendar)
       ? rawCalendar.some((e: any) => e?.resourceId !== undefined)
@@ -95,29 +120,19 @@ export function parseAttendanceData(json: any): AttendanceData | null {
           awardId: String(e.resourceId ?? ""),
           available: Boolean(e.available),
           done: Boolean(e.done),
+          // 逐格携带数量：同一 resourceId 在不同格的数量不同
+          count: Number(e.count ?? 0),
         }))
       : rawCalendar;
-
-    // 「今天是否已签到」
-    //
-    // 终末地直接给 `hasToday`；明日方舟没有这个字段，需要自己推。两条路：
-    // 1. 当天的日历项 —— calendar 是本月日历，第 N 天就是第 N 格，`done` 即答案；
-    // 2. 签到记录 —— `records[].ts` 是签到时刻，落在 currentTs 所在自然日即已签。
-    //
-    // ⚠️ 不用 `available` 判定：实测明日方舟的日历项里 `available` 恒为 false
-    // （它不是终末地那个「今天可领取」的语义），拿它判断会永远判成未签。
-    let hasToday = Boolean(data?.hasToday);
-    if (isArknights) {
-      hasToday = detectSignedToday(rawCalendar, data);
-    }
 
     const resourceInfoMap: Record<string, ResourceInfo> = {};
     for (const [id, entry] of Object.entries<any>(rawResourceMap)) {
       resourceInfoMap[id] = {
         id,
-        // 终末地 count 在 map 里；明日方舟 count 在日历项上，这里只做展示兜底
+        // 终末地 count 在 map 里；明日方舟 count 在日历项上（这里只做兜底）
         count: Number(entry?.count ?? 0),
         name: String(entry?.name ?? ""),
+        // 明日方舟后端已补好 icon；缺失时按同一条规则兜底
         icon:
           entry?.icon ??
           (isArknights
@@ -126,19 +141,17 @@ export function parseAttendanceData(json: any): AttendanceData | null {
       };
     }
 
-    // 明日方舟的月度累计奖励：resourceInfoMap 里同 id 出现多次时 count 累加
-    if (isArknights) {
-      const countById = new Map<string, number>();
-      for (const e of rawCalendar) {
-        const id = String(e?.resourceId ?? "");
-        countById.set(id, (countById.get(id) ?? 0) + Number(e?.count ?? 0));
-      }
-      for (const [id, total] of countById) {
-        if (resourceInfoMap[id]) resourceInfoMap[id].count = total;
-      }
-    }
+    // 「今天是否已签到」：明日方舟没有 `hasToday` 字段的旧响应要靠本地推
+    const hasToday = isArknights
+      ? detectSignedToday(rawCalendar, data)
+      : Boolean(data?.hasToday);
 
-    // first（首充/首签奖励）：终末地是数组，明日方舟实测为 null
+    // 今日 / 明日奖励下标
+    const { todayIndex, tomorrowIndex } = isArknights
+      ? resolveSlotIndices(rawCalendar, data)
+      : resolveSlotIndices(rawCalendar, null);
+
+    // first（首签奖励）：终末地是数组，明日方舟实测为 null
     const rawFirst = Array.isArray(data?.first) ? data.first : [];
 
     return {
@@ -147,26 +160,26 @@ export function parseAttendanceData(json: any): AttendanceData | null {
       first: rawFirst,
       resourceInfoMap,
       hasToday,
+      todayIndex,
+      tomorrowIndex,
     };
   } catch {
     return null;
   }
 }
 
-function findTodayEntry(calendar: CalendarEntry[]): { index: number; entry: CalendarEntry } | null {
-  const unsignedIdx = calendar.findIndex((e) => e.available && !e.done);
-  if (unsignedIdx >= 0) return { index: unsignedIdx, entry: calendar[unsignedIdx] };
-  const doneIdx = findLastIndex(calendar, (e) => e.done);
-  if (doneIdx >= 0) return { index: doneIdx, entry: calendar[doneIdx] };
-  if (calendar.length > 0) return { index: 0, entry: calendar[0] };
-  return null;
-}
-
-function findLastIndex<T>(arr: T[], predicate: (item: T) => boolean): number {
-  for (let i = arr.length - 1; i >= 0; i--) {
-    if (predicate(arr[i])) return i;
-  }
-  return -1;
+/** 取某一格奖励的展示信息（数量取该格自己的 `count`） */
+export function rewardAt(
+  data: AttendanceData | null,
+  index: number | null,
+): ResourceInfo | null {
+  if (!data || index === null) return null;
+  const entry = data.calendar[index];
+  if (!entry) return null;
+  const info = data.resourceInfoMap[entry.awardId];
+  if (!info) return null;
+  // 数量优先用日历格自己的（明日方舟）；终末地没有逐格 count 时退回 map 里的
+  return { ...info, count: entry.count || info.count };
 }
 
 export default function AttendanceCard({
@@ -256,16 +269,26 @@ export default function AttendanceCard({
     setAttendanceState("loading");
     setSignError(null);
     try {
-      // 按角色的游戏分流：明日方舟走 /api/v1/game/attendance，终末地走 /web/v1/...
-      const isArknights = gameOfRole(rid) === "arknights";
+      // 按角色的游戏分流（明日方舟 / 终末地），逻辑收敛在 attendanceService
       const result = await trackStartupTask(
-        invoke<any>(
-          isArknights ? "get_arknights_attendance" : "get_attendance",
-          { roleId: rid },
-        ),
+        fetchAttendanceRaw(rid, gameOfRole(rid)),
       );
       const parsed = parseAttendanceData(result);
       if (!parsed) {
+        // 解析失败时把「后端到底给了什么」记进日志，否则只显示一句通用错误，
+        // 排查时无从下手（历史上就踩过「后端少包一层 data」这个坑）。
+        logError(
+          "[Attendance] parseAttendanceData returned null; raw response keys:",
+          JSON.stringify({
+            topLevel: result && typeof result === "object" ? Object.keys(result) : typeof result,
+            dataKeys:
+              result?.data && typeof result.data === "object"
+                ? Object.keys(result.data)
+                : typeof result?.data,
+            code: result?.code,
+            message: result?.message,
+          }),
+        );
         setAttendanceState("error");
         setSignError(t("card:attendance_error"));
         return;
@@ -318,26 +341,11 @@ export default function AttendanceCard({
     }
     setSignPhase("spinning");
     setSignError(null);
-    try {
-      // 与查询同一套分流：明日方舟签到把 gameId+uid 放 body（后端处理），命令不同
-      const isArknights = gameOfRole(rid) === "arknights";
-      const result = await invoke<any>(
-        isArknights ? "do_arknights_attendance" : "do_attendance",
-        { roleId: rid },
-      );
-      // 终末地把「请勿重复签到」(code 10001) 视为幂等成功；明日方舟非 0 时
-      // 后端已折成空奖励数组（幂等成功），两种情况都走成功文案。
-      const alreadySigned = result?.code === 10001;
-      addMessage({
-        type: "info",
-        title: t(alreadySigned ? "card:attendance_already_signed" : "card:attendance_sign_success"),
-        tag: "attendance",
-      });
+    // 分流 + 幂等判定 + 提示文案都收敛在 attendanceService（与签到页面共用）
+    const ok = await signInWithFeedback(rid, gameOfRole(rid), t);
+    if (ok) {
       completeSignIn();
-    } catch (e) {
-      logError("[Attendance] POST failed:", e);
-      addMessage({ type: "urgent", title: t("card:attendance_sign_failed"), body: String(e), tag: "attendance" });
-      setSignError(String(e));
+    } else {
       setSignPhase("idle");
     }
   }, [signPhase, attendanceState, settings.selectedRoleId, gameOfRole, completeSignIn, t]);
@@ -397,22 +405,17 @@ export default function AttendanceCard({
 
         await CardStartupService.updateUserMapping(cardId, newRoleId);
 
-        if (oldRoleId && oldRoleId !== newRoleId) {
-          const siblingIds = await CardStartupService.getCardIdsByUser(oldRoleId);
-          if (siblingIds.length <= 1) {
-            await CardStartupService.removeAutoSignUser(oldRoleId);
-          }
-        }
+        // 自动签到是**按角色的全局开关**（`card_auto_sign_users`），与卡片实例无关：
+        // - 换角色时，旧角色是否还要保留自动签到，由批量签到弹窗/其他卡片决定，
+        //   这里不再用「兄弟卡片数量」去猜，避免误关其他卡片的开关；
+        // - 直接 `setAutoSign` 写目标值并广播，保证弹窗、其他卡片的开关同步刷新
+        //   （`add/removeAutoSignUser` 在值未变化时不广播，会造成多处显示不一致）。
         if (newRoleId) {
-          if (autoSign) {
-            await CardStartupService.addAutoSignUser(newRoleId);
-          } else {
-            const siblingIds = await CardStartupService.getCardIdsByUser(newRoleId);
-            if (siblingIds.length <= 1) {
-              await CardStartupService.removeAutoSignUser(newRoleId);
-            }
-          }
+          await CardStartupService.setAutoSign(newRoleId, autoSign);
         }
+        // 旧角色若已无任何卡片引用，也保留其自动签到设置 —— 这是用户显式开过的
+        // 全局选项，不该因为卡片换绑而被静默关闭。
+        void oldRoleId;
       } catch (e) {
         logError("[Attendance] Failed to save settings:", e);
       }
@@ -425,34 +428,24 @@ export default function AttendanceCard({
     [accountCache, settings.selectedRoleId],
   );
 
-  const todayReward = useMemo(() => {
-    if (!attendanceData) return null;
-    const today = findTodayEntry(attendanceData.calendar);
-    if (!today) return null;
-    return attendanceData.resourceInfoMap[today.entry.awardId] ?? null;
-  }, [attendanceData]);
+  const todayReward = useMemo(
+    () => rewardAt(attendanceData, attendanceData?.todayIndex ?? null),
+    [attendanceData],
+  );
 
   const todayClaimed = useMemo(() => {
-    if (!attendanceData) return false;
-    const today = findTodayEntry(attendanceData.calendar);
-    return today ? today.entry.done : false;
+    if (!attendanceData || attendanceData.todayIndex === null) return false;
+    return Boolean(attendanceData.calendar[attendanceData.todayIndex]?.done);
   }, [attendanceData]);
 
-  const tomorrowReward = useMemo(() => {
-    if (!attendanceData) return null;
-    const today = findTodayEntry(attendanceData.calendar);
-    if (!today) return null;
-    const tomorrowEntry = attendanceData.calendar[today.index + 1];
-    if (!tomorrowEntry) return null;
-    return attendanceData.resourceInfoMap[tomorrowEntry.awardId] ?? null;
-  }, [attendanceData]);
+  const tomorrowReward = useMemo(
+    () => rewardAt(attendanceData, attendanceData?.tomorrowIndex ?? null),
+    [attendanceData],
+  );
 
   const tomorrowClaimed = useMemo(() => {
-    if (!attendanceData) return false;
-    const today = findTodayEntry(attendanceData.calendar);
-    if (!today) return false;
-    const tomorrowEntry = attendanceData.calendar[today.index + 1];
-    return tomorrowEntry ? tomorrowEntry.done : false;
+    if (!attendanceData || attendanceData.tomorrowIndex === null) return false;
+    return Boolean(attendanceData.calendar[attendanceData.tomorrowIndex]?.done);
   }, [attendanceData]);
 
   if (!settingsLoaded) {

@@ -335,20 +335,24 @@
 | 模块内 Maps/Sets | startup-service.ts:11-14 | `handlers`（cardType→handler）、`taskStatuses`（roleId→状态）、`statusListeners`、`autoSignListeners` |
 | `notifyStatusChange` | startup-service.ts:16-23 | 取 roleId 状态并通知该 roleId 的所有监听者（无状态则跳过） |
 | `CardStartupService.register` | startup-service.ts:26-29 | 按 cardType 注册启动处理器（同名覆盖）并记日志 |
+| `CardStartupService.hasHandler` | startup-service.ts:37 | 是否已注册某类启动任务；`runAll` 据此决定是否走内置兜底 |
 | `CardStartupService.getAutoSignUsers` | startup-service.ts:31-38 | 读 `card_auto_sign_users`，异常返回 `[]` |
 | `CardStartupService.isAutoSignEnabled` | startup-service.ts:40-43 | 名单是否包含 roleId |
 | `CardStartupService.addAutoSignUser` | startup-service.ts:45-52 | 去重后追加、写回配置、广播 `(roleId, true)` |
 | `CardStartupService.removeAutoSignUser` | startup-service.ts:54-61 | 过滤移除（无变化则跳过写入）、广播 `(roleId, false)` |
-| `CardStartupService.onAutoSignChanged` | startup-service.ts:63-66 | 注册自动签到变更监听，返回退订函数 |
+| `CardStartupService.setAutoSign` | startup-service.ts:92 | **设目标值 + 无条件广播**（与 add/remove 的「值未变则提前 return」不同）。批量弹窗/卡片设置都走它，保证多处 UI 同步 |
+| `CardStartupService.onAutoSignChanged` | startup-service.ts:145 | 注册自动签到变更监听，返回退订函数 |
 | `CardStartupService.updateUserMapping` | startup-service.ts:68-81 | 先把 cardId 从所有 roleId 下移除（空数组删键），再把 cardId 加入 `newRoleId`（`undefined` 表示解绑），最后写回 |
 | `CardStartupService.removeCardFromMapping` | startup-service.ts:83-90 | 从所有 roleId 下移除该 cardId 并清理空项 |
 | `CardStartupService.getCardIdsByUser` | startup-service.ts:92-95 | 返回 roleId 对应的 cardId 数组（默认 `[]`） |
-| `CardStartupService.runAll` | startup-service.ts:97-127 | 取自动签到用户列表，为空直接返回；`Promise.all` 并行执行，固定取 handler `"attendance"`：无处理器→状态 `error`；否则置 `running` → 执行 → 成功 `done` / 异常 `error`（`String(e)`），每步 `notifyStatusChange` |
+| `CardStartupService.runAll` | startup-service.ts:183 | 取 `card_auto_sign_users`，为空直接返回；`Promise.all` 并行执行 `"attendance"`。**handler 缺失时走内置兜底**（动态 import `accountService` + `attendanceService` 自行分流签到），因此**即使没有任何签到卡片也能自动签到**；无处理器才置 `error`；否则 `running` → 执行 → `done`/`error`，每步 `notifyStatusChange` |
 | `CardStartupService.getTaskStatus` | startup-service.ts:129-131 | 读单个 roleId 的任务状态 |
 | `CardStartupService.subscribe` | startup-service.ts:133-141 | 按 roleId 注册状态监听（Set 去重），返回退订函数 |
 
 **备注**：
 - `runAll` 目前只执行 `"attendance"` 一个处理器（即使注册了其他 cardType 也不会跑），且注册必须发生在 `runAll` 之前——`main.tsx` 通过 `loadAllCards()` 同步注册、再 `setTimeout 0` 调用 `runAll` 来保证顺序。
+- **自动签到是「按角色的全局开关」，与卡片实例无关**：`card_auto_sign_users` 存的是 roleId，handler 由卡片注册表全局注册一次。所以批量签到弹窗可以给**没有签到卡片**的账号开启自动签到，启动时照样会签；反之删掉卡片也不会关掉该账号的自动签到。
+- **单一真值**：所有入口（批量弹窗、卡片设置弹窗、签到页面）都经 `setAutoSign` 读写同一个 `card_auto_sign_users` 并广播 `onAutoSignChanged`，因此各处显示的开关值始终一致。
 - 状态四态：`pending` 实际只在类型上定义，运行时写入的是 `running` / `done` / `error`。
 - 所有持久化均走配置服务（Tauri 后端存储），非 localStorage。
 - 日志 tag：`"StartupService"`，消息前缀 `[Startup]`。

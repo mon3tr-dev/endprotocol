@@ -38,8 +38,9 @@
 | `do_attendance` | commands/attendance.rs:182 | `state`、`role_id: String` | `Result<serde_json::Value, String>` | 本地 `lookup_cred_token`、`AccountService::check_and_refresh_user_cred`、`SklandService::call_skland_api`(POST)（**终末地**签到） |
 | `get_arknights_player_info` | commands/arknights.rs:24 | `state`、`role_id: String`、`force: Option<bool>` | `Result<serde_json::Value, String>` | `AccountService::get_arknights_player_info` → `resolve_arknights_target`（roleId → userId + bindingUid）+ `arknights_credentials`（按需刷新 cred）→ `ArknightsService::refresh_player_info`（`GET /api/v1/game/player/info?uid=`）。`force=false` 时先用缓存（内存 → `<app_data>/arknights/player_info_{uid}.json`） |
 | `get_arknights_cultivate` | commands/arknights.rs:40 | `state`、`role_id: String` | `Result<serde_json::Value, String>` | `AccountService::get_arknights_cultivate` → `ArknightsService::fetch_cultivate`（`GET /api/v1/game/cultivate/player?uid=`）。干员养成 `player/info` 已给，**唯一增量是仓库 `items`** |
-| `get_arknights_attendance` | commands/arknights.rs:53 | `state`、`role_id: String` | `Result<serde_json::Value, String>` | `AccountService::get_arknights_attendance` → `ArknightsService::attendance_status`（`GET /api/v1/game/attendance?uid=`） |
-| `do_arknights_attendance` | commands/arknights.rs:68 | `state`、`role_id: String` | `Result<serde_json::Value, String>` | `AccountService::do_arknights_attendance` → `ArknightsService::do_attendance`（`POST /api/v1/game/attendance`，body `{gameId: 1, uid}`）。今天已签到时返回**空数组**而非报错 |
+| `get_arknights_attendance` | commands/arknights.rs:60 | `state`、`role_id: String` | `Result<serde_json::Value, String>` | `AccountService::get_arknights_attendance` → `ArknightsService::attendance_status`（`GET /api/v1/game/attendance?gameId=1&uid=`）。返回体在原始字段外多三项后端算好的 `hasToday` / `todayIndex` / `tomorrowIndex` |
+| `do_batch_attendance` | commands/arknights.rs:118 | `state`、`role_ids: Vec<String>` | `Result<Vec<BatchAttendanceItem>, String>` | **批量签到**：逐个调 `AccountService::do_attendance_for_role`（其内部按角色 `app` 自动分流明日方舟/终末地）。串行执行、每角色独立持锁；单个失败不打断整批，逐条返回 `{roleId, ok, alreadySigned, error}` |
+| `do_arknights_attendance` | commands/arknights.rs:81 | `state`、`role_id: String` | `Result<serde_json::Value, String>` | `AccountService::do_arknights_attendance` → `ArknightsService::do_attendance`（`POST /api/v1/game/attendance`，body `{gameId: 1, uid}`）。返回 `ArknightsAttendanceResult`（`awards[]` + `tomorrowAwards[]`，全补好 `resource.icon`）；今天已签到时 `alreadySigned = true` + 空 `awards`，不报错 |
 | `capture_start` | commands/capture.rs:3 | 无 | `Result<CaptureStatus, String>` | `utils::capture::start` |
 | `capture_stop` | commands/capture.rs:8 | 无 | `Result<CaptureStatus, String>` | `utils::capture::stop` |
 | `capture_status` | commands/capture.rs:13 | 无 | `Result<CaptureStatus, String>` | `utils::capture::status` |
@@ -386,14 +387,27 @@
 - 前端调用方：无（仓库数据暂未接入界面）。
 
 ### `get_arknights_attendance`
-- 位置：arknights.rs:58（async）；参数：`state`、`role_id: String`；返回：`Result<serde_json::Value, String>`
-- 逻辑：`ArknightsService::attendance_status` → `GET /api/v1/game/attendance?uid=`。返回本月签到日历、已签到记录与物品静态表（`resourceInfoMap`）。
-- 前端调用方：`src/components/cards/attendance/index.tsx`、`src/pages/attendance.tsx`（分流三元 `isArknights ? "get_arknights_attendance" : "get_attendance"`）。明日方舟的响应无 `hasToday` 字段，由 `src/utils/attendanceHelpers.ts` 的 `detectSignedToday` 推导。
+- 位置：arknights.rs:60（async）；参数：`state`、`role_id: String`；返回：`Result<serde_json::Value, String>`
+- 逻辑：`ArknightsService::attendance_status` → `GET /api/v1/game/attendance?gameId=1&uid=`。返回本月签到日历（30 格）、已签到记录与物品静态表（`resourceInfoMap`，图标由后端按 `resourceId` 补成 `https://web.hycdn.cn/arknights/game/assets/item/{id}.png`）。
+- **返回体额外带三项后端计算字段**：`hasToday`（今天是否已签到）、`todayIndex` / `tomorrowIndex`（今日/明日奖励在 `calendar` 里的下标）。
+- ⚠️ **返回 {code, message, data, timestamp} 外壳，不是裸 data**。前端两个游戏共用一个解析器 parseAttendanceData，按 json.data.calendar 取值（终末地 get_attendance 直接原样返回森空岛响应）。只回 data 本身 → json.data 为 undefined → 解析 null → 界面「获取签到数据失败」。见 AccountService::arknights_attendance_envelope。
+- ⚠️ `calendar` 是**累计 30 格领取轨道，下标与「几号」无关**；判「今天签没签」只能看「有没有 `available && !done` 的格子」。详见 [models.md](models.md) 的 `ArknightsAttendance` 一节。
+- 前端调用方：`src/components/cards/attendance/index.tsx`、`src/pages/attendance.tsx`（分流三元 `isArknights ? "get_arknights_attendance" : "get_attendance"`）。`src/utils/attendanceHelpers.ts` 的 `detectSignedToday` 优先用后端 `hasToday`，缺失时才本地按同一规则推。
 
+### `do_batch_attendance`
+- 位置：arknights.rs:118（async）；参数：`state`、`role_ids: Vec<String>`；返回：`Result<Vec<BatchAttendanceItem>, String>`
+- 逻辑：对 `role_ids` **逐个**调用 `AccountService::do_attendance_for_role`。该方法是唯一的分流点 —— 角色属于明日方舟就走 `POST /api/v1/game/attendance`，属于终末地就走 `/web/v1/game/endfield/attendance`，因此**前端可以把两个游戏的角色混在一起传**。
+- 返回值 `BatchAttendanceItem`（`#[serde(rename_all = "camelCase")]`）：`roleId` / `ok` / `alreadySigned` / `error`。
+- 设计要点：
+  - **串行执行**：森空岛的签名/设备指纹链路对并发敏感，批量场景下稳定性优先于总耗时。
+  - **每角色独立持锁**：签到要发网络请求，长时间占着全局 `Arc<Mutex<AccountService>>` 会阻塞整个账户服务。
+  - **单点失败不打断**：每个角色独立返回 `ok`/`error`，前端逐行展示，而不是整批报错或静默部分成功。
+- 前端调用方：`src/utils/attendanceService.ts` 的 `performBatchAttendance` ← `src/components/cards/attendance/attendance-batch-modal.tsx`（签到页右上角「批量签到」）。
 ### `do_arknights_attendance`
-- 位置：arknights.rs:72（async）；参数：`state`、`role_id: String`；返回：`Result<serde_json::Value, String>`
-- 逻辑：`ArknightsService::do_attendance` → `POST /api/v1/game/attendance`，body `{gameId: 1, uid}`。与终末地签到（靠 `sk-game-role` 头、路径 `/web/v1/game/endfield/attendance`）**完全不同**。今天已签到时接口返回「请勿重复签到」类业务码，`call_skland_api` 原样放行，这里按 `code != 0` 识别并返回**空数组**。
-- 前端调用方：`src/components/cards/attendance/index.tsx`（分流三元 `isArknights ? "do_arknights_attendance" : "do_attendance"`；空数组即幂等成功，走成功文案）。
+- 位置：arknights.rs:81（async）；参数：`state`、`role_id: String`；返回：`Result<serde_json::Value, String>`
+- 逻辑：`ArknightsService::do_attendance` → `POST /api/v1/game/attendance`，body `{gameId: 1, uid}`。与终末地签到（靠 `sk-game-role` 头、路径 `/web/v1/game/endfield/attendance`）**完全不同**。
+- 返回 `{code, message, data}` 外壳（`code` 透传真实业务码 0 / 10001），`data` 为 `ArknightsAttendanceResult`：`code == 0` → `awards[]`（本次奖励）+ `tomorrowAwards[]`（明日奖励，**数组**），两者 `resource.icon` 都已补成 CDN 地址；今天已签到时接口返回 `code=10001`「请勿重复签到」，`call_skland_api` 原样放行，这里折成 `alreadySigned = true` + 空 `awards`。
+- 前端调用方：`src/components/cards/attendance/index.tsx`（分流三元 `isArknights ? "do_arknights_attendance" : "do_attendance"`；按 `result.alreadySigned` 区分「今天已签到」与「签到成功」文案）。
 
 ---
 

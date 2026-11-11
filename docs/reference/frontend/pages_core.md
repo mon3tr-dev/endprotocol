@@ -156,69 +156,41 @@
 - 快照数据流：离开 tab 视图（切 Tab / 返回主界面 / 侧栏父节点 / 侧栏导航守卫）→ `tabSnapshotService.captureTabSnapshot` → invoke `save_tab_snapshot` → PNG 落盘 `snapshots/<tabId>-<ts>.png` + 映射写 config `dashboard_tab_snapshots` → selector 渲染时 `TabSnapshot` 经 `imageCacheManager.load(path)` 显示。
 
 ## `src/pages/attendance.tsx`
-**职责**：签到（考勤）页面。读取当前选中账户 → 通过 Tauri 后端取签到原始数据并解析 → 渲染 `AttendanceRewards` 奖励面板；处理加载、错误与空态。
+**职责**：签到（考勤）页面。读取当前选中账户 → 按角色所属游戏分流拉取签到数据 → 展示今日/明日奖励 + **签到按钮** + 角色切换 + 完整月度奖励面板；**右上角「批量签到」**打开 `AttendanceBatchModal`（多选未签到账户一键签到 + 每账号自动签到开关）。
+
+> ⚠️ **历史 bug（已修）**：早先本页只渲染只读的 `AttendanceRewards`，**页面上根本没有任何签到按钮**，用户在签到页面点哪里都没反应（卡片里有 `handleSignIn`，页面却没有）。现在签到动作统一走 `@/utils/attendanceService`，卡片与页面共用同一套分流与幂等判定。
 
 **导出**：`export default function AttendancePage`（默认导出组件）。
 
 **主要依赖**：
-- 项目内：`@/components/ui/glass`（`GlassCard`/`GlassProgressCircle`）、`@/utils/accountService`（`getSelectedAccount`/`getAccounts`/`Account`）、`@/types`（`resolveServerLabel`）、`@/components/cards/attendance/attendance-rewards`（`AttendanceRewards`）、`@/components/cards/attendance/index`（`parseAttendanceData`/`AttendanceData`）、`@/utils/logger`（`logError`）。
-- 第三方：`react`（`useState`/`useEffect`/`useCallback`/`useMemo`）、`react-i18next`、`@tauri-apps/api/core`（`invoke`）。
+- 项目内：`@/components/ui/glass`（`GlassCard`/`GlassProgressCircle`/`GlassButton`/`GlassSwitch`）、`@/utils/accountService`（`getSelectedAccount`/`getAccounts`/`setSelectedAccount`/`Account`）、`@/types`（`resolveServerLabel`）、`@/components/ui/game-badge`（`AccountNameLine`）、`@/components/cards/attendance/attendance-rewards`（`AttendanceRewards`）、`@/components/cards/attendance/index`（`parseAttendanceData`/`rewardAt`/`AttendanceData`）、**`@/utils/attendanceService`（`fetchAttendanceRaw`/`resolveAttendanceGame`/`signInWithFeedback`）、**`@/cards/startup-service`（`CardStartupService.isAutoSignEnabled`/`setAutoSign`/`onAutoSignChanged`）****、`@/utils/imageLoader`（`Img`）、`@/utils/logger`（`logError`）。
+- 第三方：`react`（`useState`/`useEffect`/`useCallback`/`useMemo`/`useRef`）、`react-i18next`。
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
-| `AttendancePage` | attendance.tsx:11 | 页面组件：state 见下 |
-| `attendanceData` 等 state | attendance.tsx:13-17 | `attendanceData`（解析后数据）、`accounts`、`accountId`、`isLoading`、`error` |
-| `loadData` | attendance.tsx:19 | `useCallback([t])`：`getSelectedAccount` → 无选中则清空返回 → `getAccounts` → `invoke("get_attendance", { roleId })` → `parseAttendanceData`，解析失败设 `card:attendance_error`，异常 `logError` + `error = String(e)` |
-| 初始加载 effect | attendance.tsx:49 | `loadData()`（依赖 `[loadData]`） |
-| 账户切换 effect | attendance.tsx:53 | 监听 window `accountChanged` → `loadData()` |
-| `selectedAccount` | attendance.tsx:59 | `useMemo`：按 `accountId` 从 `accounts` 找出当前账户 |
-| 渲染 | attendance.tsx:64-106 | 标题 `sidebar.attendance` + 账户副标题（66-77 行）；四态互斥：`isLoading` 进度圈（79-87）→ `error` 卡片（88-93）→ 无数据卡片 `card:attendance_no_account`（94-99）→ `GlassCard + AttendanceRewards`（100-104） |
+| `AttendancePage` | attendance.tsx:20 | 页面组件 |
+| `attendanceData` / `accounts` / `accountId` / `isLoading` / `error` / `signPhase` | attendance.tsx:21-27 | state；`signPhase` 为 `idle`/`spinning`/`done` |
+| `accountsRef` | attendance.tsx:35 | 账户列表 ref 镜像：`loadData` 分流要读 `game` 但不进依赖数组，否则与「加载账户」互相触发 |
+| `loadData(roleIdOverride?)` | attendance.tsx:37 | `useCallback([t])`：`getSelectedAccount`（或入参）→ `getAccounts` → `resolveAttendanceGame` 分流 → `fetchAttendanceRaw` → `parseAttendanceData`；失败设 `card:attendance_error` |
+| 初始加载 / 账户切换 effect | — | `loadData()`；监听 window `accountChanged` |
+| `selectedAccount` | — | `useMemo`：按 `accountId` 找当前账户 |
+| `roleOptions` | — | 所有可签到角色（同一通行证下官服/B服各一个时用于切换） |
+| `handleSignIn` | — | `signInWithFeedback(accountId, game, t, () => loadData(accountId))`；已用 `hasToday` 短路，避免无谓重复请求 |
+| `handleSwitchRole` | — | `setSelectedAccount(roleId)` → `loadData(roleId)`，切角色后重新取数 |
+| `showBatchModal` | — | 控制批量签到弹窗；右上角 `GlassButton`（`BatchIcon`）打开 |
+| `autoSign` | — | 当前账户「启动时自动签到」开关。真值来自全局配置 `card_auto_sign_users`（**与卡片实例无关**），经 `CardStartupService.isAutoSignEnabled` 读取 |
+| `onAutoSignChanged` 订阅 | — | 监听广播：任意入口改了某角色开关，本页同步刷新（`changedRoleId === accountId` 才更新） |
+| `handleToggleAutoSign(enabled)` | — | 乐观更新 → `CardStartupService.setAutoSign(accountId, enabled)` 落盘并广播；失败回滚 UI |
+| `todayReward` / `tomorrowReward` | — | `rewardAt(data, todayIndex/tomorrowIndex)` |
+| `signedToday` / `canSign` | — | `hasToday`；`canSign = accountId && data && !hasToday` → 控制按钮 `isDisabled` |
+| `RewardSummary` | — | 页内组件：图标 + 名称 + 数量，`claimed` 时 45% 透明并叠对勾 |
 
-**内部结构**：
-- 1-9 行：导入。
-- 11-17 行：组件与状态声明。
-- 19-57 行：数据加载（`loadData`）与两个 effect。
-- 59-62 行：`selectedAccount` 派生。
-- 64-106 行：JSX 渲染（无弹窗、无分页）。
+**数据来源**
+- `attend` 相关命令（经 `attendanceService` 分流）：明日方舟 `get_arknights_attendance` / `do_arknights_attendance`；终末地 `get_attendance` / `do_attendance`。
+- 账户：`get_selected_account`、`get_accounts`、`set_selected_account`。
+- i18n key：`sidebar.attendance`、`card:attendance_signed`、`card:attendance_not_signed`、`card:attendance_sign_btn`、`card:attendance_already_signed`、`card:attendance_refresh`、`card:attendance_today`、`card:attendance_tomorrow`、`card:attendance_select_account`、`card:attendance_error`、`card:attendance_no_account`。
 
-**备注**：
-- **invoke 命令**：`get_attendance`（attendance.tsx:33，参数 `{ roleId }`）。
-- 路由：`/attendance`（`App.tsx:99-106`），外层 `DashboardLayout`。
-- window 事件：监听 `accountChanged`（账户切换时重载）。
-- i18n key 前缀：`sidebar.attendance`、`card:attendance_error`、`card:attendance_no_account`。
-- 数据流：`getSelectedAccount()`（invoke `get_selected_account`）+ `getAccounts()`（invoke `get_accounts`）→ `invoke("get_attendance")` → `parseAttendanceData`（解析逻辑在 `@/components/cards/attendance/index`）→ `AttendanceRewards`。
-
-## `src/pages/medals.tsx`
-**职责**：勋章页面。读取当前选中账户的完整角色详情，取出 `achieve.achieveMedals` 列表交给 `MedalBrowser` 浏览；处理加载、空态与账户切换。
-
-**导出**：`export default function MedalsPage`（默认导出组件）。
-
-**主要依赖**：
-- 项目内：`@/components/ui/glass`（`GlassCard`/`GlassProgressCircle`）、`@/utils/accountService`（`getSelectedAccount`）、`@/utils/roleDataService`（`roleDataService.getFullCharDetail`）、`@/components/cards/achievement/medal-browser`（`MedalBrowser`）、`@/types/charDetail`（`AchieveMedal`）、`@/utils/logger`（`logError`）。
-- 第三方：`react`（`useState`/`useEffect`/`useCallback`）、`react-i18next`。
-
-| 符号 | 位置 | 说明 |
-| --- | --- | --- |
-| `MedalsPage` | medals.tsx:10 | 页面组件 |
-| `medals` / `isLoading` | medals.tsx:12-13 | 仅两个 state：勋章数组、加载标记（**无 error state**，异常只写日志） |
-| `loadData` | medals.tsx:15 | `useCallback([])`：`getSelectedAccount` → 无 id 则结束加载 → `roleDataService.getFullCharDetail(id)` → 有 `detail?.achieve?.achieveMedals` 则写入，否则置 `[]`；`catch` 仅 `logError` |
-| 初始加载 effect | medals.tsx:36 | `loadData()` |
-| 账户切换 effect | medals.tsx:40 | 监听 window `accountChanged` → `loadData()` |
-| 渲染 | medals.tsx:46-80 | 标题 `sidebar.medals` + 数量副标题（52-56 行）；三态互斥：`isLoading` 进度圈（59-67）→ `medals.length === 0` 空态卡片 `card:ach_no_medals`（68-73）→ `MedalBrowser medals={medals}`（74-78，外层 `flex-1 min-h-0` 撑满高度） |
-
-**内部结构**：
-- 1-8 行：导入。
-- 10-13 行：组件与状态。
-- 15-44 行：`loadData` 与两个 effect。
-- 46-80 行：JSX（标题区 48-57、三态内容 59-78）。
-
-**备注**：
-- **invoke 命令**：本文件无直接 `invoke(...)`；间接经 `roleDataService.getFullCharDetail`（其内部亦无直接 invoke 字符串，数据来自角色详情服务）与 `getSelectedAccount`（invoke `get_selected_account`）。
-- 路由：`/medals`（`App.tsx:91-98`），外层 `DashboardLayout`。
-- window 事件：监听 `accountChanged`。
-- i18n key：`sidebar.medals`、`card:ach_no_medals`。
-- 数据流：`getSelectedAccount()` → `roleDataService.getFullCharDetail(id)` → `detail.achieve.achieveMedals` → `MedalBrowser`。注意加载失败不显示错误提示，只会表现为「无勋章」空态（仅日志可见）。
-
+**备注（invoke/listen）**：无 `listen`；命令均经 `attendanceService` / `accountService` 封装，本文件不直接 `invoke`。批量签到弹窗挂在页面底部（`<AttendanceBatchModal>`），签到完成后回调 `loadData()` 刷新当前账户。
 ## `src/pages/domain.tsx`
 **职责**：区域信息独立页面。把 `domain_info` 卡片的数据（大世界区域等级、区域货币、基建建设点）以整页排版呈现：顶部页头（标题 + 账户切换按钮 + 刷新）→ 多区域胶囊切换 → 概览卡（区域名 / 等级 / 货币进度条）→ 建设点卡片网格（头像、名称、等级、MAX 徽标、货币与经验进度条、上次产出时间）。
 

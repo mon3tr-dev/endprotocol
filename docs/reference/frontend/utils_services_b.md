@@ -349,19 +349,46 @@
 
 **备注**：模块加载时注册 `window.addEventListener("accountChanged", invalidateRoleGameCache)` —— 切换账户后缓存立刻失效，避免拿旧的游戏标识去分流。无 Tauri `invoke`（间接经 `getAccounts`）。
 
+## `src/utils/attendanceService.ts`
+**职责**：**签到动作的共享实现**（卡片与签到页面共用）。
+
+> 为什么存在：签到卡片早先自己写了 `handleSignIn`，而签到页面只渲染只读奖励面板，导致 **页面上没有任何签到按钮、点击无效**。两个游戏的分流、幂等判定、提示文案若各写一遍必然漂移，故收敛到这里。
+
+**导出**：`AttendanceGame`、`resolveAttendanceGame()`、`fetchAttendanceRaw()`、`performAttendanceSignIn()`、`signInWithFeedback()`。
+**主要依赖**：`@tauri-apps/api/core`（`invoke`）、`@/utils/messageStore`（`addMessage`）、`@/utils/logger`（`logError`）。
+
+| 符号 | 位置 | 说明 |
+| --- | --- | --- |
+| `AttendanceGame` | attendanceService.ts:15 | `"arknights" \| "endfield"` |
+| `resolveAttendanceGame(accounts, roleId)` | attendanceService.ts:18 | 按账户 `game` 字段判定（缺失按终末地，与后端默认一致） |
+| `fetchAttendanceRaw(roleId, game)` | attendanceService.ts:29 | 分流 `get_arknights_attendance` / `get_attendance`，返回**原始响应**交给 `parseAttendanceData` 归一 |
+| `performAttendanceSignIn(roleId, game)` | attendanceService.ts:38 | 分流 `do_arknights_attendance` / `do_attendance`；返回 `{ alreadySigned, raw }`。明日方舟看 `data.alreadySigned` 或顶层 `code === 10001`；终末地看 `code === 10001` |
+| `RoleAttendanceState` | attendanceService.ts:22 | `{ roleId, game, signed: boolean \| null, error? }` —— 批量弹窗用的单角色状态 |
+| `BatchAttendanceItem` | attendanceService.ts:30 | 后端 `do_batch_attendance` 的单条结果：`{ roleId, ok, alreadySigned, error }` |
+| `fetchAttendanceStates(accounts, roleIds)` | attendanceService.ts:81 | **并发**查多个角色今日是否已签到（复用 `fetchAttendanceRaw` + `parseAttendanceData`），单条失败置 `signed: null` 并带 `error` |
+| `performBatchAttendance(roleIds)` | attendanceService.ts:120 | 调 `do_batch_attendance`，一次 IPC 完成批量签到；兼容 camelCase/snake_case 返回 |
+| `signInWithFeedback(roleId, game, t, onSuccess?)` | attendanceService.ts:140 | 签到 + 提示：成功/幂等发 info 消息（`attendance_already_signed` / `attendance_sign_success`），失败发 urgent（`attendance_sign_failed`）并返回 `false`；成功后执行 `onSuccess` 回调（通常用于刷新数据） |
+
+**备注**：无 `listen`。`invoke` 命令：`get_attendance`、`get_arknights_attendance`、`do_attendance`、`do_arknights_attendance`。
 ## `src/utils/attendanceHelpers.ts`
-**职责**：**《明日方舟》「今天是否已签到」的判定**。终末地的签到响应直接给 `hasToday`，明日方舟没有这个字段，只能自己推。
-**导出**：`detectSignedToday(calendar, data)`。
+**职责**：**《明日方舟》签到数据的判定与下标解析**。终末地的签到响应直接给 `hasToday`，明日方舟没有这个字段，只能自己推。
+**导出**：`claimableIndex(calendar)`、`lastDoneIndex(calendar)`、`detectSignedToday(calendar, data)`、`resolveSlotIndices(calendar, data)`。
 **主要依赖**：无运行时依赖（纯函数）。
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
-| `localDayKey(tsSeconds)`（私有） | attendanceHelpers.ts:19 | 时间戳（秒）→ 本地自然日 `YYYY-MM-DD` |
-| `detectSignedToday(calendar, data)` | attendanceHelpers.ts:33 | **路径 1（主）**：`data.records[]` 是本月签到流水，`ts` 是签到时刻；有一条落在今天（与 `currentTs` 同一自然日）即已签。**路径 2（辅）**：`calendar` 是本月日历，今天的日号 - 1 即下标（下标越界说明日历不从 1 号起，不可用）。两条路都无结论时**保守返回 `true`（已签）** |
+| `claimableIndex(calendar)` | attendanceHelpers.ts:43 | 第一个 `available && !done` 的下标（无可领格返回 `-1`） |
+| `lastDoneIndex(calendar)` | attendanceHelpers.ts:49 | 最后一个 `done` 的下标 |
+| `localDayKey(tsSeconds)`（私有） | attendanceHelpers.ts:58 | 时间戳（秒）→ 本地自然日 `YYYY-MM-DD` |
+| `hasRecordToday(data)`（私有） | attendanceHelpers.ts:67 | `records[].ts` 是否有落在 `currentTs` 当天的流水 |
+| `detectSignedToday(calendar, data)` | attendanceHelpers.ts:84 | **① 后端 `hasToday` 优先**（当前版本总是给）；② 否则「有可领格 ⇒ 未签」；③ 日历为空时退回看 `records`；④ 都无结论**保守返回 `true`（已签）** |
+| `resolveSlotIndices(calendar, data)` | attendanceHelpers.ts:110 | 今日/明日奖励下标：优先用后端 `todayIndex`/`tomorrowIndex`，缺失时按「可领格 → 最后一个已领格」推；返回 `{ todayIndex, tomorrowIndex }` |
 
 **备注**：
-- ⚠️ **不用 `available` 判定**：实测明日方舟的日历项 `available` 恒为 `false`，它不是终末地「今天可领取」的语义，拿它判断会永远判成「未签」，进而让界面显示可点击的签到按钮、点下去后端返回「请勿重复签到」。
+- ⚠️ **`calendar` 是「累计 30 格领取轨道」，不是日期网格**（2026-11-11 抓包确认：11 号、签到前，只有**下标 1** 是 `available:true`）。所以「今天几号 - 1」当下标是**错的** —— 11 号会去读下标 10，而那是本月第 11 次签到的奖励、`done` 恒为 `false`，于是**永远判成未签到**。早期版本就犯了这个错，现已被 `attendance_signed_today_uses_claimable_slot_not_day_of_month` 回归测试锁住。
+- 正确判据：**存在 `available && !done` 的格子 ⇔ 今天还能领 ⇔ 今天没签**。
 - 保守返回 `true` 的理由：判成未签会让用户点出「故障感」的重复签到提示；判成已签最多少显示一次可领奖励。
+- 后端已把 `hasToday`/`todayIndex`/`tomorrowIndex` 算好下发，本文件的两个判定函数主要是**老后端响应的兜底**，语义与后端 `ArknightsAttendance::signed_today` 保持一致。
 
 ## `src/utils/diagnostics.ts`
 **职责**：诊断导出与崩溃报告 IPC 封装（共 75 行）。收集内存与持久化日志（对 `data` 做循环引用/Error 安全序列化），调用 `export_diagnostics` 生成 zip，并提供文件定位、日志目录打开与崩溃报告确认。

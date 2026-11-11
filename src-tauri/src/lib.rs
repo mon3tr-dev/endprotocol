@@ -141,6 +141,8 @@ pub fn run() {
             // Attendance commands
             commands::attendance::get_attendance,
             commands::attendance::do_attendance,
+            // 批量签到（两个游戏混传，后端按角色 app 自行分流）
+            commands::arknights::do_batch_attendance,
             // Arknights (明日方舟) data commands —— 与终末地的 query_role_data 平行，
             // 走森空岛的 /api/v1/game/player/* 系列（按渠道绑定 uid 寻址）
             commands::arknights::get_arknights_player_info,
