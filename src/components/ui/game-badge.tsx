@@ -1,5 +1,6 @@
 import clsx from "clsx";
 import { useTranslation } from "react-i18next";
+import type { ReactNode } from "react";
 import type { GameId } from "@/utils/accountService";
 
 /**
@@ -30,6 +31,36 @@ export const GAME_META: Record<
 /** 账户/角色上的 `game` 字段可能缺失（老缓存），统一收敛为终末地 */
 export function normalizeGameId(game?: string | null): GameId {
   return game === "arknights" ? "arknights" : "endfield";
+}
+
+/**
+ * 账号名 + 游戏徽标（**同一行、垂直居中、徽标紧跟名字之后**）。
+ *
+ * 约定：徽标贴着名字，不推到行尾 —— 行尾可能还有选中勾 / ACTIVE 标示，
+ * 用 `ml-auto` 推右会和它们挤在一起，且徽标与名字分处两行时视觉上会"掉下去"。
+ * 因此徽标始终与名字同排，`items-center` 保证与文字基线视觉居中。
+ *
+ * 名字用 `truncate` 收缩，徽标 `shrink-0` 永不被压扁。
+ */
+export function AccountNameLine({
+  game,
+  children,
+  className,
+}: {
+  game?: string | null;
+  /** 账号名（或任意要显示在徽标左侧的内容） */
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    // `inline-flex`：在列表行（块级父元素）与段落内联文字里都能正确排版。
+    // 内层必须同时有 `min-w-0` —— flex item 默认 `min-width:auto`，不加就会被
+    // 内容撑到自然宽度，`truncate` 完全不生效（长昵称会把按钮顶出 `max-w-48`）。
+    <span className={clsx("inline-flex max-w-full items-center gap-1.5 align-middle", className)}>
+      <span className="min-w-0 truncate">{children}</span>
+      <GameBadge game={game} variant="short" className="shrink-0" />
+    </span>
+  );
 }
 
 interface GameBadgeProps {
@@ -95,3 +126,4 @@ export function GameBadge({
     </span>
   );
 }
+

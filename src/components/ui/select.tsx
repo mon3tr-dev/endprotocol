@@ -1,11 +1,18 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils";
 import { ChevronDownIcon } from "@/components/ui/app-icon";
 
 export interface GlassSelectOption {
   value: string;
-  label: string;
+  /**
+   * 选项文案。
+   *
+   * 允许 `ReactNode` 是为了在同一行里放标识类元素（如 `<AccountNameLine>`：
+   * 昵称 + 紧跟其后的游戏徽标）。纯字符串场景完全不变
+   * （`string` 本身即合法 `ReactNode`），因此是向后兼容的类型放宽。
+   */
+  label: ReactNode;
 }
 
 export interface GlassSelectProps {
@@ -95,7 +102,7 @@ function GlassSelect({
           open && "ring-2 ring-primary/40",
         )}
       >
-        <span className={cn("truncate", current ? "text-foreground" : "text-muted")}>
+        <span className={cn("min-w-0 flex-1 text-left", current ? "text-foreground" : "text-muted")}>
           {current?.label ?? placeholder}
         </span>
         <ChevronDownIcon
@@ -138,7 +145,7 @@ function GlassSelect({
                     closeMenu();
                   }}
                   className={cn(
-                    "w-full text-left px-3 py-2 text-sm truncate cursor-pointer",
+                    "w-full text-left px-3 py-2 text-sm cursor-pointer",
                     "[transition:background-color_var(--lg-dur-fast)_var(--lg-ease-standard)]",
                     active
                       ? highlightSelected

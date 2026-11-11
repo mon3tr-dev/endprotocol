@@ -193,20 +193,48 @@
 **备注**：`Provider` 传入渲染函数 `(error) => <GlobalErrorFallback error={error} />`，因此根级错误展示完整诊断面板；默认兜底仅在单独使用 `ErrorBoundary` 时出现。
 
 ## `src/components/ui/game-badge.tsx`
-**职责**：游戏标识徽标——一枚游戏图标（可带游戏名），用来区分账户/角色属于《明日方舟：终末地》还是《明日方舟》。账户页的账户卡片头部、角色行、角色选择弹窗、授权页、账户切换弹窗都复用它。
-**导出**：`GAME_META`、`normalizeGameId`、`GameBadge`
+**职责**：游戏标识徽标 + 账号副标题行——区分账户/角色属于《明日方舟：终末地》还是《明日方舟》。
+账户页、账户切换弹窗、抽卡/签到/区域/帝江号页、仪表盘、侧边栏当前账号、标签页默认角色、
+签到卡片设置、以及 **7 个可多账号切换的卡片**（account-info / account-progress / achievement /
+character-list / domain-info / spaceship / attendance-settings-modal）都复用它。
+
+> ⚠️ **规则：任何列出或选择多个账号的位置，都必须显示游戏标识。**
+> 两个游戏的官服角色 `serverId` 都是 `1`、服务器名都叫「官服」，只写「官服 · Lv.60」
+> 无法分辨是哪条记录属于哪个游戏。漏显示比多显示危险得多，因此 `AccountNameLine`
+> **不提供关闭开关**。
+>
+> **位置约定：徽标紧跟名字之后、与名字垂直居中，不推到行尾。**
+> 原因有二：① 行尾常有选中勾 / ACTIVE 标示，`ml-auto` 会把徽标挤到它们旁边
+> （实测截图里就挤在一起了）；② 徽标若与名字分处两行，视觉上会"掉下去"、
+> 和名字对不齐。因此徽标**始终与名字同排**，出现方式统一为
+> `<p><AccountNameLine game={...}>{nickname}</AccountNameLine></p>`，
+> 「服务器 · 等级」自成一行且**不含游戏信息**。
+
+**导出**：`GAME_META`、`normalizeGameId`、**`AccountNameLine`**、`GameBadge`
 **主要依赖**：`react-i18next`（`useTranslation`，文案走 `game.*` 命名空间）、`clsx`、`@/utils/accountService` 的 `GameId` 类型
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
-| `GAME_META` | game-badge.tsx:19 | `Record<GameId, {icon, labelKey, shortKey}>`：图标复用 `public/games/*.png`（与左侧游戏切换栏同一份资源），文案键为 `game.endfield` / `game.endfield_short` / `game.arknights` / `game.arknights_short` |
-| `normalizeGameId(game?)` | game-badge.tsx:36 | 任意字符串 → `GameId`；`"arknights"` 之外一律按 `endfield`（覆盖后端返回 `undefined` 的老缓存） |
-| `GameBadge` | game-badge.tsx:55 | props：`game?`、`variant`（`icon` 只有图标 / `short` 图标+极短名 / `full` 图标+完整游戏名，默认 `short`）、`size`（`sm`/`md`）、`className`。`title` 恒为完整游戏名，便于窄空间只露图标时仍可悬停查看 |
+| `GAME_META` | game-badge.tsx:14 | `Record<GameId, {icon, labelKey, shortKey}>`：图标复用 `public/games/*.png`（与左侧游戏切换栏同一份资源），文案键为 `game.endfield` / `game.endfield_short` / `game.arknights` / `game.arknights_short`。**中文文案约定**：终末地短名用 `终末地`（全称 `明日方舟：终末地` 太长，徽标放不下）；**明日方舟短名用全称 `明日方舟`**，不用缩写 `方舟` —— 徽标是同屏唯一能区分两作的凭据，缩写会让不熟悉的用户看不懂 |
+| `normalizeGameId(game?)` | game-badge.tsx:32 | 任意字符串 → `GameId`；`"arknights"` 之外一律按 `endfield`（覆盖后端返回 `undefined` 的老缓存） |
+| **`AccountNameLine`** | game-badge.tsx:45 | props：`game?`、`children`（账号名）、`className`。`inline-flex max-w-full` 渲染「名字 + 紧跟其后的游戏徽标」，`items-center` 保证徽标与文字垂直居中。内层名字带 **`min-w-0 truncate`**（flex item 默认 `min-width:auto`，漏了就截断失效、长昵称会把按钮顶出 `max-w-48`），徽标 `shrink-0`。**直接放在 `<p>` / `<div>` 里即可**，不需要外层再写 flex |
+| `GameBadge` | game-badge.tsx:80 | props：`game?`、`variant`（`icon` 只有图标 / `short` 图标+短名 / `full` 图标+完整游戏名，默认 `short`）、`size`（`sm`/`md`）、`className`（追加在末尾）。`title` 恒为完整游戏名，便于悬停查看。注：明日方舟的 `short` 与 `full` 目前文案相同（都用「明日方舟」），终末地仍是「终末地 / 明日方舟：终末地」 |
 
 **备注**：
 - 图标是 `<img>` 而非内联 SVG：`public/games/*.png` 已按官方启动器的超椭圆切好 alpha，`rounded-[5px]` 只做轻微收敛。
 - 项目约定「持久化图标标识而非字面量」——这里存的是 `game` id（`endfield`/`arknights`），图标路径与文案都由 `GAME_META` 查表得出，没有把 emoji 或路径写进配置。
 - 游戏文案不放硬编码中文：`game.*` 命名空间在 `src/locales/{zh,en}/translation.json` 各有一份。
+- **标准用法**（账号列表项、角色下拉、侧边栏、卡片组统一此形状）：
+  ```tsx
+  <p className="text-sm font-medium">
+    <AccountNameLine game={acc.game}>{acc.nickname}</AccountNameLine>
+  </p>
+  <p className="text-xs text-muted truncate">
+    {resolveServerLabel(acc.server, i18n.language)} · Lv.{acc.level}
+  </p>
+  ```
+  行尾若还有选中勾 / ACTIVE 标示，让它留在**父级 flex 的末尾**（配 `ml-auto shrink-0`），不要和徽标抢位置。
+- **折叠态的账号按钮**（抽卡页 / 区域页 / 帝江号页的角色切换按钮）同样用 `AccountNameLine` 包裹昵称。
 
 ## `src/components/ui/global-alert.tsx`
 **职责**：全局顶部浮层提示（toast 式 Alert），模块级发布/订阅，可在任意模块直接调用。
@@ -425,10 +453,10 @@
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
-| `GlassSelectOption` | select.tsx:6 | `{ value, label }` |
-| `GlassSelectProps` | select.tsx:11 | `value`（可 null）、`options`、`onChange(value)`、`className`、`placeholder`、`maxMenuHeight`（默认 288）、`highlightSelected`（默认 false，选中项加粗） |
-| `GlassSelect` | select.tsx:21 | 触发按钮 + fixed 定位菜单（`z-[9999]`，按下拉框底部 `top = rect.bottom + 4`，:80-82）；菜单宽度 `max(150, 触发器宽度)` |
-| `SelectProps` / `Select` | select.tsx:158 / 168 | 薄封装：回调取 `onValueChange ?? onChange`；**两者都不传时直接返回 null（不渲染）**（:178） |
+| `GlassSelectOption` | select.tsx:6 | `{ value, label }`。`label` 类型为 **`ReactNode`**（原为 `string`；字符串本身即合法 `ReactNode`，因此是向后兼容的类型放宽）。放标识时传 `<AccountNameLine game={...}>{nickname}</AccountNameLine>` |
+| `GlassSelectProps` | select.tsx:18 | `value`（可 null）、`options`、`onChange(value)`、`className`、`placeholder`、`maxMenuHeight`（默认 288）、`highlightSelected`（默认 false，选中项加粗） |
+| `GlassSelect` | select.tsx:28 | 触发按钮 + fixed 定位菜单（`z-[9999]`，按下拉框底部 `top = rect.bottom + 4`）；菜单宽度 `max(150, 触发器宽度)`。触发器文案用 `min-w-0 flex-1 text-left`（由 `label` 内部自行 `truncate`） |
+| `SelectProps` / `Select` | select.tsx:179 / 190 | 薄封装：回调取 `onValueChange ?? onChange`；**两者都不传时直接返回 null（不渲染）** |
 
 **备注**：打开状态下任意 document mousedown 或 window scroll（capture）都会关闭菜单（select.tsx:48-62）。菜单入场用 `animate-scale-in`（slow 档，`-8px + scale(0.9)`，origin 由该类内置为 top center），关闭先置 `closing` 播 `animate-fade-out`、280ms 后卸载（closeMenu，:37-45），收尾不再被切掉。
 
