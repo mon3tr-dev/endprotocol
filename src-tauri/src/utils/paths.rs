@@ -71,6 +71,21 @@ pub fn gacha_total_catalog_file_path() -> Result<PathBuf, &'static str> {
     app_data_dir().map(|d| d.join("gacha_records").join("total.json"))
 }
 
+/// 《明日方舟》寻访记录文件路径（gacha_records 子目录）
+///
+/// **只按渠道绑定 uid 分文件**，不带 serverId —— 与终末地（`{userId}_{serverId}.json`）
+/// 刻意不同：明日方舟的 `/api/gacha/history` 不接受 `server_id`，同一把 u8token
+/// （= 同一个 uid）下就是一条连续流水，官服/B服不会混在一起，因为它们的 uid 本来就不同。
+///
+/// 另起文件名前缀还有个原因：官服的明日方舟角色与终末地角色的 `serverId` 都是 `1`，
+/// 若沿用 `gacha_records_{userId}_{serverId}.json` 会**互相覆盖**。
+pub fn arknights_gacha_records_file_path(uid: &str) -> Result<PathBuf, &'static str> {
+    app_data_dir().map(|d| {
+        d.join("gacha_records")
+            .join(format!("arknights_gacha_records_{}.json", uid))
+    })
+}
+
 /// 旧版抽卡记录文件路径（与 app_config.json 同级），仅用于存量数据兼容读取
 pub fn gacha_records_file_path_legacy(
     user_id: &str,

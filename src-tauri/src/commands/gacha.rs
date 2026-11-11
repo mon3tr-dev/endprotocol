@@ -4,7 +4,9 @@ use std::time::Duration;
 use tauri::State;
 use tokio::sync::Mutex;
 
+use crate::models::role::GAME_ARKNIGHTS;
 use crate::services::account_service::AccountService;
+use crate::services::arknights_gacha_service::ArknightsGachaService;
 use crate::services::config_service::ConfigService;
 use crate::services::gacha_service::GachaService;
 use crate::utils::AppError;
@@ -24,6 +26,19 @@ struct RoleOwner {
     server_id: String,
     /// 用户是否在账号页为这个角色打开了抽卡授权
     authorized: bool,
+    /// 角色所属游戏：`endfield` / `arknights`。
+    ///
+    /// 两个游戏的抽卡接口**完全不同**（端点、token 参数名、卡池枚举、翻页游标、
+    /// 稀有度基准），因此这个字段决定走哪条链路 —— 详见
+    /// [`crate::services::arknights_gacha_service`] 的模块文档。
+    game: String,
+}
+
+impl RoleOwner {
+    /// 该角色是否属于《明日方舟》
+    fn is_arknights(&self) -> bool {
+        self.game == GAME_ARKNIGHTS
+    }
 }
 
 /// 根据 roleId 找到它所属的账号、渠道绑定 uid 与服务器
@@ -63,6 +78,15 @@ fn lookup_role_owner(
                     .get("u8Authorized")
                     .and_then(|v| v.as_bool())
                     .unwrap_or(false),
+                // 老数据（绑定时还没有 app 字段）默认终末地，与 models::role 的 default_game 一致
+                game: {
+                    let g = read("app");
+                    if g.is_empty() {
+                        crate::models::role::GAME_ENDFIELD.to_string()
+                    } else {
+                        g
+                    }
+                },
             });
         }
     }
@@ -114,18 +138,11 @@ async fn fresh_u8token(
         })
 }
 
-/// 取「已授权 + 现换令牌 + 服务器信息」三件套，供同步类命令使用
-async fn prepare_u8token(
-    account_service: &AccountService,
-    config_service: &Arc<SyncMutex<ConfigService>>,
-    role_id: &str,
-) -> Result<(RoleOwner, String), AppError> {
-    let owner = lookup_role_owner(config_service, role_id)?;
-    let token = fresh_u8token(account_service, &owner, role_id).await?;
-    Ok((owner, token))
-}
-
 /// 获取可用卡池 Tab（meta），供前端展示卡池切换
+///
+/// ⚠️ **仅终末地**：明日方舟没有 meta 接口，卡池枚举是 `/api/gacha/cate` 的**分类**，
+/// 由 [`get_arknights_gacha_categories`] 提供。对明日方舟角色调用本命令会直接报错，
+/// 避免前端误以为两个游戏的"卡池"是同一个概念。
 #[tauri::command]
 pub async fn get_gacha_pool_meta(
     account_state: State<'_, Arc<Mutex<AccountService>>>,
@@ -136,12 +153,23 @@ pub async fn get_gacha_pool_meta(
     let account = account_state.lock().await;
     let config_service = account.get_config_service().clone();
 
-    let (owner, u8token) = prepare_u8token(&account, &config_service, &role_id)
-        .await
+    let owner = lookup_role_owner(&config_service, &role_id)
         .map_err(|e| {
             log_error!("get_gacha_pool_meta: prepare failed: {}", e);
             e.to_string()
         })?;
+
+    if owner.is_arknights() {
+        // 明日方舟走 /api/gacha/cate，返回结构与 GachaMetaData 完全不同
+        return Err(
+            "This role belongs to Arknights. Use get_arknights_gacha_categories instead.".to_string(),
+        );
+    }
+
+    let u8token = fresh_u8token(&account, &owner, &role_id).await.map_err(|e| {
+        log_error!("get_gacha_pool_meta: prepare failed: {}", e);
+        e.to_string()
+    })?;
 
     let meta = gacha_state
         .get_pool_meta(&u8token, &owner.server_id)
@@ -156,30 +184,48 @@ pub async fn get_gacha_pool_meta(
 }
 
 /// 手动触发抽卡记录增量同步（从最新读到上次保存的最后一条为止，与旧记录合并）
+///
+/// 按角色所属游戏**自动分流**：
+/// - 终末地 → `ef-webview` 的 `/api/record/char`（`seq_id` 单值游标）
+/// - 明日方舟 → `ak-webview` 的 `/api/gacha/history`（`gachaTs`+`pos` 复合游标）
+///
+/// 前端只调这一个命令，不需要知道自己在同步哪个游戏。
 #[tauri::command]
 pub async fn sync_gacha_records(
     account_state: State<'_, Arc<Mutex<AccountService>>>,
     gacha_state: State<'_, Arc<GachaService>>,
+    arknights_gacha_state: State<'_, Arc<ArknightsGachaService>>,
     role_id: String,
 ) -> Result<serde_json::Value, String> {
     log_info!("sync_gacha_records: START for role_id={}", role_id);
     let account = account_state.lock().await;
     let config_service = account.get_config_service().clone();
 
-    let (owner, u8token) = prepare_u8token(&account, &config_service, &role_id)
-        .await
-        .map_err(|e| {
-            log_error!("sync_gacha_records: prepare failed: {}", e);
-            e.to_string()
-        })?;
+    let owner = lookup_role_owner(&config_service, &role_id).map_err(|e| {
+        log_error!("sync_gacha_records: prepare failed: {}", e);
+        e.to_string()
+    })?;
 
-    let result = gacha_state
-        .sync_records(&owner.user_id, &owner.server_id, &u8token)
-        .await
-        .map_err(|e| {
-            log_error!("sync_gacha_records: FAILED for role_id={}: {}", role_id, e);
-            e.to_string()
-        })?;
+    let is_arknights = owner.is_arknights();
+    let u8token = fresh_u8token(&account, &owner, &role_id).await.map_err(|e| {
+        log_error!("sync_gacha_records: prepare failed: {}", e);
+        e.to_string()
+    })?;
+
+    let result = if is_arknights {
+        // 明日方舟按**渠道绑定 uid** 存盘（接口不吃 server_id，同一 uid 就是一条流水）
+        arknights_gacha_state
+            .sync_records(&owner.binding_uid, &u8token)
+            .await
+    } else {
+        gacha_state
+            .sync_records(&owner.user_id, &owner.server_id, &u8token)
+            .await
+    }
+    .map_err(|e| {
+        log_error!("sync_gacha_records: FAILED for role_id={}: {}", role_id, e);
+        e.to_string()
+    })?;
 
     log_info!("sync_gacha_records: SUCCESS for role_id={}", role_id);
     serde_json::to_value(result).map_err(|e| e.to_string())
@@ -190,6 +236,7 @@ pub async fn sync_gacha_records(
 pub async fn get_saved_gacha_records(
     account_state: State<'_, Arc<Mutex<AccountService>>>,
     gacha_state: State<'_, Arc<GachaService>>,
+    arknights_gacha_state: State<'_, Arc<ArknightsGachaService>>,
     role_id: String,
 ) -> Result<serde_json::Value, String> {
     log_info!("get_saved_gacha_records: START for role_id={}", role_id);
@@ -200,24 +247,30 @@ pub async fn get_saved_gacha_records(
         log_error!("get_saved_gacha_records: lookup failed: {}", e);
         e.to_string()
     })?;
-    let (user_id, server_id) = (owner.user_id, owner.server_id);
 
-    let data = gacha_state
-        .load_records_or_empty(&user_id, &server_id)
-        .map_err(|e| {
-            log_error!(
-                "get_saved_gacha_records: FAILED for role_id={}: {}",
-                role_id,
-                e
-            );
-            e.to_string()
-        })?;
+    let data = if owner.is_arknights() {
+        arknights_gacha_state.load_records_or_empty(&owner.binding_uid)
+    } else {
+        gacha_state.load_records_or_empty(&owner.user_id, &owner.server_id)
+    }
+    .map_err(|e| {
+        log_error!(
+            "get_saved_gacha_records: FAILED for role_id={}: {}",
+            role_id,
+            e
+        );
+        e.to_string()
+    })?;
 
     log_info!("get_saved_gacha_records: SUCCESS for role_id={}", role_id);
     serde_json::to_value(data).map_err(|e| e.to_string())
 }
 
 /// 手动触发武器寻访记录增量同步（从最新读到上次保存的最后一条为止，与旧记录合并）
+///
+/// ⚠️ **仅终末地**：《明日方舟》没有武器寻访，对明日方舟角色调用会返回空结果
+/// （`new_records = 0`），而不是报错 —— 前端的"同步全部记录"会同时调角色与武器，
+/// 明日方舟侧武器恒为空，让整条链路保持可复用。
 #[tauri::command]
 pub async fn sync_weapon_gacha_records(
     account_state: State<'_, Arc<Mutex<AccountService>>>,
@@ -228,12 +281,35 @@ pub async fn sync_weapon_gacha_records(
     let account = account_state.lock().await;
     let config_service = account.get_config_service().clone();
 
-    let (owner, u8token) = prepare_u8token(&account, &config_service, &role_id)
-        .await
-        .map_err(|e| {
-            log_error!("sync_weapon_gacha_records: prepare failed: {}", e);
-            e.to_string()
-        })?;
+    let owner = lookup_role_owner(&config_service, &role_id).map_err(|e| {
+        log_error!("sync_weapon_gacha_records: prepare failed: {}", e);
+        e.to_string()
+    })?;
+
+    // 明日方舟没有武器寻访：直接返回空结果，不发请求、不落盘
+    if owner.is_arknights() {
+        log_info!(
+            "sync_weapon_gacha_records: role {} is Arknights, no weapon gacha — returning empty",
+            role_id
+        );
+        let empty = crate::models::gacha::GachaSyncResult {
+            user_id: owner.binding_uid.clone(),
+            server_id: owner.server_id.clone(),
+            synced_at: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_millis() as i64)
+                .unwrap_or(0),
+            new_records: 0,
+            total_records: 0,
+            per_tab_new: HashMap::new(),
+        };
+        return serde_json::to_value(empty).map_err(|e| e.to_string());
+    }
+
+    let u8token = fresh_u8token(&account, &owner, &role_id).await.map_err(|e| {
+        log_error!("sync_weapon_gacha_records: prepare failed: {}", e);
+        e.to_string()
+    })?;
 
     let result = gacha_state
         .sync_weapon_records(&owner.user_id, &owner.server_id, &u8token)
@@ -252,6 +328,8 @@ pub async fn sync_weapon_gacha_records(
 }
 
 /// 读取本地保存的武器寻访记录（不请求网络）
+///
+/// ⚠️ **仅终末地**：明日方舟恒返回空结构（武器分类在页面上自动隐藏）。
 #[tauri::command]
 pub async fn get_saved_weapon_gacha_records(
     account_state: State<'_, Arc<Mutex<AccountService>>>,
@@ -269,6 +347,23 @@ pub async fn get_saved_weapon_gacha_records(
         log_error!("get_saved_weapon_gacha_records: lookup failed: {}", e);
         e.to_string()
     })?;
+
+    // 明日方舟没有武器寻访：返回空结构，前端据此隐藏「武器」分类
+    if owner.is_arknights() {
+        let empty = crate::models::gacha::SavedWeaponGachaData {
+            user_id: owner.binding_uid,
+            server_id: owner.server_id,
+            last_sync_time: None,
+            pools: HashMap::new(),
+            records: Vec::new(),
+        };
+        log_info!(
+            "get_saved_weapon_gacha_records: role {} is Arknights, returning empty",
+            role_id
+        );
+        return serde_json::to_value(empty).map_err(|e| e.to_string());
+    }
+
     let (user_id, server_id) = (owner.user_id, owner.server_id);
 
     let data = gacha_state
@@ -287,6 +382,62 @@ pub async fn get_saved_weapon_gacha_records(
         role_id
     );
     serde_json::to_value(data).map_err(|e| e.to_string())
+}
+
+/// 获取《明日方舟》寻访卡池分类列表（`GET /api/gacha/cate`）
+///
+/// 这是明日方舟版的「卡池枚举」—— 与终末地的 `get_gacha_pool_meta` 平级，
+/// 但返回的是**分类**（限定寻访·庆典 / 中坚寻访 …），不是 Tab。
+///
+/// ⚠️ 明日方舟对无效 token 返回 `code=0` + 空列表，后端已把它转成鉴权错误，
+/// 前端拿到的 `Err` 说明"token 失效/不匹配"，而不是"没抽过卡"。
+#[tauri::command]
+pub async fn get_arknights_gacha_categories(
+    account_state: State<'_, Arc<Mutex<AccountService>>>,
+    arknights_gacha_state: State<'_, Arc<ArknightsGachaService>>,
+    role_id: String,
+) -> Result<serde_json::Value, String> {
+    log_info!(
+        "get_arknights_gacha_categories: START for role_id={}",
+        role_id
+    );
+    let account = account_state.lock().await;
+    let config_service = account.get_config_service().clone();
+
+    let owner = lookup_role_owner(&config_service, &role_id).map_err(|e| {
+        log_error!("get_arknights_gacha_categories: lookup failed: {}", e);
+        e.to_string()
+    })?;
+
+    if !owner.is_arknights() {
+        return Err(
+            "This role belongs to Endfield. Use get_gacha_pool_meta instead.".to_string(),
+        );
+    }
+
+    let u8token = fresh_u8token(&account, &owner, &role_id).await.map_err(|e| {
+        log_error!("get_arknights_gacha_categories: prepare failed: {}", e);
+        e.to_string()
+    })?;
+
+    let categories = arknights_gacha_state
+        .get_categories(&u8token)
+        .await
+        .map_err(|e| {
+            log_error!(
+                "get_arknights_gacha_categories: FAILED for role_id={}: {}",
+                role_id,
+                e
+            );
+            e.to_string()
+        })?;
+
+    log_info!(
+        "get_arknights_gacha_categories: SUCCESS for role_id={} ({} categories)",
+        role_id,
+        categories.len()
+    );
+    serde_json::to_value(categories).map_err(|e| e.to_string())
 }
 
 /// 从全量 Wiki 目录中按显示名补齐头像映射，返回本次新解析出的数量，
@@ -397,10 +548,23 @@ fn resolve_missing_from_catalog(
 /// 3. 目录条目按 brief.associate.type（char/weapon）归类，预览条目（associate 为 null）
 ///    则按 typeSub（id 1=干员、2=武器）归类，名称回退 brief.name / item.name，图标取 brief.cover
 /// 4. 写回映射文件并返回完整映射
+///
+/// ⚠️ 《明日方舟》走**完全不同**的取图方式：它的 charId（`char_4109_baslin`）虽然也出现在
+/// 明日方舟的 `charInfoMap` 里，但那份数据**没有图标地址**；而 `wiki_catalog`
+/// （`/web/v1/wiki/item/catalog`）是终末地的 Wiki 目录，里面根本没有明日方舟干员。
+/// 因此明日方舟直接按确定的 CDN 规则拼地址：
+///
+/// ```text
+/// https://web.hycdn.cn/arknights/game/assets/char/avatar/{charId}.png
+/// ```
+///
+/// 该地址已用真实干员验证（HTTP 200 + `image/png` + `Access-Control-Allow-Origin: *`），
+/// 且是**幂等的纯函数**，不需要联网探测，因此明日方舟分支不发起任何请求。
 #[tauri::command]
 pub async fn resolve_gacha_avatar_map(
     account_state: State<'_, Arc<Mutex<AccountService>>>,
     gacha_state: State<'_, Arc<GachaService>>,
+    arknights_gacha_state: State<'_, Arc<ArknightsGachaService>>,
     role_id: String,
 ) -> Result<serde_json::Value, String> {
     log_info!("resolve_gacha_avatar_map: START for role_id={}", role_id);
@@ -411,6 +575,37 @@ pub async fn resolve_gacha_avatar_map(
         log_error!("resolve_gacha_avatar_map: lookup failed: {}", e);
         e.to_string()
     })?;
+
+    // ---- 明日方舟：CDN 地址可直拼，无需联网 ----
+    if owner.is_arknights() {
+        let saved = arknights_gacha_state
+            .load_records_or_empty(&owner.binding_uid)
+            .map_err(|e| {
+                log_error!("resolve_gacha_avatar_map: load records failed: {}", e);
+                e.to_string()
+            })?;
+
+        let mut map: HashMap<String, String> = HashMap::new();
+        for rec in &saved.records {
+            // 六星 = rarity 6（已归一化为星数）
+            if rec.is_draw() && rec.rarity == Some(6) {
+                if let Some(cid) = &rec.char_id {
+                    if cid.is_empty() {
+                        continue;
+                    }
+                    map.entry(cid.clone())
+                        .or_insert_with(|| arknights_avatar_url(cid));
+                }
+            }
+        }
+        log_info!(
+            "resolve_gacha_avatar_map: arknights role {} -> {} six-star icons",
+            role_id,
+            map.len()
+        );
+        return serde_json::to_value(map).map_err(|e| e.to_string());
+    }
+
     let (user_id, server_id) = (owner.user_id, owner.server_id);
 
     let saved = gacha_state
@@ -557,10 +752,13 @@ pub async fn resolve_gacha_avatar_map(
 }
 
 /// 获取本地抽卡记录统计（总数/按卡池/按稀有度/按角色）
+///
+/// 按角色所属游戏分流读档；统计口径一致（`rarity` 已经是星数）。
 #[tauri::command]
 pub async fn get_gacha_record_stats(
     account_state: State<'_, Arc<Mutex<AccountService>>>,
     gacha_state: State<'_, Arc<GachaService>>,
+    arknights_gacha_state: State<'_, Arc<ArknightsGachaService>>,
     role_id: String,
 ) -> Result<serde_json::Value, String> {
     log_info!("get_gacha_record_stats: START for role_id={}", role_id);
@@ -571,18 +769,20 @@ pub async fn get_gacha_record_stats(
         log_error!("get_gacha_record_stats: lookup failed: {}", e);
         e.to_string()
     })?;
-    let (user_id, server_id) = (owner.user_id, owner.server_id);
 
-    let saved = gacha_state
-        .load_records_or_empty(&user_id, &server_id)
-        .map_err(|e| {
-            log_error!(
-                "get_gacha_record_stats: FAILED for role_id={}: {}",
-                role_id,
-                e
-            );
-            e.to_string()
-        })?;
+    let saved = if owner.is_arknights() {
+        arknights_gacha_state.load_records_or_empty(&owner.binding_uid)
+    } else {
+        gacha_state.load_records_or_empty(&owner.user_id, &owner.server_id)
+    }
+    .map_err(|e| {
+        log_error!(
+            "get_gacha_record_stats: FAILED for role_id={}: {}",
+            role_id,
+            e
+        );
+        e.to_string()
+    })?;
     let records = &saved.records;
 
     let by_pool: HashMap<String, usize> = GachaService::group_records_by_pool(records)
@@ -604,4 +804,15 @@ pub async fn get_gacha_record_stats(
 
     log_info!("get_gacha_record_stats: SUCCESS for role_id={}", role_id);
     Ok(stats)
+}
+
+/// 《明日方舟》干员头像 CDN 地址
+///
+/// 规则固定、无需探测：`{AK_ASSET_BASE}/char/avatar/{charId}.png`。
+/// 干员 id 形如 `char_4109_baslin`，与游戏内资源命名一致。
+fn arknights_avatar_url(char_id: &str) -> String {
+    format!(
+        "https://web.hycdn.cn/arknights/game/assets/char/avatar/{}.png",
+        char_id
+    )
 }

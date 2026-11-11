@@ -66,13 +66,14 @@
 | `clear_proxy_settings` | commands/proxy.rs:80 | `state` | `bool` | `ConfigService::remove_proxy_config` + 全局代理缓存置空 |
 | `read_system_proxy` | commands/proxy.rs:14 | 无 | `SystemProxyInfo` | `utils::proxy::read_system_proxy`：Windows 读 `HKCU\...\Internet Settings`（`ProxyEnable`/`ProxyServer`/`AutoConfigURL`），失败回退 `HTTP(S)_PROXY`/`ALL_PROXY` 环境变量 |
 | `test_proxy_connection` | commands/proxy.rs:30 | `state`、`config: Option<Value>`、`url: Option<String>` | `Result<TestConnectionResult, String>` | 取传入配置，缺省回退已保存的 `proxy_config`；`utils::proxy::test_connection`（15s 超时，默认探测 `https://www.gstatic.com/generate_204`，返回 `{status, duration_ms}`） |
-| `get_gacha_pool_meta` | commands/gacha.rs:129 | `account_state`、`gacha_state: State<Arc<GachaService>>`、`role_id: String` | `Result<serde_json::Value, String>` | `prepare_u8token`、`GachaService::get_pool_meta` |
-| `sync_gacha_records` | commands/gacha.rs:159 | `account_state`、`gacha_state`、`role_id: String` | `Result<serde_json::Value, String>` | `prepare_u8token`、`GachaService::sync_records` |
-| `get_saved_gacha_records` | commands/gacha.rs:189 | `account_state`、`gacha_state`、`role_id: String` | `Result<serde_json::Value, String>` | `GachaService::load_records_or_empty`（不联网） |
-| `sync_weapon_gacha_records` | commands/gacha.rs:221 | `account_state`、`gacha_state`、`role_id: String` | `Result<serde_json::Value, String>` | `prepare_u8token`、`GachaService::sync_weapon_records` |
-| `get_saved_weapon_gacha_records` | commands/gacha.rs:255 | `account_state`、`gacha_state`、`role_id: String` | `Result<serde_json::Value, String>` | `GachaService::load_weapon_records_or_empty`（不联网） |
-| `resolve_gacha_avatar_map` | commands/gacha.rs:400 | `account_state`、`gacha_state`、`role_id: String` | `Result<serde_json::Value, String>` | `GachaService::{load_records_or_empty, load_weapon_records_or_empty, load_avatar_map, save_avatar_map, load_total_catalog, save_total_catalog, total_catalog_is_stale}`、`AccountService::{check_and_refresh_user_cred, query_role_data}`、本地 `resolve_missing_from_catalog` |
-| `get_gacha_record_stats` | commands/gacha.rs:560 | `account_state`、`gacha_state`、`role_id: String` | `Result<serde_json::Value, String>` | `GachaService::{load_records_or_empty, group_records_by_pool, count_by_rarity, count_by_char}` |
+| `get_gacha_pool_meta` | commands/gacha.rs:147 | `account_state`、`gacha_state: State<Arc<GachaService>>`、`role_id: String` | `Result<serde_json::Value, String>` | `lookup_role_owner` + `fresh_u8token`、`GachaService::get_pool_meta`。**仅终末地**：对明日方舟角色直接返回 Err（改用 `get_arknights_gacha_categories`） |
+| `sync_gacha_records` | commands/gacha.rs:194 | `account_state`、`gacha_state`、`arknights_gacha_state: State<Arc<ArknightsGachaService>>`、`role_id: String` | `Result<serde_json::Value, String>` | `lookup_role_owner` + `fresh_u8token`，然后**按 `owner.is_arknights()` 分流**：明日方舟 → `ArknightsGachaService::sync_records(binding_uid, token)`；终末地 → `GachaService::sync_records(user_id, server_id, token)` |
+| `get_saved_gacha_records` | commands/gacha.rs:236 | `account_state`、`gacha_state`、`arknights_gacha_state`、`role_id: String` | `Result<serde_json::Value, String>` | 按游戏分流读档（`ArknightsGachaService::load_records_or_empty(binding_uid)` / `GachaService::load_records_or_empty(user_id, server_id)`），不联网 |
+| `sync_weapon_gacha_records` | commands/gacha.rs:275 | `account_state`、`gacha_state`、`role_id: String` | `Result<serde_json::Value, String>` | `lookup_role_owner` + `fresh_u8token`、`GachaService::sync_weapon_records`。**仅终末地**：明日方舟无武器寻访，直接返回空 `GachaSyncResult`（不发请求、不落盘） |
+| `get_saved_weapon_gacha_records` | commands/gacha.rs:334 | `account_state`、`gacha_state`、`role_id: String` | `Result<serde_json::Value, String>` | `GachaService::load_weapon_records_or_empty`（不联网）。**仅终末地**：明日方舟返回空 `SavedWeaponGachaData` |
+| `get_arknights_gacha_categories` | commands/gacha.rs:395 | `account_state`、`arknights_gacha_state: State<Arc<ArknightsGachaService>>`、`role_id: String` | `Result<serde_json::Value, String>` | `lookup_role_owner` + `fresh_u8token`、`ArknightsGachaService::get_categories`（`GET /api/gacha/cate`）。**仅明日方舟**：对终末地角色返回 Err。空分类列表已被后端转成鉴权错误 |
+| `resolve_gacha_avatar_map` | commands/gacha.rs:564 | `account_state`、`gacha_state`、`arknights_gacha_state`、`role_id: String` | `Result<serde_json::Value, String>` | 终末地：`GachaService::{load_records_or_empty, load_weapon_records_or_empty, load_avatar_map, save_avatar_map, load_total_catalog, save_total_catalog, total_catalog_is_stale}`、`AccountService::{check_and_refresh_user_cred, query_role_data}`、本地 `resolve_missing_from_catalog`。明日方舟：直接按 CDN 规则拼 `web.hycdn.cn/arknights/game/assets/char/avatar/{charId}.png`，**不联网、不读 wiki_catalog**（属终末地目录，不含明日方舟干员） |
+| `get_gacha_record_stats` | commands/gacha.rs:758 | `account_state`、`gacha_state`、`arknights_gacha_state`、`role_id: String` | `Result<serde_json::Value, String>` | 按游戏分流读档后 `GachaService::{group_records_by_pool, count_by_rarity, count_by_char}`（统计函数与游戏无关） |
 | `read_image_file` | commands/image.rs:18 | `path: String` | `Result<tauri::ipc::Response, String>`（原始字节） | `fs::read` |
 | `get_image_cache_dir` | commands/image.rs:16 | 无 | `Result<String, String>` | `utils::paths::image_cache_dir` |
 | `download_image` | commands/image.rs:29 | `url: String`、`cache_dir: String`、`sub_dir: String` | `Result<String, String>` | `resolve_url_subdir`/`all_sub_dir_names`、本地 `extract_filename_from_url`、`capture::send`（reqwest GET，带 Referer） |
@@ -532,48 +533,65 @@
 ---
 
 ## `src-tauri/src/commands/gacha.rs`
-**职责**：抽卡（寻访）记录相关 IPC（521 行 / 7 个命令）。命令层承担「凭据反查 + token 刷新 + 组装 JSON」的编排，真正的请求与存储由 `GachaService`（`State<Arc<GachaService>>`）负责。
+**职责**：抽卡（寻访）记录相关 IPC（8 个命令）。命令层承担「凭据反查 + token 刷新 + 游戏分流 + 组装 JSON」的编排，真正的请求与存储由 `GachaService`（终末地，`State<Arc<GachaService>>`）与 `ArknightsGachaService`（明日方舟，`State<Arc<ArknightsGachaService>>`）负责。
+
+> ⚠️ **两个游戏的抽卡 API 完全不同**，命令层是唯一的分流点：`lookup_role_owner`
+> 多读一个 `roles[].app` 字段（`RoleOwner.game`），每个命令据此决定走哪条链路。
+> 差异明细见 [`services_others.md`](services_others.md) 的 `arknights_gacha_service.rs` 一节。
 
 ### 内部结构
 - 1-15：导入 + `TOTAL_CATALOG_REFRESH_COOLDOWN` 常量（全量 Wiki 目录刷新冷却 6 小时）。
-- 22-52：`lookup_role_owner(config_service, role_id)` —— 遍历 `account_token_*`，按 `roles[].roleId` 匹配，返回 `RoleOwner { user_id, binding_uid, channel_master_id, server_id, authorized }`。**不要求授权、不读令牌**。
-- 54-100：`fresh_u8token(account_service, owner, role_id)` —— 先检查 `owner.authorized`（未授权直接报错），非致命刷新 cred，再 `AccountService::fetch_role_u8token` **现换令牌**（不缓存、不落盘、失败不回退旧值）。
-- 118-130：`prepare_u8token(account_service, config_service, role_id)` —— 上面两者的组合，返回 `(RoleOwner, String)`，供同步类命令使用。
-- 139-168：`get_gacha_pool_meta`；171-200：`sync_gacha_records`；203-231：`get_saved_gacha_records`。
-- 234-267：`sync_weapon_gacha_records`；270-298：`get_saved_weapon_gacha_records`。
-- 306-405：`resolve_missing_from_catalog`（私有辅助：从 Wiki 目录按名称补齐头像，见下）。
-- 414-570：`resolve_gacha_avatar_map`（本文件最长逻辑，见下）。
-- 573-620：`get_gacha_record_stats`。
+- 22-52：`RoleOwner` 结构（含 **`game`** 字段与 `is_arknights()`）—— `game` 取自 `roles[].app`，老数据缺字段时兜底 `endfield`。
+- 54-115：`lookup_role_owner(config_service, role_id)` —— 遍历 `account_token_*`，按 `roles[].roleId` 匹配，返回 `RoleOwner { user_id, binding_uid, channel_master_id, server_id, authorized, game }`。**不要求授权、不读令牌**。
+- 117-142：`fresh_u8token(account_service, owner, role_id)` —— 先检查 `owner.authorized`（未授权直接报错），非致命刷新 cred，再 `AccountService::fetch_role_u8token` **现换令牌**（不缓存、不落盘、失败不回退旧值）。
+- 146-190：`get_gacha_pool_meta`（仅终末地）；193-233：`sync_gacha_records`（**分流**）；235-272：`get_saved_gacha_records`（**分流**）。
+- 274-331：`sync_weapon_gacha_records`（仅终末地，明日方舟返回空）；333-392：`get_saved_weapon_gacha_records`（同上）。
+- 394-437：`get_arknights_gacha_categories`（仅明日方舟）。
+- 445-556：`resolve_missing_from_catalog`（私有辅助：从 Wiki 目录按名称补齐头像，见下）。
+- 563-741：`resolve_gacha_avatar_map`（本文件最长逻辑，见下；含明日方舟 CDN 直拼分支）。
+- 744-757：`arknights_avatar_url`（私有：按 CDN 规则拼明日方舟干员头像）。
+- 757-822：`get_gacha_record_stats`（**分流**）。
 
 ### `get_gacha_pool_meta`
-- 位置：gacha.rs:129（async）
+- 位置：gacha.rs:147（async）
 - 参数：`account_state: State<Arc<Mutex<AccountService>>>`、`gacha_state: State<Arc<GachaService>>`、`role_id: String`
 - 返回：`Result<serde_json::Value, String>`
-- 逻辑：`lookup_role_owner` 定位账号并检查 `u8Authorized`（未授权即报错）→ `fresh_u8token` 现换令牌 → `GachaService::get_pool_meta(&u8token, &server_id)` 取卡池 meta → `serde_json::to_value` 返回。配置键：`account_token_*`（`roles[].u8Authorized` / `bindingUid`）。
+- 逻辑：`lookup_role_owner` 定位账号 → **若是明日方舟直接返回 Err**（明日方舟没有 meta，卡池枚举是 `cate` 的分类，走 `get_arknights_gacha_categories`）→ `fresh_u8token` 现换令牌 → `GachaService::get_pool_meta(&u8token, &server_id)` 取卡池 meta → `serde_json::to_value` 返回。配置键：`account_token_*`（`roles[].u8Authorized` / `bindingUid` / `app`）。
 
 ### `sync_gacha_records`
-- 位置：gacha.rs:159（async）
-- 参数：同上（`account_state`、`gacha_state`、`role_id`）
+- 位置：gacha.rs:194（async）
+- 参数：`account_state`、`gacha_state`、`arknights_gacha_state: State<Arc<ArknightsGachaService>>`、`role_id: String`
 - 返回：`Result<serde_json::Value, String>`
-- 逻辑：`prepare_u8token` 取归属并现换令牌 → `GachaService::sync_records(&user_id, &server_id, &u8token)`，做**增量**同步（从最新读到上次保存的最后一条并合并），返回同步结果统计。未授权角色直接报错（提示去账号页授权）。
+- 逻辑：`lookup_role_owner` → `fresh_u8token` 现换令牌 → **按 `owner.is_arknights()` 分流**：
+  - **明日方舟**：`ArknightsGachaService::sync_records(&owner.binding_uid, &u8token)` —— 按渠道绑定 uid 存盘（接口不吃 `server_id`）
+  - **终末地**：`GachaService::sync_records(&owner.user_id, &owner.server_id, &u8token)`
+  
+  两者都是**增量**同步（从最新读到上次保存的最后一条并合并），返回同形状的 `GachaSyncResult`（前端无需区分）。未授权角色直接报错（提示去账号页授权）。
 
 ### `get_saved_gacha_records`
-- 位置：gacha.rs:189（async）
-- 参数：同上
+- 位置：gacha.rs:236（async）
+- 参数：`account_state`、`gacha_state`、`arknights_gacha_state`、`role_id`
 - 返回：`Result<serde_json::Value, String>`
-- 逻辑：仅 `lookup_role_owner`（**不读令牌、不刷新、不联网**），调 `GachaService::load_records_or_empty(&user_id, &server_id)` 读本地记录，无记录返回空结构。未授权（甚至刚取消授权）也能看到已同步的记录。
+- 逻辑：仅 `lookup_role_owner`（**不读令牌、不刷新、不联网**），按游戏分流读本地记录（`ArknightsGachaService::load_records_or_empty(binding_uid)` / `GachaService::load_records_or_empty(user_id, server_id)`），无记录返回空结构。未授权（甚至刚取消授权）也能看到已同步的记录。
 
 ### `sync_weapon_gacha_records`
-- 位置：gacha.rs:221（async）
-- 参数：同上
+- 位置：gacha.rs:275（async）
+- 参数：`account_state`、`gacha_state`、`role_id`
 - 返回：`Result<serde_json::Value, String>`
-- 逻辑：与 `sync_gacha_records` 相同流程，改调 `GachaService::sync_weapon_records(...)`（武器寻访）。
+- 逻辑：**仅终末地**。《明日方舟》没有武器寻访，若是明日方舟角色则**直接返回空 `GachaSyncResult`**（`new_records=0`、`total_records=0`）——不发请求、不落盘、不报错，让前端的「同步全部记录」流程可以无条件复用。终末地则 `fresh_u8token` + `GachaService::sync_weapon_records(...)`。
 
 ### `get_saved_weapon_gacha_records`
-- 位置：gacha.rs:255（async）
-- 参数：同上
+- 位置：gacha.rs:334（async）
+- 参数：`account_state`、`gacha_state`、`role_id`
 - 返回：`Result<serde_json::Value, String>`
-- 逻辑：仅 `lookup_role_owner`（不读令牌、不联网），调 `GachaService::load_weapon_records_or_empty(&user_id, &server_id)` 读本地武器寻访记录。
+- 逻辑：**仅终末地**。明日方舟返回空 `SavedWeaponGachaData`（前端据此隐藏「武器」分类）；终末地仅 `lookup_role_owner`（不读令牌、不联网），调 `GachaService::load_weapon_records_or_empty(&user_id, &server_id)`。
+
+### `get_arknights_gacha_categories`
+- 位置：gacha.rs:395（async）
+- 参数：`account_state`、`arknights_gacha_state: State<Arc<ArknightsGachaService>>`、`role_id: String`
+- 返回：`Result<serde_json::Value, String>`（`ArknightsGachaCategory[]`：`{id, name, active?}`）
+- 逻辑：**仅明日方舟**（对终末地角色返回 Err）。`lookup_role_owner` → 校验游戏 → `fresh_u8token` → `ArknightsGachaService::get_categories(&u8token)`（`GET /api/gacha/cate`）。
+- ⚠️ **空分类列表已在服务层转成 `AuthError`**：明日方舟对任何无效 token 都返回 `code=0` + 空 `data`，若不判空，用户会看到「同步成功、0 条记录」。前端据此提示「令牌失效/不匹配，请重新授权」。`name` 含换行符（`"限定寻访\n庆典"`），前端用 `formatCategoryName` 压成一行。
 
 ### `resolve_missing_from_catalog`
 - 位置：gacha.rs:292（私有函数）
@@ -582,16 +600,21 @@
 - 逻辑：遍历 `data.catalog[].typeSub[].items[]` 建「显示名 → 图标」表。条目类型优先取 `brief.associate.type`（`char`/`weapon`）；新干员/武器在目录中可能仍是**预览条目**（`brief.associate` 为 `null`，`brief.dotType == "label_type_preview"`），此时回退到所属 `typeSub.id`（`"1"` = 干员、`"2"` = 武器）归类，名称回退 `brief.name` → `item.name`，图标取 `brief.cover`。随后仅对 `unresolved` 中仍无映射的 id 按显示名补齐，命中者写入 `map` 并从 `unresolved` 移除。
 
 ### `resolve_gacha_avatar_map`
-- 位置：gacha.rs:400（async）
-- 参数：同上
+- 位置：gacha.rs:564（async）
+- 参数：`account_state`、`gacha_state`、`arknights_gacha_state`、`role_id`
 - 返回：`Result<serde_json::Value, String>`（`{角色/武器 id: 图标 URL}` 映射）
-- 逻辑：① 仅 `lookup_role_owner` 定位账号，读本地角色+武器记录，筛出 `rarity == 6` 且 `is_draw()` 的条目，构建 `id → 显示名` 的 `needed` 表；② `GachaService::load_avatar_map()` 读已有映射（文件 `gacha_avatar_map.json`，与 `app_config.json` 同级），算出 `missing`；③ 有缺失时先非致命 `check_and_refresh_user_cred`，再用 `load_total_catalog()` 读本地 `total.json` 缓存并调 `resolve_missing_from_catalog` 解析；④ 若仍有未解析 id 且（缓存缺失或已过 `TOTAL_CATALOG_REFRESH_COOLDOWN` 冷却期），则 `AccountService::query_role_data(&role_id, "wiki_catalog", &[])` 重新拉取全量 Wiki 目录、`save_total_catalog` 写盘并再次解析（这样新干员/武器不会因缓存是历史快照而永久缺头像，同时避免无法匹配的名称导致每次打开页面都拉取目录）；⑤ 有新增则 `save_avatar_map` 回写文件，最后返回完整 map。
+- 逻辑（**按游戏分流，两条路完全不同**）：
+  - **明日方舟**（`owner.is_arknights()`）：读本地记录，筛 `rarity == 6` 的 `char_id`，直接用 `arknights_avatar_url` 拼
+    `https://web.hycdn.cn/arknights/game/assets/char/avatar/{charId}.png` 返回。**不联网、不读 `total.json`、不写 `gacha_avatar_map.json`** —— 因为
+    `wiki_catalog`（`/web/v1/wiki/item/catalog`）是**终末地**的目录，里面没有明日方舟干员；
+    该 CDN 规则是确定的纯函数（已用真实干员验证 200 + `image/png` + `Access-Control-Allow-Origin: *`）。
+  - **终末地**：① 仅 `lookup_role_owner` 定位账号，读本地角色+武器记录，筛出 `rarity == 6` 且 `is_draw()` 的条目，构建 `id → 显示名` 的 `needed` 表；② `GachaService::load_avatar_map()` 读已有映射（文件 `gacha_avatar_map.json`，与 `app_config.json` 同级），算出 `missing`；③ 有缺失时先非致命 `check_and_refresh_user_cred`，再用 `load_total_catalog()` 读本地 `total.json` 缓存并调 `resolve_missing_from_catalog` 解析；④ 若仍有未解析 id 且（缓存缺失或已过 `TOTAL_CATALOG_REFRESH_COOLDOWN` 冷却期），则 `AccountService::query_role_data(&role_id, "wiki_catalog", &[])` 重新拉取全量 Wiki 目录、`save_total_catalog` 写盘并再次解析；⑤ 有新增则 `save_avatar_map` 回写文件，最后返回完整 map。
 
 ### `get_gacha_record_stats`
-- 位置：gacha.rs:560（async）
-- 参数：同上
+- 位置：gacha.rs:758（async）
+- 参数：`account_state`、`gacha_state`、`arknights_gacha_state`、`role_id`
 - 返回：`Result<serde_json::Value, String>`
-- 逻辑：仅 `lookup_role_owner` 定位账号（不读令牌），`load_records_or_empty` 后在命令层组装统计 JSON：`user_id`、`server_id`、`last_sync_time`、`total_records`、`total_draws`、`total_gifts`、`by_pool`（`GachaService::group_records_by_pool` 取长度）、`by_rarity`（`count_by_rarity`）、`by_char`（`count_by_char`）。不发起网络请求。
+- 逻辑：仅 `lookup_role_owner` 定位账号（不读令牌），**按游戏分流** `load_records_or_empty` 后在命令层组装统计 JSON：`user_id`、`server_id`、`last_sync_time`、`total_records`、`total_draws`、`total_gifts`、`by_pool`（`GachaService::group_records_by_pool` 取长度）、`by_rarity`（`count_by_rarity`）、`by_char`（`count_by_char`）。统计函数本身与游戏无关（`rarity` 已归一化为星数），因此两条链路共用。不发起网络请求。
 
 ---
 

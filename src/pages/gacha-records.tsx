@@ -14,14 +14,16 @@ import {
   CustomModalFooter,
 } from "@/components/custom-modal";
 import { RefreshIcon, ChevronDownIcon, CheckIcon } from "@/components/ui/app-icon";
+import { AccountNameLine } from "@/components/ui/game-badge";
 import { SearchIcon } from "@/components/icons";
 import { Img } from "@/utils/imageLoader";
-import { getSelectedAccount, getAccounts, type Account } from "@/utils/accountService";
+import { getSelectedAccount, getAccounts, type Account, type GameId } from "@/utils/accountService";
 import { resolveServerLabel } from "@/types";
 import { logError } from "@/utils/logger";
 import { addMessage } from "@/utils/messageStore";
 import { calculateGachaSixStarIntervals } from "@/utils/gachaIntervals";
 import type {
+  ArknightsGachaCategory,
   GachaCategory,
   GachaPoolKind,
   GachaRecord,
@@ -31,6 +33,13 @@ import type {
   SavedWeaponGachaData,
 } from "@/types/gacha";
 
+/**
+ * 全部可选分类。
+ *
+ * ⚠️ **不是所有游戏都有全部分类**：`joint`（联合寻访）与 `weapon`（武器寻访）
+ * 是终末地独有的概念，《明日方舟》没有。渲染时按当前角色的游戏过滤，
+ * 见 `categories`。
+ */
 const CATEGORIES: { key: GachaCategory; labelZh: string; labelEn: string }[] = [
   { key: "all", labelZh: "全部角色", labelEn: "All" },
   { key: "special", labelZh: "限定", labelEn: "Limited" },
@@ -38,6 +47,9 @@ const CATEGORIES: { key: GachaCategory; labelZh: string; labelEn: string }[] = [
   { key: "normal", labelZh: "常驻", labelEn: "Standard" },
   { key: "weapon", labelZh: "武器", labelEn: "Weapon" },
 ];
+
+/** 《明日方舟》只有限定/联动/中坚三类角色寻访，没有联合与武器 */
+const ARKNIGHTS_CATEGORY_KEYS: GachaCategory[] = ["all", "special", "normal"];
 
 const RARITY_OPTIONS: { value: number | null; label: string }[] = [
   { value: null, label: "全部" },
@@ -61,12 +73,31 @@ function isU8UnauthorizedError(error: unknown): boolean {
   );
 }
 
+/**
+ * 《明日方舟》特有的「token 被服务端静默拒绝」。
+ *
+ * 该接口对任何无效 token 都返回 `code=0` + 空列表，后端已把空列表转成鉴权错误，
+ * 这里负责把它翻译成人话 —— 否则用户只会看到一句英文的 AuthError。
+ */
+function isArknightsTokenRejected(error: unknown): boolean {
+  const raw = String(error);
+  return (
+    raw.includes("Arknights gacha token rejected") ||
+    raw.includes("belongs to another account/game")
+  );
+}
+
 /** 把同步失败的错误转成面向用户的文案 */
 function describeGachaSyncError(error: unknown, isZh: boolean): string {
   if (isU8UnauthorizedError(error)) {
     return isZh
       ? "该角色还没有授权抽卡数据访问。请到「账户」页展开它所属的森空岛账户，点该角色的「授权抽卡」后再同步；渠道服角色暂不支持。"
       : "This role has not authorized gacha data access. Open the Accounts page, expand its Skland account and click \"Authorize\" on the role, then sync again (channel-server roles are not supported yet).";
+  }
+  if (isArknightsTokenRejected(error)) {
+    return isZh
+      ? "明日方舟服务端拒绝了这次访问（返回空卡池列表）。可能原因：令牌已过期，或该令牌不属于这个账号。请到「账户」页对该角色点一次「授权抽卡」刷新令牌后再试。"
+      : "The Arknights server rejected this request (empty pool list). The token may have expired or belong to a different account. Re-authorize this role on the Accounts page and try again.";
   }
   return String(error);
 }
@@ -79,9 +110,22 @@ function poolKindOf(rec: GachaRecord, pools: Record<string, { poolType: string }
     if (poolType.includes("Standard")) return "normal";
     return "special";
   }
+  // ── 前缀兜底（两侧规则完全不同，必须分开写）──
+  // 终末地：joint_* / standard*
   if (rec.poolId.startsWith("joint_")) return "joint";
   if (rec.poolId.startsWith("standard")) return "normal";
+  // 明日方舟：LIMITED_*（限定）/ LINKAGE_*（联动）/ CLASSIC_*（中坚=常驻）
+  // 没有联合池——返回 joint 会让记录被"联合"分类错误收走
+  if (rec.poolId.startsWith("CLASSIC")) return "normal";
   return "special";
+}
+
+/**
+ * 《明日方舟》分类名含换行符（接口下发 `"限定寻访\n庆典"`），
+ * 单行 chip / 下拉里必须压成一行，否则会把按钮撑成两行。
+ */
+function formatCategoryName(name: string): string {
+  return name.replace(/\s*\n\s*/g, "·");
 }
 
 /** 进度 tabKey -> 显示名 */
@@ -102,6 +146,20 @@ export default function GachaRecordsPage() {
   const [weaponSaved, setWeaponSaved] = useState<SavedWeaponGachaData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  /** 当前角色的游戏：决定要显示哪些分类、以及同步时是否需要武器寻访 */
+  const [game, setGame] = useState<GameId | undefined>(undefined);
+  const isArknights = game === "arknights";
+
+  /**
+   * 《明日方舟》的卡池分类（`/api/gacha/cate`）。
+   *
+   * 终末地的卡池由记录自带的 `poolId` 反推即可，明日方舟不行 —— 它的
+   * `cate` 分类 id（`anniver_fest`）与记录里的 `poolId`（`LIMITED_79_0_1`）
+   * **不是同一个东西**，必须单独拉一次才知道有哪些分类，也才能提示哪些分类
+   * 还没同步到（接口只保留 90 天，过期分类自然拉不到）。
+   */
+  const [akCategories, setAkCategories] = useState<ArknightsGachaCategory[]>([]);
 
   const [category, setCategory] = useState<GachaCategory>("all");
   const [tablePoolFilter, setTablePoolFilter] = useState<string | null>(null);
@@ -145,6 +203,26 @@ export default function GachaRecordsPage() {
     }
   }, []);
 
+  /**
+   * 拉取《明日方舟》的卡池分类（仅用于展示"有哪些分类"，失败不阻塞页面）。
+   *
+   * 会现换一次 u8token，因此未授权时会静默失败 —— 这时页面上只有本地记录，
+   * 用户点同步才会看到明确的授权提示。
+   */
+  const loadAkCategories = useCallback(async (rid: string) => {
+    try {
+      const list = await invoke<ArknightsGachaCategory[]>("get_arknights_gacha_categories", {
+        roleId: rid,
+      });
+      setAkCategories(list);
+    } catch (e) {
+      // 未授权 / token 失效都会走到这里：不是页面级错误，留空即可
+      logError("[Gacha] Failed to load Arknights categories:", e);
+      setAkCategories([]);
+    }
+  }, []);
+
+
   // 进入页面时重置为“主程序选择的角色”，本地切换不影响主程序
   const initRole = useCallback(async () => {
     setIsLoading(true);
@@ -156,8 +234,17 @@ export default function GachaRecordsPage() {
       setRoleId(rid);
       setSaved(null);
       setWeaponSaved(null);
+      setAkCategories([]);
+      setGame(undefined);
       if (rid) {
-        await Promise.all([loadSaved(rid), loadWeaponSaved(rid)]);
+        // 先定游戏再拉数据：分类集合、是否请求武器寻访都取决于它
+        const g = valid.find((a) => a.id === rid)?.game;
+        setGame(g);
+        await Promise.all([
+          loadSaved(rid),
+          loadWeaponSaved(rid),
+          g === "arknights" ? loadAkCategories(rid) : Promise.resolve(),
+        ]);
       } else {
         setError(isZh ? "暂无可用角色，请先在账户页添加" : "No role available, please add one in Accounts");
       }
@@ -167,7 +254,7 @@ export default function GachaRecordsPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [loadSaved, loadWeaponSaved, isZh]);
+  }, [loadSaved, loadWeaponSaved, loadAkCategories, isZh]);
 
   useEffect(() => {
     initRole();
@@ -220,29 +307,34 @@ export default function GachaRecordsPage() {
     setProgress(null);
     setProgressModalOpen(true);
 
-    // 右上角同步按钮同步全部数据：全部角色寻访（限定/联合/常驻）+ 武器寻访，
-    // 并发调用两个命令，合并结果后统一提示。
+    // 右上角同步按钮同步全部数据。
+    //
+    // ⚠️ **两个游戏要同步的集合不同**：
+    // - 终末地：全部角色寻访（限定/联合/常驻）+ 武器寻访，两个命令并发
+    // - 明日方舟：只有角色寻访，**没有武器寻访**，因此不发第二个请求
+    //
+    // 后端 `sync_gacha_records` 会按角色所属游戏自动选端点，前端不需要传游戏。
     const requestSeq = ++syncRequestRef.current;
     const charPromise = invoke<GachaSyncResult>("sync_gacha_records", { roleId });
-    const weaponPromise = invoke<GachaSyncResult>("sync_weapon_gacha_records", {
-      roleId,
-    });
+    const weaponPromise = isArknights
+      ? Promise.resolve<GachaSyncResult | null>(null)
+      : invoke<GachaSyncResult>("sync_weapon_gacha_records", { roleId });
 
     Promise.all([charPromise, weaponPromise])
       .then(([charRes, weaponRes]) => {
         // 丢弃过期请求（期间已切换角色/再次点击）
         if (requestSeq !== syncRequestRef.current) return;
-        const newRecords = charRes.newRecords + weaponRes.newRecords;
-        const totalRecords = charRes.totalRecords + weaponRes.totalRecords;
+        const newRecords = charRes.newRecords + (weaponRes?.newRecords ?? 0);
+        const totalRecords = charRes.totalRecords + (weaponRes?.totalRecords ?? 0);
         const perTabNew: Record<string, number> = {
           ...charRes.perTabNew,
-          ...weaponRes.perTabNew,
+          ...(weaponRes?.perTabNew ?? {}),
         };
         setSyncResult({
           ...charRes,
           userId: charRes.userId,
           serverId: charRes.serverId,
-          syncedAt: Math.max(charRes.syncedAt, weaponRes.syncedAt),
+          syncedAt: Math.max(charRes.syncedAt, weaponRes?.syncedAt ?? 0),
           newRecords,
           totalRecords,
           perTabNew,
@@ -251,9 +343,13 @@ export default function GachaRecordsPage() {
         addMessage({
           type: "info",
           title: i18n.language === "zh" ? "抽卡记录同步完成" : "Gacha Sync Complete",
-          body: i18n.language === "zh"
-            ? `新增 ${newRecords} 条，共 ${totalRecords} 条（角色 ${charRes.newRecords} 条 / 武器 ${weaponRes.newRecords} 条）`
-            : `+${newRecords} new, ${totalRecords} total (char ${charRes.newRecords} / weapon ${weaponRes.newRecords})`,
+          body: isArknights
+            ? i18n.language === "zh"
+              ? `新增 ${newRecords} 条，共 ${totalRecords} 条`
+              : `+${newRecords} new, ${totalRecords} total`
+            : i18n.language === "zh"
+              ? `新增 ${newRecords} 条，共 ${totalRecords} 条（角色 ${charRes.newRecords} 条 / 武器 ${weaponRes?.newRecords ?? 0} 条）`
+              : `+${newRecords} new, ${totalRecords} total (char ${charRes.newRecords} / weapon ${weaponRes?.newRecords ?? 0})`,
           tag: "gacha",
         });
       })
@@ -273,15 +369,24 @@ export default function GachaRecordsPage() {
         if (requestSeq === syncRequestRef.current) {
           loadSaved(roleId);
           loadWeaponSaved(roleId);
+          // 同步后重新枚举分类：可能新开了卡池（明日方舟的 cate 是活的）
+          if (isArknights) void loadAkCategories(roleId);
         }
       });
   };
 
   const handleSelectRole = (rid: string) => {
+    // 切换角色时游戏可能也变了（终末地 ↔ 明日方舟），分类集合要跟着换
+    const g = accounts.find((a) => a.id === rid)?.game;
     setRoleId(rid);
+    setGame(g);
     setShowRoleMenu(false);
+    setCategory("all");
+    setTablePoolFilter(null);
+    setAkCategories([]);
     loadSaved(rid);
     loadWeaponSaved(rid);
+    if (g === "arknights") void loadAkCategories(rid);
   };
 
   const selectedAccount = useMemo(
@@ -289,9 +394,41 @@ export default function GachaRecordsPage() {
     [accounts, roleId],
   );
 
+  /**
+   * 当前游戏可用的分类。
+   *
+   * 《明日方舟》没有联合寻访与武器寻访 —— 若照搬五个分类，用户会看到两个
+   * 永远为空的 Tab。这里按游戏裁剪，底部 switch 的指示器宽度也随之变化。
+   */
+  const categories = useMemo(
+    () => (isArknights ? CATEGORIES.filter((c) => ARKNIGHTS_CATEGORY_KEYS.includes(c.key)) : CATEGORIES),
+    [isArknights],
+  );
+
+  // 切到明日方舟时若当前停在联合/武器分类，回到「全部」
+  useEffect(() => {
+    if (isArknights && !ARKNIGHTS_CATEGORY_KEYS.includes(category)) {
+      setCategory("all");
+    }
+  }, [isArknights, category]);
+
   // 武器为完全独立的分类：数据源与抽卡记录分离，其余分类共用角色寻访记录；all 含限定/联合/常驻（不含武器）
   const isWeapon = category === "weapon";
   const active = isWeapon ? weaponSaved : saved;
+
+  /**
+   * 该游戏是否存在「赠送十连」。
+   *
+   * 终末地会下发 `isFree`（限定池每期赠送十连），《明日方舟》的
+   * `/api/gacha/history` 没有这个概念，筛选按钮对它无意义 —— 隐藏而不是
+   * 留一个点了永远没结果的按钮。
+   */
+  const supportsFreePull = !isArknights && !isWeapon;
+
+  // 切到明日方舟时清掉赠送十连筛选（否则会残留一个已生效但按钮已隐藏的过滤条件）
+  useEffect(() => {
+    if (!supportsFreePull) setOnlyFree(false);
+  }, [supportsFreePull]);
 
   /** 当前分类下该记录是否属于角色寻访 */
   const isCharDraw = (r: GachaRecord, pools: Record<string, { poolType: string }>) =>
@@ -471,23 +608,28 @@ export default function GachaRecordsPage() {
           <h1 className="text-2xl lg:text-3xl font-bold text-foreground tracking-tight">
             {t("sidebar.gacha")}
           </h1>
-          <p className="text-foreground/70 mt-1.5 text-sm">
-            {selectedAccount ? (
-              <>
-                {selectedAccount.nickname} ·{" "}
-                {resolveServerLabel(selectedAccount.server, i18n.language)} · Lv.
-                {selectedAccount.level}
-              </>
-            ) : (
-              isZh ? "未选择角色" : "No role selected"
-            )}
+          <div className="mt-1.5 space-y-0.5">
+            <p className="text-foreground/70 text-sm">
+              {selectedAccount ? (
+                <>
+                  {/* 徽标紧跟名字之后，与名字同排居中 */}
+                  <AccountNameLine game={selectedAccount.game}>
+                    {selectedAccount.nickname}
+                  </AccountNameLine>
+                  {" · "}
+                  {resolveServerLabel(selectedAccount.server, i18n.language)} · Lv.
+                  {selectedAccount.level}
+                </>
+              ) : (
+                <span>{isZh ? "未选择角色" : "No role selected"}</span>
+              )}
+            </p>
             {lastSyncText && (
-              <>
-                {" · "}
+              <p className="text-muted text-xs">
                 {isZh ? "上次同步" : "Last sync"}: {lastSyncText}
-              </>
+              </p>
             )}
-          </p>
+          </div>
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
@@ -500,9 +642,17 @@ export default function GachaRecordsPage() {
               endContent={<ChevronDownIcon size={14} />}
               className="lg-material border border-separator/70 max-w-48"
             >
-              <span className="truncate">
-                {selectedAccount?.nickname ?? (isZh ? "选择角色" : "Select role")}
-              </span>
+              {/* 内容整体可收缩：昵称过长时截断，徽标 `shrink-0` 保形，
+                  不会把按钮顶出 `max-w-48` */}
+              {selectedAccount ? (
+                <AccountNameLine game={selectedAccount.game} className="max-w-full">
+                  {selectedAccount.nickname}
+                </AccountNameLine>
+              ) : (
+                <span className="truncate">
+                  {isZh ? "选择角色" : "Select role"}
+                </span>
+              )}
             </GlassButton>
 
             {showRoleMenu && (
@@ -530,7 +680,10 @@ export default function GachaRecordsPage() {
                           )}
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate">{acc.nickname}</p>
+                          {/* 徽标紧跟名字、垂直居中；行尾留给选中勾 */}
+                          <p className="text-sm font-medium">
+                            <AccountNameLine game={acc.game}>{acc.nickname}</AccountNameLine>
+                          </p>
                           <p className="text-xs text-muted truncate">
                             {resolveServerLabel(acc.server, i18n.language)} · Lv.{acc.level}
                           </p>
@@ -567,6 +720,16 @@ export default function GachaRecordsPage() {
               {isZh ? "同步全部记录" : "Sync All"}{" "}
               {isZh ? "开始同步" : "to start syncing all records"}
             </p>
+            {/*
+              明日方舟只有 90 天窗口：拉不到记录不代表没抽过卡。这里把服务端
+              报告的分类列出来，让"0 条"有据可查，而不是看起来像同步坏了。
+            */}
+            {isArknights && akCategories.length > 0 && (
+              <p className="text-xs text-muted">
+                {isZh ? "服务端当前可查的分类：" : "Categories available from server: "}
+                {akCategories.map((c) => formatCategoryName(c.name)).join(" / ")}
+              </p>
+            )}
           </div>
         </GlassCard>
       ) : (
@@ -693,7 +856,7 @@ export default function GachaRecordsPage() {
               >
                 NEW
               </button>
-              {!isWeapon && (
+              {supportsFreePull && (
                 <button
                   type="button"
                   onClick={() => setOnlyFree(!onlyFree)}
@@ -806,11 +969,11 @@ export default function GachaRecordsPage() {
           aria-hidden
           className="pointer-events-none absolute top-1.5 bottom-1.5 left-1.5 rounded-full lg-control border border-primary/50 [transition:transform_var(--lg-dur-slow)_var(--lg-ease-glide)]"
           style={{
-            width: `calc((100% - 0.75rem) / ${CATEGORIES.length})`,
-            transform: `translateX(${Math.max(0, CATEGORIES.findIndex((c) => c.key === category)) * 100}%)`,
+            width: `calc((100% - 0.75rem) / ${categories.length})`,
+            transform: `translateX(${Math.max(0, categories.findIndex((c) => c.key === category)) * 100}%)`,
           }}
         />
-        {CATEGORIES.map((c) => {
+        {categories.map((c) => {
           const isActive = category === c.key;
           return (
             <button

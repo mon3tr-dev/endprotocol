@@ -269,9 +269,10 @@
 | `gacha_records_file_path(user_id, server_id)` | paths.rs:44 | `<app_data_dir>/gacha_records/gacha_records_{userId}_{serverId}.json`。调用方：gacha_service.rs:162 |
 | `gacha_weapon_records_file_path(user_id, server_id)` | paths.rs:52 | `<app_data_dir>/gacha_records/gacha_weapon_records_{userId}_{serverId}.json`。调用方：gacha_service.rs:242 |
 | `gacha_total_catalog_file_path()` | paths.rs:65 | `<app_data_dir>/gacha_records/total.json`（全量 Wiki 目录，全局共用）。调用方：gacha_service.rs:335 |
-| `gacha_records_file_path_legacy(user_id, server_id)` | paths.rs:70 | `<app_data_dir>/gacha_records_{userId}_{serverId}.json`（**与 app_config.json 同级的旧版布局**，仅供存量数据兼容读取）。调用方：gacha_service.rs:177 |
-| `gacha_avatar_map_file_path()` | paths.rs:78 | `<app_data_dir>/gacha_avatar_map.json`。调用方：gacha_service.rs:301 |
-| `arknights_cache_dir()` | paths.rs:88 | `<app_data_dir>/arknights`（**《明日方舟》数据缓存目录**：`player_info_{uid}.json` 与 `raw_*.json` 都在里面，目录内文件名由 `ArknightsService` 决定）。调用方：arknights_service.rs:63。**为什么不进 `app_config.json`**：单账号 `player/info` 实测几百 KB（B 服 242 名干员约 600 KB），塞进配置会让每次配置读写都搬运它 —— 与抽卡记录同一套做法 |
+| `arknights_gacha_records_file_path(uid)` | paths.rs:73 | `<app_data_dir>/gacha_records/arknights_gacha_records_{uid}.json`（**《明日方舟》寻访记录，只按渠道绑定 uid 分文件**）。调用方：arknights_gacha_service.rs。**为什么不带 serverId**：明日方舟的 `/api/gacha/history` 不接受 `server_id`，同一把 u8token（= 同一个 uid）就是一条连续流水；且官服明日方舟角色与终末地角色 `serverId` 都是 `1`，沿用 `gacha_records_{userId}_{serverId}.json` 会**互相覆盖** |
+| `gacha_records_file_path_legacy(user_id, server_id)` | paths.rs:84 | `<app_data_dir>/gacha_records_{userId}_{serverId}.json`（**与 app_config.json 同级的旧版布局**，仅供存量数据兼容读取）。调用方：gacha_service.rs:177 |
+| `gacha_avatar_map_file_path()` | paths.rs:92 | `<app_data_dir>/gacha_avatar_map.json`。调用方：gacha_service.rs:301 |
+| `arknights_cache_dir()` | paths.rs:102 | `<app_data_dir>/arknights`（**《明日方舟》数据缓存目录**：`player_info_{uid}.json` 与 `raw_*.json` 都在里面，目录内文件名由 `ArknightsService` 决定）。调用方：arknights_service.rs:63。**为什么不进 `app_config.json`**：单账号 `player/info` 实测几百 KB（B 服 242 名干员约 600 KB），塞进配置会让每次配置读写都搬运它 —— 与抽卡记录同一套做法 |
 
 **备注**：全部函数只拼接路径、**不创建目录**（创建由调用方 `create_dir_all` 完成）；除 `app_data_dir` 的底层查询失败外无其他错误来源，故错误类型是 `&'static str`。平台差异只体现在 `data_local_dir()` 根目录，子目录结构跨平台一致。
 

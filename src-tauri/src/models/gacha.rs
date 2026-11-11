@@ -73,7 +73,16 @@ pub struct GachaRecord {
     /// 抽卡时间（毫秒时间戳，API 返回字符串）
     pub gacha_ts: String,
     /// 全局唯一序号，也是翻页游标
+    ///
+    /// - 终末地：接口原样下发的 `seqId`（数值字符串，全局递增）
+    /// - 明日方舟：**接口没有 seqId**，由后端合成为 `{poolId}|{gachaTs}|{pos}`
     pub seq_id: String,
+    /// 明日方舟的批内序号（`0..9`，同一次十连的 10 条共用 `gachaTs`，用 `pos` 区分）。
+    ///
+    /// 终末地没有这个字段（恒为 `None`）—— 它的翻页游标就是 `seqId` 本身。
+    /// 明日方舟必须靠 `(gachaTs, pos)` 复合定位，因此单独留一个字段用于排序。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pos: Option<i32>,
 }
 
 impl GachaRecord {
@@ -89,6 +98,64 @@ impl GachaRecord {
     pub fn gacha_ts_ms(&self) -> Option<i64> {
         self.gacha_ts.parse::<i64>().ok()
     }
+}
+
+// ============================================================================
+// 《明日方舟》寻访记录（ak-webview.hypergryph.com）
+//
+// ⚠️ 这一组结构与终末地**不能互换**：两边的"卡池"概念、翻页游标、稀有度基准
+// 全都不同，差异明细见 `services/gacha_service.rs` 顶部与
+// `services/arknights_gacha_service.rs` 的模块文档。
+// ============================================================================
+
+/// `GET /api/gacha/cate` 的 `data[]` 一项 —— 明日方舟的"卡池分类"
+///
+/// 注意这是**分类**（限定寻访·庆典 / 限定寻访·夏季 / 学生寻访 / 中坚寻访），
+/// 不是终末地那种 `special` / `joint:{poolId}` / `normal` 的 Tab。
+/// 接口还会下发 `status` 字段（恒为 0，与 `code` 重复），这里忽略。
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct ArknightsGachaCategory {
+    /// 分类 id，即 `/api/gacha/history` 的 `category` 参数（如 `anniver_fest`）
+    pub id: String,
+    /// 展示名，**含换行符**（如 `"限定寻访\n庆典"`），前端展示时需替换
+    pub name: String,
+    /// 该分类是否对应当前正在进行的卡池（仅部分分类下发）
+    #[serde(default)]
+    pub active: Option<bool>,
+}
+
+/// `GET /api/gacha/history` 的 `data`
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct ArknightsGachaHistoryData {
+    #[serde(default)]
+    pub list: Vec<ArknightsGachaRecord>,
+    pub has_more: bool,
+}
+
+/// 明日方舟单条寻访记录（接口原始形状）
+///
+/// ⚠️ `rarity` 是**星数减一**（`5` = 六星、`0` = 一星），与终末地的 `rarity`
+/// （直接就是星数，`6` = 六星）相差 1。入库前由
+/// [`crate::services::arknights_gacha_service`] 统一 +1 归一化。
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct ArknightsGachaRecord {
+    pub pool_id: String,
+    pub pool_name: String,
+    pub char_id: String,
+    pub char_name: String,
+    /// 星数减一（0..5）
+    #[serde(default)]
+    pub rarity: i32,
+    #[serde(default)]
+    pub is_new: bool,
+    /// 毫秒时间戳（字符串）
+    pub gacha_ts: String,
+    /// 同一次十连内的序号（0..9）
+    #[serde(default)]
+    pub pos: i32,
 }
 
 /// GET /api/record/weapon 的 data

@@ -457,13 +457,18 @@ derive 均为 `Serialize, Deserialize, Clone, Debug` + 容器 `rename_all = "cam
 ---
 
 ## `src-tauri/src/models/gacha.rs`
-**职责**：抽卡（寻访）数据模型——ef-webview 抽卡记录 API 的响应结构、本地持久化记录文件结构、同步结果与进度事件。文件共 217 行。
-**导出**：`GachaApiResponse`、`GachaMetaData`、`GachaTab`、`GachaRecordData`、`GachaRecord`、`GachaWeaponRecordData`、`GachaWeaponRecord`、`SavedWeaponGachaData`、`SavedGachaData`、`GachaPoolInfo`、`GachaSyncResult`、`GachaSyncProgress`；impl `GachaTab`、impl `GachaRecord`、impl `GachaWeaponRecord`。依赖 `std::collections::HashMap`（:2）。
+**职责**：抽卡（寻访）数据模型——ef-webview / ak-webview 两套抽卡记录 API 的响应结构、本地持久化记录文件结构、同步结果与进度事件。
+
+> ⚠️ 同一文件里装着**两个游戏**的结构：终末地那组（`GachaMetaData` / `GachaTab` / `GachaRecordData` / `GachaWeaponRecord` …）与
+> 明日方舟那组（`ArknightsGachaCategory` / `ArknightsGachaHistoryData` / `ArknightsGachaRecord`）。两组**不能互换**，
+> 差异见 `services/arknights_gacha_service.rs` 的模块文档。
+
+**导出**：`GachaApiResponse`、`GachaMetaData`、`GachaTab`、`GachaRecordData`、`GachaRecord`、`GachaWeaponRecordData`、`GachaWeaponRecord`、`SavedWeaponGachaData`、`SavedGachaData`、`GachaPoolInfo`、`GachaSyncResult`、`GachaSyncProgress`、**`ArknightsGachaCategory`、`ArknightsGachaHistoryData`、`ArknightsGachaRecord`**；impl `GachaTab`、impl `GachaRecord`、impl `GachaWeaponRecord`。依赖 `std::collections::HashMap`。
 
 ### `struct GachaApiResponse<T>`
 - 位置：gacha.rs:7
 - derive：`Serialize, Deserialize, Clone, Debug`，容器 `rename_all = "camelCase"`（泛型 `T` 需自身满足 serde bound）
-- 用途：ef-webview 抽卡记录 API 的统一响应包装（`code = 0` 表示成功）。
+- 用途：webview 抽卡记录 API 的统一响应包装（`code = 0` 表示成功）。**两个游戏共用** —— 明日方舟的响应外层同样是 `{status, code, msg, data}`。
 - 字段：
 
 | 字段 | 类型 | serde | 含义 |
@@ -472,7 +477,45 @@ derive 均为 `Serialize, Deserialize, Clone, Debug` + 容器 `rename_all = "cam
 | `msg` | `String` | — | 状态信息（注意键名是 `msg`，不是 `message`） |
 | `data` | `Option<T>` | — | 数据体，失败时为 None |
 
-### `struct GachaMetaData`
+### `struct ArknightsGachaCategory`（**明日方舟**）
+- 位置：gacha.rs
+- derive：`Serialize, Deserialize, Clone, Debug`，`rename_all = "camelCase"`
+- 用途：`GET /api/gacha/cate` 的 `data[]` 一项 —— 明日方舟的「卡池分类」。注意它是**分类**（限定寻访·庆典 / 限定寻访·夏季 / 学生寻访 / 中坚寻访），不是终末地那种 `special` / `joint:{poolId}` / `normal` 的 Tab。接口还会下发 `status` 字段（恒为 0，与 `code` 重复），结构体忽略它。
+- 字段：
+
+| 字段 | 类型 | serde | 含义 |
+| --- | --- | --- | --- |
+| `id` | `String` | — | 分类 id，即 `/api/gacha/history` 的 `category` 参数（如 `anniver_fest`） |
+| `name` | `String` | — | 展示名，**含换行符**（如 `"限定寻访\n庆典"`），前端展示时需替换 |
+| `active` | `Option<bool>` | `default` | 该分类是否对应当前正在进行的卡池（仅部分分类下发） |
+
+### `struct ArknightsGachaHistoryData`（**明日方舟**）
+- 位置：gacha.rs
+- 用途：`GET /api/gacha/history` 的 `data`。
+- 字段：
+
+| 字段 | 类型 | serde | 含义 |
+| --- | --- | --- | --- |
+| `list` | `Vec<ArknightsGachaRecord>` | `default` | 本页记录（一页 10 条） |
+| `has_more` | `bool` | — | 是否还有下一页（**翻页同时还要看 `list` 是否为空**） |
+
+### `struct ArknightsGachaRecord`（**明日方舟**）
+- 位置：gacha.rs
+- 用途：明日方舟单条寻访记录（接口原始形状）。⚠️ `rarity` 是**星数减一**（`5` = 六星、`0` = 一星），与终末地的 `rarity`（直接就是星数，`6` = 六星）相差 1；入库前由 `ArknightsGachaService::normalize` 统一 `+1`。
+- 字段：
+
+| 字段 | 类型 | serde | 含义 |
+| --- | --- | --- | --- |
+| `pool_id` | `String` | — | 卡池 id（如 `LIMITED_79_0_1`），**与 `cate` 的分类 id 不是同一个概念** |
+| `pool_name` | `String` | — | 卡池名 |
+| `char_id` | `String` | — | 干员 id（如 `char_4109_baslin`） |
+| `char_name` | `String` | — | 干员名 |
+| `rarity` | `i32` | `default` | **星数减一**（0..5） |
+| `is_new` | `bool` | `default` | 是否首次获得 |
+| `gacha_ts` | `String` | — | 毫秒时间戳（字符串）。**同一次十连的 10 条共用同一个值** |
+| `pos` | `i32` | `default` | 同一次十连内的序号（0..9），用于区分与排序 |
+
+### `struct GachaMetaData`（终末地）
 - 位置：gacha.rs:16
 - derive：同上
 - 用途：`GET /api/record/char/meta` 的 `data`，卡池 Tab 列表。
@@ -524,16 +567,22 @@ derive 均为 `Serialize, Deserialize, Clone, Debug` + 容器 `rename_all = "cam
 | `name_text` | `String` | — | 物品/角色展示名（gift 时为「寻访情报书」等） |
 | `char_id` | `Option<String>` | `default` | 干员 ID |
 | `char_name` | `Option<String>` | `default` | 干员名 |
-| `rarity` | `Option<i32>` | `default` | 稀有度 |
-| `is_free` | `Option<bool>` | `default` | 是否免费获取 |
+| `rarity` | `Option<i32>` | `default` | **星数**（终末地原样；明日方舟由 `normalize` 把接口的「星数-1」`+1` 归一化到此字段） |
+| `is_free` | `Option<bool>` | `default` | 是否免费获取（**仅终末地**；明日方舟恒 `None`） |
 | `is_new` | `Option<bool>` | `default` | 是否首次获得 |
 | `gacha_ts` | `String` | — | 抽卡时间，**毫秒时间戳但 API 返回字符串** |
-| `seq_id` | `String` | — | 全局唯一序号，同时是翻页游标 |
+| `seq_id` | `String` | — | 全局唯一序号，同时是翻页游标。终末地：接口原样下发的 `seqId`（数值字符串）；**明日方舟：后端合成的 `{poolId}\|{gachaTs}\|{pos}`**（接口没有 seqId） |
+| `pos` | `Option<i32>` | `default` + `skip_serializing_if` | **仅明日方舟**：同一次十连内的序号 0..9（同批 10 条共用 `gachaTs`，靠它区分与排序）。终末地恒 `None` |
 
 **备注**：impl GachaRecord（gacha.rs:84）
 - `pub fn is_draw(&self) -> bool` — gacha.rs:85：`kind == "draw"`。
 - `pub fn is_gift(&self) -> bool` — gacha.rs:89：`kind == "gift_intel_book"`。
 - `pub fn gacha_ts_ms(&self) -> Option<i64>` — gacha.rs:94：解析 `gacha_ts` 为 i64，失败返回 None。
+
+> **`GachaRecord` 是两个游戏共用的唯一记录形状**：明日方舟的记录在入库时已被
+> `ArknightsGachaService::normalize` 转成这个结构（`rarity` 归一为星数、`seqId` 合成、
+> `kind` 固定 `draw`、`is_free` 置 None、`pos` 带原值）。前端因此可以用同一套统计、
+> 图表与筛选，不需要按游戏分支。
 
 ### `struct GachaWeaponRecordData`
 - 位置：gacha.rs:102

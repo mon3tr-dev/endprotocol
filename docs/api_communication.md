@@ -51,7 +51,7 @@
 
 ### 3.1.1 抽卡令牌（u8token）：不落盘，每次现换
 
-u8token 不参与森空岛签名，只用于 `ef-webview.hypergryph.com` 的抽卡接口，并且**生命周期很短**，因此不做任何持久化。
+u8token 不参与森空岛签名，只用于 webview 抽卡接口（终末地 `ef-webview` / 明日方舟 `ak-webview`），并且**生命周期很短**，因此不做任何持久化。
 
 **获取链**（鹰角通行证侧，一条 hytoken 覆盖该通行证下所有已绑定渠道）：
 
@@ -64,6 +64,9 @@ hytoken
                   body { uid:<渠道绑定 uid>, token:L2 }               → data.token（u8token）
 ```
 
+> **两个游戏用的是同一把钥匙，但开的不是同一扇门。** A1/A2 完全一样（同一域名、同一 appCode、同一份 hytoken），
+> 差异只在 A2 的 `uid`；拿到 u8token **之后**才分道扬镳 —— 见 §3.1.2。
+
 **官服与 B 服走的是同一条链**：同域名、同 appCode、同一份 hytoken，唯一差异是 A2 里的 `uid`。换出的两把 token 值不同、互不通用 —— 所以「一个账号存一把 token」不可能同时覆盖两个渠道。前提是该通行证绑定了对应渠道（未绑定时 `binding_list` 不返回那条记录）。
 
 **授权 = 一个开关**：
@@ -73,9 +76,46 @@ hytoken
 3. `revoke_role_u8token` 只清掉这个开关 —— 没有任何凭据需要删除。
 4. 抽卡同步（`sync_gacha_records` 等）前检查开关，再 `fetch_role_u8token` 现换令牌；未授权角色直接报错提示去账号页授权。
 
-> 渠道（官服 / B 服）不通过请求参数表达：`record/*` 接口的 `server_id` 恒为 `1`，渠道完全由 u8token 所属的 uid 决定。本地记录文件仍按角色真实 `serverId` 分开存放，避免两渠道互相覆盖。
+> **u8token 的作用域是渠道绑定 uid，不是游戏。** 同一把 `uid=45235032` 换出的 token
+> 打明日方舟接口正常、打终末地接口被拒（`40100 Token is invalid`）；反过来终末地 token
+> 打明日方舟接口拿到的是 `code=0` + **空列表**。因此「这是不是 u8token」不能靠长度或前缀判断
+> —— 抓包值 404 字符 / 302 字节，现换值 176~184 字符，**两者能读同一份数据**（已逐条比对 210 条记录完全一致）。
 >
 > ⚠️ `be36d44aa36bfb5b` 是鹰角前端硬编码的 appCode，存在轮换风险；失效时 A1 会报 `Gacha OAuth grant failed`。
+
+### 3.1.2 抽卡记录接口：终末地与明日方舟是两套 API
+
+两者**只有 u8token 鉴权是共用的**，其余全部不同。命令层是唯一分流点：
+`commands/gacha.rs::lookup_role_owner` 读 `roles[].app` 得到 `RoleOwner.game`，
+每个命令据此决定走哪条链路（详见 [services_others.md](reference/backend/services_others.md)）。
+
+| | 终末地（`GachaService`） | 明日方舟（`ArknightsGachaService`） |
+| --- | --- | --- |
+| 域名 | `ef-webview.hypergryph.com` | `ak-webview.hypergryph.com` |
+| token 参数名 | `token` | **`code`** |
+| 卡池枚举 | `GET /api/record/char/meta` → `tabs[]` | `GET /api/gacha/cate` → 分类 `[{id,name,active?}]` |
+| 记录接口 | `GET /api/record/char` | `GET /api/gacha/history` |
+| 卡池定位 | `pool_type` + `pool_id`（joint 类） | **`category`**（分类 id，**不是** poolId） |
+| 翻页游标 | `seq_id`（上一页末条，单值） | **`gachaTs` + `pos`（复合游标）** |
+| `server_id` | 必填恒 `"1"` | **不传**（渠道由 uid 决定） |
+| 稀有度 | 就是星数（`6` = 六星） | **星数减一**（`5` = 六星，入库时 +1 归一化） |
+| 无效 token | `code=40100 Token is invalid` | **`code=0` + 空列表（静默失败）** |
+| 记录有效期 | 全量 | **仅 90 天** |
+| 武器寻访 / 赠送十连 | 有 | **都没有** |
+
+要点：
+
+1. **明日方舟的失败是静默的**。它对任何无效 token 都返回 `{"code":0,"data":[]}` —— 既不是 4xx 也不改 `code`。
+   `ArknightsGachaService::get_categories` **必须**把空数组转成 `AuthError`，否则用户会看到「同步成功，0 条记录」。
+2. **`seqId` 是后端合成的**。明日方舟接口没有 seqId，用 `{poolId}|{gachaTs}|{pos}` 构造稳定唯一键
+   （已验证 210 条真实记录里无重复，跨分类也无重复）；`rarity +1` 后与终末地形状一致，
+   因此**前端统计、图表、筛选完全不需要区分游戏**。
+3. **本地存档分文件规则不同**。终末地 `gacha_records_{userId}_{serverId}.json`；明日方舟
+   `arknights_gacha_records_{uid}.json`（**只按 uid**）—— 官服明日方舟角色与终末地角色
+   `serverId` 都是 `1`，若沿用同一命名会互相覆盖。
+4. **头像来源不同**。终末地要查 `wiki_catalog` 补图并缓存进 `gacha_avatar_map.json`；明日方舟
+   按固定 CDN 规则直拼 `web.hycdn.cn/arknights/game/assets/char/avatar/{charId}.png`，
+   不联网、不读终末地的目录（那里没有明日方舟干员）。
 
 > 前端调用方、返回值与失败兜底策略见 [utils_services_a.md](reference/frontend/utils_services_a.md#srcutilsaccountservicets)。
 

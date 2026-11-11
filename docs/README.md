@@ -41,7 +41,7 @@
 | 每日签到 | `src/components/cards/attendance/index.tsx`、`pages/attendance.tsx`、`commands/attendance.rs` | [cards_attendance_domain_spaceship.md](reference/frontend/cards_attendance_domain_spaceship.md)、[commands.md](reference/backend/commands.md) |
 | 区域信息卡片 / 独立页面（`/domain`） | `src/components/cards/domain-info/`（含 `domain-shared.ts`）、`src/pages/domain.tsx` | [cards_attendance_domain_spaceship.md](reference/frontend/cards_attendance_domain_spaceship.md)、[pages_core.md](reference/frontend/pages_core.md) |
 | 帝江号卡片 / 独立页面（`/spaceship`） | `src/components/cards/spaceship/`（含 `spaceship-shared.ts`）、`src/pages/spaceship.tsx` | [cards_attendance_domain_spaceship.md](reference/frontend/cards_attendance_domain_spaceship.md)、[pages_core.md](reference/frontend/pages_core.md) |
-| 抽卡记录同步与统计 | `src/pages/gacha-records.tsx`、`services/gacha_service.rs` | [pages_game_data.md](reference/frontend/pages_game_data.md)、[services_others.md](reference/backend/services_others.md) |
+| 抽卡记录同步与统计（**终末地 + 明日方舟，两套 API 分流**） | `src/pages/gacha-records.tsx`、`services/gacha_service.rs`（终末地 `ef-webview`）、**`services/arknights_gacha_service.rs`（明日方舟 `ak-webview`）**、命令层唯一分流点 `commands/gacha.rs::lookup_role_owner`（`RoleOwner.game` → `is_arknights()`） | [pages_game_data.md](reference/frontend/pages_game_data.md)、[services_others.md](reference/backend/services_others.md)（含两套 API 差异对照表） |
 | 抽卡图表与逐池六星间隔统计 | `src/components/gacha-pity-chart.tsx`、`gacha-stat-charts.tsx`、`src/utils/gachaIntervals.ts` | [components_sidebar_charts.md](reference/frontend/components_sidebar_charts.md)、[utils_services_b.md](reference/frontend/utils_services_b.md) |
 | 启动器：下载/校验/切服/进程管理 | `src/components/game-action-panel.tsx`、`src/utils/launcherService.ts` | [components_game_action_panel.md](reference/frontend/components_game_action_panel.md)、[utils_services_a.md](reference/frontend/utils_services_a.md)、[services_launcher.md](reference/backend/services_launcher.md) |
 | 游戏界面右侧官方社媒栏（浮标 + 靠近展开 + 二维码 flyout，数据来自 `get_sidebar`） | `src/components/game-sidebar-rail.tsx`、`src/layouts/dashboard.tsx`、后端 `GameLauncherService::get_notice_content` / `parse_sidebars` | [components_dialogs.md](reference/frontend/components_dialogs.md)、[pages_core.md](reference/frontend/pages_core.md)、[services_launcher.md](reference/backend/services_launcher.md)、[models.md](reference/backend/models.md) |
@@ -65,7 +65,7 @@
 
 | 需求 | 位置 | 详细参考 |
 | --- | --- | --- |
-| **IPC 命令在哪定义 / 前端谁调用** | 生成的对照表 | [ipc_index.md](reference/ipc_index.md)（144 个命令全表） |
+| **IPC 命令在哪定义 / 前端谁调用** | 生成的对照表 | [ipc_index.md](reference/ipc_index.md)（145 个命令全表） |
 | 新增/修改一个 Tauri 命令 | `src-tauri/src/commands/`、`src-tauri/src/lib.rs` | [commands.md](reference/backend/commands.md)、[bootstrap.md](reference/backend/bootstrap.md)、[backend_development.md](backend_development.md) |
 | 错误类型与转换 | `src-tauri/src/utils/error.rs` | [utils.md](reference/backend/utils.md) |
 | 加密与签名（RSA/AES/DES/HMAC） | `src-tauri/src/utils/hg_crypto.rs`、`services/skland_service.rs` | [utils.md](reference/backend/utils.md)、[services_skland.md](reference/backend/services_skland.md) |
@@ -106,12 +106,12 @@
 | 文件 | 覆盖范围 |
 | --- | --- |
 | [reference/backend/bootstrap.md](reference/backend/bootstrap.md) | `main.rs`、`lib.rs`（含全部命令注册清单）、`tray.rs`、`build.rs`、`Cargo.toml`、`tauri.conf.json`、`capabilities/*`、`examples/sign_test.rs` |
-| [reference/backend/commands.md](reference/backend/commands.md) | `commands/` 全部 19 个文件、**144 处 `#[tauri::command]` 注解（144 个命令名）**：参数、返回值、内部调用链（含 `proxy.rs` 的 5 个代理命令、`window.rs` 的快照命令、`account.rs` 的按角色 u8token 授权命令、**`arknights.rs` 的 4 个《明日方舟》数据命令**） |
+| [reference/backend/commands.md](reference/backend/commands.md) | `commands/` 全部 19 个文件、**145 处 `#[tauri::command]` 注解（145 个命令名）**：参数、返回值、内部调用链（含 `proxy.rs` 的 5 个代理命令、`window.rs` 的快照命令、`account.rs` 的按角色 u8token 授权命令、**`arknights.rs` 的 4 个《明日方舟》数据命令**、**`gacha.rs` 的两个游戏抽卡分流命令 + `get_arknights_gacha_categories`**） |
 | [reference/backend/models.md](reference/backend/models.md) | `models/` 全部 8 个文件：`account.rs`、**`arknights.rs`（《明日方舟》player/info / cultivate / attendance 模型）**、`char_detail.rs`、`gacha.rs`、`game.rs`、`login.rs`、`role.rs` 的结构体字段与 serde 映射 |
 | [reference/backend/services_account.md](reference/backend/services_account.md) | `services/account_service.rs`（约 3100 行）：登录、凭证刷新、角色数据、状态中枢 |
 | [reference/backend/services_skland.md](reference/backend/services_skland.md) | `services/skland_service.rs`：森空岛 API 端点总表、签名与加密流程 |
 | [reference/backend/services_launcher.md](reference/backend/services_launcher.md) | `services/game_launcher_service.rs`（约 2960 行）：下载/校验/切服/进度事件 |
-| [reference/backend/services_others.md](reference/backend/services_others.md) | **`arknights_service`（《明日方舟》数据服务：player/info、cultivate、attendance 的拉取/解析/文件缓存）**、`gacha_service`、`char_detail_service`、`char_wiki_detail_service`、`avatar_cache_service`、`config_service`、`data_query`、`network_service`、**`secret_registry`（机密字段登记表）**、**`secret_store`（OS 凭据库封装）** |
+| [reference/backend/services_others.md](reference/backend/services_others.md) | **`arknights_gacha_service`（《明日方舟》寻访记录服务：ak-webview 的 cate/history 抓取、归一化与文件缓存，含与终末地的 API 差异对照表）**、**`arknights_service`（《明日方舟》数据服务：player/info、cultivate、attendance 的拉取/解析/文件缓存）**、`gacha_service`（终末地 ef-webview）、`char_detail_service`、`char_wiki_detail_service`、`avatar_cache_service`、`config_service`、`data_query`、`network_service`、**`secret_registry`（机密字段登记表）**、**`secret_store`（OS 凭据库封装）** |
 | [reference/backend/utils.md](reference/backend/utils.md) | `utils/`：错误类型、加密、HTTP（含全局代理缓存）、**代理（`proxy`：配置解析/系统代理/连通性测试）**、**脱敏（`redact`：日志令牌遮罩）**、日志、路径、抓包、进程探测（`process`）、游戏时长统计（`game_playtime`）、Steam 第三方游戏注入（`steam`）、exe 图标提取（`game_icon`）、崩溃捕获（`crash`）、API 熔断（`api_health`）、诊断导出（`diagnostics`） |
 | [reference/ipc_index.md](reference/ipc_index.md) | 命令名 ↔ 后端定义位置 ↔ 前端调用方（脚本生成的对照表） |
 

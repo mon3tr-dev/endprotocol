@@ -1,6 +1,6 @@
 # IPC 命令索引（前端 invoke ↔ 后端定义）
 
-> 由脚本扫描 `#[tauri::command]` 与前端 `invoke('...')` 自动生成。共 144 个后端命令，其中 125 个在前端有直接调用；19 个未见前端调用。行号基于当前工作区版本。
+> 由脚本扫描 `#[tauri::command]` 与前端 `invoke('...')` 自动生成。共 145 个后端命令，其中 126 个在前端有直接调用；19 个未见前端调用。行号基于当前工作区版本。
 >
 > 注：`browser_go_back` / `browser_go_forward` / `browser_reload` / `browser_navigate` / `browser_current_url` 经 `src/utils/browserViewService.ts` 的私有 `run(command, args)` 动态调用（`invoke(command, …)`，命令名不是字面量），脚本的字面量正则扫不到，已人工补录。
 >
@@ -55,22 +55,23 @@
 | `get_api_health` | [src-tauri/src/commands/diagnostics.rs:36](backend/commands.md) | [src/pages/account.tsx](../../src/pages/account.tsx)<br>[src/utils/crashReporting.ts](../../src/utils/crashReporting.ts) |
 | `get_arknights_attendance` | [src-tauri/src/commands/arknights.rs:52](backend/commands.md) | — |
 | `get_arknights_cultivate` | [src-tauri/src/commands/arknights.rs:39](backend/commands.md) | — |
+| `get_arknights_gacha_categories` | [src-tauri/src/commands/gacha.rs:396](backend/commands.md) | [src/pages/gacha-records.tsx](../../src/pages/gacha-records.tsx) |
 | `get_arknights_player_info` | [src-tauri/src/commands/arknights.rs:23](backend/commands.md) | — |
 | `get_attendance` | [src-tauri/src/commands/attendance.rs:60](backend/commands.md) | [src/components/cards/attendance/index.tsx](../../src/components/cards/attendance/index.tsx)<br>[src/pages/attendance.tsx](../../src/pages/attendance.tsx) |
 | `get_backend_logs` | [src-tauri/src/commands/logs.rs:4](backend/commands.md) | [src/pages/developer.tsx](../../src/pages/developer.tsx) |
 | `get_backgrounds_dir` | [src-tauri/src/commands/image.rs:153](backend/commands.md) | — |
 | `get_card_settings` | [src-tauri/src/commands/card_config.rs:9](backend/commands.md) | [src/utils/cardConfigService.ts](../../src/utils/cardConfigService.ts) |
 | `get_config` | [src-tauri/src/commands/config.rs:10](backend/commands.md) | [src/utils/configService.ts](../../src/utils/configService.ts)<br>[src/utils/launcherService.ts](../../src/utils/launcherService.ts) |
-| `get_gacha_pool_meta` | [src-tauri/src/commands/gacha.rs:129](backend/commands.md) | — |
-| `get_gacha_record_stats` | [src-tauri/src/commands/gacha.rs:560](backend/commands.md) | — |
+| `get_gacha_pool_meta` | [src-tauri/src/commands/gacha.rs:148](backend/commands.md) | — |
+| `get_gacha_record_stats` | [src-tauri/src/commands/gacha.rs:759](backend/commands.md) | — |
 | `get_game_launch_command` | [src-tauri/src/commands/startup.rs:300](backend/commands.md) | [src/utils/launcherService.ts](../../src/utils/launcherService.ts) |
 | `get_image_cache_dir` | [src-tauri/src/commands/image.rs:25](backend/commands.md) | [src/components/cards/character-list/char-select-modal.tsx](../../src/components/cards/character-list/char-select-modal.tsx)<br>[src/utils/imageCacheManager.ts](../../src/utils/imageCacheManager.ts) |
 | `get_log_dir` | [src-tauri/src/commands/diagnostics.rs:6](backend/commands.md) | [src/utils/diagnostics.ts](../../src/utils/diagnostics.ts) |
 | `get_pending_crash_reports` | [src-tauri/src/commands/diagnostics.rs:24](backend/commands.md) | [src/utils/diagnostics.ts](../../src/utils/diagnostics.ts) |
 | `get_proxy_config` | [src-tauri/src/commands/config.rs:17](backend/commands.md) | — |
 | `get_proxy_settings` | [src-tauri/src/commands/proxy.rs:61](backend/commands.md) | [src/utils/proxyService.ts](../../src/utils/proxyService.ts) |
-| `get_saved_gacha_records` | [src-tauri/src/commands/gacha.rs:189](backend/commands.md) | [src/pages/gacha-records.tsx](../../src/pages/gacha-records.tsx) |
-| `get_saved_weapon_gacha_records` | [src-tauri/src/commands/gacha.rs:255](backend/commands.md) | [src/pages/gacha-records.tsx](../../src/pages/gacha-records.tsx) |
+| `get_saved_gacha_records` | [src-tauri/src/commands/gacha.rs:237](backend/commands.md) | [src/pages/gacha-records.tsx](../../src/pages/gacha-records.tsx) |
+| `get_saved_weapon_gacha_records` | [src-tauri/src/commands/gacha.rs:335](backend/commands.md) | [src/pages/gacha-records.tsx](../../src/pages/gacha-records.tsx) |
 | `get_secret_storage_status` | [src-tauri/src/commands/config.rs:90](backend/commands.md) | [src/utils/configService.ts](../../src/utils/configService.ts) |
 | `get_selected_account` | [src-tauri/src/commands/account.rs:280](backend/commands.md) | [src/utils/accountService.ts](../../src/utils/accountService.ts) |
 | `get_skland_account_roles` | [src-tauri/src/commands/account.rs:89](backend/commands.md) | [src/utils/accountService.ts](../../src/utils/accountService.ts) |
@@ -126,7 +127,7 @@
 | `remove_proxy_config` | [src-tauri/src/commands/config.rs:38](backend/commands.md) | — |
 | `reset_api_health` | [src-tauri/src/commands/diagnostics.rs:42](backend/commands.md) | [src/components/crash-report-host.tsx](../../src/components/crash-report-host.tsx)<br>[src/pages/account.tsx](../../src/pages/account.tsx) |
 | `reset_download_cancel` | [src-tauri/src/commands/updater.rs:192](backend/commands.md) | [src/utils/updateService.ts](../../src/utils/updateService.ts) |
-| `resolve_gacha_avatar_map` | [src-tauri/src/commands/gacha.rs:400](backend/commands.md) | [src/components/gacha-pity-chart.tsx](../../src/components/gacha-pity-chart.tsx) |
+| `resolve_gacha_avatar_map` | [src-tauri/src/commands/gacha.rs:565](backend/commands.md) | [src/components/gacha-pity-chart.tsx](../../src/components/gacha-pity-chart.tsx) |
 | `revoke_role_u8token` | [src-tauri/src/commands/account.rs:352](backend/commands.md) | [src/utils/accountService.ts](../../src/utils/accountService.ts) |
 | `run_installer` | [src-tauri/src/commands/updater.rs:285](backend/commands.md) | — |
 | `save_background_image` | [src-tauri/src/commands/image.rs:164](backend/commands.md) | [src/components/appearance-settings.tsx](../../src/components/appearance-settings.tsx) |
@@ -147,8 +148,8 @@
 | `show_main_window` | [src-tauri/src/commands/tray.rs:78](backend/commands.md) | [src/components/tray-panel.tsx](../../src/components/tray-panel.tsx) |
 | `show_tray_panel` | [src-tauri/src/commands/tray.rs:66](backend/commands.md) | — |
 | `steam_shortcut_defaults` | [src-tauri/src/commands/startup.rs:323](backend/commands.md) | [src/utils/launcherService.ts](../../src/utils/launcherService.ts) |
-| `sync_gacha_records` | [src-tauri/src/commands/gacha.rs:159](backend/commands.md) | [src/pages/gacha-records.tsx](../../src/pages/gacha-records.tsx) |
-| `sync_weapon_gacha_records` | [src-tauri/src/commands/gacha.rs:221](backend/commands.md) | [src/pages/gacha-records.tsx](../../src/pages/gacha-records.tsx) |
+| `sync_gacha_records` | [src-tauri/src/commands/gacha.rs:195](backend/commands.md) | [src/pages/gacha-records.tsx](../../src/pages/gacha-records.tsx) |
+| `sync_weapon_gacha_records` | [src-tauri/src/commands/gacha.rs:276](backend/commands.md) | [src/pages/gacha-records.tsx](../../src/pages/gacha-records.tsx) |
 | `test_proxy_connection` | [src-tauri/src/commands/proxy.rs:29](backend/commands.md) | [src/utils/proxyService.ts](../../src/utils/proxyService.ts) |
 | `toggle_maximize_window` | [src-tauri/src/commands/window.rs:39](backend/commands.md) | [src/components/custom-titlebar.tsx](../../src/components/custom-titlebar.tsx)<br>[src/components/in-app-browser.tsx](../../src/components/in-app-browser.tsx) |
 | `tray_available` | [src-tauri/src/commands/tray.rs:95](backend/commands.md) | [src/utils/trayService.ts](../../src/utils/trayService.ts) |

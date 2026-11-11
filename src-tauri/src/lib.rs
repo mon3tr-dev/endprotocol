@@ -14,6 +14,7 @@ pub mod utils;
 use services::account_service::AccountService;
 use services::avatar_cache_service::AvatarCacheService;
 use services::config_service::ConfigService;
+use services::arknights_gacha_service::ArknightsGachaService;
 use services::gacha_service::GachaService;
 use services::game_launcher_service::GameLauncherService;
 use services::network_service::NetworkService;
@@ -146,15 +147,17 @@ pub fn run() {
             commands::arknights::get_arknights_cultivate,
             commands::arknights::get_arknights_attendance,
             commands::arknights::do_arknights_attendance,
-            // Gacha record commands
+            // Gacha record commands（终末地 / 明日方舟按角色自动分流）
             commands::gacha::get_gacha_pool_meta,
             commands::gacha::sync_gacha_records,
             commands::gacha::get_saved_gacha_records,
             commands::gacha::get_gacha_record_stats,
             commands::gacha::resolve_gacha_avatar_map,
-            // Weapon gacha record commands
+            // Weapon gacha record commands（仅终末地；明日方舟返回空）
             commands::gacha::sync_weapon_gacha_records,
             commands::gacha::get_saved_weapon_gacha_records,
+            // Arknights gacha（明日方舟寻访：cate 分类枚举）
+            commands::gacha::get_arknights_gacha_categories,
             // Account commands
             commands::account::get_accounts,
             commands::account::get_skland_accounts,
@@ -367,9 +370,15 @@ pub fn run() {
             let avatar_cache_service =
                 Arc::new(AvatarCacheService::new().map_err(|e| e.to_string())?);
 
-            // 初始化抽卡记录服务
+            // 初始化抽卡记录服务（终末地：ef-webview）
             let gacha_service = Arc::new(GachaService::new(app.handle().clone()));
             app.manage(gacha_service);
+
+            // 初始化《明日方舟》寻访记录服务（ak-webview）
+            // 与终末地是两套独立的 API，另起一个服务而不是在 GachaService 里加分支
+            let arknights_gacha_service =
+                Arc::new(ArknightsGachaService::new(app.handle().clone()));
+            app.manage(arknights_gacha_service);
 
             // 初始化网络数据服务
             let network_service = Arc::new(NetworkService::new(skland_service.clone()));

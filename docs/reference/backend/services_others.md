@@ -4,27 +4,28 @@
 > 覆盖 `src-tauri/src/services/` 下除 `account_service.rs` / `skland_service.rs` / `game_launcher_service.rs` 外的全部文件。
 
 ## `src-tauri/src/services/mod.rs`
-**职责**：服务层的模块声明清单，14 行，把 14 个服务模块公开为 `pub mod`。
+**职责**：服务层的模块声明清单，15 行，把 15 个服务模块公开为 `pub mod`。
 
-**导出**：`account_service`、`arknights_service`、`avatar_cache_service`、`char_detail_service`、`char_wiki_detail_service`、`config_service`、`data_query`、`game_launcher_service`、`gacha_service`、`network_service`、`secret_registry`、`secret_store`、`skland_service`、`system_resource_service`（全部为模块，无类型/方法）。
+**导出**：`account_service`、`arknights_gacha_service`、`arknights_service`、`avatar_cache_service`、`char_detail_service`、`char_wiki_detail_service`、`config_service`、`data_query`、`game_launcher_service`、`gacha_service`、`network_service`、`secret_registry`、`secret_store`、`skland_service`、`system_resource_service`（全部为模块，无类型/方法）。
 
 **状态**：不注册任何 Tauri State，仅提供命名空间。
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
 | `pub mod account_service` | mod.rs:1 | 账户服务（其他文档负责） |
-| `pub mod arknights_service` | mod.rs:2 | **《明日方舟》数据服务**（player/info、cultivate、attendance 的拉取、解析与文件缓存） |
-| `pub mod avatar_cache_service` | mod.rs:3 | 图片/头像本地缓存服务 |
-| `pub mod char_detail_service` | mod.rs:4 | 角色详情获取与图片懒加载处理 |
-| `pub mod char_wiki_detail_service` | mod.rs:5 | Wiki 物品详情批量/按需缓存 |
-| `pub mod config_service` | mod.rs:6 | JSON 配置读写（app_config.json）+ 机密字段分流 |
-| `pub mod data_query` | mod.rs:7 | 数据路径解析与 API 名枚举 |
-| `pub mod game_launcher_service` | mod.rs:8 | 游戏启动器（其他文档负责） |
-| `pub mod gacha_service` | mod.rs:9 | 抽卡记录抓取与本地存储 |
-| `pub mod network_service` | mod.rs:10 | 统一数据查询入口（聚合子服务） |
-| `pub mod secret_registry` | mod.rs:11 | **机密字段登记表**（唯一判定来源） |
-| `pub mod secret_store` | mod.rs:12 | **机密存储后端**（OS 凭据库 / 加密文件降级） |
-| `pub mod skland_service` | mod.rs:13 | 森兰 API 底层调用（其他文档负责） |
+| `pub mod arknights_gacha_service` | mod.rs:2 | **《明日方舟》寻访记录服务**（`ak-webview` 的 cate/history 抓取、归一化与文件缓存） |
+| `pub mod arknights_service` | mod.rs:3 | **《明日方舟》数据服务**（player/info、cultivate、attendance 的拉取、解析与文件缓存） |
+| `pub mod avatar_cache_service` | mod.rs:4 | 图片/头像本地缓存服务 |
+| `pub mod char_detail_service` | mod.rs:5 | 角色详情获取与图片懒加载处理 |
+| `pub mod char_wiki_detail_service` | mod.rs:6 | Wiki 物品详情批量/按需缓存 |
+| `pub mod config_service` | mod.rs:7 | JSON 配置读写（app_config.json）+ 机密字段分流 |
+| `pub mod data_query` | mod.rs:8 | 数据路径解析与 API 名枚举 |
+| `pub mod game_launcher_service` | mod.rs:9 | 游戏启动器（其他文档负责） |
+| `pub mod gacha_service` | mod.rs:10 | 抽卡记录抓取与本地存储（**仅终末地** `ef-webview`） |
+| `pub mod network_service` | mod.rs:11 | 统一数据查询入口（聚合子服务） |
+| `pub mod secret_registry` | mod.rs:12 | **机密字段登记表**（唯一判定来源） |
+| `pub mod secret_store` | mod.rs:13 | **机密存储后端**（OS 凭据库 / 加密文件降级） |
+| `pub mod skland_service` | mod.rs:14 | 森兰 API 底层调用（其他文档负责） |
 
 **备注**：无 HTTP 端点、无配置键、无文件路径。`data_query`、`secret_registry` 是纯函数模块（含单元测试），不属于「服务实例」。
 
@@ -195,6 +196,61 @@
 
 ---
 
+## `src-tauri/src/services/arknights_gacha_service.rs`
+**职责**：《明日方舟》寻访记录服务 —— `ak-webview.hypergryph.com` 的 `/api/gacha/cate`（分类枚举）与 `/api/gacha/history`（记录分页）抓取、**归一化**与本地文件存储，同步进度经 Tauri 事件推给前端。
+
+> ⚠️ **与终末地抽卡不是同一套 API**：只有"用 u8token 鉴权"是共用的，端点、token 参数名、卡池枚举方式、翻页游标、稀有度基准、失败语义**全都不同**。因此这是**独立服务**，而不是在 `gacha_service.rs` 里加分支 —— 后者一旦混进两套游标逻辑，任何改动都要同时照顾两个游戏。
+
+**导出**：`ArknightsGachaService`、`GACHA_SYNC_PROGRESS_EVENT`（与终末地**同名共用** `gacha-sync-progress`）。
+
+**主要依赖**：`utils::{capture, http_client, paths, redact}`、`models::gacha::{ArknightsGachaCategory, ArknightsGachaHistoryData, ArknightsGachaRecord, GachaRecord, SavedGachaData, GachaSyncProgress, GachaSyncResult}`。
+
+**状态**：`lib.rs` 中 `Arc::new(ArknightsGachaService::new(app.handle().clone()))` + `app.manage(...)`；命令以 `State<'_, Arc<ArknightsGachaService>>` 注入。
+
+| 符号 | 位置 | 说明 |
+| --- | --- | --- |
+| `AK_WEBVIEW_BASE` | 常量 | `https://ak-webview.hypergryph.com` |
+| `AK_GACHA_USER_AGENT` | 常量 | 抓包同款 UA（`HGWebPC/1.40.3`） |
+| `AK_MAX_PAGES_PER_CATEGORY` | 常量 | 单分类翻页安全阀 200 页（一页 10 条），防 `hasMore` 恒 true 时死循环 |
+| `new` | — | 仅保存 `AppHandle` |
+| `get_categories` | — | `GET /api/gacha/cate`；**空数组 = 鉴权失败**，直接转 `AuthError`（见下方「静默失败」） |
+| `get_history_page` | — | `GET /api/gacha/history?category=&gachaTs=&pos=`；`cursor` 为 `Option<(&str, i32)>` |
+| `fetch_category_until_overlap`（私有） | — | 循环翻页直到命中本地已存 `seqId`／`hasMore=false`／空页；每页推送进度 |
+| `normalize` | — | 原始记录 → `GachaRecord`：**`rarity + 1`**、合成 `seqId = {poolId}\|{gachaTs}\|{pos}`、`kind="draw"`、带 `pos` |
+| `pool_type_of_pool_id` | — | `CLASSIC*` → `..._Standard`（中坚=常驻）；其余 → `..._Special` |
+| `records_file_path` | — | `gacha_records/arknights_gacha_records_{uid}.json`（**只按 uid**，不带 serverId） |
+| `load_records` / `load_records_or_empty` / `save_records` | — | 本地存档读写；空结构 `serverId` 固定 `"1"` |
+| `sync_records` | — | `cate` → 逐分类增量翻页 → `merge_records` + `build_pools_map` → 落盘 |
+| `merge_records` | — | 按 `seqId` 去重，按 **`(gachaTs, pos)` 双键降序**排序（明日方舟 seqId 非数字，只按时间会让同一次十连顺序抖动） |
+| `build_pools_map` | — | 卡池名**只来自记录**（`cate` 的分类 id 与记录的 `poolId` 不是同一概念） |
+| `get_api`（私有） | — | 统一 GET：token 参数名是 **`code`**；**不发** `server_id`、**不发** `lang`；Referer 指向 `/gacha` |
+
+**与终末地的差异对照（改动此文件前必读）**：
+
+| | 终末地 `gacha_service` | 明日方舟（本文件） |
+| --- | --- | --- |
+| 域名 | `ef-webview.hypergryph.com` | `ak-webview.hypergryph.com` |
+| token 参数名 | `token` | **`code`** |
+| 卡池枚举 | `GET /api/record/char/meta` → `tabs[]` | `GET /api/gacha/cate` → `categories[]` |
+| 记录接口 | `GET /api/record/char` | `GET /api/gacha/history` |
+| 卡池定位 | `pool_type` + `pool_id` | **`category`**（分类，不是 poolId） |
+| 翻页游标 | `seq_id`（单值） | **`gachaTs` + `pos`（复合）** |
+| `server_id` | 必填恒 `"1"` | **不传** |
+| 单页条数 | 服务端决定 | 10 |
+| 稀有度 | 就是星数（`6`=六星） | **星数减一**（`5`=六星） |
+| 无效 token | `code=40100 Token is invalid` | **`code=0` + 空列表（静默失败）** |
+| 记录有效期 | 全量 | **仅 90 天** |
+| 武器/赠送十连 | 有 | **都没有** |
+
+**备注**：
+- **静默失败必须显式判空**：明日方舟对**任何**无效 token 都返回 `{"code":0,"data":[]}`，既不是 4xx 也不改 `code`。`get_categories` 拿到空数组时**必须当鉴权失败报错**，否则用户会看到"同步成功，0 条记录"。已用真实数据交叉验证：终末地 u8token、伪造 base64 打明日方舟接口都是 `code=0` + 空 `data`。
+- **u8token 作用域是渠道绑定 uid，不是游戏**：同一把 `uid=45235032` 的 token 打终末地接口被拒 `40100`、打明日方舟正常；反过来终末地 token 打明日方舟是空列表。因此"是不是 u8token"不能用长度或前缀判断（抓包值 404 字符/302 字节，现换值 176~184 字符，**两者能读同一份数据**）。
+- **换取链路与终末地完全相同**：`hytoken` →（grant `type:1`, appCode `be36d44aa36bfb5b`）→ L2 →（`u8_token_by_uid {uid}`）→ 令牌。复用 `SklandService::get_u8_token_by_uid`，无需新代码。
+- **存档不按 serverId 分文件**：接口不吃 `server_id`；且官服明日方舟角色与终末地角色 `serverId` 都是 `1`，若沿用 `gacha_records_{userId}_{serverId}.json` 会**互相覆盖**。
+- 单测 7 条：稀有度 +1、seqId 稳定性、全量标 draw、十连保序、去重、CLASSIC→Standard、卡池名来源。
+
+---
+
 ## `src-tauri/src/services/arknights_service.rs`
 **职责**：《明日方舟》数据服务 —— 森空岛 `player/info`、`cultivate/player`、`attendance` 三个接口的拉取、解析、**文件缓存**与头像下载。是「明日方舟账户数据」的唯一网络入口，与终末地的 `CharDetailService`（按 roleId 走 `card/detail`）平行但完全独立。
 
@@ -357,6 +413,12 @@
 
 ## `src-tauri/src/services/gacha_service.rs`
 **职责**：抽卡（寻访）记录服务：调用 ef-webview 抽卡 API 分页抓取角色/武器寻访记录，按 `seqId` 增量同步与去重合并，落盘到 `gacha_records/` 目录，并管理角色头像映射与全量 Wiki 目录缓存；同步进度通过 Tauri 事件推送给前端。
+
+> ⚠️ **本文件只服务终末地（`ef-webview`）**。《明日方舟》的寻访记录走完全不同的
+> API（`ak-webview`、`code` 参数、`cate` 分类、`gachaTs`+`pos` 复合游标、稀有度差 1、
+> 无效 token 静默返回空列表），由独立服务
+> [`arknights_gacha_service.rs`](#src-taurisrcservicesarknights_gacha_servicers) 负责。
+> 两者差异对照表见该文件的文档，改动任一文件前请先看那张表。
 
 **导出**：
 - `pub const GACHA_SYNC_PROGRESS_EVENT: &str = "gacha-sync-progress";`（:22）

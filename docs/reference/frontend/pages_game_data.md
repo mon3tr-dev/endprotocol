@@ -74,51 +74,70 @@
 
 ## `src/pages/gacha-records.tsx`
 
-**文件职责**：抽卡（寻访）记录页。支持角色寻访与武器寻访两类数据的读取、联网同步、分类/卡池/稀有度/关键字筛选、赠送十连分组与分页表格展示，并渲染统计卡片、星级分布图表与保底柱状图。
+**文件职责**：抽卡（寻访）记录页。支持**终末地与《明日方舟》两种角色**的记录读取、联网同步、分类/卡池/稀有度/关键字筛选、赠送十连分组与分页表格展示，并渲染统计卡片、星级分布图表与保底柱状图。
 
-**导出**：`export default function GachaRecordsPage()`（L69）——路由页面组件，无其他导出。
+> ⚠️ **两个游戏的抽卡 API 完全不同**（端点、token 参数名、卡池枚举、翻页游标、稀有度基准、失败语义），
+> 但**后端在入库时已把明日方舟的记录归一化成与终末地相同的 `GachaRecord`**（`rarity` 统一为星数、
+> `seqId` 合成、`kind` 固定 `draw`），因此本页的统计、图表、筛选、表格**不需要按游戏分支**。
+> 页面只在三处感知游戏差异：**分类集合**、**是否请求武器寻访**、**是否显示「赠送十连」筛选**。
+> 差异明细见 [services_others.md](../backend/services_others.md) 的 `arknights_gacha_service.rs` 一节。
+
+**导出**：`export default function GachaRecordsPage()`（L119）——路由页面组件，无其他导出。
+
+> **⚠️ 游戏标识**：角色下拉的每一项、折叠态按钮、页面副标题都必须带 `AccountNameLine`
+> （昵称 + **紧跟其后**的游戏徽标，垂直居中），`GameBadge` 不推到行尾 —— 行尾留给选中勾。
+> 「服务器 · 等级」自成一行且不含游戏信息。同一列表里混着终末地与明日方舟，两个游戏官服角色的
+> 服务器名都叫「官服」，只写服务器无法分辨。
+> 详见 [ui_components.md](ui_components.md#srccomponentsuigame-badgetsx)。
 
 **主要依赖**：
 - Tauri：`invoke`（`@tauri-apps/api/core`）、`listen` / `UnlistenFn`（`@tauri-apps/api/event`）
 - UI：`GlassButton` / `GlassCard` / `GlassProgressCircle` / `GlassSelect`（`@/components/ui/glass`）、`SimplePagination`（`@/components/simple-pagination`）、`CustomModal` 系列（`@/components/custom-modal`）、`RefreshIcon` / `ChevronDownIcon` / `CheckIcon`（`@/components/ui/app-icon`）、`SearchIcon`（`@/components/icons`）、`clsx`
 - 图表组件：`GachaPityChart`（`@/components/gacha-pity-chart`）、`GachaStatCharts`（`@/components/gacha-stat-charts`）
-- 数据：`getSelectedAccount` / `getAccounts` / `Account`（`@/utils/accountService`）、`resolveServerLabel`（`@/types`）、`logError`（`@/utils/logger`）、`addMessage`（`@/utils/messageStore`）、`Img`（`@/utils/imageLoader`）
-- 类型：`GachaCategory` / `GachaPoolKind` / `GachaRecord` / `GachaSyncProgress` / `GachaSyncResult` / `SavedGachaData` / `SavedWeaponGachaData`（`@/types/gacha`）
+- 数据：`getSelectedAccount` / `getAccounts` / `Account` / **`GameId`**（`@/utils/accountService`）、`resolveServerLabel`（`@/types`）、`logError`（`@/utils/logger`）、`addMessage`（`@/utils/messageStore`）、`Img`（`@/utils/imageLoader`）
+- 类型：**`ArknightsGachaCategory`** / `GachaCategory` / `GachaPoolKind` / `GachaRecord` / `GachaSyncProgress` / `GachaSyncResult` / `SavedGachaData` / `SavedWeaponGachaData`（`@/types/gacha`）
 
 ### 内部结构总览
 
 | 区间 | 内容 |
 | --- | --- |
-| L1–L31 | import 声明（含 `@/types/gacha` 类型） |
-| L33–L39 | `CATEGORIES` 分类常量（all/special/joint/normal/weapon，中英标签） |
-| L41–L46 | `RARITY_OPTIONS` 稀有度筛选项（null/6/5/4） |
-| L48–L59 | `poolKindOf`：记录 → 卡池类型推断（优先 pools 元信息，缺失按 poolId 前缀） |
-| L61–L67 | `tabLabel`：同步进度 tabKey → 中/英显示名 |
-| L69–L143 | `GachaRecordsPage` 状态声明（L73–L96）、`loadSaved`（L98）、`loadWeaponSaved`（L109）、`initRole`（L122） |
-| L145–L166 | 生命周期 effect：初始化、`accountChanged` 监听、角色下拉点击外部关闭 |
-| L168–L181 | `gacha-sync-progress` 事件监听（Tauri event） |
-| L183–L226 | `handleSync` 同步主流程（调用 invoke、toast、结果/错误处理、完成后重载） |
-| L228–L238 | `handleSelectRole`、`selectedAccount` |
-| L240–L268 | 数据源选择（角色/武器分离）与 `stats` 统计计算 |
-| L270–L293 | `lastSyncText`、`poolOptions`（卡池下拉选项）、`hasActiveFilter` |
-| L295–L311 | `records` 主筛选流水线（kind/分类/卡池/稀有度/NEW/赠送/关键字） |
-| L313–L334 | `recordGroups`：连续同卡池的赠送记录合并为「赠送十连」组 |
-| L336–L369 | 分页：`PageItem` 类型、`PAGE_SIZE=20`、`totalRecords`、`totalPages`、`pageGroups` 切片（含跨页 continuation） |
-| L371–L379 | 筛选变化回第一页；切换分类重置 `onlyFree` |
-| L381–L409 | 早退分支：加载中 / 错误页 |
-| L411–L505 | JSX header：标题与账号信息（L415–L436）、角色下拉菜单（L440–L491）、同步按钮（L493–L503） |
-| L741–L767 | 分类切换条（`CATEGORIES` 渲染）：`sticky` 悬浮于内容区底部、`bg-surface/70` + `backdrop-blur-md` 普通模糊背景，相对内容区水平居中（`mx-auto max-w-2xl`），不再占据文档流顶部 |
-| L535–L545 | 无数据空态 |
-| L547–L573 | 统计卡片行（总抽/6★/5★/4★，含 RATE 与 AVG） |
-| L575–L582 | `GachaStatCharts` 图表渲染（星级分布/六星间隔/六星累计） |
-| L584–L591 | `GachaPityChart` 保底柱状图渲染 |
-| L593–L761 | 记录表格卡片：标题与条数（L595–L602）、筛选栏（L603–L673）、空态（L674–L683）、表格（L686–L753）、分页（L754–L758） |
-| L769–L836 | 同步进度 `CustomModal`（错误/进行中/完成三态） |
-| L837–L839 | `pctText` 百分比格式化 |
-| L841–L848 | `RARITY_COLORS` 稀有度配色表 |
-| L850–L862 | `formatTime`、`rarityColor` |
-| L864–L903 | `RecordRow` 表格行组件 |
-| L905–L934 | `StatCard` 统计卡片组件 |
+| L1–L32 | import 声明（含 `@/types/gacha` 类型与 `GameId`） |
+| L34–L42 | `CATEGORIES` **全部**分类常量（all/special/joint/normal/weapon，中英标签）。⚠️ 不是所有游戏都有全部分类 |
+| L44–L45 | `ARKNIGHTS_CATEGORY_KEYS = ["all","special","normal"]` —— 明日方舟无联合寻访、无武器寻访 |
+| L47–L52 | `RARITY_OPTIONS` 稀有度筛选项（null/6/5/4） |
+| L54–L75 | `isU8UnauthorizedError` / `isArknightsTokenRejected` / `describeGachaSyncError`：后端英文错误 → 面向用户文案（含明日方舟「空列表 = 鉴权失败」的专门提示） |
+| L77–L96 | `poolKindOf`：记录 → 卡池类型推断（优先 pools 元信息；前缀兜底**两侧规则分开写**：终末地 `joint_`/`standard*`，明日方舟 `CLASSIC*`→normal，其余→special） |
+| L98–L104 | `formatCategoryName`：明日方舟分类名含 `\n`，压成 `·` 单行 |
+| L106–L117 | `tabLabel`：同步进度 tabKey → 中/英显示名 |
+| L119–L203 | `GachaRecordsPage` 状态声明（含 **`game`**、**`akCategories`**）、`loadSaved`、`loadWeaponSaved`、**`loadAkCategories`** |
+| L206–L237 | `initRole`：**先按角色定游戏**，再决定是否拉 `cate` 分类 |
+| L230–L251 | 生命周期 effect：初始化、`accountChanged` 监听、角色下拉点击外部关闭 |
+| L253–L266 | `gacha-sync-progress` 事件监听（Tauri event，**两个游戏共用同一事件名**） |
+| L268–L354 | `handleSync` 同步主流程（调用 invoke、**按游戏决定是否请求武器**、toast、结果/错误处理、完成后重载 + 重新枚举分类） |
+| L356–L370 | `handleSelectRole`（切换角色时同步切游戏与分类）、`selectedAccount` |
+| L372–L395 | **`categories`**：按游戏裁剪的分类集合（明日方舟只有 all/special/normal）；切到明日方舟时把停用的分类归位到 `all` |
+| L397–L407 | 数据源选择（角色/武器分离）与 `stats` 统计计算 |
+| L409–L411 | **`supportsFreePull`**：赠送十连仅终末地有，明日方舟隐藏该筛选 |
+| L413–L415 | 关闭 `supportsFreePull` 时清掉 `onlyFree`（避免残留隐形过滤） |
+| L417–L440 | `lastSyncText`、`poolOptions`（卡池下拉选项）、`hasActiveFilter` |
+| L442–L461 | `records` 主筛选流水线（kind/分类/卡池/稀有度/NEW/赠送/关键字） |
+| L463–L484 | `recordGroups`：连续同卡池的赠送记录合并为「赠送十连」组 |
+| L486–L519 | 分页：`PageItem` 类型、`PAGE_SIZE=20`、`totalRecords`、`totalPages`、`pageGroups` 切片（含跨页 continuation） |
+| L521–L529 | 筛选变化回第一页；切换分类重置 `onlyFree` |
+| L531–L559 | 早退分支：加载中 / 错误页 |
+| L561–L776 | JSX header：标题与账号信息、角色下拉菜单、同步按钮 |
+| L777–L794 | 无数据空态（**明日方舟额外列出服务端当前可查的分类** —— 只有 90 天窗口，"0 条"需要有据可查） |
+| L796–L847 | 统计卡片行（总抽/6★/5★/4★，含 RATE 与 AVG） |
+| L849–L855 | `GachaStatCharts` 图表渲染（星级分布/六星间隔/六星累计） |
+| L857–L864 | `GachaPityChart` 保底柱状图渲染 |
+| L866–L1034 | 记录表格卡片：标题与条数、筛选栏、空态、表格、分页 |
+| L1042–L1109 | 分类切换条（`categories` 渲染）：`sticky` 悬浮于内容区底部；指示器宽度按 `categories.length` 计算 |
+| L1111–L1178 | 同步进度 `CustomModal`（错误/进行中/完成三态） |
+| L1179–L1181 | `pctText` 百分比格式化 |
+| L1183–L1190 | `RARITY_COLORS` 稀有度配色表 |
+| L1192–L1204 | `formatTime`、`rarityColor` |
+| L1206–L1245 | `RecordRow` 表格行组件 |
+| L1247–L1276 | `StatCard` 统计卡片组件 |
 
 ### 组件与函数清单
 
@@ -131,55 +150,61 @@
 | `GachaRecordsPage` | L69 | 默认导出页面组件 |
 | ├ `loadSaved` | L98 | `invoke("get_saved_gacha_records", { roleId })` → `setSaved`，失败写 `error` |
 | ├ `loadWeaponSaved` | L109 | `invoke("get_saved_weapon_gacha_records", { roleId })` → `setWeaponSaved`，失败置 null |
-| ├ `initRole` | L122 | 并行取 `getSelectedAccount()` + `getAccounts()`，过滤 online/offline，选中项回退首个可用账号，并行加载两类记录 |
-| ├ 账号切换 effect | L150–L154 | `window` `accountChanged` → `initRole()` |
-| ├ 角色菜单关闭 effect | L157–L166 | 点击 `roleMenuRef` 外部关闭 |
-| ├ 进度监听 effect | L169–L181 | `listen("gacha-sync-progress")`，payload 为 `GachaSyncProgress`，`done` 时 `setSyncing(false)` |
-| ├ `handleSync` | L183 | 同步入口：L186–L194 同步中再点仅重开进度窗；并发调用 `sync_gacha_records`（全部角色寻访：限定/联合/常驻）与 `sync_weapon_gacha_records`（武器寻访），通过 `syncRequestRef` 序列号丢弃过期请求的结果；L202–L227 合并两个命令的 `newRecords/totalRecords/perTabNew` 并统一 `addMessage`（tag `"gacha"`）；失败 toast + 重开窗口；`finally` 在请求仍为最新时重新 `loadSaved`/`loadWeaponSaved` |
-| ├ `handleSelectRole` | L228 | 本地切换角色（仅本页生效），重载两类记录 |
-| ├ `selectedAccount` | L235 | `accounts` 中匹配 `roleId` 的项 |
-| ├ `isWeapon` / `active` | L241 / L242 | 分类为 weapon 时取 `weaponSaved`，否则 `saved` |
-| ├ `isCharDraw` | L245 | `all` 分类全收，否则按 `poolKindOf` 匹配当前分类 |
-| ├ `stats` | L248 | 过滤 `kind === "draw"` 且属于当前分类；统计 total/6★/5★/4★、`avgSix`（共享 `calculateGachaSixStarIntervals`，逐池计算六星事件间隔后取平均）、`avgFive`（total/(five+six)）与三个占比 |
-| ├ `lastSyncText` | L270 | `lastSyncTime` 按语言本地化格式化 |
-| ├ `poolOptions` | L276 | 按记录出现顺序（新→旧）收集去重卡池，显示名优先 `r.poolName` > pools 元信息 > poolId |
-| ├ `hasActiveFilter` | L292 | 关键字/稀有度/NEW/赠送 任一激活 |
-| ├ `records` | L295 | 多条件过滤；关键字匹配 `charName/weaponName/nameText/poolName` 拼接（L305–L308）；武器分类忽略 `onlyFree`（L304） |
-| ├ `recordGroups` | L314 | 连续 `isFree` 且同 poolId 的记录合并为数组组，其余为单条 |
-| ├ `PageItem` / `PAGE_SIZE` | L337 / L340 | 分页条目类型（single/gift+continuation）与每页 20 条 |
-| ├ `totalRecords` / `totalPages` | L341 / L345 | 按组内实际条数累计；`Math.max(1, ceil(n/20))` |
-| ├ `pageGroups` | L347 | 跨组切片，赠送组被分页截断时标 `continuation`，供表格显示分割线 |
-| ├ 回第一页 effect | L372–L374 | 任一筛选变化 → `setPage(1)` |
-| ├ 分类重置 effect | L377–L379 | 分类变化 → `setOnlyFree(false)` |
-| ├ JSX 主体 | L411–L838 | 见「内部结构总览」L411–L836 |
-| `pctText` | L837 | `ratio` → 一位小数百分比字符串 |
-| `RARITY_COLORS` | L841 | 6/5/4 星的 text/badge/badge 背景类名 |
-| `formatTime` | L850 | 毫秒时间戳字符串 → 本地化时间 |
-| `rarityColor` | L854 | 稀有度 → 配色，未知值兜底灰色系 |
-| `RecordRow` | L864 | 表格行：稀有度徽章（L873–L882）、名称 `weaponName ?? charName ?? nameText`（L883–L885）、卡池（L886–L888）、时间（L889–L891）、NEW 标记（L892–L900） |
-| `StatCard` | L905 | 统计卡：label + value + 可选 `RATE`/`AVG` 侧栏 |
+| ├ `loadAkCategories` | L192 | `invoke("get_arknights_gacha_categories", {roleId})` → `akCategories`。失败（未授权/token 失效）**静默置空**，不当作页面级错误 |
+| ├ `initRole` | L207 | 并行取 `getSelectedAccount()` + `getAccounts()`，过滤 online/offline，选中项回退首个可用账号；**先按角色定 `game`**，再并行加载记录（明日方舟额外拉 `cate` 分类） |
+| ├ 账号切换 effect | L235–L239 | `window` `accountChanged` → `initRole()` |
+| ├ 角色菜单关闭 effect | L242–L251 | 点击 `roleMenuRef` 外部关闭 |
+| ├ 进度监听 effect | L254–L266 | `listen("gacha-sync-progress")`，payload 为 `GachaSyncProgress`，`done` 时 `setSyncing(false)`。**两个游戏共用同一事件名** |
+| ├ `handleSync` | L268 | 同步入口：同步中再点仅重开进度窗；并发调用 `sync_gacha_records`（**后端按游戏自动分流**）与 `sync_weapon_gacha_records`（**仅终末地**；明日方舟用 `Promise.resolve(null)` 短路，不发请求），通过 `syncRequestRef` 序列号丢弃过期请求；合并结果并 `addMessage`（tag `"gacha"`，明日方舟的文案不含武器分项）；失败 toast + 重开窗口；`finally` 重载记录，明日方舟还要重新枚举分类（`cate` 是活的） |
+| ├ `handleSelectRole` | L356 | 本地切换角色（仅本页生效）；**同时切 `game`、重置 `category`/`akCategories`**，明日方舟则拉分类 |
+| ├ `selectedAccount` | L364 | `accounts` 中匹配 `roleId` 的项 |
+| ├ `categories` | L383 | **按游戏裁剪的分类集合**：明日方舟只有 `all`/`special`/`normal`（无联合、无武器） |
+| ├ 分类归位 effect | L389 | 切到明日方舟且当前停在 joint/weapon → 回到 `all` |
+| ├ `isWeapon` / `active` | L398 / L399 | 分类为 weapon 时取 `weaponSaved`，否则 `saved` |
+| ├ `supportsFreePull` | L409 | 赠送十连**仅终末地**有；明日方舟隐藏该筛选按钮 |
+| ├ 关闭赠送筛选 effect | L413 | `supportsFreePull` 为 false 时清掉 `onlyFree`（否则残留一个按钮已隐藏但仍在生效的过滤条件） |
+| ├ `isCharDraw` | L443 | `all` 分类全收，否则按 `poolKindOf` 匹配当前分类 |
+| ├ `stats` | L446 | 过滤 `kind === "draw"` 且属于当前分类；统计 total/6★/5★/4★、`avgSix`（共享 `calculateGachaSixStarIntervals`，逐池计算六星事件间隔后取平均）、`avgFive`（total/(five+six)）与三个占比。**与游戏无关**：`rarity` 已由后端归一化为星数 |
+| ├ `lastSyncText` | L417 | `lastSyncTime` 按语言本地化格式化 |
+| ├ `poolOptions` | L419 | 按记录出现顺序（新→旧）收集去重卡池，显示名优先 `r.poolName` > pools 元信息 > poolId |
+| ├ `hasActiveFilter` | L439 | 关键字/稀有度/NEW/赠送 任一激活 |
+| ├ `records` | L442 | 多条件过滤；关键字匹配 `charName/weaponName/nameText/poolName` 拼接；武器分类忽略 `onlyFree` |
+| ├ `recordGroups` | L463 | 连续 `isFree` 且同 poolId 的记录合并为数组组，其余为单条（明日方舟 `isFree` 恒空，因此每条都是单条） |
+| ├ `PageItem` / `PAGE_SIZE` | L487 / L490 | 分页条目类型（single/gift+continuation）与每页 20 条 |
+| ├ `totalRecords` / `totalPages` | L491 / L495 | 按组内实际条数累计；`Math.max(1, ceil(n/20))` |
+| ├ `pageGroups` | L497 | 跨组切片，赠送组被分页截断时标 `continuation`，供表格显示分割线 |
+| ├ 回第一页 effect | L522 | 任一筛选变化 → `setPage(1)` |
+| ├ 分类重置 effect | L527 | 分类变化 → `setOnlyFree(false)` |
+| ├ JSX 主体 | L561–L1109 | 见「内部结构总览」 |
+| `pctText` | L1179 | `ratio` → 一位小数百分比字符串 |
+| `RARITY_COLORS` | L1183 | 6/5/4 星的 text/badge/badge 背景类名 |
+| `formatTime` | L1192 | 毫秒时间戳字符串 → 本地化时间 |
+| `rarityColor` | L1196 | 稀有度 → 配色，未知值兜底灰色系 |
+| `RecordRow` | L1206 | 表格行：稀有度徽章、名称 `weaponName ?? charName ?? nameText`、卡池、时间、NEW 标记 |
+| `StatCard` | L1247 | 统计卡：label + value + 可选 `RATE`/`AVG` 侧栏 |
 
 **备注**：
-- **invoke 命令（全部 4 个，均在本文件）**：
-  - `get_saved_gacha_records`（L100，参数 `{ roleId }`）——读本地角色寻访记录
-  - `get_saved_weapon_gacha_records`（L111，参数 `{ roleId }`）——读本地武器寻访记录
-  - `sync_gacha_records`（参数 `{ roleId }`）——联网同步全部角色寻访（限定/联合/常驻）
-  - `sync_weapon_gacha_records`（参数 `{ roleId }`）——联网同步武器寻访
-  - 两个命令由 `handleSync` 并发调用，结果合并后统一提示
-  - 间接调用：`getSelectedAccount()` → `invoke('get_selected_account')`、`getAccounts()` → `invoke('get_accounts')`（accountService.ts L433/L196）；`Img` → imageCacheManager（`get_image_cache_dir` / `read_image_file`）；子组件 `GachaPityChart` 内部另有 `invoke("resolve_gacha_avatar_map", { roleId })`（gacha-pity-chart.tsx L258）。
+- **invoke 命令（全部 5 个，均在本文件）**：
+  - `get_saved_gacha_records`（参数 `{ roleId }`）——读本地角色寻访记录（**后端按游戏分流读档**）
+  - `get_saved_weapon_gacha_records`（参数 `{ roleId }`）——读本地武器寻访记录（明日方舟返回空）
+  - `sync_gacha_records`（参数 `{ roleId }`）——联网同步角色寻访（**后端按游戏自动选端点**）
+  - `sync_weapon_gacha_records`（参数 `{ roleId }`）——联网同步武器寻访（**仅终末地调用**）
+  - **`get_arknights_gacha_categories`**（参数 `{ roleId }`）——仅明日方舟，拉 `cate` 分类
+  - 间接调用：`getSelectedAccount()` → `invoke('get_selected_account')`、`getAccounts()` → `invoke('get_accounts')`（accountService.ts L433/L196）；`Img` → imageCacheManager（`get_image_cache_dir` / `read_image_file`）；子组件 `GachaPityChart` 内部另有 `invoke("resolve_gacha_avatar_map", { roleId })`（gacha-pity-chart.tsx L280）。
+- **两个游戏的差异只在这一页的三处**（其余全部共用）：① `categories` 裁剪；② `handleSync` 是否请求武器；③ `supportsFreePull` 隐藏「赠送十连」。**统计、图表、筛选、表格完全共用**，因为后端已把明日方舟记录归一化成与终末地相同的 `GachaRecord`。
 - **配置键**：无（未使用 `configService` / `localStorage` / `sessionStorage`）。
-- **i18n key 前缀**：仅 `sidebar.gacha`（L417）。其余全部文案为 `isZh ? 中文 : 英文` 手写分支（含分类标签 L34–L39、按钮、表头、进度文案等），不走 `t()`。
+- **i18n key 前缀**：仅 `sidebar.gacha`。其余全部文案为 `isZh ? 中文 : 英文` 手写分支（含分类标签、按钮、表头、进度文案等），不走 `t()`。
 - **数据流与缓存**：
-  - 读取路径：`initRole` → `invoke("get_saved_gacha_records" / "get_saved_weapon_gacha_records")` → `saved` / `weaponSaved` state。后端不联网（`GachaService::load_records_or_empty`），数据来自磁盘 JSON：角色记录 `app_data_dir/gacha_records/gacha_records_{userId}_{serverId}.json`（legacy 路径为 `app_data_dir/gacha_records_{userId}_{serverId}.json`），武器记录 `app_data_dir/gacha_records/gacha_weapon_records_{userId}_{serverId}.json`（见 src-tauri/src/utils/paths.rs L43–L62）。
-  - 同步路径：`handleSync`（L183–L226）→ 后端 `sync_gacha_records` / `sync_weapon_gacha_records` 联网抓取并写盘 → 进度经 Tauri 事件 `gacha-sync-progress`（L172 监听，payload 字段 `tabKey`/`tabIndex`/`tabCount`/`page`/`tabFetched`/`totalFetched`/`done`）→ 完成/失败经 `addMessage`（messageStore，tag `"gacha"`）→ `finally` 重新读盘刷新 state。
-  - 前端**无额外持久化缓存**，`saved`/`weaponSaved` 仅存于组件 state，页面卸载即丢；切换角色/账号变化会整体重置（L130–L133）。
-- **统计逻辑位置**：`stats` useMemo L248–L268；`pctText` L837；统计卡片 JSX L547–L573；`StatCard` 组件 L905–L934。
-- **图表渲染逻辑位置**：`GachaStatCharts` 挂载 L575–L582（props：`records`/`pools`/`category`/`isWeapon`/`isZh`，星级分布、六星间隔分布、六星累计，计算在该子组件内）；`GachaPityChart` 挂载 L584–L591（props：`roleId`/`records`/`pools`/`category`/`isZh`，顺时针旋转 90° 保底柱状图，子组件内部另调 `resolve_gacha_avatar_map`）。
-- **同步逻辑位置**：`handleSync` L183–L226；进度事件监听 L169–L181；进度 Modal L765–L832（错误态 L775–L783、进行中 L784–L813、完成态 L814–L825）；`tabLabel` L62–L67 用于进度文案。
-- **事件**：Tauri event `gacha-sync-progress`（L172）；`window` `accountChanged`（L152）。
+  - 读取路径：`initRole` → `invoke("get_saved_gacha_records" / "get_saved_weapon_gacha_records")` → `saved` / `weaponSaved` state。后端不联网，数据来自磁盘 JSON：终末地角色记录 `app_data_dir/gacha_records/gacha_records_{userId}_{serverId}.json`、武器记录 `gacha_weapon_records_{userId}_{serverId}.json`；**明日方舟 `app_data_dir/gacha_records/arknights_gacha_records_{uid}.json`（只按 uid）**（见 src-tauri/src/utils/paths.rs）。
+  - 同步路径：`handleSync` → 后端 `sync_gacha_records` / `sync_weapon_gacha_records` 联网抓取并写盘 → 进度经 Tauri 事件 `gacha-sync-progress`（payload 字段 `tabKey`/`tabIndex`/`tabCount`/`page`/`tabFetched`/`totalFetched`/`done`）→ 完成/失败经 `addMessage`（messageStore，tag `"gacha"`）→ `finally` 重新读盘刷新 state。
+  - 前端**无额外持久化缓存**，`saved`/`weaponSaved` 仅存于组件 state，页面卸载即丢；切换角色/账号变化会整体重置。
+- **统计逻辑位置**：`stats` useMemo；`pctText`；统计卡片 JSX；`StatCard` 组件。
+- **图表渲染逻辑位置**：`GachaStatCharts`（props：`records`/`pools`/`category`/`isWeapon`/`isZh`，星级分布、六星间隔分布、六星累计，计算在该子组件内）；`GachaPityChart`（props：`roleId`/`records`/`pools`/`category`/`isZh`，顺时针旋转 90° 保底柱状图，子组件内部另调 `resolve_gacha_avatar_map`）。
+- **同步逻辑位置**：`handleSync`；进度事件监听；进度 Modal（错误态/进行中/完成态）；`tabLabel` 用于进度文案。
+- **事件**：Tauri event `gacha-sync-progress`（两游戏共用）；`window` `accountChanged`。
 - **筛选栏宽度约束**：稀有度分段控件（`RARITY_OPTIONS`，记录表格筛选栏内，行尾为 NEW / 赠送十连按钮）整条带 `shrink-0`，四个按钮 `flex-1 min-w-10 whitespace-nowrap`。它是该行里唯一能被压到比文字还窄的元素（卡池 `GlassSelect` 自带 `shrink-0`、搜索框有 `min-w-44` 下限），一旦被压缩，「全部」会折成两行溢出胶囊，看起来像排版坏掉；窗口更窄时由该行的 `flex-wrap` 换行承接，不要去掉这几个类。
 - 备注异常：
-  1. L540 `"同步记录"` 为中英分支之外的硬编码中文字面量，英文界面会混排中文。
-  2. `stats` useMemo（L248–L268）依赖数组为 `[active, category, isWeapon]`，内部使用了每渲染重建的 `isCharDraw` 闭包，未显式列入依赖（当前因 `category` 已覆盖而结果正确，但属易碎写法）。
-  3. `handleSync` 的 `finally`（L222–L225）捕获的是触发同步时的 `roleId`，若同步期间本地切换角色会重载旧角色数据（实际同步中角色菜单被禁用，L443，风险极低）。
-  4. 表格「标记」列（L892–L900）仅渲染 NEW，`isFree` 的展示完全依赖赠送十连分组行（L711–L740），行内无赠送标记。
+  1. `stats` useMemo 依赖数组为 `[active, category, isWeapon]`，内部使用了每渲染重建的 `isCharDraw` 闭包，未显式列入依赖（当前因 `category` 已覆盖而结果正确，但属易碎写法）。
+  2. `handleSync` 的 `finally` 捕获的是触发同步时的 `roleId`，若同步期间本地切换角色会重载旧角色数据（实际同步中角色菜单被禁用，风险极低）。
+  3. 表格「标记」列仅渲染 NEW，`isFree` 的展示完全依赖赠送十连分组行，行内无赠送标记。
+  4. **明日方舟记录只有 90 天**：空态时额外列出服务端当前可查的分类，避免「0 条」被误解成同步失败。

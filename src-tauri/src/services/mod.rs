@@ -1,4 +1,5 @@
 pub mod account_service;
+pub mod arknights_gacha_service;
 pub mod arknights_service;
 pub mod avatar_cache_service;
 pub mod char_detail_service;

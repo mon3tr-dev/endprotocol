@@ -94,19 +94,24 @@
 | `TabIcon` (type) | dashboard.ts:64 | `(typeof TAB_ICONS)[number]`，由常量反推的字面量联合 |
 
 ## `src/types/gacha.ts`
-**职责**：抽卡（寻访）模块类型：卡池分类、单条记录、本地保存数据、同步进度/结果、meta 中的 Tab 定义。与后端 Rust 模型一一对应（注释标注了来源）。
+**职责**：抽卡（寻访）模块类型：卡池分类、单条记录、本地保存数据、同步进度/结果、meta 中的 Tab 定义、**《明日方舟》的卡池分类**。与后端 Rust 模型一一对应（注释标注了来源）。
+
+> ⚠️ **`GachaRecord` 是两个游戏共用的唯一记录形状**：后端 `ArknightsGachaService::normalize`
+> 在入库前已把明日方舟的记录转换过来（`rarity` 统一为星数、`seqId` 合成、`kind` 固定 `draw`），
+> 因此前端统计/图表/筛选不需要按游戏分支。
 
 | 类型 | 位置 | 说明 |
 | --- | --- | --- |
 | `GachaPoolKind` (type) | gacha.ts:2 | 卡池种类：`"special" \| "joint" \| "normal" \| "weapon"`（对应后端 meta tab key 前缀） |
 | `GachaCategory` (type) | gacha.ts:5 | 页面分类 = GachaPoolKind + `"all"`（全部角色，不含武器） |
-| `GachaRecord` (interface) | gacha.ts:8 | 单条记录：kind(draw/gift_intel_book)、poolId、poolName、nameText、charId?/charName?、武器字段 weaponId?/weaponName?/weaponType?、rarity?、isFree?、isNew?、gachaTs(毫秒时间戳字符串)、seqId(全局唯一序号) |
-| `GachaPoolInfo` (interface) | gacha.ts:29 | `{ poolName, poolType }` 卡池信息 |
-| `SavedWeaponGachaData` (interface) | gacha.ts:35 | 本地武器寻访存档：userId、serverId、lastSyncTime?、pools: Record<poolId, GachaPoolInfo>、records(从新到旧) |
-| `SavedGachaData` (interface) | gacha.ts:45 | 本地抽卡存档，字段结构与 SavedWeaponGachaData 相同 |
-| `GachaSyncProgress` (interface) | gacha.ts:55 | 同步进度事件：tabIndex/tabCount/tabKey/page/tabFetched/totalFetched/done + userId/serverId |
-| `GachaSyncResult` (interface) | gacha.ts:68 | 同步结果：syncedAt、newRecords、totalRecords、perTabNew: Record<tabKey, number> |
-| `GachaTab` (interface) | gacha.ts:78 | meta 卡池 Tab：key（`special` / `joint:{poolId}` / `normal`）、label?、poolType、poolId? |
+| `GachaRecord` (interface) | gacha.ts:15 | 单条记录：kind(draw/gift_intel_book)、poolId、poolName、nameText、charId?/charName?、武器字段 weaponId?/weaponName?/weaponType?、rarity?(**星数**，明日方舟已由后端 +1)、isFree?(仅终末地)、isNew?、gachaTs(毫秒时间戳字符串)、seqId(全局唯一序号；**明日方舟为后端合成的 `{poolId}\|{gachaTs}\|{pos}`**)、**pos?(仅明日方舟：同一次十连内的序号 0..9)** |
+| `GachaPoolInfo` (interface) | gacha.ts:43 | `{ poolName, poolType }` 卡池信息 |
+| `SavedWeaponGachaData` (interface) | gacha.ts:49 | 本地武器寻访存档：userId、serverId、lastSyncTime?、pools: Record<poolId, GachaPoolInfo>、records(从新到旧) |
+| `SavedGachaData` (interface) | gacha.ts:59 | 本地抽卡存档，字段结构与 SavedWeaponGachaData 相同（**两个游戏共用**） |
+| `GachaSyncProgress` (interface) | gacha.ts:69 | 同步进度事件：tabIndex/tabCount/tabKey/page/tabFetched/totalFetched/done + userId/serverId（**两个游戏共用同一事件**） |
+| `GachaSyncResult` (interface) | gacha.ts:82 | 同步结果：syncedAt、newRecords、totalRecords、perTabNew: Record<tabKey, number>（**两个游戏共用**） |
+| `GachaTab` (interface) | gacha.ts:92 | meta 卡池 Tab（**仅终末地**）：key（`special` / `joint:{poolId}` / `normal`）、label?、poolType、poolId? |
+| **`ArknightsGachaCategory`** (interface) | gacha.ts:105 | **《明日方舟》卡池分类**（`GET /api/gacha/cate`）：`id`（即 `history` 的 `category` 参数）、`name`（**含 `\n`**）、`active?`。⚠️ 这是分类不是 Tab，且与记录里的 `poolId` 不是同一个概念 |
 
 ## `src/types/index.ts`
 **职责**：公共/杂项类型出口：图标组件 props、账户模型与同步状态、服务器标签的双语映射常量及解析函数。

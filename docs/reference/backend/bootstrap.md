@@ -97,10 +97,11 @@
 
 **备注**：`lib.rs` 本身**没有任何 `emit`/`listen`**，也**没有全局应用菜单**；完整模式右键托盘仍打开原有托盘面板。
 
-### 命令总表（完整模式 `.invoke_handler` 注册 141 个命令；驻守模式不注册 IPC 命令）
+### 命令总表（完整模式 `.invoke_handler` 注册 142 个命令；驻守模式不注册 IPC 命令）
 
-> 全仓共 144 个 `#[tauri::command]` 注解（其中 3 个未在完整模式注册），逐命令对照见 [ipc_index.md](../ipc_index.md)。
-> 本次新增的 4 个《明日方舟》数据命令（`get_arknights_player_info` / `get_arknights_cultivate` / `get_arknights_attendance` / `do_arknights_attendance`）注册在 attendance 命令组之后。
+> 全仓共 145 个 `#[tauri::command]` 注解（其中 3 个未在完整模式注册），逐命令对照见 [ipc_index.md](../ipc_index.md)。
+> 《明日方舟》数据命令（`get_arknights_player_info` / `get_arknights_cultivate` / `get_arknights_attendance` / `do_arknights_attendance`）注册在 attendance 命令组之后。
+> 抽卡命令中，`get_arknights_gacha_categories` 注册在武器寻访命令组之后；其余 7 个抽卡命令**按角色所属游戏在运行时自动分流**（终末地 `GachaService` / 明日方舟 `ArknightsGachaService`），注册表本身不区分游戏。
 
 完整命令清单与定义/调用关系见 [commands.md](commands.md) 和 [ipc_index.md](../ipc_index.md)；驻守分支为纯 `Builder::default().setup(...)`（lib.rs:59-75），不注册单实例插件，也无 `.invoke_handler`。
 
