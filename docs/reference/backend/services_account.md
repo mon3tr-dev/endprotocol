@@ -121,8 +121,8 @@
 | `arknights_credentials`（私有） | 979 | `user_id` → `read_skland_credentials` 取 cred/token，再尝试 `check_and_refresh_user_cred`（成功用新值；**失败回退旧值只记 warn**，不阻断数据查询）→ `(cred, token)` |
 | `get_arknights_player_info` | 998 | `role_id, force` → `resolve_arknights_target` + `arknights_credentials` → `ArknightsService::refresh_player_info`（`force=false` 时先读 `arknights_service.get_cached_player_info`）→ `serde_json::Value`；command `get_arknights_player_info` |
 | `get_arknights_cultivate` | 1035 | `role_id` → 同上解析凭据 → `ArknightsService::fetch_cultivate` → `Value`；command `get_arknights_cultivate` |
-| `get_arknights_attendance` | 1053 | `role_id` → `ArknightsService::attendance_status` → `Value`；command `get_arknights_attendance` |
-| `do_arknights_attendance` | 1071 | `role_id` → `ArknightsService::do_attendance` → `Value`（今天已签到时为空数组）；command `do_arknights_attendance` |
+| `get_arknights_attendance` | 1053 | `role_id` → `ArknightsService::attendance_status` → **包成 `{code, message, data, timestamp}` 外壳**（`arknights_attendance_envelope`，与终末地响应同形，前端解析器依赖 `json.data`）→ `Value`；`data` 内含后端算好的 `hasToday` / `todayIndex` / `tomorrowIndex`；command `get_arknights_attendance` |
+| `do_arknights_attendance` | 1071 | `role_id` → `ArknightsService::do_attendance` → **同样包成 `{code, message, data}` 外壳**（`code` 透传真实业务码 0 / 10001）；`data` 为 `ArknightsAttendanceResult`（`awards[]` + `tomorrowAwards[]`，已签到时 `alreadySigned = true`）；command `do_arknights_attendance` |
 | `migrate_legacy_u8token`（私有静态） | 836 | 启动时清理遗留：删除所有 `role_u8token_*` 键（含凭据库条目）+ 删除 `account_token_*.u8token` 字段与条目 |
 | `backfill_binding_uid`（私有） | 890 | 拿到 binding 列表时，为老数据里缺 `bindingUid` 的角色按 roleId 回填 uid / channelMasterId / channelName |
 | `get_local_device_token`（私有） | 747 | `user_id` → 读 `account_token_{user_id}.device_token`（空串视为无）→ `Option<String>` |
@@ -131,8 +131,8 @@
 | `notify_cache_refreshed`（私有） | 789 | `&AccountRefreshResult` → 有 `app_handle` 时 `emit("accounts-refreshed", result)` → 无 |
 | `cache_accounts_by_user`（私有） | 796 | `&[AccountInfo]` → 按 `user_id` 分组，按懒加载状态分别写精简/完整缓存 → 无 |
 | `get_auto_sign_roles` | 819 | 无 → 读配置 `card_auto_sign_users` → `Vec<String>`（role_id 列表） |
-| `check_attendance_today` | 827 | `role_id` → 遍历 `account_token_*` 找该角色的 serverId/cred/token → `SklandService::call_skland_api("GET", "/web/v1/game/endfield/attendance")`（头 `sk-game-role: 3_{role}_{server}`、`token`）→ 解析 `data.hasToday` → `bool` |
-| `do_attendance_for_role` | 896 | `role_id` → 同上定位凭据（额外取 user_id）→ `check_and_refresh_user_cred` 刷新 → `call_skland_api("POST", "/web/v1/game/endfield/attendance")` → `Ok(())`；`code!=0` 但属于 `is_benign_business_error`（已签到）时同样视为成功 |
+| `check_attendance_today` | 1291 | `role_id` → **先试 `resolve_arknights_target`**：命中则走 `ArknightsService::attendance_status`（`GET /api/v1/game/attendance?gameId=1&uid=`）并取其 `hasToday`；否则遍历 `account_token_*` 找该角色的 serverId/cred/token → `SklandService::call_skland_api("GET", "/web/v1/game/endfield/attendance")`（头 `sk-game-role: 3_{role}_{server}`、`token`）→ 解析 `data.hasToday` → `bool` |
+| `do_attendance_for_role` | 1379 | `role_id` → **先试 `resolve_arknights_target`**：命中则走 `ArknightsService::do_attendance`（`POST /api/v1/game/attendance`）；否则同上定位凭据（额外取 user_id）→ `check_and_refresh_user_cred` 刷新 → `call_skland_api("POST", "/web/v1/game/endfield/attendance")` → `Ok(())`；`code!=0` 但属于 `is_benign_business_error`（已签到）时同样视为成功 |
 | `start_auto_refresh`（静态） | 975 | `Arc<tokio::sync::Mutex<AccountService>>` → `async_runtime::spawn` 每 300 秒：`refresh_accounts()` → 对 `card_auto_sign_users` 中未签到角色执行 `do_attendance_for_role` → 无；由 `lib.rs:215` 启动 |
 | `get_accounts` | 1018 | 无 → 遍历 `account_token_*` 收集 roles → 逐角色 `check_and_refresh_user_cred` → `network_service.char_detail_service().get_with_cache(...)` → 成功取昵称/等级并 `avatar_cache_service.get_or_download_avatar` → 失败按错误串判定 `HYTOKEN_EXPIRED`/`FAILED`，并可用 hytoken `refresh_cred_by_hytoken` 后重试一次 → 按懒加载写缓存 → `Vec<AccountInfo>` |
 | `add_account` | 1401 | `LoginRequest`（含可选 `expectedUserId`）→ `get_hypergryph_token`(密码) →（新设备错误经 `is_new_device_verification_error` 判定）返回 `error_message = "NEW_DEVICE_VERIFICATION_REQUIRED"` → 否则 `complete_login_from_token(RequireUserVerification, expected_user_id, Some(phone))` → `AccountLoginResult`；command `add_account` |

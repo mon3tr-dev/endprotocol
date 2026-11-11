@@ -29,6 +29,25 @@ const SKLAND_GAMES_CACHE_KEY: &str = "skland_games_cache";
 /// 森空岛游戏列表缓存有效期（12 小时）
 const SKLAND_GAMES_CACHE_TTL_SECS: i64 = 12 * 60 * 60;
 
+/// 把《明日方舟》的签到数据包成森空岛风格的响应外壳
+///
+/// 前端「签到」两个游戏共用同一个解析器 `parseAttendanceData`，它按
+/// `json.data.calendar` 取值。终末地的 `get_attendance` 直接原样返回森空岛响应，
+/// 所以明日方舟这边也必须给出同样的 `{code, message, data, timestamp}` 形状，
+/// 否则 `json.data` 为 `undefined` → 解析失败 → 「获取签到数据失败」。
+fn arknights_attendance_envelope(
+    code: i64,
+    message: &str,
+    data: serde_json::Value,
+) -> serde_json::Value {
+    json!({
+        "code": code,
+        "message": message,
+        "data": data,
+        "timestamp": now_unix_secs().to_string(),
+    })
+}
+
 /// 某个角色的归属信息（换 u8token 需要渠道绑定 uid）
 struct RoleOwner {
     user_id: String,
@@ -1029,6 +1048,13 @@ impl AccountService {
     }
 
     /// 获取《明日方舟》签到状态
+    ///
+    /// ⚠️ **返回的是完整 API 响应外壳 `{code, message, data, timestamp}`**，不是裸 `data`。
+    ///
+    /// 理由：前端 `parseAttendanceData` 两个游戏共用，它读的是 `json.data.calendar`
+    /// （终末地的 `get_attendance` 直接把森空岛原始响应原样返回）。如果这里只回
+    /// `data` 本身，`json.data` 就是 `undefined` → 解析返回 null → 界面显示
+    /// 「获取签到数据失败」。**两个命令的返回结构必须一致**。
     pub async fn get_arknights_attendance(
         &self,
         role_id: String,
@@ -1039,25 +1065,36 @@ impl AccountService {
             .arknights_service
             .attendance_status(&cred, &token, &uid)
             .await?;
-        serde_json::to_value(&attendance).map_err(|error| AppError::ConfigError {
+        let data = serde_json::to_value(&attendance).map_err(|error| AppError::ConfigError {
             message: format!("Failed to serialize arknights attendance: {}", error),
-        })
+        })?;
+        Ok(arknights_attendance_envelope(0, "OK", data))
     }
 
     /// 执行《明日方舟》签到
+    ///
+    /// 返回 [`ArknightsAttendanceResult`]：真签到时带 `awards` / `tomorrowAwards`，
+    /// 重复签到时 `alreadySigned = true` 且 `awards` 为空。
+    ///
+    /// ⚠️ 与查询一样包成 `{code, message, data}` 外壳，且 `code` **透传接口真实业务码**
+    /// （`0` 真签到 / `10001` 请勿重复签到）。前端按 `data.alreadySigned` 判断，
+    /// 但也兼容看顶层 `code`。
     pub async fn do_arknights_attendance(
         &self,
         role_id: String,
     ) -> Result<serde_json::Value, AppError> {
         let (user_id, uid) = self.resolve_arknights_target(&role_id)?;
         let (cred, token) = self.arknights_credentials(&user_id).await?;
-        let awards = self
+        let result = self
             .arknights_service
             .do_attendance(&cred, &token, &uid)
             .await?;
-        serde_json::to_value(&awards).map_err(|error| AppError::ConfigError {
-            message: format!("Failed to serialize arknights awards: {}", error),
-        })
+        let code = result.code;
+        let message = result.message.clone();
+        let data = serde_json::to_value(&result).map_err(|error| AppError::ConfigError {
+            message: format!("Failed to serialize arknights attendance result: {}", error),
+        })?;
+        Ok(arknights_attendance_envelope(code, &message, data))
     }
 
     /// 按 roleId 找到它所属的账号、渠道绑定 uid 与渠道信息
@@ -1279,7 +1316,28 @@ impl AccountService {
     }
 
     /// 查询角色今天是否已在服务器签到
+    ///
+    /// 两个游戏的判据完全不同：
+    /// - **终末地**：`/web/v1/game/endfield/attendance` 直接给 `data.hasToday`
+    /// - **明日方舟**：`/api/v1/game/attendance` 没有该字段，靠
+    ///   「日历里是否存在 `available && !done` 的格子」推导（见
+    ///   [`ArknightsAttendance::signed_today`]）
     pub async fn check_attendance_today(&self, role_id: &str) -> Result<bool, AppError> {
+        // 明日方舟角色走自己的分支：地址与判据都不一样
+        if let Ok((user_id, uid)) = self.resolve_arknights_target(role_id) {
+            let (cred, token) = self.arknights_credentials(&user_id).await?;
+            let attendance = self
+                .arknights_service
+                .attendance_status(&cred, &token, &uid)
+                .await?;
+            log_debug!(
+                "check_attendance_today: arknights role={} hasToday={}",
+                role_id,
+                attendance.has_today
+            );
+            return Ok(attendance.has_today);
+        }
+
         let (server_id, cred, token) = {
             let config_guard = self.config_service.lock().unwrap();
             let all_config = config_guard.get_all();
@@ -1348,7 +1406,35 @@ impl AccountService {
     }
 
     /// 为指定角色执行签到
+    ///
+    /// 按角色所属游戏分流：明日方舟走 `POST /api/v1/game/attendance`
+    /// （`gameId + uid` 放 body），终末地走 `/web/v1/game/endfield/attendance`
+    /// （靠 `sk-game-role` 头寻址）。
     pub async fn do_attendance_for_role(&self, role_id: &str) -> Result<(), AppError> {
+        // ---- 明日方舟分支 ----
+        if let Ok((user_id, uid)) = self.resolve_arknights_target(role_id) {
+            let (cred, token) = self.arknights_credentials(&user_id).await?;
+            let result = self
+                .arknights_service
+                .do_attendance(&cred, &token, &uid)
+                .await?;
+            if result.already_signed {
+                log_info!(
+                    "do_attendance_for_role: arknights already signed today for role_id={} (code={}, message={})",
+                    role_id,
+                    result.code,
+                    result.message
+                );
+            } else {
+                log_info!(
+                    "do_attendance_for_role: arknights SUCCESS for role_id={}, awards={}",
+                    role_id,
+                    result.awards.len()
+                );
+            }
+            return Ok(());
+        }
+
         let (user_id, server_id, cred, token) = {
             let config_guard = self.config_service.lock().unwrap();
             let all_config = config_guard.get_all();

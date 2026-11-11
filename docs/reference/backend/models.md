@@ -1396,7 +1396,7 @@ derive 均为 `Serialize, Deserialize, Clone, Debug` + 容器 `rename_all = "cam
 ## `src-tauri/src/models/arknights.rs`
 **职责**：《明日方舟》数据模型 —— 森空岛 `player/info` / `cultivate/player` / `attendance` 三个接口的反序列化结构。与终末地**完全分开**：终末地按 `roleId + serverId` 走 `card/detail` 一次返回一个角色，明日方舟按**渠道绑定 uid** 走 `player/info` 一次返回整个账号。文件约 470 行（含单元测试）。
 
-**导出**：`ArknightsPlayerInfo`、`ArknightsStatus`、`ArknightsAp`、`ArknightsAvatar`、`ArknightsSecretary`、`ArknightsChar`、`ArknightsSkill`、`ArknightsEquip`、`ArknightsRecruitSlot`、`ArknightsRoutine`、`ArknightsCampaign`、`ArknightsTower`、`ArknightsTowerReward`、`ArknightsBuilding`、`ArknightsLabor`、`ArknightsHire`、`ArknightsTraining`、`ArknightsTrainee`、`ArknightsTrainer`、`ArknightsTiredChar`、`ArknightsRoomSegment`、`ArknightsRoomChar`、`ArknightsCultivate`、`ArknightsCultivateChar`、`ArknightsCultivateSkill`、`ArknightsCultivateEquip`、`ArknightsItem`、`ArknightsAttendance`、`ArknightsCalendarEntry`、`ArknightsCheckinRecord`、`ArknightsAward`、`ArknightsAwardResource`、`ArknightsProgress`；私有 `one_or_many`、`string_or_i64`。
+**导出**：`ArknightsPlayerInfo`、`ArknightsStatus`、`ArknightsAp`、`ArknightsAvatar`、`ArknightsSecretary`、`ArknightsChar`、`ArknightsSkill`、`ArknightsEquip`、`ArknightsRecruitSlot`、`ArknightsRoutine`、`ArknightsCampaign`、`ArknightsTower`、`ArknightsTowerReward`、`ArknightsBuilding`、`ArknightsLabor`、`ArknightsHire`、`ArknightsTraining`、`ArknightsTrainee`、`ArknightsTrainer`、`ArknightsTiredChar`、`ArknightsRoomSegment`、`ArknightsRoomChar`、`ArknightsCultivate`、`ArknightsCultivateChar`、`ArknightsCultivateSkill`、`ArknightsCultivateEquip`、`ArknightsItem`、`ArknightsAttendance`、`ArknightsAttendanceReward`、`ArknightsCalendarEntry`、`ArknightsCheckinRecord`、`ArknightsAward`、`ArknightsAwardResource`、`ArknightsAttendanceResult`、`ArknightsProgress`、`ARKNIGHTS_ITEM_ICON_BASE`、`arknights_item_icon_url()`；私有 `one_or_many`、`one_or_many_default`、`string_or_i64`、`local_day_key`。
 
 > **空值约定**：真实返回里 `building.hire`（办公室未建造）与 `building.training`（无进行中专精）是 `null`。skland-api 的 `recruit.py:38` 就是因为直接下标而崩。本文件所有 `building.*` 子对象一律 `Option<T>`，容器级 `#[serde(default)]` 保证字段缺失走 `Default` 而不是整包失败。
 
@@ -1473,20 +1473,70 @@ derive 均为 `Serialize, Deserialize, Clone, Debug` + 容器 `rename_all = "cam
 - `ArknightsItem`：`id` / `count`（**字符串**，如 `"56"`）
 
 ### `struct ArknightsAttendance` 及其子结构
-- 位置：arknights.rs:492
-- 用途：`GET /api/v1/game/attendance?uid=` 的 `data`。
-- 字段：`calendar`（`Vec<ArknightsCalendarEntry>`）、`records`（`Vec<ArknightsCheckinRecord>`）、`resource_info_map`（物品 id → 静态信息）、`current_ts`（**实测为字符串**，经 `string_or_i64` 接受两种写法）、`first`（`Option<Value>`，可能为 null）
+- 位置：arknights.rs:542
+- 用途：`GET /api/v1/game/attendance?gameId=1&uid=` 的 `data`。
+- 字段：`calendar`（`Vec<ArknightsCalendarEntry>`）、`records`（`Vec<ArknightsCheckinRecord>`）、`resource_info_map`（物品 id → 静态信息，**接口不含 `icon`**）、`current_ts`（**实测为字符串**，经 `string_or_i64` 接受两种写法）、`first`（`Option<Value>`，实测为 `null`）、`has_today` / `today_index` / `tomorrow_index`（**接口不返回**，由服务层 `fill_derived` 算好后下发）
 - `ArknightsCalendarEntry`：`resource_id` / `count` / `kind`（serde `type`，实测 `daily`）/ `done` / `available`
 - `ArknightsCheckinRecord`：`resource_id` / `count` / `ts`（**字符串**时间戳）/ `kind`
 
-### `struct ArknightsAward` / `ArknightsAwardResource`
-- `ArknightsAward`（arknights.rs:556）：`resource` / `count` —— `do_attendance` 成功后 `data.awards[]` 的元素
-- `ArknightsAwardResource`：`id` / `name` / `icon`
+> ⚠️ **`calendar` 是「累计 30 格领取轨道」，不是日期网格**（2026-11-11 真机抓包确认）。
+> 抓包时刻 11 号 22:03、签到前：只有**下标 1**（`4001`×500）是 `available:true, done:false`，
+> 下标 0（`2002`×3）`done:true`，下标 2 之后全 false。点签到后 `POST` 返回的 `awards`
+> 正是下标 1 那格。所以「11 号」≠「下标 10」，用「今天几号 - 1」索引日历**必然误判成未签到**
+> （早先 `detectSignedToday` 就是这么错的）。
+>
+> 正确判据：**存在 `available && !done` 的格子 ⇔ 今天还能领 ⇔ 今天没签**。
+> 实现见 `signed_today()` / `claimable_index()` / `last_done_index()`；回归测试
+> `attendance_signed_today_uses_claimable_slot_not_day_of_month`。
+>
+> 同一 `resourceId` 在不同格的数量**不同**（`4001` 是 500/1000 混排），数量必须逐格取，
+> 不能按 id 累加（测试 `attendance_reward_count_is_per_slot_not_accumulated`）。
+
+`impl ArknightsAttendance` 的方法：
+
+| 方法 | 位置 | 说明 |
+| --- | --- | --- |
+| `claimable_index()` | arknights.rs:572 | 第一个 `available && !done` 的下标 |
+| `last_done_index()` | arknights.rs:577 | 最后一个 `done` 的下标 |
+| `has_record_today()` | arknights.rs:582 | `records[].ts` 是否落在 `currentTs` 当天（本地时区） |
+| `signed_today()` | arknights.rs:601 | 今天是否已签（有可领格 ⇒ 未签；空日历退回看 records） |
+| `today_slot()` / `tomorrow_slot()` | arknights.rs:616 / 620 | 今日 / 明日奖励下标 |
+| `fill_derived()` | arknights.rs:627 | 填 `has_today` / `today_index` / `tomorrow_index` |
+| `fill_resource_icons()` | arknights.rs:640 | 给 `resourceInfoMap` 每项补 `icon`（CDN 地址） |
+| `reward_of(index)` | arknights.rs:665 | 取某格奖励（数量取该格自己的 `count`） |
+
+### `struct ArknightsAttendanceReward`
+- 位置：arknights.rs:691 — 日历格解析后的奖励行：`resource_id` / `name` / `icon` / `count` / `kind` / `done` / `available`
+
+### `struct ArknightsAward` / `ArknightsAwardResource` / `ArknightsAttendanceResult`
+- `ArknightsAward`（arknights.rs:741）：`resource` / `count` / `kind`（serde `type`，实测 `daily`）
+- `ArknightsAwardResource`（arknights.rs:755）：`id` / `kind`（serde `type`，如 `GOLD`/`MATERIAL`）/ `name` / `rarity` / `icon`（**接口不返回**，由 `fill_icon()` 按 `id` 拼）
+- `ArknightsAttendanceResult`（arknights.rs:798）：`POST /api/v1/game/attendance` 的完整结果 —— `ts`（字符串时间戳）/ `awards[]` / `tomorrow_awards[]`（**数组**，经 `one_or_many_default` 兼容单对象与缺失）/ `resource_info_map` / `already_signed` / `code` / `message`
+- `impl ArknightsAwardResource::fill_icon()` / `impl ArknightsAward::fill_icon()`：按 `id` 拼 `https://web.hycdn.cn/arknights/game/assets/item/{id}.png`
+
+> ⚠️ **`tomorrowAwards` 是数组**（实测一项）。早先误当单对象建模，serde 会解析失败/丢失。
+> 用 PowerShell 的 `ConvertFrom-Json` 直觉判断成对象也会误导 —— 以原始 JSON 为准。
+
+### 图标 URL：`ARKNIGHTS_ITEM_ICON_BASE` / `arknights_item_icon_url()`
+- 位置：arknights.rs:25 / 29
+- 签到接口的 `resourceInfoMap` 与 `awards[].resource` **都不下发 `icon`**，一律按 `resourceId` 拼：
+  `https://web.hycdn.cn/arknights/game/assets/item/{resourceId}.png`
+- 已实测 `2003` / `4001` / `3302` / `31033` 返回 200（`999999` → 404）
 
 ### 自定义反序列化器
-- `fn one_or_many<'de, D, T>` — arknights.rs:11：`T` 或 `Vec<T>` 都接受，统一成 `Vec<T>`。用于基建设施（对象/数组混用）。
-- `fn string_or_i64<'de, D>` — arknights.rs:30：数字或数字字符串都接受，转 `i64`。用于 `attendance.currentTs`。
+- `fn one_or_many<'de, D, T>` — arknights.rs:39：`T` 或 `Vec<T>` 都接受，统一成 `Vec<T>`。用于基建设施（对象/数组混用）。
+- `fn one_or_many_default<'de, D, T>` — arknights.rs:62：数组 / 单对象 / `null` / 缺失四种都收敛成 `Vec<T>`，用于 `tomorrowAwards`。直接走 `serde_json::Value` 分发，不用 `#[serde(untagged)]`（untagged 会吞错误、难定位）。
+- `fn string_or_i64<'de, D>` — arknights.rs:88：数字或数字字符串都接受，转 `i64`。用于 `attendance.currentTs` / `ts`。
+- `fn local_day_key(ts)` — arknights.rs:703：Unix 秒 → 本地时区 `YYYY-MM-DD`。
 
-### 测试（`#[cfg(test)] mod tests`，arknights.rs:610 起）
-**离线**，用真实抓取的响应夹具（`tests/fixtures/arknights/`，昵称/uid 已替换为占位值）：
-`player_info_parses_all_modelled_fields`（逐字段断言，防「字段名对不上 → 静默走 default → 界面空白」）、`player_info_tolerates_missing_building`、`player_info_accepts_hire_and_training_when_present`、`player_info_round_trips_without_losing_fields`、`cultivate_parses_characters_and_items`、`attendance_parses_calendar_records_and_resource_map`、`attendance_tolerates_missing_optional_parts`。
+### 测试（`#[cfg(test)] mod tests`）
+**离线**，用真实抓取的响应夹具（`tests/fixtures/arknights/`）：
+
+| 夹具 | 来源 |
+| --- | --- |
+| `player_info.json` / `cultivate.json` | 真实 `player/info` / `cultivate/player` 响应（昵称/uid 已换成占位值） |
+| `attendance.json` | **2026-11-11 签到前**的真实 `GET /api/v1/game/attendance` 响应（30 格完整） |
+| `attendance_signed.json` | 同上，按签到后状态派生（下标 1 变 `done`、全表无 `available`） |
+| `attendance_result.json` | **2026-11-11 点击签到后**的真实 `POST /api/v1/game/attendance` 响应 |
+
+测试清单：`player_info_parses_all_modelled_fields`（逐字段断言，防「字段名对不上 → 静默走 default → 界面空白」）、`player_info_tolerates_missing_building`、`player_info_accepts_hire_and_training_when_present`、`player_info_round_trips_without_losing_fields`、`cultivate_parses_characters_and_items`、`attendance_parses_calendar_records_and_resource_map`、`attendance_signed_today_uses_claimable_slot_not_day_of_month`、`attendance_result_parses_awards_and_tomorrow`、`attendance_result_marks_already_signed_when_code_nonzero`、`attendance_reward_count_is_per_slot_not_accumulated`、`attendance_detects_record_within_today`、`attendance_tolerates_missing_optional_parts`、`attendance_falls_back_to_records_when_calendar_empty`、`item_icon_url_uses_resource_id`、`training_accepts_float_speed_and_remain_point`、`room_speed_accepts_float`。

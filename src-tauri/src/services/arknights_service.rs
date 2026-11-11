@@ -36,7 +36,7 @@ use std::sync::{Arc, Mutex};
 use super::avatar_cache_service::{register_url_subdir, AvatarCacheService, ImageType};
 use super::skland_service::SklandService;
 use crate::models::arknights::{
-    ArknightsAttendance, ArknightsAward, ArknightsCultivate, ArknightsPlayerInfo,
+    ArknightsAttendance, ArknightsAttendanceResult, ArknightsCultivate, ArknightsPlayerInfo,
 };
 use crate::utils::{paths, AppError};
 use crate::{log_debug, log_info, log_warn};
@@ -353,7 +353,15 @@ impl ArknightsService {
 
     /// 查询签到状态与本月签到日历
     ///
-    /// `GET /api/v1/game/attendance?uid={uid}`
+    /// `GET /api/v1/game/attendance?gameId=1&uid={uid}`
+    ///
+    /// ⚠️ 抓包（2026-11-11 22:03）确认官方客户端带 `gameId=1`，且它排在 `uid` **之前**。
+    /// 参数顺序会影响 `sign`（GET 的签名输入就是整条 query string），所以顺序照抄。
+    ///
+    /// 响应 `data` = `{currentTs, calendar[30], first, records, resourceInfoMap}`。
+    /// `resourceInfoMap` **不含 `icon`**，这里按 `resourceId` 拼好 CDN 地址；
+    /// 同时算出 `hasToday` / `todayIndex` / `tomorrowIndex` 一并下发，
+    /// 免得前端再自己推（早先前端用「今天几号」去索引日历，是错的）。
     pub async fn attendance_status(
         &self,
         cred: &str,
@@ -361,7 +369,7 @@ impl ArknightsService {
         uid: &str,
     ) -> Result<ArknightsAttendance, AppError> {
         let path = "/api/v1/game/attendance";
-        let query = format!("uid={}", uid);
+        let query = format!("gameId=1&uid={}", uid);
         let json = self
             .skland
             .call_skland_api("GET", path, Some(&query), None, cred, token, vec![])
@@ -373,15 +381,22 @@ impl ArknightsService {
             message: "data not found in arknights attendance response".to_string(),
         })?;
 
-        let attendance: ArknightsAttendance =
+        let mut attendance: ArknightsAttendance =
             serde_json::from_value(data.clone()).map_err(|error| AppError::AuthError {
                 message: format!("Failed to parse ArknightsAttendance: {}", error),
             })?;
 
+        // 图标按 resourceId 补；派生字段（hasToday / todayIndex / tomorrowIndex）算好
+        attendance.fill_resource_icons();
+        attendance.fill_derived();
+
         log_info!(
-            "arknights attendance: records={}, calendar={}",
+            "arknights attendance: records={}, calendar={}, hasToday={}, todayIndex={:?}, tomorrowIndex={:?}",
             attendance.records.len(),
-            attendance.calendar.len()
+            attendance.calendar.len(),
+            attendance.has_today,
+            attendance.today_index,
+            attendance.tomorrow_index
         );
         Ok(attendance)
     }
@@ -393,15 +408,15 @@ impl ArknightsService {
     /// 与终末地的 `/web/v1/game/endfield/attendance`（靠 `sk-game-role` 头寻址）完全不同：
     /// 明日方舟把 `gameId` + `uid` 放在 **body** 里。
     ///
-    /// 若今天已签到，接口会返回「请勿重复签到」类业务码，[`SklandService::call_skland_api`]
-    /// 把它当幂等成功原样返回，这里按 `code == 0` 判断是否真的发了奖励，
-    /// 非 0 时返回空列表（调用方按「已签到」处理）。
+    /// 若今天已签到，接口返回「请勿重复签到」类业务码（`10001`），
+    /// [`SklandService::call_skland_api`] 把它当幂等成功原样返回；这里折成
+    /// `alreadySigned = true` + 空 `awards`，让前端能区分「真签到」与「今天已经签过」。
     pub async fn do_attendance(
         &self,
         cred: &str,
         token: &str,
         uid: &str,
-    ) -> Result<Vec<ArknightsAward>, AppError> {
+    ) -> Result<ArknightsAttendanceResult, AppError> {
         let path = "/api/v1/game/attendance";
         let body = serde_json::json!({
             "gameId": 1,
@@ -414,28 +429,54 @@ impl ArknightsService {
             .await?;
 
         let code = json.get("code").and_then(|c| c.as_i64()).unwrap_or(-1);
+        let message = json
+            .get("message")
+            .and_then(|m| m.as_str())
+            .unwrap_or_default()
+            .to_string();
+
+        // 非 0（「请勿重复签到」）→ 幂等成功，没有真实奖励
         if code != 0 {
             log_info!(
                 "arknights do_attendance: benign result for uid={} (code={}, message={})",
                 uid,
                 code,
-                json.get("message").and_then(|m| m.as_str()).unwrap_or("")
+                message
             );
-            return Ok(Vec::new());
+            return Ok(ArknightsAttendanceResult {
+                already_signed: true,
+                code,
+                message,
+                ..Default::default()
+            });
         }
 
-        let awards: Vec<ArknightsAward> = json
-            .get("data")
-            .and_then(|d| d.get("awards"))
-            .and_then(|a| serde_json::from_value(a.clone()).ok())
-            .unwrap_or_default();
+        let data = json.get("data").cloned().unwrap_or(serde_json::Value::Null);
+        let mut result: ArknightsAttendanceResult =
+            serde_json::from_value(data).unwrap_or_default();
+        result.code = code;
+        result.message = message;
+        result.already_signed = false;
+
+        // 奖励图标同样按 resourceId 拼 CDN 地址
+        let mut awards = std::mem::take(&mut result.awards);
+        for award in &mut awards {
+            award.fill_icon();
+        }
+        result.awards = awards;
+        let mut tomorrow = std::mem::take(&mut result.tomorrow_awards);
+        for award in &mut tomorrow {
+            award.fill_icon();
+        }
+        result.tomorrow_awards = tomorrow;
 
         log_info!(
-            "arknights do_attendance: uid={} awards={}",
+            "arknights do_attendance: uid={} awards={}, tomorrow={}",
             uid,
-            awards.len()
+            result.awards.len(),
+            result.tomorrow_awards.len()
         );
-        Ok(awards)
+        Ok(result)
     }
 
     /// 清空某个 uid 的全部缓存（解绑角色 / 删除账户时调用）

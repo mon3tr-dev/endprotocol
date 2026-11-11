@@ -256,7 +256,7 @@
 
 **导出**：`ArknightsService`、`ArknightsCacheEntry<T>`。
 
-**主要依赖**：`SklandService`（`call_skland_api`，签名/dId/重试/熔断全在里面）、`AvatarCacheService`（头像转 base64）、`utils::paths`（`arknights_cache_dir`）、`models::arknights::{ArknightsPlayerInfo, ArknightsCultivate, ArknightsAttendance, ArknightsAward}`。
+**主要依赖**：`SklandService`（`call_skland_api`，签名/dId/重试/熔断全在里面）、`AvatarCacheService`（头像转 base64）、`utils::paths`（`arknights_cache_dir`）、`models::arknights::{ArknightsPlayerInfo, ArknightsCultivate, ArknightsAttendance, ArknightsAttendanceResult}`。
 
 **状态**：不注册 Tauri State；由 `AccountService::new`（account_service.rs:384）用 `ArknightsService::new(skland, avatar_cache)` 构造并持有，经 `AccountService::arknights_service()` 访问。**注意它不持有 `ConfigService`** —— 大块数据走独立文件，不碰 `app_config.json`。
 
@@ -275,17 +275,23 @@
 | `fetch_player_info` | arknights_service.rs:246 | `GET /api/v1/game/player/info?uid=` → `ArknightsPlayerInfo`（不写缓存） |
 | `refresh_player_info` | arknights_service.rs:294 | `fetch_player_info` + `cache_player_info`（绑定/刷新用这个） |
 | `fetch_cultivate` | arknights_service.rs:310 | `GET /api/v1/game/cultivate/player?uid=` → `ArknightsCultivate`（唯一增量是仓库 `items`） |
-| `attendance_status` | arknights_service.rs:344 | `GET /api/v1/game/attendance?uid=` → `ArknightsAttendance` |
-| `do_attendance` | arknights_service.rs:376 | `POST /api/v1/game/attendance`，body `{gameId: 1, uid}` → `Vec<ArknightsAward>`。今天已签到时返回**空数组**（幂等结果由 `call_skland_api` 原样放行，这里按 `code != 0` 识别） |
+| `attendance_status` | arknights_service.rs:365 | `GET /api/v1/game/attendance?gameId=1&uid=` → `ArknightsAttendance`。解析后调 `fill_resource_icons()`（按 `resourceId` 拼 CDN 图标）与 `fill_derived()`（算 `hasToday` / `todayIndex` / `tomorrowIndex`） |
+| `do_attendance` | arknights_service.rs:414 | `POST /api/v1/game/attendance`，body `{gameId: 1, uid}` → `ArknightsAttendanceResult`。`code == 0` 时返回 `awards[]` + `tomorrowAwards[]`（均补好 `resource.icon`）；`code != 0`（`10001` 请勿重复签到）时返回 `alreadySigned = true` + 空 `awards` |
 | `clear_cache` | arknights_service.rs:427 | 清内存 + 删 `player_info_{uid}.json` 与三个 `raw_*_{uid}.json`。解绑角色/删除账户时调用 |
 
 **备注**：
 - **HTTP 端点**（全部经 `SklandService::call_skland_api`，基址 `https://zonai.skland.com`）：
   - `GET /api/v1/game/player/info?uid={uid}` —— 玩家全量数据
   - `GET /api/v1/game/cultivate/player?uid={uid}` —— 干员养成 + 仓库
-  - `GET /api/v1/game/attendance?uid={uid}` —— 签到状态
-  - `POST /api/v1/game/attendance`（body `{gameId: 1, uid}`）—— 执行签到
+  - `GET /api/v1/game/attendance?gameId=1&uid={uid}` —— 签到状态（**参数顺序照抄官方客户端**，GET 的 `sign` 输入就是整条 query string）
+  - `POST /api/v1/game/attendance`（body `{"uid":"...","gameId":1}`）—— 执行签到
   - **不发 `sk-game-role` 头**（那是终末地签到才需要的）；明日方舟把 `gameId` + `uid` 放在 body 里
+- **签到日历语义**（2026-11-11 抓包确认）：`calendar` 是**累计 30 格领取轨道**，不是日期网格。
+  判「今天是否已签到」只能看**有没有 `available && !done` 的格子**；用「日号 - 1」当下标会误判。
+  详见 [models.md](models.md) 的 `ArknightsAttendance` 一节
+- **图标**：签到接口不下发 `icon`，一律按 `resourceId` 拼
+  `https://web.hycdn.cn/arknights/game/assets/item/{resourceId}.png`
+  （`models::arknights::arknights_item_icon_url`）
 - **`uid` 是渠道绑定 uid**（`roles[].bindingUid`），不是 roleId、也不是森空岛 userId。官服与 B 服各有自己的 uid，实测不会碰撞
 - **缓存文件**（`<app_data>/arknights/`，不进 `app_config.json`）：
   - `player_info_{uid}.json` —— 解析后的完整数据（含头像 base64）
