@@ -624,7 +624,8 @@
     "no_cards_guide": "Click the + button at the bottom right to add cards and customize your dashboard",
     "add_card": {
       "title": "Add Card",
-      "already_added": "Added"
+      "already_added": "Added",
+      "game_support_hint": "The badge on the right shows which games this card supports"
     }
   },
   "game": {

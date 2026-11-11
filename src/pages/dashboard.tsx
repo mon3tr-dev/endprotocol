@@ -46,6 +46,7 @@ import {
 } from "@/components/custom-modal";
 import { resolveServerLabel } from "@/types";
 import { AccountNameLine } from "@/components/ui/game-badge";
+import { filterAccountsForCard } from "@/config/gameSupport";
 import { trackStartupTask } from "@/utils/startupProgress";
 import {
   captureTabSnapshot,
@@ -65,6 +66,8 @@ export default function DashboardPage() {
   const [tabs, setTabs] = useState<DashboardTab[]>([]);
   const [activeTabId, setActiveTabIdState] = useState<string | null>(null);
   const [currentRoleId, setCurrentRoleId] = useState<string | null>(null);
+  /** 当前选中账户的游戏（endfield/arknights）：决定添加卡片弹窗的可用集合 */
+  const [currentGame, setCurrentGame] = useState<string | undefined>(undefined);
   const [dashboardConfig, setDashboardConfig] =
     useState<DashboardConfig | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -113,6 +116,12 @@ export default function DashboardPage() {
       setIsLoading(true);
       const selectedAccountId = await getSelectedAccount();
       setCurrentRoleId(selectedAccountId);
+
+      // 当前账户的游戏：添加卡片弹窗用它禁选不支持的卡片
+      const accounts = await getAccounts();
+      setCurrentGame(
+        accounts.find((a) => a.id === selectedAccountId)?.game ?? undefined,
+      );
 
       if (selectedAccountId) {
         await roleDetailService.setCurrentRoleId(selectedAccountId);
@@ -272,7 +281,8 @@ export default function DashboardPage() {
   const openRoleSelect = async (cardType: CardTypeId) => {
     try {
       const accounts = await getAccounts();
-      setAvailableAccounts(accounts);
+      // 只列出这张卡片支持的账户：明日方舟账户不会出现在终末地独占卡片的候选里
+      setAvailableAccounts(filterAccountsForCard(accounts, cardType));
       setSelectedRoleId(activeTab?.defaultRoleId ?? null);
       setPendingCardType(cardType);
       setIsRoleSelectModalOpen(true);
@@ -566,6 +576,7 @@ export default function DashboardPage() {
           onClose={() => setIsAddCardModalOpen(false)}
           onAdd={handleAddCard}
           existingTypes={dashboardConfig.cards.map((c) => c.type)}
+          currentGame={currentGame}
         />
       )}
 

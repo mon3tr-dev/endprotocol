@@ -3,9 +3,9 @@
 > 逐文件精读源码生成。行号基于当前工作区版本，仅用于快速定位。
 
 ## `src/components/dashboard-sidebar.tsx`
-**职责**：应用左侧全局侧边栏——展示当前选中账户卡片、可拖拽排序的主导航（仪表板/角色/勋章/出勤/抽卡/To-Do/区域/帝江号，换位带 FLIP 滑动动画）、仪表板多标签页列表（增删改、右键菜单、折叠、拖拽换位带动画）、底部功能入口与主题/语言切换；同时内含一个被硬关闭的命令面板式搜索模块。
+**职责**：应用左侧全局侧边栏——展示当前选中账户卡片、可拖拽排序的主导航（仪表板/角色/勋章/出勤/抽卡/To-Do/区域/帝江号，换位带 FLIP 滑动动画）、仪表板多标签页列表（增删改、右键菜单、折叠、拖拽换位带动画）、底部功能入口与主题/语言切换；同时内含一个被硬关闭的命令面板式搜索模块。**主导航按当前账户的游戏过滤**：选中明日方舟账户时，终末地独占的页面（角色/勋章/区域/帝江号）整体不显示，只留两个游戏都支持的入口（仪表板/签到/抽卡/待办）。
 **导出**：`Sidebar`（唯一导出，命名导出，无 default）
-**主要依赖**：`react-router-dom`（`Link`/`useLocation`/`useNavigate`）、`react-dom` 的 `createPortal`、`react-i18next` 的 `useTranslation`、`clsx`、`@/components/ui/glass`（`GlassKbd`、`GlassSkeleton`）、`@/components/icons`（14 个图标）、`@/components/theme-switch`、`@/components/language-switch`、`@/components/ui/account-avatar`、`@/components/ui/app-icon`（`ChevronDownIcon`/`ChevronLeftIcon`/`ChevronRightIcon`/`SwitchIcon`）、`./account-switch-modal`、`@/components/cards/card-context-menu`、`@/components/tab-editor-modal`、`@/components/ui/confirm-dialog`、`@/utils/accountService`、`@/utils/configService`、`@/utils/tabService`、`@/utils/tabIcons`、`@/utils/tabSnapshotService`（`runDashboardLeaveHandler` / `deleteTabSnapshotFile`）、`@/hooks/useFlipList`、`@/utils/imageCacheManager`、`@/utils/logger`、`@/config/site`、`@/types`（`resolveServerLabel`）、`@/types/dashboard`（`DashboardTab`）
+**主要依赖**：`react-router-dom`（`Link`/`useLocation`/`useNavigate`）、`react-dom` 的 `createPortal`、`react-i18next` 的 `useTranslation`、`clsx`、`@/components/ui/glass`（`GlassKbd`、`GlassSkeleton`）、`@/components/icons`（14 个图标）、`@/components/theme-switch`、`@/components/language-switch`、`@/components/ui/account-avatar`、`@/components/ui/app-icon`（`ChevronDownIcon`/`ChevronLeftIcon`/`ChevronRightIcon`/`SwitchIcon`）、`./account-switch-modal`、`@/components/cards/card-context-menu`、`@/components/tab-editor-modal`、`@/components/ui/confirm-dialog`、`@/utils/accountService`、`@/utils/configService`、`@/utils/tabService`、`@/utils/tabIcons`、`@/utils/tabSnapshotService`（`runDashboardLeaveHandler` / `deleteTabSnapshotFile`）、`@/hooks/useFlipList`、`@/utils/imageCacheManager`、`@/utils/logger`、`@/config/site`、**`@/config/gameSupport`（`isNavVisible`/`NAV_ROUTES`/`pageSupportsGame`）**、`@/types`（`resolveServerLabel`）、`@/types/dashboard`（`DashboardTab`）
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
@@ -17,6 +17,9 @@
 | `Sidebar` | dashboard-sidebar.tsx:145 | 主组件，约 145-2270 行，见下方内部结构 |
 | `handleNavClick` | dashboard-sidebar.tsx:291 | 导航点击守卫：`preventDefault` → await `runDashboardLeaveHandler()`（当前若停在仪表盘标签页则先截图）→ `navigate(href)` → `onNavigate?.()`。用于除「仪表盘父节点」「子标签」外的全部导航项与底部入口 |
 | `useFlipList(navListRef, navOrder)` | dashboard-sidebar.tsx:302 | 主导航列表换位 FLIP 动画（260ms） |
+| `currentNavKey` | dashboard-sidebar.tsx:359 | 由 `location.pathname` 反查的导航键（`NAV_ROUTES` 反查，`useMemo` 缓存） |
+| `locationBlocked` | dashboard-sidebar.tsx:369 | 当前页面是否不被当前账户的游戏支持 |
+| `visibleNavOrder` | dashboard-sidebar.tsx:1069 | **实际渲染的导航顺序**：`navOrder.filter(key => isNavVisible(key, currentGame))`。明日方舟账户下只剩 仪表盘/签到/抽卡/待办 |
 | `useFlipList(tabsListRef, tabIds)` | dashboard-sidebar.tsx:303 | 仪表板标签列表换位 FLIP 动画（220ms） |
 
 **内部结构**（行号为当前工作区快照，改动后以源码为准）：

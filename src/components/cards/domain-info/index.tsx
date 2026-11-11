@@ -6,6 +6,7 @@ import { useCardData } from "../base/use-card-data";
 import { roleDataService } from "@/utils/roleDataService";
 import { CardConfigService } from "@/utils/cardConfigService";
 import { getAccounts } from "@/utils/accountService";
+import { filterAccountsForCard } from "@/config/gameSupport";
 import { AccountAvatar } from "@/components/ui/account-avatar";
 import { Img } from "@/utils/imageLoader";
 import { logError } from "@/utils/logger";
@@ -82,7 +83,8 @@ export default function DomainInfoCard({
   const loadAccounts = useCallback(async () => {
     try {
       const accs = await getAccounts();
-      setAccounts(accs);
+      // 区域（base.domain）只有终末地有，明日方舟账户不在候选里
+      setAccounts(filterAccountsForCard(accs, "domain_info"));
     } catch (error) {
       logError("Failed to load accounts:", error);
     }
@@ -109,7 +111,7 @@ export default function DomainInfoCard({
   const openAccountSelect = useCallback(async () => {
     try {
       const accs = await getAccounts();
-      setAccounts(accs);
+      setAccounts(filterAccountsForCard(accs, "domain_info"));
       setIsRoleSelectOpen(true);
     } catch (err) {
       logError("Failed to load accounts:", err);
@@ -210,7 +212,14 @@ export default function DomainInfoCard({
                   </button>
                 )}
               </div>
-              <div className="text-[10px] text-muted">
+              <div className="text-[10px] text-muted truncate">
+                {/* 账户名 + 游戏徽标：区域名是区域自己的名字，这里标明它属于哪个账户 */}
+                {currentAccount?.nickname ? (
+                  <AccountNameLine game={currentAccount.game}>
+                    {currentAccount.nickname}
+                  </AccountNameLine>
+                ) : null}
+                {currentAccount?.nickname ? " · " : ""}
                 {t("card:domain_info_level")} {effectiveDomain.level ?? "--"}
               </div>
             </div>

@@ -22,6 +22,7 @@ import { Img } from "@/utils/imageLoader";
 import { useImageRequest, usePinImages } from "@/utils/imageCacheManager";
 import { getAccounts } from "@/utils/accountService";
 import type { Account } from "@/utils/accountService";
+import { filterAccountsForCard } from "@/config/gameSupport";
 import {
   CustomModal,
   CustomModalHeader,
@@ -192,7 +193,8 @@ export default function CharacterListCard({
   const handleOpenRoleSelect = async () => {
     try {
       const accounts = await getAccounts();
-      setAvailableAccounts(accounts);
+      // 干员列表依赖终末地的 card/detail，明日方舟账户不在候选里
+      setAvailableAccounts(filterAccountsForCard(accounts, "character_list"));
       setIsRoleSelectModalOpen(true);
     } catch (error) {
       logError("Failed to load accounts:", error);

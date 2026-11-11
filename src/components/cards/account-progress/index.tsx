@@ -6,6 +6,9 @@ import { useCardData } from "../base/use-card-data";
 import { roleDataService } from "@/utils/roleDataService";
 import { CardConfigService } from "@/utils/cardConfigService";
 import { getAccounts } from "@/utils/accountService";
+import { resolveRoleGame } from "@/utils/roleGame";
+import { invoke } from "@tauri-apps/api/core";
+import { filterAccountsForCard } from "@/config/gameSupport";
 import { AccountAvatar } from "@/components/ui/account-avatar";
 import { logError } from "@/utils/logger";
 import { resolveServerLabel } from "@/types";
@@ -23,6 +26,8 @@ export interface DungeonData {
   curStamina?: string;
   maxTs?: string;
   maxStamina?: string;
+  /** 恢复 1 点所需的秒数。终末地 432，明日方舟 360；不填按 432 */
+  refillInterval?: number;
 }
 
 export interface ProgressData {
@@ -30,7 +35,20 @@ export interface ProgressData {
   bpSystem?: { curLevel?: number; maxLevel?: number };
   dailyMission?: { dailyActivation?: number; maxDailyActivation?: number };
   weeklyMission?: { score?: number; total?: number };
+  /**
+   * 数据来源游戏。决定第三根进度条显示什么：
+   * - 终末地：通行证等级（bpSystem）
+   * - 明日方舟：剿灭作战进度（campaign）—— 明日方舟没有通行证系统
+   */
+  variant?: "endfield" | "arknights";
+  /** 明日方舟的剿灭进度（仅 variant === "arknights" 时使用） */
+  campaign?: { current?: number; total?: number };
 }
+
+/** 终末地的体力恢复节奏：1 点 / 432 秒（7 分 12 秒）。 */
+const ENDFIELD_AP_REFILL_SECONDS = 432;
+/** 明日方舟的理智恢复节奏：1 点 / 360 秒（6 分钟）。 */
+const ARKNIGHTS_AP_REFILL_SECONDS = 360;
 
 function formatRecoverCountdownFromSec(totalSeconds: number): string {
   if (totalSeconds <= 0) return "00:00:00";
@@ -39,6 +57,86 @@ function formatRecoverCountdownFromSec(totalSeconds: number): string {
   const m = Math.floor((sec % 3600) / 60);
   const s = sec % 60;
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+
+/**
+ * 把《明日方舟》的 `player/info` 折成卡片认识的 `ProgressData`。
+ *
+ * 对应关系：
+ * - 理智 `status.ap` → `dungeon.curStamina/maxStamina`（明日方舟也叫理智，数值语义一致）
+ * - 日常 `routine.daily` → `dailyMission`（当前/上限）
+ * - 周常 `routine.weekly` → `weeklyMission`（已完成/总数）
+ * - 剿灭 `campaign.reward` → `campaign`（明日方舟没有通行证等级，剿灭进度占第三根条）
+ *
+ * 体力恢复：明日方舟 1 点 / 6 分钟（360 秒），终末地是 1 点 / 7 分 12 秒（432 秒），
+ * 两者节奏不同，因此节奏随数据一起带过去，不能写死。
+ */
+function mapArknightsProgress(info: any): ProgressData {
+  const status = info?.status ?? {};
+  const ap = status.ap ?? {};
+  const routine = info?.routine ?? {};
+  const campaign = info?.campaign?.reward ?? {};
+
+  const max = Number(ap.max ?? 0);
+  const current = Number(ap.current ?? 0);
+
+  // 距回满的剩余秒数：优先用接口给的回满时间戳
+  const completeRecovery = Number(ap.completeRecoveryTime ?? 0);
+  let recoverSecs = 0;
+  if (completeRecovery > 0) {
+    recoverSecs = Math.max(0, completeRecovery - Math.floor(Date.now() / 1000));
+  } else if (max > current) {
+    // 没有回满时间戳时，按缺口 × 单点恢复时间估算
+    recoverSecs = (max - current) * ARKNIGHTS_AP_REFILL_SECONDS;
+  }
+
+  return {
+    variant: "arknights",
+    dungeon: {
+      curStamina: String(current),
+      maxStamina: String(max),
+      // 距回满的秒数（卡片自己换算成倒计时）
+      maxTs: String(Math.floor(Date.now() / 1000) + recoverSecs),
+      refillInterval: ARKNIGHTS_AP_REFILL_SECONDS,
+    },
+    dailyMission: {
+      dailyActivation: Number(routine.daily?.current ?? 0),
+      maxDailyActivation: Number(routine.daily?.total ?? 0),
+    },
+    weeklyMission: {
+      score: Number(routine.weekly?.current ?? 0),
+      total: Number(routine.weekly?.total ?? 0),
+    },
+    campaign: {
+      current: Number(campaign.current ?? 0),
+      total: Number(campaign.total ?? 0),
+    },
+  };
+}
+
+/** 按角色所属的游戏取「账户进度」。 */
+async function fetchAccountProgress(roleId: string): Promise<ProgressData> {
+  const game = await resolveRoleGame(roleId);
+  if (game === "arknights") {
+    const info = await invoke<any>("get_arknights_player_info", {
+      roleId,
+      force: false,
+    });
+    return mapArknightsProgress(info);
+  }
+  const result = await roleDataService.queryData(roleId, "char_detail", [
+    "dungeon",
+    "bpSystem",
+    "dailyMission",
+    "weeklyMission",
+  ]);
+  if (!result) return {};
+  return {
+    dungeon: result["dungeon"],
+    bpSystem: result["bpSystem"],
+    dailyMission: result["dailyMission"],
+    weeklyMission: result["weeklyMission"],
+  };
 }
 
 export default function AccountProgressCard({
@@ -56,21 +154,7 @@ export default function AccountProgressCard({
   const effectiveRoleId = customRoleId ?? defaultRoleId;
 
   const { data, isLoading } = useCardData<ProgressData>({
-    fetchData: async () => {
-      const result = await roleDataService.queryData(effectiveRoleId, "char_detail", [
-        "dungeon",
-        "bpSystem",
-        "dailyMission",
-        "weeklyMission",
-      ]);
-      if (!result) return {};
-      return {
-        dungeon: result["dungeon"],
-        bpSystem: result["bpSystem"],
-        dailyMission: result["dailyMission"],
-        weeklyMission: result["weeklyMission"],
-      };
-    },
+    fetchData: () => fetchAccountProgress(effectiveRoleId),
     reloadKey: effectiveRoleId,
   });
 
@@ -92,7 +176,7 @@ export default function AccountProgressCard({
   const loadAccounts = useCallback(async () => {
     try {
       const accs = await getAccounts();
-      setAccounts(accs);
+      setAccounts(filterAccountsForCard(accs, "account_progress"));
     } catch (error) {
       logError("Failed to load accounts:", error);
     }
@@ -105,7 +189,7 @@ export default function AccountProgressCard({
   const openAccountSelect = useCallback(async () => {
     try {
       const accs = await getAccounts();
-      setAccounts(accs);
+      setAccounts(filterAccountsForCard(accs, "account_progress"));
       setIsRoleSelectOpen(true);
     } catch (err) {
       logError("Failed to load accounts:", err);
@@ -150,7 +234,9 @@ export default function AccountProgressCard({
     return () => window.clearInterval(timer);
   }, []);
 
-  const REFILL_INTERVAL = 432;
+  // 恢复节奏随数据源而定：终末地 432 秒/点，明日方舟 360 秒/点
+  const REFILL_INTERVAL =
+    data?.dungeon?.refillInterval ?? ENDFIELD_AP_REFILL_SECONDS;
 
   const { liveStamina, refillCountdown, recoverCountdown, isStaminaFull } = useMemo(() => {
     if (maxStamina <= 0 || maxTsSec <= 0) {
@@ -176,7 +262,7 @@ export default function AccountProgressCard({
     const fullCountdownSec = Math.max(0, maxTsSec - nowSec);
     const fullCd = formatRecoverCountdownFromSec(fullCountdownSec);
     return { liveStamina: live, refillCountdown: refillCd, recoverCountdown: fullCd, isStaminaFull: false };
-  }, [curStamina, maxStamina, maxTsSec, now]);
+  }, [curStamina, maxStamina, maxTsSec, now, REFILL_INTERVAL]);
 
   const bpCur = data?.bpSystem?.curLevel ?? 0;
   const bpMax = data?.bpSystem?.maxLevel ?? 0;
@@ -186,6 +272,11 @@ export default function AccountProgressCard({
 
   const weeklyCur = data?.weeklyMission?.score ?? 0;
   const weeklyMax = data?.weeklyMission?.total ?? 0;
+
+  // 第三根条按游戏切换内容：明日方舟没有通行证等级，改显示剿灭作战进度
+  const isArknights = data?.variant === "arknights";
+  const campaignCur = data?.campaign?.current ?? 0;
+  const campaignMax = data?.campaign?.total ?? 0;
 
   const barSections = [
     {
@@ -200,12 +291,19 @@ export default function AccountProgressCard({
       suffix: "",
       percent: weeklyMax > 0 ? weeklyCur / weeklyMax : 0,
     },
-    {
-      label: t("card:account_progress_bp"),
-      value: bpMax > 0 ? `${bpCur}/${bpMax}` : `${bpCur}`,
-      suffix: "",
-      percent: bpMax > 0 ? bpCur / bpMax : 0,
-    },
+    isArknights
+      ? {
+          label: t("card:account_progress_campaign"),
+          value: `${campaignCur}/${campaignMax}`,
+          suffix: "",
+          percent: campaignMax > 0 ? campaignCur / campaignMax : 0,
+        }
+      : {
+          label: t("card:account_progress_bp"),
+          value: bpMax > 0 ? `${bpCur}/${bpMax}` : `${bpCur}`,
+          suffix: "",
+          percent: bpMax > 0 ? bpCur / bpMax : 0,
+        },
   ];
 
   if (isLoading) {
@@ -233,7 +331,9 @@ export default function AccountProgressCard({
               className="rounded-md border border-separator shrink-0"
             />
             <span className="text-xs font-semibold text-foreground truncate">
-              {currentAccount?.nickname || t("common.unknown")}
+              <AccountNameLine game={currentAccount?.game}>
+                {currentAccount?.nickname || t("common.unknown")}
+              </AccountNameLine>
             </span>
           </div>
           <button

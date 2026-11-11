@@ -61,6 +61,7 @@ import { CardContextMenu } from "@/components/cards/card-context-menu";
 import { TabEditorModal } from "@/components/tab-editor-modal";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import type { DashboardTab } from "@/types/dashboard";
+import { isNavVisible, NAV_ROUTES, pageSupportsGame } from "@/config/gameSupport";
 import logger from "@/utils/logger";
 
 interface SearchResult {
@@ -354,6 +355,33 @@ export const Sidebar = ({
     };
     loadCollapsed();
   }, []);
+
+  // 当前页面不被当前账户的游戏支持时，自动退回仪表盘。
+  //
+  // 只处理「账户切换后停在禁止页面」的场景：用户在 /medals 上把账户切到明日方舟，
+  // 该页的数据源（card/detail）根本不出数据，与其让页面挂空不如直接送回仪表盘。
+  // 用 navigate 而非 Link 拦截：这里的事件源是 accountChanged，已经错过了点击。
+  const currentNavKey = useMemo(
+    () =>
+      (Object.keys(NAV_ROUTES) as string[]).find(
+        (key) => NAV_ROUTES[key] === location.pathname,
+      ) ?? "",
+    [location.pathname],
+  );
+  const locationBlocked = !pageSupportsGame(
+    currentNavKey,
+    selectedAccount?.game,
+  );
+  useEffect(() => {
+    if (!locationBlocked) return;
+    // 账户尚未加载完（game 为空）时视为支持，避免启动期间误跳。
+    if (!selectedAccount) return;
+    logger.info(
+      `Page ${location.pathname} not supported for game ${selectedAccount.game}, redirecting to dashboard`,
+      "Sidebar",
+    );
+    navigate("/");
+  }, [locationBlocked, selectedAccount, location.pathname, navigate]);
 
   // 监听开发者模式变化
   useEffect(() => {
@@ -1045,6 +1073,15 @@ export const Sidebar = ({
 
   const tabsHidden = isDashboardCollapsed || collapsed;
 
+  // 当前账户的游戏决定了侧边栏能显示哪些导航项：
+  // 明日方舟账户下，依赖终末地 card/detail 的页面（干员/勋章/区域/帝江号）整体隐藏，
+  // 只留下两个游戏都支持的入口（仪表盘/签到/抽卡/待办）。账户未选中时不过滤。
+  const currentGame = selectedAccount?.game;
+  const visibleNavOrder = useMemo(
+    () => navOrder.filter((key) => isNavVisible(key, currentGame)),
+    [navOrder, currentGame],
+  );
+
   return (
     <>
       <aside key={themeChangeKey} className="w-full h-full flex flex-col">
@@ -1469,7 +1506,7 @@ export const Sidebar = ({
           )}
         >
           <div className="space-y-0.5 py-2" ref={navListRef}>
-            {navOrder.map((key) => {
+            {visibleNavOrder.map((key) => {
               switch (key) {
                 case "dashboard":
                   return (

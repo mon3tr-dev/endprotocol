@@ -12,6 +12,7 @@
   "defaultSize": { "w": 3, "h": 1 },
   "version": "1.0.0",
   "allowMultiple": true,
+  "supportedGames": ["endfield", "arknights"],
   "tags": [
     { "id": "attendance", "label": { "zh": "签到", "en": "Attendance" } },
     { "id": "reward", "label": { "zh": "奖励", "en": "Reward" } },

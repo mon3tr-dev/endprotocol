@@ -12,6 +12,7 @@
   "defaultSize": { "w": 4, "h": 3 },
   "version": "1.0.0",
   "allowMultiple": true,
+  "supportedGames": ["endfield"],
   "tags": [
     { "id": "account", "label": { "zh": "账户", "en": "Account" } },
     { "id": "base", "label": { "zh": "基建", "en": "Base" } },

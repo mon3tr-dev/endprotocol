@@ -624,7 +624,8 @@
     "no_cards_guide": "点击右下角的 + 按钮添加卡片，自定义您的仪表板",
     "add_card": {
       "title": "添加卡片",
-      "already_added": "已添加"
+      "already_added": "已添加",
+      "game_support_hint": "右侧徽标表示该卡片支持的游戏"
     }
   },
   "game": {

@@ -12,6 +12,7 @@
   "defaultSize": { "w": 4, "h": 2 },
   "version": "1.0.0",
   "allowMultiple": true,
+  "supportedGames": ["endfield"],
   "tags": [
     { "id": "achievement", "label": { "zh": "成就", "en": "Achievement" } },
     { "id": "medal", "label": { "zh": "蚀刻章", "en": "Medal" } },

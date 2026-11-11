@@ -1,10 +1,12 @@
 # IPC 命令索引（前端 invoke ↔ 后端定义）
 
-> 由脚本扫描 `#[tauri::command]` 与前端 `invoke('...')` 自动生成。共 145 个后端命令，其中 126 个在前端有直接调用；19 个未见前端调用。行号基于当前工作区版本。
+> 由脚本扫描 `#[tauri::command]` 与前端 `invoke('...')` 自动生成。共 145 个后端命令，其中 129 个在前端有直接调用；16 个未见前端调用。行号基于当前工作区版本。
 >
 > 注：`browser_go_back` / `browser_go_forward` / `browser_reload` / `browser_navigate` / `browser_current_url` 经 `src/utils/browserViewService.ts` 的私有 `run(command, args)` 动态调用（`invoke(command, …)`，命令名不是字面量），脚本的字面量正则扫不到，已人工补录。
 >
-> 注：`get_arknights_player_info` / `get_arknights_cultivate` / `get_arknights_attendance` / `do_arknights_attendance` 目前**没有前端调用方** —— 后端数据链路先落地（含真实联网测试），前端展示待后续接入。
+> 注：`get_arknights_cultivate` 目前**没有前端调用方** —— 后端数据链路先落地（含真实联网测试），前端展示待后续接入。
+>
+> 注：`get_arknights_player_info` / `get_arknights_attendance` / `do_arknights_attendance` 的调用方是**三元表达式**（`isArknights ? "get_arknights_attendance" : "get_attendance"`），脚本的字面量正则扫不到，已人工补录。
 
 每个命令的参数、返回值与内部调用链见 [commands.md](backend/commands.md)；前端侧的封装函数见各 `utils_services_*.md`。
 
@@ -41,7 +43,7 @@
 | `delete_background_image` | [src-tauri/src/commands/image.rs:202](backend/commands.md) | [src/components/appearance-settings.tsx](../../src/components/appearance-settings.tsx) |
 | `delete_skland_account` | [src-tauri/src/commands/account.rs:171](backend/commands.md) | [src/utils/accountService.ts](../../src/utils/accountService.ts) |
 | `delete_tab_snapshot` | [src-tauri/src/commands/window.rs:114](backend/commands.md) | [src/utils/tabSnapshotService.ts](../../src/utils/tabSnapshotService.ts) |
-| `do_arknights_attendance` | [src-tauri/src/commands/arknights.rs:67](backend/commands.md) | — |
+| `do_arknights_attendance` | [src-tauri/src/commands/arknights.rs:67](backend/commands.md) | [src/components/cards/attendance/index.tsx](../../src/components/cards/attendance/index.tsx) |
 | `do_attendance` | [src-tauri/src/commands/attendance.rs:182](backend/commands.md) | [src/components/cards/attendance/index.tsx](../../src/components/cards/attendance/index.tsx) |
 | `download_file` | [src-tauri/src/commands/updater.rs:200](backend/commands.md) | — |
 | `download_image` | [src-tauri/src/commands/image.rs:38](backend/commands.md) | [src/components/cards/character-list/char-select-modal.tsx](../../src/components/cards/character-list/char-select-modal.tsx)<br>[src/utils/imageCacheManager.ts](../../src/utils/imageCacheManager.ts) |
@@ -53,10 +55,10 @@
 | `get_accounts` | [src-tauri/src/commands/account.rs:16](backend/commands.md) | [src/utils/accountService.ts](../../src/utils/accountService.ts) |
 | `get_all_configs` | [src-tauri/src/commands/config.rs:83](backend/commands.md) | [src/utils/configService.ts](../../src/utils/configService.ts) |
 | `get_api_health` | [src-tauri/src/commands/diagnostics.rs:36](backend/commands.md) | [src/pages/account.tsx](../../src/pages/account.tsx)<br>[src/utils/crashReporting.ts](../../src/utils/crashReporting.ts) |
-| `get_arknights_attendance` | [src-tauri/src/commands/arknights.rs:52](backend/commands.md) | — |
+| `get_arknights_attendance` | [src-tauri/src/commands/arknights.rs:52](backend/commands.md) | [src/components/cards/attendance/index.tsx](../../src/components/cards/attendance/index.tsx)<br>[src/pages/attendance.tsx](../../src/pages/attendance.tsx) |
 | `get_arknights_cultivate` | [src-tauri/src/commands/arknights.rs:39](backend/commands.md) | — |
 | `get_arknights_gacha_categories` | [src-tauri/src/commands/gacha.rs:396](backend/commands.md) | [src/pages/gacha-records.tsx](../../src/pages/gacha-records.tsx) |
-| `get_arknights_player_info` | [src-tauri/src/commands/arknights.rs:23](backend/commands.md) | — |
+| `get_arknights_player_info` | [src-tauri/src/commands/arknights.rs:23](backend/commands.md) | [src/components/cards/account-info/index.tsx](../../src/components/cards/account-info/index.tsx)<br>[src/components/cards/account-progress/index.tsx](../../src/components/cards/account-progress/index.tsx) |
 | `get_attendance` | [src-tauri/src/commands/attendance.rs:60](backend/commands.md) | [src/components/cards/attendance/index.tsx](../../src/components/cards/attendance/index.tsx)<br>[src/pages/attendance.tsx](../../src/pages/attendance.tsx) |
 | `get_backend_logs` | [src-tauri/src/commands/logs.rs:4](backend/commands.md) | [src/pages/developer.tsx](../../src/pages/developer.tsx) |
 | `get_backgrounds_dir` | [src-tauri/src/commands/image.rs:153](backend/commands.md) | — |

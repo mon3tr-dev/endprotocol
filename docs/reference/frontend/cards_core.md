@@ -269,6 +269,7 @@
 | `version` | _template.meta.json:13 | `"1.0.0"` |
 | `allowMultiple` | _template.meta.json:14 | `true` —— 允许多实例 |
 | `tags` | _template.meta.json:15-18 | 两个标签：`{id:"template", label:{zh:"模板", en:"Template"}}`、`{id:"development", label:{zh:"开发", en:"Development"}}` |
+| `supportedGames` | _template.meta.json | 模板未声明 `supportedGames`（= 两个游戏都支持）。真实卡片见各自 meta.json：终末地独占的四张（`character_list`/`achievement`/`domain_info`/`spaceship`）声明 `["endfield"]`，与游戏无关的两张（`system_resource`/`todo`）声明 `[]` |
 
 **meta.json 完整字段契约**：
 
@@ -282,6 +283,7 @@
 | `version` | `string` | 是 | 卡片版本号（当前无消费方做校验） |
 | `allowMultiple` | `boolean` | 否（默认 false） | 是否允许多实例 |
 | `tags` | `CardTag[]`（`{id, label{lang}}`） | 否 | 搜索/筛选标签 |
+| `supportedGames` | `("endfield" \| "arknights")[]` | 否 | 该卡片支持的游戏。**未声明 = 两个游戏都支持**（新卡片默认不阻塞用户）；`[]` = 与游戏无关（系统资源、待办）；单个元素 = 该游戏独占。⚠️ **运行时以 `@/config/gameSupport` 的 `CARD_GAME_SUPPORT` 为准**，此字段仅作自描述文档（两处都写却只生效一处更容易踩坑） |
 
 **备注**：
 - **加载失败行为**：loader 无运行时 schema 校验，也无 try/catch——

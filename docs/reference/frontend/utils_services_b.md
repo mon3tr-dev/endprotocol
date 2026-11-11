@@ -333,6 +333,36 @@
 
 **备注**：写入方为 `src/utils/accountService.ts`（请求失败 / 成功时）与 `src/utils/crashReporting.ts`（`app:api-health` 事件、启动轮询）；读取方为 `src/pages/account.tsx`、`src/components/dashboard-sidebar.tsx`；`src/main.tsx` 在渲染前调用 `loadAccountAvailability`。i18n 键前缀 `settings.account.account_unavailable_*`。无 IPC 调用。
 
+## `src/utils/roleGame.ts`
+**职责**：**「角色 → 所属游戏」的带 TTL 缓存解析器**。卡片要先知道角色属于哪个游戏，才能决定调终末地的 `query_role_data` 还是明日方舟的 `get_arknights_player_info`；但卡片渲染时账户列表往往还没加载完，直接在 `fetchData` 里 await 一次 `getAccounts()` 会让每张卡片都发一遍 IPC。
+**导出**：`invalidateRoleGameCache`、`peekAccounts`、`peekRoleGame`、`resolveRoleGame`。
+**主要依赖**：`@/utils/accountService`（`getAccounts`、`Account`、`GameId`）、`@/utils/logger`（`logError`）。
+
+| 符号 | 位置 | 说明 |
+| --- | --- | --- |
+| `CACHE_TTL_MS` | roleGame.ts:21 | 缓存有效期 30 秒 |
+| `cache` / `inflight` | roleGame.ts:23-24 | 模块级缓存（`{at, accounts}`）与进行中的请求 Promise |
+| `invalidateRoleGameCache()` | roleGame.ts:27 | 清空缓存与在途请求；`accountChanged` 事件会自动调用 |
+| `peekAccounts()` | roleGame.ts:32 | 同步读缓存里的账户列表（**不触发 IPC**） |
+| `peekRoleGame(roleId)` | roleGame.ts:41 | 同步读某角色的游戏标识；缓存未命中返回 `undefined` |
+| `resolveRoleGame(roleId)` | roleGame.ts:55 | 解析角色所属游戏；缓存缺失时拉一次账户列表。角色不在列表里（未绑定/已解绑）时按终末地处理，与后端 `models::role::GAME_ENDFIELD` 默认一致 |
+
+**备注**：模块加载时注册 `window.addEventListener("accountChanged", invalidateRoleGameCache)` —— 切换账户后缓存立刻失效，避免拿旧的游戏标识去分流。无 Tauri `invoke`（间接经 `getAccounts`）。
+
+## `src/utils/attendanceHelpers.ts`
+**职责**：**《明日方舟》「今天是否已签到」的判定**。终末地的签到响应直接给 `hasToday`，明日方舟没有这个字段，只能自己推。
+**导出**：`detectSignedToday(calendar, data)`。
+**主要依赖**：无运行时依赖（纯函数）。
+
+| 符号 | 位置 | 说明 |
+| --- | --- | --- |
+| `localDayKey(tsSeconds)`（私有） | attendanceHelpers.ts:19 | 时间戳（秒）→ 本地自然日 `YYYY-MM-DD` |
+| `detectSignedToday(calendar, data)` | attendanceHelpers.ts:33 | **路径 1（主）**：`data.records[]` 是本月签到流水，`ts` 是签到时刻；有一条落在今天（与 `currentTs` 同一自然日）即已签。**路径 2（辅）**：`calendar` 是本月日历，今天的日号 - 1 即下标（下标越界说明日历不从 1 号起，不可用）。两条路都无结论时**保守返回 `true`（已签）** |
+
+**备注**：
+- ⚠️ **不用 `available` 判定**：实测明日方舟的日历项 `available` 恒为 `false`，它不是终末地「今天可领取」的语义，拿它判断会永远判成「未签」，进而让界面显示可点击的签到按钮、点下去后端返回「请勿重复签到」。
+- 保守返回 `true` 的理由：判成未签会让用户点出「故障感」的重复签到提示；判成已签最多少显示一次可领奖励。
+
 ## `src/utils/diagnostics.ts`
 **职责**：诊断导出与崩溃报告 IPC 封装（共 75 行）。收集内存与持久化日志（对 `data` 做循环引用/Error 安全序列化），调用 `export_diagnostics` 生成 zip，并提供文件定位、日志目录打开与崩溃报告确认。
 

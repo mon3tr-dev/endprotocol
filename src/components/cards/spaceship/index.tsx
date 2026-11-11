@@ -6,6 +6,7 @@ import { useCardData } from "../base/use-card-data";
 import { roleDataService } from "@/utils/roleDataService";
 import { CardConfigService } from "@/utils/cardConfigService";
 import { getAccounts } from "@/utils/accountService";
+import { filterAccountsForCard } from "@/config/gameSupport";
 import { AccountAvatar } from "@/components/ui/account-avatar";
 import { Img } from "@/utils/imageLoader";
 import { logError } from "@/utils/logger";
@@ -127,7 +128,8 @@ export default function SpaceshipCard({
   const openAccountSelect = useCallback(async () => {
     try {
       const accs = await getAccounts();
-      setAccounts(accs);
+      // 帝江号（spaceShip）只有终末地有，明日方舟账户不在候选里
+      setAccounts(filterAccountsForCard(accs, "spaceship"));
       setIsRoleSelectOpen(true);
     } catch (err) {
       logError("Failed to load accounts:", err);
@@ -137,7 +139,7 @@ export default function SpaceshipCard({
   const loadAccounts = useCallback(async () => {
     try {
       const accs = await getAccounts();
-      setAccounts(accs);
+      setAccounts(filterAccountsForCard(accs, "spaceship"));
     } catch (error) {
       logError("Failed to load accounts:", error);
     }
@@ -221,9 +223,12 @@ export default function SpaceshipCard({
                 {t("card:spaceship_title")}
               </span>
               <span className="block text-[10px] text-muted truncate">
-                {currentAccount?.nickname
-                  ? `${currentAccount.nickname} · `
-                  : ""}
+                {currentAccount?.nickname ? (
+                  <AccountNameLine game={currentAccount.game}>
+                    {currentAccount.nickname}
+                  </AccountNameLine>
+                ) : null}
+                {currentAccount?.nickname ? " · " : ""}
                 {t("card:spaceship_rooms_count", { n: sortedRooms.length })}
               </span>
             </div>

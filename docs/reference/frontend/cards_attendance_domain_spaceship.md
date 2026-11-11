@@ -16,49 +16,41 @@
 
 ## `src/components/cards/attendance/index.tsx`
 
-**职责**：每日签到卡片主体。加载卡片设置 → 拉取签到日历数据 → 展示今日/明日奖励与签到进度环（可旋转/打勾动画）→ 发起签到 → 通过设置弹窗选择签到账号与「启动时自动签到」；同时注册为卡片 `startup` 启动任务。
+**职责**：每日签到卡片主体。加载卡片设置 → 拉取签到日历数据 → 展示今日/明日奖励与签到进度环（可旋转/打勾动画）→ 发起签到 → 通过设置弹窗选择签到账号与「启动时自动签到」；同时注册为卡片 `startup` 启动任务。**两个游戏都支持**：终末地走 `/web/v1/game/endfield/attendance`（`get_attendance`/`do_attendance`），明日方舟走 `/api/v1/game/attendance`（`get_arknights_attendance`/`do_arknights_attendance`），按角色所属游戏分流。
 
-**导出**：`startup(roleId)`（19-23）、`CalendarEntry`（25）、`ResourceInfo`（31）、`AttendanceData`（38）、`parseAttendanceData()`（49）、`AttendanceCard`（默认导出，81）。
-**主要依赖**：`GlassButton/GlassCard/GlassProgressCircle`、`useTranslation`、`BaseCardProps`、`CardConfigService`、`CardStartupService`、`AttendanceCardSettings`、`AttendanceSettingsModal`、`AttendanceRewardsModal`、`getAccounts`、`Img`、`invoke`（`@tauri-apps/api/core`）、`logError`、`addMessage`、`resolveServerLabel`（1-15）。
+**导出**：`startup(roleId)`、`CalendarEntry`、`ResourceInfo`、`AttendanceData`、`parseAttendanceData()`、`AttendanceCard`（默认导出）。
+**主要依赖**：`GlassButton/GlassCard/GlassProgressCircle`、`useTranslation`、`BaseCardProps`、`CardConfigService`、`CardStartupService`、`AttendanceCardSettings`、`AttendanceSettingsModal`、`AttendanceRewardsModal`、`getAccounts`、`Img`、`invoke`（`@tauri-apps/api/core`）、`logError`、`addMessage`、`resolveServerLabel`、`@/components/ui/game-badge`（`AccountNameLine`）、**`@/utils/attendanceHelpers`（`detectSignedToday`）**。
 
 ### 符号清单
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
-| `signedInRoleIds` | 17 | 模块级 `Set`，防止同一 roleId 重复执行启动签到 |
-| `startup(roleId)` | 19-23 | 导出的启动钩子；`invoke("do_attendance", { roleId })`，由 `registry/loader.ts` 注册到 `CardStartupService` |
-| `CalendarEntry` | 25-29 | `{ awardId, available, done }` |
-| `ResourceInfo` | 31-36 | `{ id, count, name, icon }` |
-| `AttendanceData` | 38-44 | `{ currentTs, calendar, first, resourceInfoMap, hasToday }` |
-| `AttendanceState` / `SignPhase` | 46-47 | 私有联合类型：`loading/signed/unsigned/error`、`idle/spinning/completing/done` |
-| `parseAttendanceData(json)` | 49-63 | 校验 `json.data.calendar` 与 `resourceInfoMap`，缺失返回 `null` |
-| `findTodayEntry(calendar)` | 65-72 | 取第一个 `available && !done`；否则最后一个 `done`；否则第一项 |
-| `findLastIndex(arr, pred)` | 74-79 | 反向查找工具 |
-| `AttendanceCard`（组件） | 81-586 | 见下方状态与渲染区块 |
-| state 组 | 87-101 | `settings`、`settingsLoaded`、`showSettingsModal`、`isFirstTimeSetup`、`firstTimePrompt`、`autoSignEnabled`、`showRewardsModal`、`attendanceData`、`attendanceState`、`signPhase`、`_signError`、`accountCache`、`completionTimer` |
-| `checkAutoSign` | 105-112 | `CardStartupService.isAutoSignEnabled(roleId)` |
-| `openFirstTimePrompt` / `openSettings` | 114-117 / 119-123 | 打开设置弹窗（首次设置 vs 普通设置） |
-| `openRewardsModal` | 125-128 | 有数据才允许打开奖励弹窗 |
-| `loadSettings` | 130-143 | `CardConfigService.getCardSettings<AttendanceCardSettings>(cardId)`；无 `selectedRoleId` 且 `firstTimePrompt` 时弹首次设置 |
-| effect（触发 loadSettings） | 145-147 | 挂载执行 |
-| `fetchAttendance` | 149-169 | `invoke("get_attendance", { roleId })`（启动 Splash 跟踪期间计入初始任务）→ `parseAttendanceData` → `hasToday ? "signed" : "unsigned"` |
-| `loadAccounts` | 171-178 | `getAccounts()` 缓存账号列表 |
-| effect（取数入口） | 180-188 | 设置未加载则等待；无 `selectedRoleId` 置 `unsigned`；否则 `fetchAttendance()` + `loadAccounts()` |
-| `completeSignIn` | 190-197 | `completing` → 600ms 后 `done`+`signed` 并重新 `fetchAttendance()` |
-| `handleSignIn` | 202-227 | `invoke("do_attendance", { roleId })`；返回 `code === 10001`（今日已签到）用 `attendance_already_signed`、否则用 `attendance_sign_success` 提示，失败 `addMessage(urgent)` 并回到 `idle` |
-| effect（清理定时器） | 220-224 | 卸载时 `clearTimeout(completionTimer)` |
-| effect（启动任务订阅） | 226-250 | `CardStartupService.getTaskStatus` 置 `spinning`；`subscribe(roleId, …)` 运行中→`spinning`，`done/error`→`fetchAttendance()`；`onAutoSignChanged` 同步 `autoSignEnabled` |
-| effect（cardAction） | 252-261 | 监听 `window` `cardAction`，`action === "settings"` 时 `openSettings()` |
-| `handleSaveSettings` | 263-296 | 写 `updateCardSetting(cardId,"selectedRoleId",…)`；`updateUserMapping`；角色变更时若旧用户无其它卡片则 `removeAutoSignUser`；新用户按 `autoSign` 执行 `addAutoSignUser`/`removeAutoSignUser` |
-| `selectedAccount` | 298-301 | 按 `settings.selectedRoleId` 从 `accountCache` 找账号 |
-| `todayReward` / `todayClaimed` | 303-308 / 310-314 | 由 `findTodayEntry` + `resourceInfoMap` 派生 |
-| `tomorrowReward` / `tomorrowClaimed` | 316-323 / 325-331 | `calendar[today.index + 1]`，越界返回 `null/false` |
-| 加载占位分支 | 333-344 | `!settingsLoaded` 时返回 `GlassProgressCircle` |
-| 派生标志 | 346-348 | `showSignButton`、`isSpinning`、`isDone` |
-| `R/CIRCUMFERENCE/circleProps` | 350-352 | 进度环几何常量（r=22，圆心 26,26） |
-| `renderRewardBox(...)` | 354-388 | 单个奖励格（图标、名称、数量、已领对勾） |
-| 主 JSX | 390-585 | 见下 |
-| `<style>` 关键帧 | 570-583 | `attendance-spin-arc`、`attendance-ring-in`、`attendance-check-in` |
+| `signedInRoleIds` | 模块级 | `Set`，防止同一 roleId 重复执行启动签到 |
+| `startup(roleId)` | 导出 | 启动钩子；**先查账户的游戏**再选 `do_arknights_attendance` / `do_attendance`，失败时记录并抛出。由 `registry/loader.ts` 注册到 `CardStartupService` |
+| `CalendarEntry` | — | `{ awardId, available, done }` |
+| `ResourceInfo` | — | `{ id, count, name, icon }` |
+| `AttendanceData` | — | `{ currentTs, calendar, first, resourceInfoMap, hasToday }` |
+| `AttendanceState` / `SignPhase` | — | 私有联合类型：`loading/signed/unsigned/error`、`idle/spinning/completing/done` |
+| `parseAttendanceData(json)` | — | **同时兼容两个游戏的返回**（详见下方「两套 API 的差异归一」） |
+| `gameOfRole(roleId)` | — | 按 `accountCacheRef` 判断角色所属游戏（`arknights` / 其余按 `endfield`） |
+| `accountCacheRef` | — | 账户列表的 ref 镜像；**分流要用它但不能进 `useCallback` 依赖**，否则会与「加载账户」的 effect 互相触发、无限重拉 |
+| `findTodayEntry(calendar)` | — | 取第一个 `available && !done`；否则最后一个 `done`；否则第一项 |
+| `findLastIndex(arr, pred)` | — | 反向查找工具 |
+| `AttendanceCard`（组件） | 默认导出 | 见下方状态与渲染区块 |
+| `fetchAttendance` | — | 按 `gameOfRole(rid)` 分流 `invoke("get_arknights_attendance")` / `invoke("get_attendance")`（启动 Splash 跟踪期间计入初始任务）→ `parseAttendanceData` → `hasToday ? "signed" : "unsigned"` |
+| `loadAccounts` | — | `getAccounts()` 缓存账号列表（同时写 `accountCacheRef`） |
+| effect（取数入口） | — | 设置未加载则等待；无 `selectedRoleId` 置 `unsigned`；否则**先 `loadAccounts()` 再 `fetchAttendance()`**（顺序反了第一拉永远走终末地命令） |
+| `handleSignIn` | — | 按 `gameOfRole(rid)` 分流 `do_arknights_attendance` / `do_attendance`；终末地的 `code === 10001`（今日已签到）用 `attendance_already_signed`、否则 `attendance_sign_success` 提示 |
+
+### 两套 API 的差异归一（`parseAttendanceData`）
+
+| 维度 | 终末地 `get_attendance` | 明日方舟 `get_arknights_attendance` | 归一做法 |
+| --- | --- | --- | --- |
+| 日历项键名 | `awardId` | `resourceId` | 明日方舟分支映射成 `awardId` |
+| 物品图标 | `resourceInfoMap[].icon`（后端已下载的本地路径） | 后端不下发 | 明日方舟分支拼 `https://web.hycdn.cn/arknights/game/assets/item/{id}.png`（实测 200） |
+| 物品数量 | `resourceInfoMap[].count` | 数量在**日历项**上 | 按日历项累加回 `resourceInfoMap[].count` |
+| `hasToday` | 接口直接给 | **没有** | 用 `detectSignedToday(calendar, data)` 判定（记录流水的日期优先，其次当天日历格的 `done`；⚠️ 不可用 `available`，明日方舟该字段恒为 false） |
+| `first`（首签奖励） | 数组 | 实测为 `null` | 非数组一律归一成 `[]`，否则 `attendance-rewards.tsx` 的 `first.length` 会崩 |
 
 ### 渲染区块（主 JSX 行号）
 

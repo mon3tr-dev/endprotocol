@@ -12,6 +12,7 @@ import { Img } from "@/utils/imageLoader";
 import { useImageRequest, usePinImages } from "@/utils/imageCacheManager";
 import { AchievementModal } from "./achievement-modal";
 import { getAccounts } from "@/utils/accountService";
+import { filterAccountsForCard } from "@/config/gameSupport";
 import { resolveServerLabel } from "@/types";
 import { AccountNameLine } from "@/components/ui/game-badge";
 import {
@@ -214,7 +215,8 @@ export default function AchievementCard({
       setIsModalOpen(true);
     } else if (detail.action === "change-role") {
       getAccounts().then((accs) => {
-        setAccounts(accs);
+        // 勋章（achieveMedals）只有终末地有，明日方舟账户不在候选里
+        setAccounts(filterAccountsForCard(accs, "achievement"));
         setIsRoleSelectOpen(true);
       }).catch((err) => logError("Failed to load accounts:", err));
     }

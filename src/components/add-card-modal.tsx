@@ -10,6 +10,8 @@ import { useTranslation } from "react-i18next";
 import { getAvailableCards } from "./cards/registry/loader";
 import { CardIcon, SearchIcon } from "@/components/icons";
 import { ChevronRightIcon } from "@/components/ui/app-icon";
+import { GameBadge } from "@/components/ui/game-badge";
+import { cardSupportsGame, gamesForCard } from "@/config/gameSupport";
 import type { CardTag } from "./cards/registry/types";
 
 interface AddCardModalProps {
@@ -17,6 +19,8 @@ interface AddCardModalProps {
   onClose: () => void;
   onAdd: (cardType: string) => void;
   existingTypes: string[];
+  /** 当前账户的游戏（明日方舟账户下不支持的卡片禁止选择） */
+  currentGame?: string | null;
 }
 
 export function AddCardModal({
@@ -24,6 +28,7 @@ export function AddCardModal({
   onClose,
   onAdd,
   existingTypes,
+  currentGame,
 }: AddCardModalProps) {
   const { t, i18n } = useTranslation();
   const [selectedType, setSelectedType] = useState<string | null>(null);
@@ -62,10 +67,16 @@ export function AddCardModal({
     });
   };
 
-  // Filter cards based on search text, selected tags, and allowMultiple
+  // Filter cards based on search text, selected tags, allowMultiple, and game support.
+  // 不支持当前游戏的卡片直接隐藏而非置灰：明日方舟账户下终末地独占卡片加了也没数据，
+  // 留在列表里只会诱导用户选一个必然报错的卡片。
   const displayCards = useMemo(() => {
     return availableCards.filter((card) => {
       if (card.allowMultiple === false && existingTypes.includes(card.id)) {
+        return false;
+      }
+
+      if (currentGame && !cardSupportsGame(card.id, currentGame)) {
         return false;
       }
 
@@ -86,7 +97,7 @@ export function AddCardModal({
 
       return true;
     });
-  }, [availableCards, existingTypes, searchText, selectedTagIds, i18n.language]);
+  }, [availableCards, existingTypes, searchText, selectedTagIds, i18n.language, currentGame]);
 
   const handleConfirm = () => {
     if (selectedType) {
@@ -121,6 +132,11 @@ export function AddCardModal({
               <SearchIcon size={16} className="text-muted pointer-events-none" />
             }
           />
+
+          {/* 徽标含义说明：右侧徽标 = 该卡片支持的游戏 */}
+          <p className="text-[11px] text-muted/80 -mt-1">
+            {t("dashboard.add_card.game_support_hint")}
+          </p>
 
           {/* Filter toggle and tags */}
           {allTags.length > 0 && (
@@ -209,6 +225,17 @@ export function AddCardModal({
                           ))}
                         </div>
                       )}
+                    </div>
+                    {/*
+                      右侧：该卡片支持的游戏。
+                      两个游戏都支持的卡片也要标注 —— 用户需要一眼看出
+                      「这张卡在明日方舟下能不能用」，而不支持的卡片已经被过滤掉了，
+                      剩下的都是当前账户能用的，标注的价值在于说明它**通用**。
+                    */}
+                    <div className="shrink-0 flex flex-col items-end gap-1 self-start">
+                      {gamesForCard(card.id).map((g) => (
+                        <GameBadge key={g} game={g} variant="short" />
+                      ))}
                     </div>
                   </div>
                 </GlassCard>

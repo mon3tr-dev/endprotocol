@@ -31,7 +31,12 @@ export default function AttendancePage() {
       setAccountId(id);
       const accs = await getAccounts();
       setAccounts(accs);
-      const result = await invoke<any>("get_attendance", { roleId: id });
+      // 两个游戏的签到接口完全不同，按角色所属游戏分流到各自的命令
+      const isArknights = accs.find((a) => a.id === id)?.game === "arknights";
+      const result = await invoke<any>(
+        isArknights ? "get_arknights_attendance" : "get_attendance",
+        { roleId: id },
+      );
       const parsed = parseAttendanceData(result);
       if (!parsed) {
         setAttendanceData(null);

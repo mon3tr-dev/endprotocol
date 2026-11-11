@@ -12,6 +12,7 @@
   "defaultSize": { "w": 4, "h": 3 },
   "version": "1.0.0",
   "allowMultiple": true,
+  "supportedGames": ["endfield"],
   "tags": [
     { "id": "character", "label": { "zh": "干员", "en": "Character" } },
     { "id": "display", "label": { "zh": "显示", "en": "Display" } },

@@ -2,6 +2,11 @@ import clsx from "clsx";
 import { useTranslation } from "react-i18next";
 import type { ReactNode } from "react";
 import type { GameId } from "@/utils/accountService";
+import { normalizeGameId } from "@/config/gameSupport";
+
+// 单一真值表在 `@/config/gameSupport`（侧栏过滤 / 添加卡片门禁 / 卡片切换账户共用
+// 同一份「卡片与页面 → 支持游戏」映射）。这里继续对外导出，老调用方无需改动。
+export { normalizeGameId };
 
 /**
  * 游戏标识的展示元数据。
@@ -28,10 +33,6 @@ export const GAME_META: Record<
   },
 };
 
-/** 账户/角色上的 `game` 字段可能缺失（老缓存），统一收敛为终末地 */
-export function normalizeGameId(game?: string | null): GameId {
-  return game === "arknights" ? "arknights" : "endfield";
-}
 
 /**
  * 账号名 + 游戏徽标（**同一行、垂直居中、徽标紧跟名字之后**）。

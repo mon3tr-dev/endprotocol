@@ -14,13 +14,32 @@ import { invoke } from "@tauri-apps/api/core";
 import { logError } from "@/utils/logger";
 import { addMessage } from "@/utils/messageStore";
 import { resolveServerLabel } from "@/types";
+import { AccountNameLine } from "@/components/ui/game-badge";
+import { detectSignedToday } from "@/utils/attendanceHelpers";
 
 const signedInRoleIds = new Set<string>();
 
+/**
+ * 启动时自动签到。
+ *
+ * 两个游戏的签到接口完全不同（终末地靠 `sk-game-role` 头寻址，明日方舟把
+ * gameId+uid 放 body），命令也不同，因此这里先查账户的游戏再选命令。
+ */
 export async function startup(roleId: string) {
   if (!roleId || signedInRoleIds.has(roleId)) return;
   signedInRoleIds.add(roleId);
-  await invoke<any>("do_attendance", { roleId });
+  try {
+    const accounts = await getAccounts();
+    const isArknights =
+      accounts.find((a) => a.id === roleId)?.game === "arknights";
+    await invoke<any>(
+      isArknights ? "do_arknights_attendance" : "do_attendance",
+      { roleId },
+    );
+  } catch (e) {
+    logError("[Attendance] Startup sign-in failed:", e);
+    throw e;
+  }
 }
 
 export interface CalendarEntry {
@@ -47,16 +66,87 @@ export interface AttendanceData {
 type AttendanceState = "loading" | "signed" | "unsigned" | "error";
 type SignPhase = "idle" | "spinning" | "completing" | "done";
 
+/**
+ * 解析签到响应 —— 同时兼容两个游戏的返回：
+ *
+ * - 终末地 `get_attendance`（/web/v1/game/endfield/attendance）：
+ *   日历项键名是 `awardId`，`resourceInfoMap[].icon` 是后端已下载好的本地路径，
+ *   且自带 `hasToday`。
+ * - 明日方舟 `get_arknights_attendance`（/api/v1/game/attendance）：
+ *   日历项键名是 `resourceId`（count 直接在日历项上），物品图标后端不下发，
+ *   `first` 可能为 null，也没有 `hasToday` —— 由前端按「当天项是否 done」推导。
+ *
+ * 图标统一走 Arknights CDN（`web.hycdn.cn/arknights/game/assets/item/{id}.png`，
+ * 已实测 200），经 Img/cacheManager 自动下载缓存。
+ */
 export function parseAttendanceData(json: any): AttendanceData | null {
   try {
     const data = json?.data;
-    if (!data?.calendar || !data?.resourceInfoMap) return null;
+    const rawCalendar = data?.calendar;
+    const rawResourceMap = data?.resourceInfoMap;
+    if (!rawCalendar || !rawResourceMap) return null;
+
+    const isArknights = Array.isArray(rawCalendar)
+      ? rawCalendar.some((e: any) => e?.resourceId !== undefined)
+      : false;
+
+    const calendar: CalendarEntry[] = isArknights
+      ? rawCalendar.map((e: any) => ({
+          awardId: String(e.resourceId ?? ""),
+          available: Boolean(e.available),
+          done: Boolean(e.done),
+        }))
+      : rawCalendar;
+
+    // 「今天是否已签到」
+    //
+    // 终末地直接给 `hasToday`；明日方舟没有这个字段，需要自己推。两条路：
+    // 1. 当天的日历项 —— calendar 是本月日历，第 N 天就是第 N 格，`done` 即答案；
+    // 2. 签到记录 —— `records[].ts` 是签到时刻，落在 currentTs 所在自然日即已签。
+    //
+    // ⚠️ 不用 `available` 判定：实测明日方舟的日历项里 `available` 恒为 false
+    // （它不是终末地那个「今天可领取」的语义），拿它判断会永远判成未签。
+    let hasToday = Boolean(data?.hasToday);
+    if (isArknights) {
+      hasToday = detectSignedToday(rawCalendar, data);
+    }
+
+    const resourceInfoMap: Record<string, ResourceInfo> = {};
+    for (const [id, entry] of Object.entries<any>(rawResourceMap)) {
+      resourceInfoMap[id] = {
+        id,
+        // 终末地 count 在 map 里；明日方舟 count 在日历项上，这里只做展示兜底
+        count: Number(entry?.count ?? 0),
+        name: String(entry?.name ?? ""),
+        icon:
+          entry?.icon ??
+          (isArknights
+            ? `https://web.hycdn.cn/arknights/game/assets/item/${id}.png`
+            : ""),
+      };
+    }
+
+    // 明日方舟的月度累计奖励：resourceInfoMap 里同 id 出现多次时 count 累加
+    if (isArknights) {
+      const countById = new Map<string, number>();
+      for (const e of rawCalendar) {
+        const id = String(e?.resourceId ?? "");
+        countById.set(id, (countById.get(id) ?? 0) + Number(e?.count ?? 0));
+      }
+      for (const [id, total] of countById) {
+        if (resourceInfoMap[id]) resourceInfoMap[id].count = total;
+      }
+    }
+
+    // first（首充/首签奖励）：终末地是数组，明日方舟实测为 null
+    const rawFirst = Array.isArray(data?.first) ? data.first : [];
+
     return {
-      currentTs: data.currentTs ?? "",
-      calendar: data.calendar,
-      first: data.first ?? [],
-      resourceInfoMap: data.resourceInfoMap,
-      hasToday: data.hasToday ?? false,
+      currentTs: String(data?.currentTs ?? ""),
+      calendar,
+      first: rawFirst,
+      resourceInfoMap,
+      hasToday,
     };
   } catch {
     return null;
@@ -98,7 +188,21 @@ export default function AttendanceCard({
   const [_signError, setSignError] = useState<string | null>(null);
 
   const [accountCache, setAccountCache] = useState<Account[]>([]);
+  /**
+   * 账户列表的 ref 镜像。
+   *
+   * 分流（明日方舟走哪个命令）要读角色的 `game` 字段，但 `fetchAttendance` 若把
+   * `accountCache` 放进依赖数组，就会与「加载账户」的 effect 互相触发、无限重拉。
+   * 因此用 ref 读取最新值，依赖数组保持稳定。
+   */
+  const accountCacheRef = useRef<Account[]>([]);
   const completionTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  /** 该角色属于哪个游戏（缓存缺失时按终末地，与后端默认一致）。 */
+  const gameOfRole = useCallback((roleId: string) => {
+    const found = accountCacheRef.current.find((a) => a.id === roleId);
+    return found?.game === "arknights" ? "arknights" : "endfield";
+  }, []);
 
   const lang = i18n.language;
 
@@ -152,8 +256,13 @@ export default function AttendanceCard({
     setAttendanceState("loading");
     setSignError(null);
     try {
+      // 按角色的游戏分流：明日方舟走 /api/v1/game/attendance，终末地走 /web/v1/...
+      const isArknights = gameOfRole(rid) === "arknights";
       const result = await trackStartupTask(
-        invoke<any>("get_attendance", { roleId: rid }),
+        invoke<any>(
+          isArknights ? "get_arknights_attendance" : "get_attendance",
+          { roleId: rid },
+        ),
       );
       const parsed = parseAttendanceData(result);
       if (!parsed) {
@@ -168,11 +277,12 @@ export default function AttendanceCard({
       setAttendanceState("error");
       setSignError(String(e));
     }
-  }, [settings.selectedRoleId, t]);
+  }, [settings.selectedRoleId, gameOfRole, t]);
 
   const loadAccounts = useCallback(async () => {
     try {
       const accs = await getAccounts();
+      accountCacheRef.current = accs;
       setAccountCache(accs);
     } catch (e) {
       logError("[Attendance] Failed to get accounts:", e);
@@ -185,8 +295,9 @@ export default function AttendanceCard({
       setAttendanceState("unsigned");
       return;
     }
-    fetchAttendance();
-    loadAccounts();
+    // 先拿账户列表再拉签到：分流要靠 accountCache 里该角色的 game 字段，
+    // 顺序反了第一拉永远走终末地命令（对明日方舟角色必然报错）。
+    void loadAccounts().then(() => fetchAttendance());
   }, [settingsLoaded, settings.selectedRoleId, fetchAttendance, loadAccounts]);
 
   const completeSignIn = useCallback(() => {
@@ -208,8 +319,14 @@ export default function AttendanceCard({
     setSignPhase("spinning");
     setSignError(null);
     try {
-      const result = await invoke<any>("do_attendance", { roleId: rid });
-      // 后端把「请勿重复签到」(code 10001) 视为幂等成功，用不同文案提示。
+      // 与查询同一套分流：明日方舟签到把 gameId+uid 放 body（后端处理），命令不同
+      const isArknights = gameOfRole(rid) === "arknights";
+      const result = await invoke<any>(
+        isArknights ? "do_arknights_attendance" : "do_attendance",
+        { roleId: rid },
+      );
+      // 终末地把「请勿重复签到」(code 10001) 视为幂等成功；明日方舟非 0 时
+      // 后端已折成空奖励数组（幂等成功），两种情况都走成功文案。
       const alreadySigned = result?.code === 10001;
       addMessage({
         type: "info",
@@ -223,7 +340,7 @@ export default function AttendanceCard({
       setSignError(String(e));
       setSignPhase("idle");
     }
-  }, [signPhase, attendanceState, settings.selectedRoleId, completeSignIn, t]);
+  }, [signPhase, attendanceState, settings.selectedRoleId, gameOfRole, completeSignIn, t]);
 
   useEffect(() => {
     return () => {
@@ -530,7 +647,11 @@ export default function AttendanceCard({
                   )}
                 </div>
                 <div className="min-w-0 leading-tight">
-                  <p className="text-[11px] font-medium truncate">{selectedAccount.nickname}</p>
+                  <p className="text-[11px] font-medium truncate">
+                    <AccountNameLine game={selectedAccount.game}>
+                      {selectedAccount.nickname}
+                    </AccountNameLine>
+                  </p>
                   <p className="text-[9px] text-muted truncate">
                     {resolveServerLabel(selectedAccount.server, lang)}
                     {settings.selectedRoleId && autoSignEnabled && (

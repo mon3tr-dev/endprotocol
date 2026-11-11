@@ -370,24 +370,30 @@
 **职责**：《明日方舟》数据命令（88 行 / 4 个命令）。与终末地的 `query_role_data` 平行：终末地按 `roleId + serverId` 走 `/api/v1/game/endfield/card/detail`，明日方舟按**渠道绑定 uid** 走 `/api/v1/game/player/*` 系列。全部以 `role_id` 作入口（前端只认 roleId），由 `AccountService` 内部反查出所属森空岛账户与 `bindingUid`。
 
 > 四个命令都是薄封装：参数校验与「roleId → (userId, bindingUid)」解析、cred 刷新都在 `AccountService`（见 [services_account.md](services_account.md)），网络与解析在 `ArknightsService`（见 [services_others.md](services_others.md)）。
+>
+> 前端接入现状：`get_arknights_player_info` / `get_arknights_attendance` / `do_arknights_attendance` 已被「账户信息」「账户进度」「签到」三处调用（按角色所属游戏分流），`get_arknights_cultivate` 仍**没有前端调用方**。
 
 ### `get_arknights_player_info`
 - 位置：arknights.rs:24（async）
 - 参数：`state: State<'_, Arc<Mutex<AccountService>>>`、`role_id: String`、`force: Option<bool>`（默认 `false`）
 - 返回：`Result<serde_json::Value, String>`（`ArknightsPlayerInfo` 的 JSON）
 - 逻辑：`AccountService::get_arknights_player_info(role_id, force)`。`force=false` 时先读缓存（内存 → `<app_data>/arknights/player_info_{uid}.json`），未命中才联网；联网成功后写缓存并更新头像 base64。返回体包含 `status`（昵称/等级/理智/头像）、`chars[]`（干员养成）、`building`（`hire`/`training` **可能为 null**）、`routine`、`campaign`、`tower`、`recruit`、`charInfoMap`。
+- 前端调用方：`src/components/cards/account-info/index.tsx`、`src/components/cards/account-progress/index.tsx`（两者先用 `resolveRoleGame(roleId)` 判断游戏，是明日方舟角色才调本命令，否则走终末地的 `query_role_data`）。
 
 ### `get_arknights_cultivate`
 - 位置：arknights.rs:43（async）；参数：`state`、`role_id: String`；返回：`Result<serde_json::Value, String>`
 - 逻辑：`ArknightsService::fetch_cultivate` → `GET /api/v1/game/cultivate/player?uid=`。干员养成 `player/info` 已经全给（还多了信赖/皮肤），**这个接口的唯一增量是仓库 `items`**（`count` 是字符串）。
+- 前端调用方：无（仓库数据暂未接入界面）。
 
 ### `get_arknights_attendance`
 - 位置：arknights.rs:58（async）；参数：`state`、`role_id: String`；返回：`Result<serde_json::Value, String>`
 - 逻辑：`ArknightsService::attendance_status` → `GET /api/v1/game/attendance?uid=`。返回本月签到日历、已签到记录与物品静态表（`resourceInfoMap`）。
+- 前端调用方：`src/components/cards/attendance/index.tsx`、`src/pages/attendance.tsx`（分流三元 `isArknights ? "get_arknights_attendance" : "get_attendance"`）。明日方舟的响应无 `hasToday` 字段，由 `src/utils/attendanceHelpers.ts` 的 `detectSignedToday` 推导。
 
 ### `do_arknights_attendance`
 - 位置：arknights.rs:72（async）；参数：`state`、`role_id: String`；返回：`Result<serde_json::Value, String>`
 - 逻辑：`ArknightsService::do_attendance` → `POST /api/v1/game/attendance`，body `{gameId: 1, uid}`。与终末地签到（靠 `sk-game-role` 头、路径 `/web/v1/game/endfield/attendance`）**完全不同**。今天已签到时接口返回「请勿重复签到」类业务码，`call_skland_api` 原样放行，这里按 `code != 0` 识别并返回**空数组**。
+- 前端调用方：`src/components/cards/attendance/index.tsx`（分流三元 `isArknights ? "do_arknights_attendance" : "do_attendance"`；空数组即幂等成功，走成功文案）。
 
 ---
 

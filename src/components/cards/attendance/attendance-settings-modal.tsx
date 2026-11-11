@@ -44,6 +44,7 @@ export function AttendanceSettingsModal({
 
     getAccounts()
       .then((accs) => {
+        // 签到两个游戏都支持，这里只过滤掉状态不可用的账户
         const valid = accs.filter((a) => a.status === "online" || a.status === "offline");
         setAccounts(valid);
 

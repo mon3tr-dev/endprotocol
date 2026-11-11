@@ -6,6 +6,9 @@ import { useCardData } from "../base/use-card-data";
 import { roleDataService } from "@/utils/roleDataService";
 import { CardConfigService } from "@/utils/cardConfigService";
 import { getAccounts } from "@/utils/accountService";
+import { resolveRoleGame } from "@/utils/roleGame";
+import { invoke } from "@tauri-apps/api/core";
+import { filterAccountsForCard } from "@/config/gameSupport";
 import { useImageRequest, usePinImages } from "@/utils/imageCacheManager";
 import { AccountAvatar } from "@/components/ui/account-avatar";
 import { logError } from "@/utils/logger";
@@ -38,6 +41,50 @@ export interface AccountBaseInfo {
   docNum?: number;
 }
 
+/**
+ * 把《明日方舟》的 `player/info` 折成卡片认识的 `AccountBaseInfo`。
+ *
+ * 两个游戏没有可复用的字段：
+ * - 终末地的「探索等级 / 武器数 / 档案数」在明日方舟没有对应概念；
+ * - 明日方舟的「干员数」是 `status.charCnt`，「主线」是 `status.mainStageProgress`。
+ *
+ * 皮肤数（`skinCnt`）对应终末地的「武器数」位置 —— 语义上不是一回事，
+ * 但同为「账号收集品数量」，放在同一格比留空更可读。
+ */
+function mapArknightsPlayerInfo(info: any): AccountBaseInfo {
+  const status = info?.status ?? {};
+  const mainStage = String(status.mainStageProgress ?? "");
+  return {
+    roleId: status.uid ? String(status.uid) : undefined,
+    name: status.name,
+    level: status.level,
+    avatarUrl: status.avatar?.url,
+    createTime: status.registerTs ? String(status.registerTs) : undefined,
+    lastLoginTime: status.lastOnlineTs
+      ? String(status.lastOnlineTs)
+      : undefined,
+    saveTime: status.storeTs ? String(status.storeTs) : undefined,
+    charNum: status.charCnt,
+    weaponNum: status.skinCnt,
+    mainMission: mainStage
+      ? { id: mainStage, description: mainStage }
+      : undefined,
+  };
+}
+
+/** 按角色所属的游戏取「账户基础信息」。 */
+async function fetchAccountBaseInfo(roleId: string): Promise<AccountBaseInfo | null> {
+  const game = await resolveRoleGame(roleId);
+  if (game === "arknights") {
+    const info = await invoke<any>("get_arknights_player_info", {
+      roleId,
+      force: false,
+    });
+    return mapArknightsPlayerInfo(info);
+  }
+  return roleDataService.getBaseInfo(roleId);
+}
+
 function formatDate(ts: string): string {
   if (!ts) return "";
   const num = parseInt(ts, 10);
@@ -64,8 +111,8 @@ export default function AccountInfoCard({
 
   const effectiveRoleId = customRoleId ?? defaultRoleId;
 
-  const { data: base, isLoading } = useCardData<AccountBaseInfo>({
-    fetchData: () => roleDataService.getBaseInfo(effectiveRoleId),
+  const { data: base, isLoading } = useCardData<AccountBaseInfo | null>({
+    fetchData: () => fetchAccountBaseInfo(effectiveRoleId),
     reloadKey: effectiveRoleId,
   });
 
@@ -87,7 +134,9 @@ export default function AccountInfoCard({
   const loadAccounts = useCallback(async () => {
     try {
       const accs = await getAccounts();
-      setAccounts(accs);
+      // 只列出这张卡片支持的账户：明日方舟账户在本卡已可用，
+      // 终末地独占卡片则不会把明日方舟账户列进来（选了必然无数据）。
+      setAccounts(filterAccountsForCard(accs, "account_info"));
     } catch (error) {
       logError("Failed to load accounts:", error);
     }
@@ -126,7 +175,7 @@ export default function AccountInfoCard({
   const openAccountSelect = useCallback(async () => {
     try {
       const accs = await getAccounts();
-      setAccounts(accs);
+      setAccounts(filterAccountsForCard(accs, "account_info"));
       setIsRoleSelectOpen(true);
     } catch (err) {
       logError("Failed to load accounts:", err);
@@ -200,7 +249,9 @@ export default function AccountInfoCard({
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-1 min-w-0">
               <span className="text-sm font-semibold text-foreground truncate">
-                {base.name || t("common.unknown")}
+                <AccountNameLine game={currentAccount?.game}>
+                  {base.name || t("common.unknown")}
+                </AccountNameLine>
               </span>
               <button
                 type="button"

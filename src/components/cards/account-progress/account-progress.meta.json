@@ -12,6 +12,7 @@
   "defaultSize": { "w": 4, "h": 2 },
   "version": "1.0.0",
   "allowMultiple": true,
+  "supportedGames": ["endfield", "arknights"],
   "tags": [
     { "id": "account", "label": { "zh": "账户", "en": "Account" } },
     { "id": "progress", "label": { "zh": "进度", "en": "Progress" } },

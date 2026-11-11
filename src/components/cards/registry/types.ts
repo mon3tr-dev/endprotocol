@@ -14,6 +14,17 @@ export interface CardMeta {
   version: string;         // 卡片版本
   allowMultiple?: boolean; // 是否允许多个实例（默认 false）
   tags?: CardTag[];         // 卡片标签（多语言），用于搜索和筛选
+  /**
+   * 该卡片支持的游戏。
+   *
+   * - 未声明：按「两个游戏都支持」处理（新卡片默认不阻塞用户）。
+   * - `[]`（空数组）：与游戏无关（系统资源、待办），任何账户都能用。
+   * - `["endfield"]` / `["arknights"]`：该游戏独占，另一个游戏的账户不能选它。
+   *
+   * 运行时以 `@/config/gameSupport` 的 `CARD_GAME_SUPPORT` 为准（那里是唯一
+   * 真值表）；此字段让卡片目录本身自描述，便于新增卡片时对照。
+   */
+  supportedGames?: ("endfield" | "arknights")[];
 }
 
 // 卡片组件 Props 标准接口

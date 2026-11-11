@@ -150,6 +150,30 @@
 
 **备注**：`links.docs`/`links.sponsor` 仍是模板默认值（HeroUI / Patreon），疑似未替换。
 
+## `src/config/gameSupport.ts`
+**职责**：**「卡片 / 页面 → 支持的游戏」单一真值表**。侧边栏过滤（选中明日方舟账户时只显示支持的导航项）、添加卡片弹窗（右侧标注支持的游戏 + 不支持的卡片不出现）、各卡片「切换账户」弹窗（只列兼容账户）三处共用同一份映射，避免加一张卡片要改三四处、漏一处就出现「侧栏能进、卡片加不出来」的自相矛盾。
+**导出**：`ALL_GAME_IDS`、`normalizeGameId`、`CARD_GAME_SUPPORT`、`PAGE_GAME_SUPPORT`、`NAV_ROUTES`、`gamesForCard`、`isCardGameAgnostic`、`cardSupportsGame`、`pageSupportsGame`、`filterAccountsForCard`、`filterAccountsForPage`、`isNavVisible`。
+**主要依赖**：`@/utils/accountService`（`GameId` 类型）。
+
+| 符号 | 位置 | 说明 |
+| --- | --- | --- |
+| `ALL_GAME_IDS` | gameSupport.ts:30 | 全部游戏 `[endfield, arknights]`，顺序即徽标展示顺序 |
+| `normalizeGameId` | gameSupport.ts:34 | `game === "arknights" ? "arknights" : "endfield"`；老缓存缺 `game` 时按终末地处理，与后端 `models::role::GAME_ENDFIELD` 默认一致。`@/components/ui/game-badge` 重新导出同一函数 |
+| `CARD_GAME_SUPPORT` | gameSupport.ts:41 | 卡片类型 → 支持的游戏。**空数组 = 与游戏无关**（`system_resource`/`todo`，不读游戏数据，任何账户都能用、也不打徽标）；两个元素 = 两游戏通用（`attendance`/`account_info`/`account_progress`）；一个元素 = 该游戏独占（`character_list`/`achievement`/`domain_info`/`spaceship` 均为终末地独占，依赖 `card/detail`） |
+| `PAGE_GAME_SUPPORT` | gameSupport.ts:63 | 侧边栏导航键 → 支持的游戏。明日方舟可用：`dashboard`/`attendance`/`gacha`/`todo`；终末地独占：`characters`/`medals`/`domain`/`spaceship` |
+| `NAV_ROUTES` | gameSupport.ts:76 | 导航键 → 路由（`dashboard → "/"`），用于把 `location.pathname` 反查成导航键 |
+| `gamesForCard` | gameSupport.ts:83 | 查卡片支持的游戏；**未登记类型返回两个游戏**（新卡片默认不阻塞用户） |
+| `isCardGameAgnostic` | gameSupport.ts:92 | `gamesForCard(...).length === 0` |
+| `cardSupportsGame` | gameSupport.ts:101 | `game` 缺失（未选账户）视为支持；与游戏无关的卡片对任何游戏都支持 |
+| `pageSupportsGame` | gameSupport.ts:112 | 同上，页面维度；未登记的页面键视为支持 |
+| `filterAccountsForCard` | gameSupport.ts:126 | 按卡片支持的游戏筛账户（各卡片「切换账户」弹窗用） |
+| `filterAccountsForPage` | gameSupport.ts:137 | 按页面支持的游戏筛账户 |
+| `isNavVisible` | gameSupport.ts:145 | 侧边栏导航项是否对当前游戏可见 |
+
+**备注**：
+- **明日方舟数据层依据**（后端已就绪）：`get_arknights_player_info`（等级/理智/主线/干员数/日常周常/剿灭）、`get_arknights_cultivate`（仓库）、`get_arknights_attendance`/`do_arknights_attendance`（签到）、`get_arknights_gacha_categories`（寻访分类）。终末地独占卡片依赖 `/api/v1/game/endfield/card/detail`（`query_role_data`），明日方舟没有对应接口。
+- 改这张表就能同时影响侧栏可见性、添加弹窗的可选集合、各卡片的账户候选 —— **不要在别处另写一份映射**。
+
 ## `src/lib/cn.ts`
 **职责**：`cn` 的再导出别名文件。
 **导出**：`cn`（cn.ts:1，来自 `./utils`）。
