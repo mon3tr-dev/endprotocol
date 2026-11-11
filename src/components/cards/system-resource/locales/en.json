@@ -80,5 +80,6 @@
   "system_resource_template_disk": "Disk group",
   "system_resource_template_network": "Network group",
   "system_resource_template_performance": "Performance overview",
-  "system_resource_template_full": "Full monitor group"
+  "system_resource_template_full": "Full monitor group",
+  "refresh": "Refresh"
 }

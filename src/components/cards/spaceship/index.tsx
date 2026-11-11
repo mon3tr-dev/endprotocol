@@ -56,16 +56,17 @@ export default function SpaceshipCard({
 
   const effectiveRoleId = customRoleId ?? defaultRoleId;
 
-  const { data: rooms, isLoading } = useCardData<SpaceShipRoom[]>({
-    fetchData: async () => {
-      const result = await roleDataService.queryData(effectiveRoleId, "char_detail", ["spaceShip"]);
-      const list = result?.spaceShip?.rooms;
-      return Array.isArray(list) ? list : [];
-    },
-    reloadKey: effectiveRoleId,
-  });
+  const { data: rooms, isLoading, refetch: refetchRooms } =
+    useCardData<SpaceShipRoom[]>({
+      fetchData: async () => {
+        const result = await roleDataService.queryData(effectiveRoleId, "char_detail", ["spaceShip"]);
+        const list = result?.spaceShip?.rooms;
+        return Array.isArray(list) ? list : [];
+      },
+      reloadKey: effectiveRoleId,
+    });
 
-  const { data: charDetail } = useCardData<CharDetailData>({
+  const { data: charDetail, refetch: refetchCharDetail } = useCardData<CharDetailData>({
     fetchData: () => roleDataService.getFullCharDetail(effectiveRoleId),
     reloadKey: effectiveRoleId,
   });
@@ -155,6 +156,9 @@ export default function SpaceshipCard({
       if (detail?.cardId !== cardId) return;
       if (detail.action === "change-role") {
         openAccountSelect();
+      } else if (detail.action === "refresh") {
+        void refetchRooms(true);
+        void refetchCharDetail(true);
       }
     };
     window.addEventListener("cardAction", handler);

@@ -135,10 +135,11 @@ export default function AchievementCard({
 
   const effectiveRoleId = customRoleId ?? defaultRoleId;
 
-  const { data: charDetail, isLoading } = useCardData<CharDetailData>({
-    fetchData: () => roleDataService.getFullCharDetail(effectiveRoleId),
-    reloadKey: effectiveRoleId,
-  });
+  const { data: charDetail, isLoading, refetch: refetchCharDetail } =
+    useCardData<CharDetailData>({
+      fetchData: () => roleDataService.getFullCharDetail(effectiveRoleId),
+      reloadKey: effectiveRoleId,
+    });
 
   const allMedals = useMemo(() => {
     if (!charDetail?.achieve?.achieveMedals) return [];
@@ -219,6 +220,8 @@ export default function AchievementCard({
         setAccounts(filterAccountsForCard(accs, "achievement"));
         setIsRoleSelectOpen(true);
       }).catch((err) => logError("Failed to load accounts:", err));
+    } else if (detail.action === "refresh") {
+      void refetchCharDetail(true);
     }
   }, [cardId]);
 

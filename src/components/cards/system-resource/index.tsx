@@ -166,11 +166,21 @@ export default function SystemResourceCard({
     void tick();
     const timer = window.setInterval(() => void tick(), Math.max(500, refreshMs));
     const onManualRefresh = () => void tick();
+    const onCardRefresh = (event: Event) => {
+      const detail = (event as CustomEvent).detail as
+        | { cardId: string; action: string }
+        | undefined;
+      if (detail?.cardId === cardId && detail?.action === "refresh") {
+        void tick();
+      }
+    };
     window.addEventListener("manualRefresh", onManualRefresh);
+    window.addEventListener("cardAction", onCardRefresh);
     return () => {
       cancelled = true;
       window.clearInterval(timer);
       window.removeEventListener("manualRefresh", onManualRefresh);
+      window.removeEventListener("cardAction", onCardRefresh);
     };
   }, [refreshMs]);
 

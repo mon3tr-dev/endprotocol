@@ -278,10 +278,27 @@ function FreeDragCard({
         key: "sr-refresh",
         label: t("card:system_resource_refresh_now"),
         onPress: () => {
-          window.dispatchEvent(new CustomEvent("manualRefresh"));
+          window.dispatchEvent(
+            new CustomEvent("cardAction", {
+              detail: { cardId: card.id, action: "refresh" },
+            }),
+          );
         },
       });
     }
+
+    // Universal "刷新" menu item — let each card type handle its own data refresh.
+    items.push({
+      key: "refresh",
+      label: t("card:refresh"),
+      onPress: () => {
+        window.dispatchEvent(
+          new CustomEvent("cardAction", {
+            detail: { cardId: card.id, action: "refresh" },
+          }),
+        );
+      },
+    });
 
     if (card.type === "todo") {
       const dispatch = (action: string) => {

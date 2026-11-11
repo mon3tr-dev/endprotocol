@@ -19,5 +19,6 @@
   "change_role": "Change Account",
   "select_role": "Select Account",
   "no_accounts": "No accounts available",
-  "current": "Current"
+  "current": "Current",
+  "refresh": "Refresh"
 }

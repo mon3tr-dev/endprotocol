@@ -15,5 +15,6 @@
   "ach_default": "默认",
   "ach_time": "最新",
   "ach_level_sort": "最高",
-  "ach_search": "搜索蚀刻章名称"
+  "ach_search": "搜索蚀刻章名称",
+  "refresh": "刷新"
 }

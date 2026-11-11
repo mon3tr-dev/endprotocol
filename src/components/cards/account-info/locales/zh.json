@@ -9,5 +9,6 @@
   "account_info_main_mission": "主线任务",
   "account_info_char_num": "干员",
   "account_info_weapon_num": "武器",
-  "account_info_doc_num": "档案"
+  "account_info_doc_num": "档案",
+  "refresh": "刷新"
 }

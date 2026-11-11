@@ -37,6 +37,7 @@
   "attendance_batch_retry": "重试",
   "attendance_auto_sign_persist_hint": "开启后应用启动时自动签到，无需添加签到卡片",
   "settings": "设置",
+  "refresh": "刷新",
   "confirm_delete_title": "删除卡片",
   "confirm_delete_body": "确定要删除该卡片吗？"
 }

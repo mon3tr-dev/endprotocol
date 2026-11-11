@@ -19,5 +19,6 @@
   "change_role": "更改账号",
   "select_role": "选择账号",
   "no_accounts": "无可用账户",
-  "current": "当前"
+  "current": "当前",
+  "refresh": "刷新"
 }

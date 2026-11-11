@@ -80,5 +80,6 @@
   "system_resource_template_disk": "磁盘组",
   "system_resource_template_network": "网络组",
   "system_resource_template_performance": "性能总览组",
-  "system_resource_template_full": "全量监控组"
+  "system_resource_template_full": "全量监控组",
+  "refresh": "刷新"
 }

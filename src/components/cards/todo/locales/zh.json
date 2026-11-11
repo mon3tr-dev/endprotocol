@@ -93,5 +93,6 @@
   "todo_template_resource_title": "资源规划",
   "todo_template_resource_item_1": "抽卡 / 资源规划",
   "todo_template_resource_item_2": "库存与材料盘点",
-  "todo_template_resource_item_3": "缺口材料统计"
+  "todo_template_resource_item_3": "缺口材料统计",
+  "refresh": "刷新"
 }

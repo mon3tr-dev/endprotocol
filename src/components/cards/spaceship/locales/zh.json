@@ -20,5 +20,6 @@
   "spaceship_current": "当前",
   "spaceship_close": "关闭",
   "spaceship_cancel": "取消",
-  "spaceship_empty": "暂无舱室数据"
+  "spaceship_empty": "暂无舱室数据",
+  "refresh": "刷新"
 }

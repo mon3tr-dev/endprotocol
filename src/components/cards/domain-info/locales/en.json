@@ -9,5 +9,6 @@
   "domain_info_switch_account": "Switch Account",
   "domain_info_switch_domain": "Switch Domain",
   "domain_info_view_list": "View List",
-  "domain_info_empty": "No data"
+  "domain_info_empty": "No data",
+  "refresh": "Refresh"
 }

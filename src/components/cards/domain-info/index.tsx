@@ -49,15 +49,16 @@ export default function DomainInfoCard({
 
   const effectiveRoleId = customRoleId ?? defaultRoleId;
 
-  const { data, isLoading } = useCardData<DomainData[]>({
-    fetchData: async () => {
-      const result = await roleDataService.queryData(effectiveRoleId, "char_detail", ["domain"]);
-      if (!result) return [];
-      const list = result["domain"];
-      return Array.isArray(list) ? list : [];
-    },
-    reloadKey: effectiveRoleId,
-  });
+  const { data, isLoading, refetch: refetchDomain } =
+    useCardData<DomainData[]>({
+      fetchData: async () => {
+        const result = await roleDataService.queryData(effectiveRoleId, "char_detail", ["domain"]);
+        if (!result) return [];
+        const list = result["domain"];
+        return Array.isArray(list) ? list : [];
+      },
+      reloadKey: effectiveRoleId,
+    });
 
   const domains = useMemo(() => data ?? [], [data]);
 
@@ -136,6 +137,8 @@ export default function DomainInfoCard({
         openDomainSelect();
       } else if (detail.action === "view-list") {
         openList();
+      } else if (detail.action === "refresh") {
+        void refetchDomain(true);
       }
     };
     window.addEventListener("cardAction", handler);

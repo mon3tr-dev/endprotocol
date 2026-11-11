@@ -95,10 +95,11 @@ export default function CharacterListCard({
     prevRoleIdRef.current = effectiveRoleId;
   }, [effectiveRoleId]);
 
-  const { data: charDetail, isLoading } = useCardData<CharDetailData>({
-    fetchData: () => roleDataService.getFullCharDetail(effectiveRoleId),
-    reloadKey: effectiveRoleId,
-  });
+  const { data: charDetail, isLoading, refetch: refetchCharDetail } =
+    useCardData<CharDetailData>({
+      fetchData: () => roleDataService.getFullCharDetail(effectiveRoleId),
+      reloadKey: effectiveRoleId,
+    });
 
   const processedCharDetail = useMemo(() => {
     if (!charDetail) return null;
@@ -184,6 +185,8 @@ export default function CharacterListCard({
         detail?.action === "change-role"
       ) {
         handleOpenRoleSelect();
+      } else if (detail?.cardId === cardId && detail?.action === "refresh") {
+        void refetchCharDetail(true);
       }
     };
     window.addEventListener("cardAction", handler);

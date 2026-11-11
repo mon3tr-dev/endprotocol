@@ -37,6 +37,7 @@
   "attendance_batch_retry": "Retry",
   "attendance_auto_sign_persist_hint": "When enabled, signs in automatically on app launch — no card needed",
   "settings": "Settings",
+  "refresh": "Refresh",
   "confirm_delete_title": "Delete Card",
   "confirm_delete_body": "Are you sure you want to delete this card?"
 }

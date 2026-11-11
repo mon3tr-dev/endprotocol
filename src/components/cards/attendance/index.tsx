@@ -387,11 +387,13 @@ export default function AttendanceCard({
       const detail = (e as CustomEvent).detail as { cardId: string; action: string } | undefined;
       if (detail?.cardId === cardId && detail?.action === "settings") {
         openSettings();
+      } else if (detail?.cardId === cardId && detail?.action === "refresh") {
+        void fetchAttendance();
       }
     };
     window.addEventListener("cardAction", handler);
     return () => window.removeEventListener("cardAction", handler);
-  }, [cardId, openSettings]);
+  }, [cardId, openSettings, fetchAttendance]);
 
   const handleSaveSettings = useCallback(
     async (newRoleId: string | undefined, autoSign: boolean) => {

@@ -93,5 +93,6 @@
   "todo_template_resource_title": "Resource Planning",
   "todo_template_resource_item_1": "Gacha / pull planning",
   "todo_template_resource_item_2": "Inventory & material stocktake",
-  "todo_template_resource_item_3": "Track missing materials"
+  "todo_template_resource_item_3": "Track missing materials",
+  "refresh": "Refresh"
 }

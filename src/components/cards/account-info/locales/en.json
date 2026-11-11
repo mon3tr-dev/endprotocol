@@ -9,5 +9,6 @@
   "account_info_main_mission": "Main Mission",
   "account_info_char_num": "Chars",
   "account_info_weapon_num": "Weapons",
-  "account_info_doc_num": "Archives"
+  "account_info_doc_num": "Archives",
+  "refresh": "Refresh"
 }

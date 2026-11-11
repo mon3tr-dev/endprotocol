@@ -91,6 +91,9 @@ export default function TodoCard({ cardId, settings }: BaseCardProps) {
             });
           }
           break;
+        case "refresh":
+          // Todo 数据来自响应式 Zustand store，已自动刷新；此处保留占位以兼容通用菜单。
+          break;
         default:
           break;
       }

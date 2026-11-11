@@ -210,7 +210,16 @@
 **备注**：
 - **编辑模式**：由父级通过 `isEditMode`/`onEnterEditMode`/`onExitEditMode` 控制；进入 = 长按卡片（`onLongPress` → :910-913），退出 = 编辑态下点按未拖拽（:113-130）或长按触发的拖拽结束（:706-713）。编辑态下才挂载 dnd-kit `attributes/listeners`（:313）与删除按钮（:374）。
 - **拖拽**：网格吸附拖拽（非自由像素拖拽），1 格 = 100px；拖拽中原卡片隐藏，真实视觉由 `DragOverlay` portal 提供（:921-954）。
-- **右键菜单**：状态与菜单项在 `FreeDragCard` 内，渲染走 `CardContextMenu`，删除项带二次确认。除上表按类型分支外，另有两组：`system_resource` → `system-resource-settings`（打开设置弹窗）/ 派发 `manualRefresh`（立即刷新）；`todo` → `todo-edit`/`todo-open-page`/`todo-rename`/`todo-duplicate`/`todo-sort`/`todo-hide-completed`/`todo-clear-completed`/`todo-color-icon`/`todo-delete-list`，全部经 `cardAction` 事件由卡片自身处理。
+- **右键菜单**：状态与菜单项在 `FreeDragCard` 内，渲染走 `CardContextMenu`，删除项带二次确认。除上表按类型分支外，另有两组：`system_resource` → `system-resource-settings`（打开设置弹窗）/ `refresh`（立即刷新，`cardId` 匹配）；`todo` → `todo-edit`/`todo-open-page`/`todo-rename`/`todo-duplicate`/`todo-sort`/`todo-hide-completed`/`todo-clear-completed`/`todo-color-icon`/`todo-delete-list`，全部经 `cardAction` 事件由卡片自身处理。
+- **通用「刷新」菜单项**：所有卡片类型右键菜单末尾（删除项之前）均追加 `refresh` 菜单项（标签 `card:refresh`），派发 `cardAction` 事件，`action: "refresh"`，`cardId` 为当前卡片 ID。各卡片组件在 `window.addEventListener("cardAction", …)` 中按 `cardId` 匹配并执行自身的刷新逻辑：
+  - `character_list` → `useCardData` 的 `refetch(true)`（`char_detail` 重新拉取）；
+  - `account_info` / `account_progress` → `useCardData` 的 `refetch(true)`（账户基础信息 / 进度重新拉取）；
+  - `achievement` → `useCardData` 的 `refetch(true)`（蚀刻章详情重新拉取）；
+  - `attendance` → 调用 `fetchAttendance()`（签到数据重新拉取）；
+  - `domain_info` → `useCardData` 的 `refetch(true)`（区域数据重新拉取）；
+  - `spaceship` → `useCardData` 的 `refetch(true)`（帝江号舱室 + 干员详情重新拉取）；
+  - `system_resource` → 直接执行 `SystemResourceService.getSnapshot()`（原全局 `manualRefresh` 事件改为 `cardId` 匹配的 `cardAction`）；
+  - `todo` → 数据来自响应式 Zustand store，已自动刷新，保留占位不执行额外操作。
 - **尺寸调整**：容器内**没有交互式 resize 手柄**；宽高完全来自 `CardConfig.w/h`（默认 `3×2`），读取与兜底见 :294-295、:497-499、:636-637、:735-736、:927-928；拖拽只改变 `x/y`，`w/h` 仅在 `dragEnd` 的 `updateCardLayout` 中原样回写（:774-779）。
 - **事件**：文件内无 Tauri `invoke` / `emit` / `listen`；对外通信使用 `window.dispatchEvent(new CustomEvent("cardAction", { detail: { cardId, action } }))`，共 8 处（:169、:180、:192、:204、:215、:232、:244、:255），action 取值 `view-list` / `change-role` / `settings` / `select-medals` / `switch-domain`；监听方为各卡片自身的 `window.addEventListener("cardAction", ...)`。另有拖拽期的 `window.addEventListener("mousemove"/"pointermove")`（:556-557）。
 - 持久化统一走 `updateCardLayout(tabId, cardId, layout)`（`src/utils/dashboardConfig.ts:149-164`：改 `x/y/w/h` 后 `saveTabCards`），本文件不直接触碰存储/IPC。
@@ -323,7 +332,7 @@
 ## 事件 / IPC 汇总（本组 12 个文件）
 - **Tauri `invoke("xxx")`**：无。本组文件不含任何 `@tauri-apps/api` 调用；落盘统一经 `updateCardLayout()`（`src/utils/dashboardConfig.ts:149`）间接完成。
 - **Tauri `emit` / `listen`**：无。
-- **`window.dispatchEvent(new CustomEvent("cardAction", { detail: { cardId, action } }))`**（card-container.tsx）：action = `view-list`（:169、:244）、`change-role`（:180、:215、:232）、`settings`（:192）、`select-medals`（:204）、`switch-domain`（:255）。监听方位于各卡片组件（如 `character-list/index.tsx:187`、`achievement/index.tsx:223`、`domain-info/index.tsx:183`、`spaceship/index.tsx:252`、`account-info/index.tsx:142`、`account-progress/index.tsx:121`、`attendance/index.tsx:259`）。
-- **`cardAction` 新增动作（2026-10）**：`system-resource-settings`（system-resource 卡片打开设置弹窗）、`todo-edit`/`todo-open-page`/`todo-rename`/`todo-duplicate`/`todo-sort`/`todo-hide-completed`/`todo-clear-completed`/`todo-color-icon`/`todo-delete-list`（todo 卡片处理）；另有 `manualRefresh` 全局事件用于系统资源卡片的「立即刷新」。详见 [cards_system_todo.md](cards_system_todo.md)。
+- **`window.dispatchEvent(new CustomEvent("cardAction", { detail: { cardId, action } }))`**（card-container.tsx）：action = `view-list`（:169、:244）、`change-role`（:180、:215、:232）、`settings`（:192）、`select-medals`（:204）、`switch-domain`（:255）、`refresh`（通用，所有卡片类型末尾）。监听方位于各卡片组件（如 `character-list/index.tsx:187`、`achievement/index.tsx:223`、`domain-info/index.tsx:183`、`spaceship/index.tsx:252`、`account-info/index.tsx:142`、`account-progress/index.tsx:121`、`attendance/index.tsx:259`）。
+- **`cardAction` 新增动作（2026-10）**：`system-resource-settings`（system-resource 卡片打开设置弹窗）、`todo-edit`/`todo-open-page`/`todo-rename`/`todo-duplicate`/`todo-sort`/`todo-hide-completed`/`todo-clear-completed`/`todo-color-icon`/`todo-delete-list`（todo 卡片处理）；`refresh`（所有卡片类型的通用刷新菜单项，按 `cardId` 匹配）。原系统资源卡片的 `manualRefresh` 全局事件已废弃，改用 `cardId` 匹配的 `cardAction` `refresh`。
 - **卡片改尺寸事件（2026-10）**：`CardContainer` 监听 `window` 事件 `cardResize`（detail `{cardId,w,h}`），更新本地 `sortedCards` 并调用 `updateCardLayout(tabId ?? roleId, …)` 落盘，随后广播 `cardLayoutChanged`（`pages/dashboard.tsx` 监听后重新拉取当前标签页配置）。卡片组件自身不持有 `tabId`，因此用事件解耦。
 - **DOM 监听**：card-context-menu.tsx:36-38（`mousedown`/`keydown`/`scroll`）、card-container.tsx:556-557（`mousemove`/`pointermove`）。

@@ -20,5 +20,6 @@
   "spaceship_current": "Current",
   "spaceship_close": "Close",
   "spaceship_cancel": "Cancel",
-  "spaceship_empty": "No cabin data"
+  "spaceship_empty": "No cabin data",
+  "refresh": "Refresh"
 }

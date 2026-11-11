@@ -153,10 +153,11 @@ export default function AccountProgressCard({
 
   const effectiveRoleId = customRoleId ?? defaultRoleId;
 
-  const { data, isLoading } = useCardData<ProgressData>({
-    fetchData: () => fetchAccountProgress(effectiveRoleId),
-    reloadKey: effectiveRoleId,
-  });
+  const { data, isLoading, refetch: refetchProgress } =
+    useCardData<ProgressData>({
+      fetchData: () => fetchAccountProgress(effectiveRoleId),
+      reloadKey: effectiveRoleId,
+    });
 
   const loadSettings = useCallback(async () => {
     try {
@@ -201,6 +202,8 @@ export default function AccountProgressCard({
       const detail = (e as CustomEvent).detail as { cardId: string; action: string } | undefined;
       if (detail?.cardId === cardId && detail?.action === "change-role") {
         openAccountSelect();
+      } else if (detail?.cardId === cardId && detail?.action === "refresh") {
+        void refetchProgress(true);
       }
     };
     window.addEventListener("cardAction", handler);

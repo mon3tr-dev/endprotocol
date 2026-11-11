@@ -111,10 +111,11 @@ export default function AccountInfoCard({
 
   const effectiveRoleId = customRoleId ?? defaultRoleId;
 
-  const { data: base, isLoading } = useCardData<AccountBaseInfo | null>({
-    fetchData: () => fetchAccountBaseInfo(effectiveRoleId),
-    reloadKey: effectiveRoleId,
-  });
+  const { data: base, isLoading, refetch: refetchBase } =
+    useCardData<AccountBaseInfo | null>({
+      fetchData: () => fetchAccountBaseInfo(effectiveRoleId),
+      reloadKey: effectiveRoleId,
+    });
 
   const loadSettings = useCallback(async () => {
     try {
@@ -187,6 +188,8 @@ export default function AccountInfoCard({
       const detail = (e as CustomEvent).detail as { cardId: string; action: string } | undefined;
       if (detail?.cardId === cardId && detail?.action === "change-role") {
         openAccountSelect();
+      } else if (detail?.cardId === cardId && detail?.action === "refresh") {
+        void refetchBase(true);
       }
     };
     window.addEventListener("cardAction", handler);

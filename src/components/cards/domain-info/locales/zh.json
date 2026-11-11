@@ -9,5 +9,6 @@
   "domain_info_switch_account": "切换账号",
   "domain_info_switch_domain": "切换区域",
   "domain_info_view_list": "查看列表",
-  "domain_info_empty": "暂无数据"
+  "domain_info_empty": "暂无数据",
+  "refresh": "刷新"
 }
