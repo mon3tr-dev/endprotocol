@@ -58,13 +58,16 @@
 | `loadAccounts` | account-switch-modal.tsx:50 | `async`：`await getAccounts()` → `setAccounts(data ?? [])`，异常写 `logger.error(..., "AccountSwitch")` |
 | `filteredAccounts` | account-switch-modal.tsx:62 | `useMemo`。按 `searchQuery` 匹配 `nickname/id/server/userId`（忽略大小写）；排序时 `currentAccountId` 命中项排最前，其余按 `nickname.localeCompare` |
 | `handleSwitchAccount` | account-switch-modal.tsx:82 | `async (accountId)`：id 等于当前值直接 `onClose()`；否则 `setSwitchingId` → `apiSetSelectedAccount(accountId)`，成功则 `window.dispatchEvent(new CustomEvent("accountChanged"))` 并 `onClose()`，`finally` 清除 `switchingId` |
-| 渲染块 | account-switch-modal.tsx:101-196 | 搜索框（`GlassInput type="search"`，`startContent` 图标）→ 列表区（`max-h-[400px]` 纵向滚动；`isLoading` 显示 `SkeletonList count=expectedAccountCount rowHeight=68`，空结果显示 `EmptyState`，否则逐条渲染 `GlassCard`）→ 底部总数统计。每条卡片：头像 + 昵称 + `GameBadge`（游戏标识，取 `account.game`）+ `ACTIVE` 徽章 + `Lv.x • 服务器` + 森空岛 userId |
+| 渲染块 | account-switch-modal.tsx:102-217 | 搜索框（`GlassInput type="search"`，`startContent` 图标）→ 列表区（`max-h-[min(60vh,520px)]`，`-mx-3 px-3 py-1.5` 留缩放余量，纵向滚动 + `overflow-x-hidden`；`isLoading` 显示 `SkeletonList count=expectedAccountCount rowHeight=68`，空结果显示 `EmptyState`，否则逐条渲染 `GlassCard`）→ 底部总数统计。每条卡片：头像 + 昵称 + `GameBadge`（游戏标识，取 `account.game`）+ `ACTIVE` 徽章 + `Lv.x • 服务器` + 森空岛 userId |
 
 **备注**：
 - 无 `invoke` / `listen`；本组件内的账户读写全部经 `@/utils/accountService` 封装。
 - 事件：`listen`/监听 `window` `manualRefresh`（account-switch-modal.tsx:45）；派发 `window` `accountChanged`（account-switch-modal.tsx:91）。
 - i18n key：`account_switch.title`、`account_switch.search_placeholder`、`account_switch.no_accounts_found`、`account_switch.accounts_total`（带 `count` 插值）、`settings.account.skland_account`、`game.*`（经 `GameBadge` 内部取）；未读 i18n 而用 `t(...)` + 硬编码的 `ACTIVE` 徽章（account-switch-modal.tsx:162）。
-- 卡片选中态用 `border-2 border-primary bg-primary-50 dark:bg-primary-900/20`，切换中显示 `GlassSpinner size={20} color="primary"`（account-switch-modal.tsx:176；原先这里是 CSS `border` 环，缺口是方头，已统一为项目里的圆头弧指示器）。
+- 卡片选中态用 `border-2 border-primary bg-primary-50 dark:bg-primary-900/20`，切换中显示 `GlassSpinner size={20} color="primary"`（account-switch-modal.tsx:186；原先这里是 CSS `border` 环，缺口是方头，已统一为项目里的圆头弧指示器）。
+- **卡片截断修复**：列表滚动区原先写死 `max-h-[400px]`，账户卡片下缘正好被滚动区边缘切掉一半；现改为 `max-h-[min(60vh,520px)]` 跟视口走（400px 恰好只够放下 4 张卡，第 5 张被切在裁切边缘上；取 60vh 同时为弹窗自身的 `!max-h-[90vh]` 留出余量，避免外层 Body 冒出第二条纵向滚动条）。
+- **溢出用 padding 收口，不用删动画**：`GlassCard` 自带 `hover:-translate-y-1 hover:scale-[1.02]`，缩放让卡片水平多出约 1% 宽度，溢出直接顶到滚动容器裁切边缘 → 左右圆角被切，且 `overflow-y:auto` 会把另一轴计算成 `auto`，底部多出一条横向滚动条。修法是给滚动容器加 `px-3 py-1.5` 当缩放余量（padding box 之内的溢出既不被裁切也不算溢出），再用 `-mx-3` 抵消回容器自身，使卡片宽度与原先一致；**hover 动画保留不动**。
+- **头像绿点移除**：`AccountAvatar` 不再接受 `showActiveIndicator`，账户头像右下角的绿色激活圆点已删除；选中态只由行尾的 `ACTIVE` 徽章 + 卡片描边表达。
 
 ## `src/components/add-card-modal.tsx`
 **职责**：仪表盘「添加卡片」弹窗。从卡片注册表读取可选卡片，支持名称搜索 + 标签多选过滤，选中后回调 `onAdd(cardType)`。
@@ -426,7 +429,7 @@
 | --- | --- | --- |
 | custom-modal.tsx | 148 | `CustomModal`、`CustomModalHeader`、`CustomModalBody`、`CustomModalFooter` |
 | close-confirm-dialog.tsx | 101 | `CloseConfirmDialog` |
-| account-switch-modal.tsx | 196 | 默认 `AccountSwitchModal` |
+| account-switch-modal.tsx | 220 | 默认 `AccountSwitchModal` |
 | add-card-modal.tsx | 234 | `AddCardModal` |
 | app-info-drawer.tsx | 71 | `AppInfoDrawer` |
 | custom-titlebar.tsx | 419 | `CustomTitlebar`、`TitlebarBrand`、`TitlebarControls` |

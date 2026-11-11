@@ -4,17 +4,16 @@
 > 覆盖 `src/components/ui/` 全部 38 个文件（新增 `radio-group.tsx`、`game-badge.tsx`） + `src/components/` 下 3 个基础文件（共 41 个），以及 `src/components/crash-report-host.tsx` 崩溃提示宿主。
 
 ## `src/components/ui/account-avatar.tsx`
-**职责**：账户头像组件，图片加载失败时回退为首字母占位符，可选显示激活状态圆点。
+**职责**：账户头像组件，图片加载失败时回退为首字母占位符。
 **导出**：`AccountAvatar`
 **主要依赖**：`@/utils/imageLoader`（`Img` 图片组件）、`clsx`
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
-| `SIZE_CLASS` | account-avatar.tsx:12 | size → 宽高/字号映射（xs 32px ~ xl 80px） |
-| `INDICATOR_SIZE` | account-avatar.tsx:20 | size → 指示点直径映射 |
-| `AccountAvatar` | account-avatar.tsx:28 | 主组件。关键 props：`src`（可选图片地址）、`alt`（必填，兼作回退首字母来源）、`size`（`xs/sm/md/lg/xl`，默认 `md`）、`showActiveIndicator`（默认 `false`，右下角绿色圆点）、`className` |
+| `SIZE_CLASS` | account-avatar.tsx:11 | size → 宽高/字号映射（xs 32px ~ xl 80px） |
+| `AccountAvatar` | account-avatar.tsx:19 | 主组件。关键 props：`src`（可选图片地址）、`alt`（必填，兼作回退首字母来源）、`size`（`xs/sm/md/lg/xl`，默认 `md`）、`className` |
 
-**备注**：`onError` 时隐藏图片并把父节点文本设为 `alt` 首字母大写（account-avatar.tsx:50-55）；图片类名固定带 `avatar-feather`。
+**备注**：`onError` 时隐藏图片并把父节点文本设为 `alt` 首字母大写（account-avatar.tsx:40-45）；图片类名固定带 `avatar-feather`。原先的 `showActiveIndicator`（右下角绿色激活圆点）已随「切换账户」弹窗改用行尾 `ACTIVE` 徽章表达选中态而移除。
 
 ## `src/components/ui/alert.tsx`
 **职责**：行内警示条，按 `status` 切换边框与指示点配色，复合组件结构（容器 + 指示点 + 内容 + 描述）。

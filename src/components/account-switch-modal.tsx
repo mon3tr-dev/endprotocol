@@ -119,8 +119,30 @@ export default function AccountSwitchModal({
           />
         </div>
 
-        {/* List */}
-        <div className="space-y-2 max-h-[400px] overflow-y-auto">
+        {/* List
+         *
+         * 这里要同时满足两件事：卡片的 hover 缩放动画不能被裁掉，列表本身
+         * 也不能因为溢出而多出滚动条。
+         *
+         * GlassCard 自带 hover:-translate-y-1 hover:scale-[1.02]。缩放会让
+         * 卡片在水平方向多出约 1% 宽度（卡片近 950px → 每侧 ~10px），这一圈
+         * 溢出原本直接顶到滚动容器的裁切边缘：卡片左右两角的圆角与描边被切
+         * 掉，同时 overflow-x 变成 auto → 底部多出一条几乎占满宽度的横向
+         * 滚动条（`overflow-y:auto` 会把 `visible` 的另一轴计算成 `auto`）。
+         *
+         * 做法是给滚动容器留出内边距当「缩放余量」：padding 在裁切边缘
+         * 之内，缩放出去的那一圈落进 padding 里，既不被裁掉，也不算溢出
+         * （溢出只统计超出 padding box 的部分）→ 不产生横向滚动条。
+         * `-mx-3` 把这段 padding 抵消回容器自身，让卡片宽度与原先一致。
+         * 纵向同理：py-1.5 容纳 -4px 的上浮与 1.02 缩放多出来的高度。
+         *
+         * 高度上限跟视口走（min(60vh, 520px)）而不是写死 400px：400px 恰好
+         * 只够放下 4 张卡（每张 ~72px + 8px 间距 = 80px），第 5 张正好被切在
+         * 裁切边缘上。取 60vh 是为了和弹窗自身的 !max-h-[90vh] 留出余量：
+         * 列表 + 搜索框 + 头部 + 底部统计必须小于 90vh，否则外层 Body 会
+         * 冒出第二条纵向滚动条（滚动条套滚动条）。
+         */}
+        <div className="space-y-2 -mx-3 max-h-[min(60vh,520px)] overflow-y-auto overflow-x-hidden px-3 py-1.5">
           {isLoading ? (
             <SkeletonList count={expectedAccountCount} rowHeight={68} />
           ) : filteredAccounts.length === 0 ? (
@@ -146,11 +168,11 @@ export default function AccountSwitchModal({
                   }
                 >
                   <div className="flex items-center gap-3">
+                    {/* 选中态由行尾的 ACTIVE 徽章表达，头像不再叠绿色小圆点 */}
                     <AccountAvatar
                       src={account.avatar}
                       alt={account.nickname}
                       size="md"
-                      showActiveIndicator={isSelected}
                     />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
