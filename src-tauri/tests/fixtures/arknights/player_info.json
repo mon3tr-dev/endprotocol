@@ -738,6 +738,182 @@
                                                                }
                                                }
                               },
+                 "stageInfoMap":  {
+                     "main_15-09":  {
+                                        "apCost":  24,
+                                        "code":  "15-10",
+                                        "dangerLevel":  "LV.70",
+                                        "diffGroup":  "NONE",
+                                        "difficulty":  "NORMAL",
+                                        "id":  "main_15-09",
+                                        "name":  "怀黍离",
+                                        "stageType":  "MAIN",
+                                        "zoneId":  "act2mainss_zone1"
+                                    }
+                 },
+                 "activity":  [
+                                  {
+                                      "actId":  "act55side",
+                                      "actReplicaId":  "",
+                                      "zones":  [
+                                                    {
+                                                        "clearedStage":  15,
+                                                        "totalStage":  15,
+                                                        "zoneId":  "act55side_zone1",
+                                                        "zoneReplicaId":  ""
+                                                    },
+                                                    {
+                                                        "clearedStage":  3,
+                                                        "totalStage":  8,
+                                                        "zoneId":  "act55side_zone2",
+                                                        "zoneReplicaId":  ""
+                                                    },
+                                                    {
+                                                        "clearedStage":  0,
+                                                        "totalStage":  4,
+                                                        "zoneId":  "act55side_zone3",
+                                                        "zoneReplicaId":  ""
+                                                    }
+                                                ]
+                                  },
+                                  {
+                                      "actId":  "1stact",
+                                      "actReplicaId":  "act13d2",
+                                      "zones":  [
+                                                    {
+                                                        "clearedStage":  0,
+                                                        "totalStage":  6,
+                                                        "zoneId":  "A001_zone1",
+                                                        "zoneReplicaId":  "act13d2_zone1"
+                                                    },
+                                                    {
+                                                        "clearedStage":  0,
+                                                        "totalStage":  6,
+                                                        "zoneId":  "A001_zone2",
+                                                        "zoneReplicaId":  "act13d2_zone2"
+                                                    }
+                                                ]
+                                  }
+                              ],
+                 "activityInfoMap":  {
+                                         "act55side":  {
+                                                           "endTime":  1795941999,
+                                                           "id":  "act55side",
+                                                           "name":  "时间啊，向前！",
+                                                           "picUrl":  "",
+                                                           "startTime":  1793487600,
+                                                           "type":  ""
+                                                       },
+                                         "1stact":  {
+                                                        "endTime":  1560369599,
+                                                        "id":  "1stact",
+                                                        "name":  "骑兵与猎人",
+                                                        "picUrl":  "https://bbs.hycdn.cn/image/2024/12/03/12bd4abe086c4b905af517d7b94b6c95.png",
+                                                        "startTime":  1559181600,
+                                                        "type":  "SIDESTORY"
+                                                    }
+                                     },
+                 "campaignInfoMap":  {
+                                         "camp_01":  {
+                                                         "campaignZoneId":  "camp_zone_3",
+                                                         "id":  "camp_01",
+                                                         "name":  "切尔诺伯格",
+                                                         "picUrl":  ""
+                                                     },
+                                         "camp_02":  {
+                                                         "campaignZoneId":  "camp_zone_1",
+                                                         "id":  "camp_02",
+                                                         "name":  "龙门外环",
+                                                         "picUrl":  ""
+                                                     }
+                                     },
+                 "rogueInfoMap":  {
+                                      "rogue_1":  {
+                                                      "id":  "rogue_1",
+                                                      "name":  "傀影与猩红孤钻",
+                                                      "picUrl":  "",
+                                                      "sort":  1
+                                                  },
+                                      "rogue_5":  {
+                                                      "id":  "rogue_5",
+                                                      "name":  "萨卡兹的无终奇语",
+                                                      "picUrl":  "",
+                                                      "sort":  5
+                                                  }
+                                  },
+                 "towerInfoMap":  {
+                                      "tower_tr_01":  {
+                                                          "id":  "tower_tr_01",
+                                                          "name":  "7号训练场",
+                                                          "picUrl":  "",
+                                                          "subName":  "罗德岛制药"
+                                                      }
+                                  },
+                 "rogue":  {
+                               "records":  [
+                                               {
+                                                   "bank":  {
+                                                                "current":  0,
+                                                                "record":  0
+                                                            },
+                                                   "bpLevel":  0,
+                                                   "clearTime":  0,
+                                                   "medal":  {
+                                                                 "current":  0,
+                                                                 "total":  11
+                                                             },
+                                                   "relicCnt":  0,
+                                                   "rogueId":  "rogue_1"
+                                               },
+                                               {
+                                                   "bank":  {
+                                                                "current":  3,
+                                                                "record":  3
+                                                            },
+                                                   "bpLevel":  1,
+                                                   "clearTime":  0,
+                                                   "medal":  {
+                                                                 "current":  0,
+                                                                 "total":  12
+                                                             },
+                                                   "relicCnt":  10,
+                                                   "rogueId":  "rogue_5"
+                                               }
+                                           ]
+                           },
+                 "sandbox":  [
+                                 {
+                                     "baseLv":  1,
+                                     "createRift":  0,
+                                     "enemyKill":  1,
+                                     "fixRift":  [0, 5],
+                                     "id":  "sandbox_1",
+                                     "mainQuest":  0,
+                                     "maxDay":  3,
+                                     "maxDayChallenge":  0,
+                                     "name":  "沙洲遗闻",
+                                     "picUrl":  "",
+                                     "subQuest":  [
+                                                      {
+                                                          "done":  false,
+                                                          "id":  "sideline_miner",
+                                                          "name":  "自由的女战士"
+                                                      }
+                                                  ],
+                                     "unlockNode":  0
+                                 }
+                             ],
+                 "bossRush":  [
+                                  {
+                                      "id":  "act6bossrush",
+                                      "picUrl":  "",
+                                      "record":  {
+                                                     "difficulty":  "",
+                                                     "played":  false,
+                                                     "stageId":  ""
+                                                 }
+                                  }
+                              ],
                  "currentTs":  1794329122
              }
 }

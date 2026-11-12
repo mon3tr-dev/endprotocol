@@ -40,22 +40,24 @@ EndProtocol/
 │   ├── App.tsx                    # 路由表与登录态跳转
 │   ├── provider.tsx / i18n.ts     # 全局 Provider / i18n 初始化
 │   ├── tray-panel.tsx             # 托盘面板窗口入口
-│   ├── pages/                     # 10 个页面：dashboard、account、char-select、
+│   ├── pages/                     # 13 个页面：dashboard、account、char-select、
 │   │                              #   characters、gacha-records、attendance、
-│   │                              #   medals、todo、settings、developer
+│   │                              #   medals、todo、settings、developer、
+│   │                              #   domain、spaceship、recruitment、building、game-data
 │   ├── layouts/                   # dashboard / default 布局
 │   ├── components/
-│   │   ├── ui/                    # 36 个通用 UI 组件 + glass/
+│   │   ├── ui/                    # 37 个通用 UI 组件 + glass/（含 remote-thumb）
 │   │   ├── cards/                 # 卡片系统：registry/ base/ card-container + 各卡片
 │   │   │   ├── registry/          #   自动发现与注册（loader/types）
 │   │   │   ├── base/              #   CardWrapper、useCardData
 │   │   │   ├── _template/         #   新卡片模板
-│   │   │   └── <card-name>/       #   11 张卡片（含 locales/、*.meta.json；
-│   │   │                          #   含新增 system-resource/、todo/）
+│   │   │   └── <card-name>/       #   13 张卡片（含 locales/、*.meta.json；
+│   │   │                          #   含 system-resource/、todo/、recruitment/、building/）
 │   │   └── *.tsx                  # 弹窗/面板/侧栏/图表等大组件
-│   ├── utils/                     # 35 个服务封装与工具（accountService、
-│   │                              #   configService、roleDataService、updateService、tabSnapshotService…）
-│   ├── types/                     # TS 类型（card-settings、charDetail、gacha、dashboard）
+│   ├── utils/                     # 36 个服务封装与工具（accountService、
+│   │                              #   configService、roleDataService、arknightsDataService、
+│   │                              #   updateService、tabSnapshotService…）
+│   ├── types/                     # TS 类型（card-settings、charDetail、gacha、dashboard、arknights）
 │   ├── locales/{zh,en}/           # 国际化资源
 │   ├── styles/globals.css         # 全局样式与主题变量
 │   ├── stores/ hooks/ lib/ config/ cards/  # zustand 风格 store、hooks（useLongPressDrag、useFlipList）、工具

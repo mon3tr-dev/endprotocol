@@ -251,6 +251,21 @@
 - 缓存策略：模块级 `Map<string, Promise<QueryResult|null>>`，键为 `${roleId}|${apiName}|${paths.join(",")}`；**缓存 Promise 本身**（并发去重），失败时删除对应键以便重试；`paths` 顺序不同会生成不同缓存键。注意：成功结果（含 `null` 结果值）会长期驻留，需手动 `clearCache`/`clearAllCache`。
 - 异常点：`getItemCatalog` 内使用裸 `console.log`（roleDataService.ts:227、233、257、263），与文件其余部分用 logger 的风格不一致，且遗留调试日志。
 
+## `src/utils/arknightsDataService.ts`
+**职责**：《明日方舟》`get_arknights_player_info` 的类型化封装（2026-11 新增，供公开招募/基地数据卡片与 `/recruitment` `/building` `/game-data` 页面共用）。做两件事：**游戏分流**（`resolveRoleGame` 判别，非明日方舟账户直接返回 `null`，调用方渲染空态）与**旧缓存自动迁移**（缓存文件是「解析后的结构体落盘」，`dataVersion < ARKNIGHTS_DATA_VERSION`（=1）说明是 2026-11 之前的旧格式缓存、缺章节进度等新字段 —— 自动 `force: true` 联网刷新一次，失败时仍返回旧缓存内容并只记日志）。
+
+**导出**：`ArknightsDataOptions`、`fetchArknightsPlayerInfo({ roleId, force? })`。
+**主要依赖**：`@tauri-apps/api/core`（`invoke`）、`@/types/arknights`（`ArknightsPlayerInfo`、`ARKNIGHTS_DATA_VERSION`）、`./roleGame`（`resolveRoleGame`）、`./logger`。
+
+| 符号 | 位置 | 说明 |
+| --- | --- | --- |
+| `fetchArknightsPlayerInfo` | arknightsDataService.ts:34 | invoke `get_arknights_player_info` → 检测 `info.dataVersion ?? 0 < 1` 且未强制时**再刷一次 `force: true`**（后端 `refresh_player_info` 会把新格式落盘，之后不再触发）；强制刷新失败返回旧缓存；非 arknights 角色返回 `null` |
+
+**备注**：
+- 封装的 invoke 命令：仅 `get_arknights_player_info`。
+- 后端标记来源：`ArknightsService::fetch_player_info` 解析成功后填 `data_version`（`models::arknights::ARKNIGHTS_DATA_VERSION`），绑定/刷新/`refresh_accounts` 都会写新格式缓存。
+- 类型与后端 `src-tauri/src/models/arknights.rs` 一一对应，见 `src/types/arknights.ts`。
+
 ## `src/utils/roleDetailService.ts`
 **职责**：角色详情与相关后端开关的轻量服务（单例 `RoleDetailService`），统一通过 `query_role_data` 取完整角色详情，并管理后端懒加载开关与当前激活角色 ID。
 **导出**：类 `RoleDetailService`、单例 `roleDetailService`。

@@ -63,6 +63,20 @@ export interface SpaceshipCardSettings {
 }
 
 /**
+ * 公开招募(recruitment)卡片配置
+ */
+export interface RecruitmentCardSettings {
+  roleId?: string;  // 自定义角色ID（独立于dashboard的defaultRoleId）
+}
+
+/**
+ * 基地数据(building)卡片配置
+ */
+export interface BuildingCardSettings {
+  roleId?: string;  // 自定义角色ID（独立于dashboard的defaultRoleId）
+}
+
+/**
  * TestCard 卡片配置（示例）
  */
 export interface TestCardSettings {
@@ -87,6 +101,8 @@ export type CardSettingsMap = {
   account_progress: AccountProgressCardSettings;
   domain_info: DomainInfoCardSettings;
   spaceship: SpaceshipCardSettings;
+  recruitment: RecruitmentCardSettings;
+  building: BuildingCardSettings;
   test_card: TestCardSettings;
   system_resource: SystemResourceCardSettings;
   todo: TodoCardSettings;

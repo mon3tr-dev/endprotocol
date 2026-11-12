@@ -1,4 +1,4 @@
-# 签到/领域信息/飞船卡片 — 文件功能参考
+# 签到/领域信息/飞船/公开招募/基地数据卡片 — 文件功能参考
 
 > 逐文件精读源码生成。行号基于当前工作区版本，仅用于快速定位。
 
@@ -9,8 +9,10 @@
 | `attendance` | `src/components/cards/attendance/` | `index.tsx` 默认导出 `AttendanceCard` | `attendance-settings-modal.tsx`、`attendance-rewards-modal.tsx`、`attendance-rewards.tsx`、`attendance.meta.json`、`locales/{zh,en}.json` | Tauri `invoke("get_attendance"/"do_attendance")`；`CardConfigService`（`get_card_settings`/`save_card_settings`）；`CardStartupService`（配置键 `card_auto_sign_users`/`card_user_mapping`，底层 `get_config`/`set_config`）；`getAccounts()`（`invoke("get_accounts")`） |
 | `domain_info` | `src/components/cards/domain-info/` | `index.tsx` 默认导出 `DomainInfoCard` | 无独立子组件文件；文件内含 3 个内嵌 `CustomModal`；`domain-info.meta.json`、`locales/{zh,en}.json` | `roleDataService.queryData(roleId,"char_detail",["domain"])` → `invoke("query_role_data")`；`CardConfigService`；`getAccounts()` |
 | `spaceship` | `src/components/cards/spaceship/` | `index.tsx` 默认导出 `SpaceshipCard` | `spaceship-shared.ts`（与 `/spaceship` 页面共用的类型/工具）、文件内含 2 个内嵌 `CustomModal`；`spaceship.meta.json`、`locales/{zh,en}.json` | `roleDataService.queryData(roleId,"char_detail",["spaceShip"])` 与 `roleDataService.getFullCharDetail()` → `invoke("query_role_data")`；`CardConfigService`；`getAccounts()`；头像预取 `useImageRequest` → `invoke("get_image_cache_dir"/"download_image"/"read_image_file")` |
+| `recruitment` | `src/components/cards/recruitment/` | `index.tsx` 默认导出 `RecruitmentCard` | `recruit-shared.ts`（与 `/recruitment` 页面共用的类型/倒计时工具）；`recruitment.meta.json`、`locales/{zh,en}.json` | `fetchArknightsPlayerInfo`（`src/utils/arknightsDataService.ts`）→ `invoke("get_arknights_player_info")`，读 `player/info.recruit[]`；**仅明日方舟**（`CARD_GAME_SUPPORT.recruitment`）；`CardConfigService`；`getAccounts()` |
+| `building` | `src/components/cards/building/` | `index.tsx` 默认导出 `BuildingCard` | `building-shared.ts`（与 `/building` 页面共用的设施状态工具）；`building.meta.json`、`locales/{zh,en}.json` | 同上，读 `player/info.building`（labor/dormitories/manufactures/tradings/tiredChars/training）；**仅明日方舟**（`CARD_GAME_SUPPORT.building`） |
 
-三张卡片均**不使用** Tauri `listen()`，跨组件通信一律通过 `window` 上的 `CustomEvent("cardAction")`（由 `card-container.tsx` 右键菜单派发）。
+五张卡片均**不使用** Tauri `listen()`，跨组件通信一律通过 `window` 上的 `CustomEvent("cardAction")`（由 `card-container.tsx` 右键菜单派发）。
 
 ---
 
@@ -411,19 +413,77 @@
 
 ---
 
+## `src/components/cards/recruitment/`（公开招募卡片，仅明日方舟）
+
+### `src/components/cards/recruitment/recruit-shared.ts`（79 行）
+卡片与 `/recruitment` 页面共用的类型与倒计时工具。
+
+| 符号 | 位置 | 说明 |
+| --- | --- | --- |
+| `RecruitSlotState` | recruit-shared.ts:10 | `"locked" / "free" / "running" / "finished"` 展示状态联合 |
+| `RecruitSlotRaw` | recruit-shared.ts:16 | `{ state, startTs, finishTs }` |
+| `recruitSlotState(slot, nowMs)` | recruit-shared.ts:28 | **「已完成」不是独立 state** —— `state==2 && finishTs<=now` 现算；0=未开放、1=空闲 |
+| `recruitRemainingMs(slot, nowMs)` | recruit-shared.ts:38 | `finishTs*1000 - nowMs`（clamp 0） |
+| `recruitProgressPercent(slot, nowMs)` | recruit-shared.ts:44 | 按 `start→finish` 区间算 0..100 |
+| `formatCountdown(ms, lang)` | recruit-shared.ts:57 | `< 1 天 → HH:MM:SS`；`≥ 1 天 → Xd HH:MM:SS`（zh 用「天」） |
+| `formatShortDateTime(ts)` | recruit-shared.ts:71 | `MM-DD HH:mm`（本地时区） |
+
+### `src/components/cards/recruitment/index.tsx`（360 行）
+**职责**：公开招募卡片。头部（头像/账户名/游戏徽标）+ 状态汇总徽标 + **2×2 栏位网格**（每格：栏位号、状态徽标、`HH:MM:SS` 倒计时、进度条）+ 底部「查看详情」跳 `/recruitment`。
+
+**导出**：`RecruitmentCard`（默认导出）。
+**主要依赖**：`useCardData`、`fetchArknightsPlayerInfo`（@/utils/arknightsDataService）、`filterAccountsForCard(accs, "recruitment")`、`CardConfigService`、`RecruitmentCardSettings`、`useNavigate`（跳转页面）、`recruit-shared`。
+
+| 符号 | 位置 | 说明 |
+| --- | --- | --- |
+| `padSlots(recruit)` | index.tsx:40 | 不足 4 个补 `{state:0,startTs:-1,finishTs:-1}`，保证 2×2 网格完整 |
+| `RecruitmentCard` | index.tsx:46 | 默认导出组件 |
+| `nowMs` state + interval | index.tsx 内 | **每秒重算**倒计时（数据来自缓存快照，不重新请求） |
+| `summary` | index.tsx 内 | 四种状态的计数徽标（只显示 > 0 的） |
+
+卡片 i18n 键（`recruitment/locales/{zh,en}.json`，合并进 `card` 命名空间）：`recruitment_title`、`recruitment_slot`（`{{number}}`）、`recruitment_slot_running/_finished/_free/_locked`、`recruitment_switch_account`、`recruitment_view_page`。
+
+---
+
+## `src/components/cards/building/`（基地数据卡片，仅明日方舟）
+
+### `src/components/cards/building/building-shared.ts`（121 行）
+卡片与 `/building` 页面共用的设施状态计算。心情换算复用 `@/types/arknights` 的 `arknightsMoodOf` / `arknightsMoodPercent`（`ap/360000` = 0..24 点）。
+
+| 符号 | 位置 | 说明 |
+| --- | --- | --- |
+| `FACILITY_ORDER` | building-shared.ts:15 | 设施展示顺序：`control → powers → tradings → manufactures → dormitories → meeting` |
+| `laborPercent(labor)` | building-shared.ts:27 | 无人机填充 0..100 |
+| `laborRemainingMs(labor, nowMs)` | building-shared.ts:38 | ⚠️ 接口 `remainSecs` 以 `lastUpdateTime`（快照时间）为基准，**要减去本地已流逝时间** |
+| `dormRestSummary(building)` | building-shared.ts:49 | 宿舍在休干员的平均心情百分比 + 人数（`< 23.95` 点视为仍在休息） |
+| `manufactureState(segment, nowMs)` | building-shared.ts:82 | `producing`（`completeWorkTime` 在未来，进度按批次时间窗估算）/ `done`（`complete>0` 或批次已到期）/ `idle` |
+| `tradingSummary(segment)` | building-shared.ts:102 | `stock.length` / `stockLimit` / `strategy == "O_GOLD"`（龙门币订单） |
+| `roomMoodPercent(segment)` | building-shared.ts:116 | 设施内干员平均心情百分比 |
+
+### `src/components/cards/building/index.tsx`（379 行）
+**职责**：基地数据卡片。头部 + **无人机**（value/max + 进度条 + 距补满倒计时）与**宿舍休息进度**（平均百分比条 + 休息人数）两块并列 + 底部汇总条（制造中/订单/疲劳干员/训练室状态）+「查看详情」跳 `/building`。
+
+**导出**：`BuildingCard`（默认导出）。
+**主要依赖**：`useCardData`、`fetchArknightsPlayerInfo`、`filterAccountsForCard(accs, "building")`、`CardConfigService`、`BuildingCardSettings`、`useNavigate`、`building-shared` + `formatCountdown`（来自 `../recruitment/recruit-shared`）。
+
+卡片 i18n 键（`building/locales/{zh,en}.json`）：`building_title`、`building_drones`、`building_drones_full`、`building_drones_full_in`（`{{time}}`）、`building_dorm_rest`、`building_manufactures`、`building_tradings`、`building_tired`、`building_training`、`building_specializing`、`building_idle`、`building_switch_account`、`building_view_page`。
+
+---
+
 ## 全部 invoke / listen 汇总
 
 | 类别 | 命令 / 事件 | 出现位置 |
 | --- | --- | --- |
 | `invoke("do_attendance", { roleId })` | 直接调用 | `attendance/index.tsx:22`、`attendance/index.tsx:209` |
 | `invoke("get_attendance", { roleId })` | 直接调用 | `attendance/index.tsx:155` |
-| `invoke("get_card_settings" / "save_card_settings" / "remove_card_settings")` | 经 `CardConfigService` | 三张卡片均使用（attendance:132、268；domain-info:114、145；spaceship:210、260） |
+| `invoke("get_arknights_player_info", { roleId, force })` | 经 `fetchArknightsPlayerInfo`（旧缓存自动强制刷新） | `recruitment/index.tsx`、`building/index.tsx`（以及 `/recruitment` `/building` `/game-data` 页面） |
+| `invoke("get_card_settings" / "save_card_settings" / "remove_card_settings")` | 经 `CardConfigService` | 全部五张卡片（attendance:132、268；domain-info:114、145；spaceship:210、260；recruitment、building 同形） |
 | `invoke("get_config" / "set_config")` | 经 `configService` ← `CardStartupService` | 仅 attendance（自动签到名单、用户映射） |
-| `invoke("get_accounts")` | 经 `accountService.getAccounts` | 三张卡片（attendance:173；settings-modal:44；domain-info:128、155；spaceship:223、233） |
+| `invoke("get_accounts")` | 经 `accountService.getAccounts` | 全部五张卡片（attendance:173；settings-modal:44；domain-info:128、155；spaceship:223、233；recruitment/building 同形） |
 | `invoke("query_role_data")` | 经 `roleDataService` | domain-info:97；spaceship:147、155 |
 | `invoke("get_image_cache_dir" / "download_image" / "read_image_file")` | 经 `imageCacheManager` ← `useImageRequest` | spaceship:206 |
-| `listen(...)` | — | **三张卡片均无** |
-| `window` `CustomEvent("cardAction")` | 事件监听 | attendance:259（`settings`）；domain-info:183（`change-role`/`switch-domain`/`view-list`）；spaceship:252（`change-role`） |
+| `listen(...)` | — | **五张卡片均无** |
+| `window` `CustomEvent("cardAction")` | 事件监听 | attendance:259（`settings`）；domain-info:183（`change-role`/`switch-domain`/`view-list`）；spaceship:252（`change-role`）；recruitment/building（`change-role`/`refresh`） |
 
 ## 发现的异常
 

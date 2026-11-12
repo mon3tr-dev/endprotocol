@@ -1,0 +1,21 @@
+{
+  "id": "recruitment",
+  "name": {
+    "zh": "公开招募",
+    "en": "Recruitment"
+  },
+  "description": {
+    "zh": "明日方舟公开招募栏位与剩余时间（4 个栏位倒计时）",
+    "en": "Arknights recruitment slots with remaining time (4 slots countdown)"
+  },
+  "icon": "clock",
+  "defaultSize": { "w": 4, "h": 2 },
+  "version": "1.0.0",
+  "allowMultiple": true,
+  "supportedGames": ["arknights"],
+  "tags": [
+    { "id": "account", "label": { "zh": "账户", "en": "Account" } },
+    { "id": "recruit", "label": { "zh": "招募", "en": "Recruit" } },
+    { "id": "display", "label": { "zh": "显示", "en": "Display" } }
+  ]
+}

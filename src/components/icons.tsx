@@ -35,6 +35,7 @@ import {
   Copy,
   ExternalLink,
   Gamepad2,
+  Clock,
 } from "lucide";
 import { MorphIcon } from "morphicons/react";
 import { createMorphIcon, type IconSvgProps } from "@/components/morph-icon";
@@ -104,6 +105,8 @@ export const ExternalLinkIcon = createMorphIcon(ExternalLink);
 export const GamepadIcon = createMorphIcon(Gamepad2);
 export const MapIcon = createMorphIcon(Map);
 export const SatelliteIcon = createMorphIcon(Satellite);
+export const ClockIcon = createMorphIcon(Clock);
+export const FactoryIcon = createMorphIcon(Factory);
 
 export { MoonIcon as MoonFilledIcon, SunIcon as SunFilledIcon, HeartIcon as HeartFilledIcon };
 
@@ -131,6 +134,7 @@ const CARD_ICON_MAP: Record<string, IconInput> = {
   help: CircleHelp,
   factory: Factory,
   sprout: Sprout,
+  clock: Clock,
 };
 
 export function CardIcon({

@@ -41,7 +41,7 @@
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
-| `ROUTES` | App.tsx:19 | 白名单路由数组 `["/", "/settings", "/account", "/characters", "/medals", "/attendance", "/gacha", "/todo", "/domain", "/spaceship", "/developer"]`，用于校验可恢复路径 |
+| `ROUTES` | App.tsx:21 | 白名单路由数组 `["/", "/settings", "/account", "/characters", "/medals", "/attendance", "/gacha", "/todo", "/domain", "/spaceship", "/recruitment", "/building", "/game-data", "/developer"]`，用于校验可恢复路径 |
 | `DashboardPage`/`SettingsPage`/`DeveloperPage`/`AccountPage`/`CharactersPage`/`MedalsPage`/`AttendancePage`/`GachaRecordsPage`/`TodoPage`/`DomainPage` | App.tsx:9-18 | 由 `React.lazy(() => import("@/pages/..."))` 创建的路由级懒加载组件，仅在访问对应路由时拉取分包 |
 | `RouteRestore` | App.tsx:21-42 | 无 UI 组件。首次 effect 读取 `last_route`，若在白名单内且与当前路径不同则 `navigate(savedPath, { replace: true })`；`restored` ref 防止恢复前就覆盖保存；路径变化后写回 `setConfig("last_route", pathname)` |
 | `UpdateChecker` | App.tsx:44-54 | 无 UI 组件。用 `notified` ref 保证 `checkAndNotify()` 仅执行一次 |
@@ -57,10 +57,13 @@
 | 路由 `/todo` | App.tsx:122-129 | `DashboardLayout` 包 `TodoPage`（`@/pages/todo`） |
 | 路由 `/domain` | App.tsx | `DashboardLayout` 包 `DomainPage`（`@/pages/domain`，区域信息独立页面） |
 | 路由 `/spaceship` | App.tsx | `DashboardLayout` 包 `SpaceshipPage`（`@/pages/spaceship`，帝江号独立页面） |
+| 路由 `/recruitment` | App.tsx | `DashboardLayout` 包 `RecruitmentPage`（`@/pages/recruitment`，公开招募独立页面，仅明日方舟） |
+| 路由 `/building` | App.tsx | `DashboardLayout` 包 `BuildingPage`（`@/pages/building`，基地数据独立页面，仅明日方舟） |
+| 路由 `/game-data` | App.tsx | `DashboardLayout` 包 `GameDataPage`（`@/pages/game-data`，游戏数据独立页面，仅明日方舟；页面专属、无卡片） |
 | 路由 `/developer` | App.tsx:130-137 | `DashboardLayout` 包 `DeveloperPage` |
 
 **备注**：
-- 路由表（path → 页面）：`/`→dashboard、`/settings`→settings、`/account`→account、`/characters`→characters、`/medals`→medals、`/attendance`→attendance、`/gacha`→gacha-records、`/todo`→todo、`/domain`→domain、`/spaceship`→spaceship、`/developer`→developer；无 404/通配路由。
+- 路由表（path → 页面）：`/`→dashboard、`/settings`→settings、`/account`→account、`/characters`→characters、`/medals`→medals、`/attendance`→attendance、`/gacha`→gacha-records、`/todo`→todo、`/domain`→domain、`/spaceship`→spaceship、`/recruitment`→recruitment、`/building`→building、`/game-data`→game-data、`/developer`→developer；无 404/通配路由。
 - 配置键 `last_route` 由 `RouteRestore` 读写；`ROUTES` 与上述路径必须同步维护。
 - 分包策略：页面为路由级懒加载（`React.lazy`），页面 `Suspense` 边界位于 `layouts/dashboard.tsx` 的 `<main>` 内，因此切换页面时侧边栏/标题栏保持挂载；第三方库由 `vite.config.ts` 的 `rolldownOptions.output.codeSplitting.groups` 拆分为 `vendor-react`/`vendor-echarts`/`vendor-zrender`/`vendor-i18n`/`vendor-ui`/`vendor-dnd`/`vendor-tauri` 等 chunk。
 - 分包约束：这些 chunk 之间不得存在回边，包归属用「包根锚定」判定（不能用宽泛子串匹配，它会命中 `@radix-ui/react-dom`）。出现 `Circular chunk:` 时 Rolldown 会重排模块顶层声明，导致 React 工厂变量在其模块求值前被写入、前端在 `main.tsx` 之前抛错，Splash 永远停在「正在启动…」——该症状只在 Linux 发行版复现。
@@ -159,9 +162,9 @@
 | --- | --- | --- |
 | `ALL_GAME_IDS` | gameSupport.ts:30 | 全部游戏 `[endfield, arknights]`，顺序即徽标展示顺序 |
 | `normalizeGameId` | gameSupport.ts:34 | `game === "arknights" ? "arknights" : "endfield"`；老缓存缺 `game` 时按终末地处理，与后端 `models::role::GAME_ENDFIELD` 默认一致。`@/components/ui/game-badge` 重新导出同一函数 |
-| `CARD_GAME_SUPPORT` | gameSupport.ts:41 | 卡片类型 → 支持的游戏。**空数组 = 与游戏无关**（`system_resource`/`todo`，不读游戏数据，任何账户都能用、也不打徽标）；两个元素 = 两游戏通用（`attendance`/`account_info`/`account_progress`）；一个元素 = 该游戏独占（`character_list`/`achievement`/`domain_info`/`spaceship` 均为终末地独占，依赖 `card/detail`） |
-| `PAGE_GAME_SUPPORT` | gameSupport.ts:63 | 侧边栏导航键 → 支持的游戏。明日方舟可用：`dashboard`/`attendance`/`gacha`/`todo`；终末地独占：`characters`/`medals`/`domain`/`spaceship` |
-| `NAV_ROUTES` | gameSupport.ts:76 | 导航键 → 路由（`dashboard → "/"`），用于把 `location.pathname` 反查成导航键 |
+| `CARD_GAME_SUPPORT` | gameSupport.ts:41 | 卡片类型 → 支持的游戏。**空数组 = 与游戏无关**（`system_resource`/`todo`，不读游戏数据，任何账户都能用、也不打徽标）；两个元素 = 两游戏通用（`attendance`/`account_info`/`account_progress`）；一个元素 = 该游戏独占（`character_list`/`achievement`/`domain_info`/`spaceship` 为终末地独占，依赖 `card/detail`；**`recruitment`/`building` 为明日方舟独占**，读 `player/info` 的 `recruit[]`/`building`） |
+| `PAGE_GAME_SUPPORT` | gameSupport.ts:63 | 侧边栏导航键 → 支持的游戏。明日方舟可用：`dashboard`/`attendance`/`gacha`/`todo`/**`recruitment`/`building`/`gamedata`**；终末地独占：`characters`/`medals`/`domain`/`spaceship` |
+| `NAV_ROUTES` | gameSupport.ts:76 | 导航键 → 路由（`dashboard → "/"`；`gamedata → "/game-data"`，键与路由段不同名），用于把 `location.pathname` 反查成导航键 |
 | `gamesForCard` | gameSupport.ts:83 | 查卡片支持的游戏；**未登记类型返回两个游戏**（新卡片默认不阻塞用户） |
 | `isCardGameAgnostic` | gameSupport.ts:92 | `gamesForCard(...).length === 0` |
 | `cardSupportsGame` | gameSupport.ts:101 | `game` 缺失（未选账户）视为支持；与游戏无关的卡片对任何游戏都支持 |

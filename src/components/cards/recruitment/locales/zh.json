@@ -1,0 +1,10 @@
+{
+  "recruitment_title": "公开招募",
+  "recruitment_slot": "栏位 {{number}}",
+  "recruitment_slot_running": "招募中",
+  "recruitment_slot_finished": "已完成",
+  "recruitment_slot_free": "空闲",
+  "recruitment_slot_locked": "未开放",
+  "recruitment_switch_account": "切换账户",
+  "recruitment_view_page": "查看详情"
+}

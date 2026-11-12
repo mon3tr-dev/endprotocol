@@ -1,0 +1,21 @@
+{
+  "id": "building",
+  "name": {
+    "zh": "基地数据",
+    "en": "Base Data"
+  },
+  "description": {
+    "zh": "明日方舟基建概览（无人机、宿舍休息进度、制造/贸易状态）",
+    "en": "Arknights base overview (drones, dorm rest progress, production/trading)"
+  },
+  "icon": "factory",
+  "defaultSize": { "w": 4, "h": 2 },
+  "version": "1.0.0",
+  "allowMultiple": true,
+  "supportedGames": ["arknights"],
+  "tags": [
+    { "id": "account", "label": { "zh": "账户", "en": "Account" } },
+    { "id": "building", "label": { "zh": "基建", "en": "Building" } },
+    { "id": "display", "label": { "zh": "显示", "en": "Display" } }
+  ]
+}

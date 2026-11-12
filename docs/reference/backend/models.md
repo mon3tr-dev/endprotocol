@@ -1394,16 +1394,16 @@ derive 均为 `Serialize, Deserialize, Clone, Debug` + 容器 `rename_all = "cam
 ---
 
 ## `src-tauri/src/models/arknights.rs`
-**职责**：《明日方舟》数据模型 —— 森空岛 `player/info` / `cultivate/player` / `attendance` 三个接口的反序列化结构。与终末地**完全分开**：终末地按 `roleId + serverId` 走 `card/detail` 一次返回一个角色，明日方舟按**渠道绑定 uid** 走 `player/info` 一次返回整个账号。文件约 470 行（含单元测试）。
+**职责**：《明日方舟》数据模型 —— 森空岛 `player/info` / `cultivate/player` / `attendance` 三个接口的反序列化结构。与终末地**完全分开**：终末地按 `roleId + serverId` 走 `card/detail` 一次返回一个角色，明日方舟按**渠道绑定 uid** 走 `player/info` 一次返回整个账号。文件约 1826 行（含单元测试）。
 
-**导出**：`ArknightsPlayerInfo`、`ArknightsStatus`、`ArknightsAp`、`ArknightsAvatar`、`ArknightsSecretary`、`ArknightsChar`、`ArknightsSkill`、`ArknightsEquip`、`ArknightsRecruitSlot`、`ArknightsRoutine`、`ArknightsCampaign`、`ArknightsTower`、`ArknightsTowerReward`、`ArknightsBuilding`、`ArknightsLabor`、`ArknightsHire`、`ArknightsTraining`、`ArknightsTrainee`、`ArknightsTrainer`、`ArknightsTiredChar`、`ArknightsRoomSegment`、`ArknightsRoomChar`、`ArknightsCultivate`、`ArknightsCultivateChar`、`ArknightsCultivateSkill`、`ArknightsCultivateEquip`、`ArknightsItem`、`ArknightsAttendance`、`ArknightsAttendanceReward`、`ArknightsCalendarEntry`、`ArknightsCheckinRecord`、`ArknightsAward`、`ArknightsAwardResource`、`ArknightsAttendanceResult`、`ArknightsProgress`、`ARKNIGHTS_ITEM_ICON_BASE`、`arknights_item_icon_url()`；私有 `one_or_many`、`one_or_many_default`、`string_or_i64`、`local_day_key`。
+**导出**：`ArknightsPlayerInfo`、`ArknightsStatus`、`ArknightsAp`、`ArknightsAvatar`、`ArknightsSecretary`、`ArknightsChar`、`ArknightsSkill`、`ArknightsEquip`、`ArknightsRecruitSlot`、`ArknightsRoutine`、`ArknightsCampaign`、`ArknightsCampaignRecord`、`ArknightsTower`、`ArknightsTowerRecord`、`ArknightsTowerReward`、`ArknightsBuilding`、`ArknightsLabor`、`ArknightsHire`、`ArknightsTraining`、`ArknightsTrainee`、`ArknightsTrainer`、`ArknightsTiredChar`、`ArknightsRoomSegment`、`ArknightsRoomChar`、`ArknightsTradingOrder`、`ArknightsOrderItem`、`ArknightsClue`、`ArknightsStageInfo`、`ArknightsActivityProgress`、`ArknightsActivityZone`、`ArknightsActivityInfo`、`ArknightsNamedInfo`、`ArknightsRogue`、`ArknightsRogueRecord`、`ArknightsRogueBank`、`ArknightsSandbox`、`ArknightsSandboxQuest`、`ArknightsBossRush`、`ArknightsBossRushRecord`、`ArknightsCultivate`、`ArknightsCultivateChar`、`ArknightsCultivateSkill`、`ArknightsCultivateEquip`、`ArknightsItem`、`ArknightsAttendance`、`ArknightsAttendanceReward`、`ArknightsCalendarEntry`、`ArknightsCheckinRecord`、`ArknightsAward`、`ArknightsAwardResource`、`ArknightsAttendanceResult`、`ArknightsProgress`、`ARKNIGHTS_ITEM_ICON_BASE`、`ARKNIGHTS_DATA_VERSION`、`arknights_item_icon_url()`；私有 `one_or_many`、`one_or_many_default`、`string_or_i64`、`local_day_key`。
 
 > **空值约定**：真实返回里 `building.hire`（办公室未建造）与 `building.training`（无进行中专精）是 `null`。skland-api 的 `recruit.py:38` 就是因为直接下标而崩。本文件所有 `building.*` 子对象一律 `Option<T>`，容器级 `#[serde(default)]` 保证字段缺失走 `Default` 而不是整包失败。
 
 ### `struct ArknightsPlayerInfo`
-- 位置：arknights.rs:118
+- 位置：arknights.rs:200
 - derive：`Serialize, Deserialize, Clone, Debug, Default`，容器 `rename_all = "camelCase", default`
-- 用途：`GET /api/v1/game/player/info?uid=` 的 `data`。**明日方舟的唯一主数据源**（干员养成、基建、任务、剿灭、保全、公招全在里面，`cultivate` 只额外给仓库）。
+- 用途：`GET /api/v1/game/player/info?uid=` 的 `data`。**明日方舟的唯一主数据源**（干员养成、基建、任务、剿灭、保全、公招、章节进度全在里面，`cultivate` 只额外给仓库）。
 - 字段：
 
 | 字段 | 类型 | serde | 含义 |
@@ -1411,14 +1411,27 @@ derive 均为 `Serialize, Deserialize, Clone, Debug` + 容器 `rename_all = "cam
 | `status` | `ArknightsStatus` | 容器 default | 玩家基础状态（昵称/等级/理智/头像…） |
 | `chars` | `Vec<ArknightsChar>` | 容器 default | 干员养成（含精英化/等级/专精/潜能/信赖/模组/皮肤） |
 | `char_info_map` | `serde_json::Map<String, Value>` | 容器 default | 干员静态表：charId → `{id, name, profession, rarity, …}` |
-| `recruit` | `Vec<ArknightsRecruitSlot>` | 容器 default | 公开招募栏位（`state == 2` 为招募中） |
+| `recruit` | `Vec<ArknightsRecruitSlot>` | 容器 default | 公开招募栏位（**恒 4 个**；`state == 2` 为招募中） |
 | `routine` | `ArknightsRoutine` | 容器 default | 每日/每周任务 |
-| `campaign` | `ArknightsCampaign` | 容器 default | 剿灭作战 |
-| `tower` | `ArknightsTower` | 容器 default | 保全派驻 |
+| `campaign` | `ArknightsCampaign` | 容器 default | 剿灭作战（各据点最大击杀） |
+| `tower` | `ArknightsTower` | 容器 default | 保全派驻（各训练场最好成绩） |
 | `building` | `ArknightsBuilding` | 容器 default | 基建（`hire`/`training` 可能为 null） |
 | `current_ts` | `i64` | 容器 default | 数据生成时间戳（该接口为数字） |
+| `stage_info_map` | `BTreeMap<String, ArknightsStageInfo>` | 容器 default | 主线关卡展示信息（**只含 `mainStageProgress` 指向的那一关**，B 服实测整表为空） |
+| `activity` | `Vec<ArknightsActivityProgress>` | 容器 default | 各活动/章节通关进度（约 77 项，含复刻） |
+| `activity_info_map` | `BTreeMap<String, ArknightsActivityInfo>` | 容器 default | 活动名/类别/起止时间 |
+| `campaign_info_map` | `BTreeMap<String, ArknightsNamedInfo>` | 容器 default | 剿灭据点名 |
+| `rogue_info_map` | `BTreeMap<String, ArknightsNamedInfo>` | 容器 default | 集成战略主题名/排序 |
+| `tower_info_map` | `BTreeMap<String, ArknightsNamedInfo>` | 容器 default | 保全训练场名/副标题 |
+| `rogue` | `ArknightsRogue` | 容器 default | 集成战略各主题进度 |
+| `sandbox` | `Vec<ArknightsSandbox>` | 容器 default | 沙中之地（沙盒）进度 |
+| `boss_rush` | `Vec<ArknightsBossRush>` | 容器 default | 历险签约记录 |
+| `data_version` | `i32` | 容器 default | **接口不返回**，由 `ArknightsService::fetch_player_info` 填 `ARKNIGHTS_DATA_VERSION`（=1）；旧格式缓存读到 0，前端据此自动强制刷新一次 |
 
-> 未建模的字段（`activity`、`bannerList`、`skins`、`medal`、`sandbox`、`bossRush` 等十余个）由 serde 忽略；模型只覆盖当前需要展示/计算的部分。
+> ⚠️ **非 Value 值的映射必须用 `BTreeMap` 而不是 `serde_json::Map`**：serde_json 1.0.151 起
+> `Map<String, V>` 只对 `V = Value` 实现了 Serialize/Deserialize/Clone/Debug/Default，
+> 类型化值会整包编译失败。用 BTreeMap 还能让缓存键序稳定。仍未建模的大字段
+> （`bannerList`、`skins`、`medal`、`charAssets` 等十余个）由 serde 忽略。
 
 ### `struct ArknightsStatus`
 - 位置：arknights.rs:135
@@ -1443,8 +1456,10 @@ derive 均为 `Serialize, Deserialize, Clone, Debug` + 容器 `rename_all = "cam
 | `ArknightsTrainee` | arknights.rs:346 | `char_id` / `target_skill`（-1 表示空位） |
 | `ArknightsTrainer` | arknights.rs:356 | `char_id` |
 | `ArknightsTiredChar` | arknights.rs:363 | `char_id` / `ap` / `index` / `room_slot_id` / `last_ap_add_time` / `work_time` |
-| `ArknightsRoomSegment` | arknights.rs:381 | `chars` / `level` / `slot_id` / `slot_state`（仅 `control`）/ `capacity` / `weight` / `formula_id` / `remain` / `complete` / `complete_work_time` / `last_update_time` / `speed` / `comfort` —— 不同设施给的字段不同，全部走容错缺省 |
-| `ArknightsRoomChar` | arknights.rs:414 | `char_id` / `ap`（`ap / 360000` = 心情点数）/ `index` / `last_ap_add_time` / `work_time` |
+| `ArknightsRoomSegment` | arknights.rs:596 | `chars` / `level` / `slot_id` / `slot_state`（仅 `control`）/ `capacity` / `weight` / `formula_id` / `remain` / `complete` / `complete_work_time`（-1 = 无进行中批次）/ `last_update_time` / `speed` / `comfort`；**贸易站扩展** `stock: Vec<ArknightsTradingOrder>` / `stock_limit` / `strategy`（`O_GOLD` = 龙门币订单）；**会客室扩展** `clue: Option<ArknightsClue>` —— 不同设施给的字段不同，全部走容错缺省 |
+| `ArknightsTradingOrder` / `ArknightsOrderItem` | arknights.rs:722/736 | `delivery[]` / `gain`（如 1000 龙门币）/ `inst_id` / `kind`（serde `type`，`O_GOLD`） |
+| `ArknightsClue` | arknights.rs:746 | `board[]`（摆放中的线索派系）/ `daily_reward` / `need_receive` / `own` / `received` / `sharing` |
+| `ArknightsRoomChar` | arknights.rs:414 附近 | `char_id` / `ap`（`ap / 360000` = 心情点数 0..24）/ `index` / `last_ap_add_time` / `work_time` |
 
 > ⚠️ **浮点字段**：`training.speed` / `training.remain_point` / `room_segment.speed` 实测是**浮点**（B 服给 `1.35` / `0.45` / `1.53`，官服恰好给整数）。声明成整型会让**整个 `player/info` 解析失败** —— 接口 `code=0`、字段看着都对，但服务层拿到 `Err`，前端表现为「等级 0、没有头像」。回归测试见 `training_accepts_float_speed_and_remain_point` / `room_speed_accepts_float`。
 
@@ -1458,10 +1473,27 @@ derive 均为 `Serialize, Deserialize, Clone, Debug` + 容器 `rename_all = "cam
 ### `struct ArknightsRoutine` / `ArknightsCampaign` / `ArknightsTower` / `ArknightsTowerReward` / `ArknightsRecruitSlot` / `ArknightsProgress`
 - `ArknightsProgress`（arknights.rs:26）：`current` / `total`（通用进度对）
 - `ArknightsRoutine`（arknights.rs:266）：`daily` / `weekly`
-- `ArknightsCampaign`（arknights.rs:275）：`reward` / `records`（未建模，原样保留）
-- `ArknightsTower`（arknights.rs:283 → 见上）：`reward` / `records`
+- `ArknightsCampaign`（arknights.rs:321）：`reward` / `records: Vec<ArknightsCampaignRecord>`（**已建模**：`campaign_id` / `max_kills`，据点名查 `campaignInfoMap`）
+- `ArknightsTower`（arknights.rs:343）：`reward` / `records: Vec<ArknightsTowerRecord>`（`tower_id` / `best`）
 - `ArknightsTowerReward`：`higher_item` / `lower_item` / `term_ts`（本期结束时间）
-- `ArknightsRecruitSlot`（arknights.rs:256）：`state`（2 = 招募中）/ `start_ts` / `finish_ts`
+- `ArknightsRecruitSlot`（arknights.rs:256）：`state`（0=未开放 / 1=空闲 / 2=招募中；「已完成」= state 2 且 `finishTs` 已过）/ `start_ts` / `finish_ts`（未使用时 -1）
+
+### 「游戏数据页」字段（章节进度 / 信息表 / 其他模式）
+前端 `src/types/arknights.ts` + `src/utils/arknightsDataService.ts` 消费；服务层 `fetch_player_info` 拉取后打 `data_version` 标记（见 `ArknightsPlayerInfo` 表）。
+
+| 结构 | 位置 | 字段 |
+| --- | --- | --- |
+| `ArknightsStageInfo` | arknights.rs:371 | `id`（如 `main_15-09`）/ `code`（**展示用关卡号**，实测可能与 id 差 1，如 `15-10`）/ `name` / `zone_id` / `stage_type` / `difficulty` / `ap_cost` |
+| `ArknightsActivityProgress` | arknights.rs:394 | `act_id` / `act_replica_id`（非复刻为空串）/ `zones[]` |
+| `ArknightsActivityZone` | arknights.rs:406 | `zone_id` / `zone_replica_id` / `cleared_stage` / `total_stage`（0 = 分区无内容） |
+| `ArknightsActivityInfo` | arknights.rs:421 | `id` / `name` / `kind`（serde `type`：`SIDESTORY`/`MINISTORY`/`BRANCHLINE`/**可为空串**）/ `start_time` / `end_time` / `pic_url` |
+| `ArknightsNamedInfo` | arknights.rs:443 | `id` / `name` / `pic_url` / `sub_name`（仅保全）/ `sort`（仅集成战略）——三张信息表共用 |
+| `ArknightsRogue` / `ArknightsRogueRecord` / `ArknightsRogueBank` | arknights.rs:456/467/485 | `rogue_id` / `bp_level` / `clear_time`（0=未通关）/ **`bank`（键是 `current`/`record`，不是 `total`）** / `medal: ArknightsProgress` / `relic_cnt` |
+| `ArknightsSandbox` / `ArknightsSandboxQuest` | arknights.rs:493/523 | `id` / `name` / `base_lv` / `main_quest` / `unlock_node` / `enemy_kill` / `max_day` / `max_day_challenge` / `create_rift` / `fix_rift: Vec<i32>`（`[当前, 目标]`）/ `sub_quests`（**接口键名 `subQuest`，显式 rename**） |
+| `ArknightsBossRush` / `ArknightsBossRushRecord` | arknights.rs:532/541 | `id` / `pic_url` / `record { difficulty, played, stage_id }` |
+
+> 聚合章节进度 = 逐分区相加（`sum(cleared)/sum(total)`），活动分区**不下发名称**，
+> 所以界面只做活动级聚合，不做分区拆行。
 
 ### `struct ArknightsCultivate` 及其子结构
 - 位置：arknights.rs:444
@@ -1534,7 +1566,7 @@ derive 均为 `Serialize, Deserialize, Clone, Debug` + 容器 `rename_all = "cam
 
 | 夹具 | 来源 |
 | --- | --- |
-| `player_info.json` / `cultivate.json` | 真实 `player/info` / `cultivate/player` 响应（昵称/uid 已换成占位值） |
+| `player_info.json` / `cultivate.json` | 真实 `player/info` / `cultivate/player` 响应（昵称/uid 已换成占位值；2026-11 起补入 `stageInfoMap` / `activity` / `activityInfoMap` / 三张信息表 / `rogue` / `sandbox` / `bossRush` 的精简样本） |
 | `attendance.json` | **2026-11-11 签到前**的真实 `GET /api/v1/game/attendance` 响应（30 格完整） |
 | `attendance_signed.json` | 同上，按签到后状态派生（下标 1 变 `done`、全表无 `available`） |
 | `attendance_result.json` | **2026-11-11 点击签到后**的真实 `POST /api/v1/game/attendance` 响应 |

@@ -44,6 +44,9 @@
 | **批量签到 + 每账号自动签到开关（无卡片也能自动签）** | `src/components/cards/attendance/attendance-batch-modal.tsx`、`pages/attendance.tsx`（右上角入口）、`cards/startup-service.ts`（`setAutoSign` 单一真值 + `runAll` 内置兜底）、`commands/arknights.rs`（`do_batch_attendance`） | [cards_attendance_domain_spaceship.md](reference/frontend/cards_attendance_domain_spaceship.md)、[commands.md](reference/backend/commands.md) |
 | 区域信息卡片 / 独立页面（`/domain`） | `src/components/cards/domain-info/`（含 `domain-shared.ts`）、`src/pages/domain.tsx` | [cards_attendance_domain_spaceship.md](reference/frontend/cards_attendance_domain_spaceship.md)、[pages_core.md](reference/frontend/pages_core.md) |
 | 帝江号卡片 / 独立页面（`/spaceship`） | `src/components/cards/spaceship/`（含 `spaceship-shared.ts`）、`src/pages/spaceship.tsx` | [cards_attendance_domain_spaceship.md](reference/frontend/cards_attendance_domain_spaceship.md)、[pages_core.md](reference/frontend/pages_core.md) |
+| **公开招募卡片 / 独立页面（`/recruitment`，明日方舟：4 个招募位 + 倒计时）** | `src/components/cards/recruitment/`（含 `recruit-shared.ts`）、`src/pages/recruitment.tsx` | [cards_attendance_domain_spaceship.md](reference/frontend/cards_attendance_domain_spaceship.md)、[pages_core.md](reference/frontend/pages_core.md) |
+| **基地数据卡片 / 独立页面（`/building`，明日方舟：无人机/休息进度/设施）** | `src/components/cards/building/`（含 `building-shared.ts`）、`src/pages/building.tsx` | [cards_attendance_domain_spaceship.md](reference/frontend/cards_attendance_domain_spaceship.md)、[pages_core.md](reference/frontend/pages_core.md) |
+| **游戏数据页面（`/game-data`，明日方舟：章节/活动进度，页面专属无卡片）** | `src/pages/game-data.tsx`、`src/types/arknights.ts`、`src/utils/arknightsDataService.ts` | [pages_core.md](reference/frontend/pages_core.md)、[types_locales_styles.md](reference/frontend/types_locales_styles.md)、[utils_services_a.md](reference/frontend/utils_services_a.md) |
 | 抽卡记录同步与统计（**终末地 + 明日方舟，两套 API 分流**） | `src/pages/gacha-records.tsx`、`services/gacha_service.rs`（终末地 `ef-webview`）、**`services/arknights_gacha_service.rs`（明日方舟 `ak-webview`）**、命令层唯一分流点 `commands/gacha.rs::lookup_role_owner`（`RoleOwner.game` → `is_arknights()`） | [pages_game_data.md](reference/frontend/pages_game_data.md)、[services_others.md](reference/backend/services_others.md)（含两套 API 差异对照表） |
 | 抽卡图表与逐池六星间隔统计 | `src/components/gacha-pity-chart.tsx`、`gacha-stat-charts.tsx`、`src/utils/gachaIntervals.ts` | [components_sidebar_charts.md](reference/frontend/components_sidebar_charts.md)、[utils_services_b.md](reference/frontend/utils_services_b.md) |
 | 启动器：下载/校验/切服/进程管理 | `src/components/game-action-panel.tsx`、`src/utils/launcherService.ts` | [components_game_action_panel.md](reference/frontend/components_game_action_panel.md)、[utils_services_a.md](reference/frontend/utils_services_a.md)、[services_launcher.md](reference/backend/services_launcher.md) |
@@ -123,7 +126,7 @@
 | 文件 | 覆盖范围 |
 | --- | --- |
 | [reference/frontend/entry_and_app.md](reference/frontend/entry_and_app.md) | `main.tsx`、`App.tsx`（路由表）、`provider.tsx`、`i18n.ts`、`tray-panel.tsx`、`stores/`、`hooks/`、`lib/`、`config/site.ts`、`cards/startup-service.ts` |
-| [reference/frontend/pages_core.md](reference/frontend/pages_core.md) | `layouts/*`、`pages/dashboard.tsx`、`attendance.tsx`、`medals.tsx`、`domain.tsx`（区域信息独立页面）、`spaceship.tsx`（帝江号独立页面） |
+| [reference/frontend/pages_core.md](reference/frontend/pages_core.md) | `layouts/*`、`pages/dashboard.tsx`、`attendance.tsx`、`medals.tsx`、`domain.tsx`（区域信息独立页面）、`spaceship.tsx`（帝江号独立页面）、`recruitment.tsx`（公开招募独立页面）、`building.tsx`（基地数据独立页面）、`game-data.tsx`（游戏数据独立页面） |
 | [reference/frontend/pages_account.md](reference/frontend/pages_account.md) | `pages/account.tsx`（约 3600 行） |
 | [reference/frontend/pages_settings_developer.md](reference/frontend/pages_settings_developer.md) | `pages/settings.tsx`（设置项清单）、`pages/developer.tsx` |
 | [reference/frontend/pages_game_data.md](reference/frontend/pages_game_data.md) | `pages/characters.tsx`、`gacha-records.tsx` |
@@ -134,11 +137,11 @@
 | [reference/frontend/cards_core.md](reference/frontend/cards_core.md) | 卡片 `registry/`、`base/`、`card-container.tsx`、右键菜单、`_template/` |
 | [reference/frontend/cards_character_list.md](reference/frontend/cards_character_list.md) | `character-list/`（含约 3300 行的 `char-select-modal.tsx`，**冻结件**：Liquid Glass 重构中内部未动） |
 | [reference/frontend/cards_account_achievement.md](reference/frontend/cards_account_achievement.md) | `account-info/`、`account-progress/`、`achievement/` |
-| [reference/frontend/cards_attendance_domain_spaceship.md](reference/frontend/cards_attendance_domain_spaceship.md) | `attendance/`、`domain-info/`、`spaceship/` |
+| [reference/frontend/cards_attendance_domain_spaceship.md](reference/frontend/cards_attendance_domain_spaceship.md) | `attendance/`、`domain-info/`、`spaceship/`、`recruitment/`（公开招募）、`building/`（基地数据） |
 | [reference/frontend/cards_system_todo.md](reference/frontend/cards_system_todo.md) | `system-resource/`、`todo/` 两类新卡片（含 `todoStore`、相关 types/utils/设置分区/`pages/todo.tsx`） |
 | [reference/frontend/utils_services_a.md](reference/frontend/utils_services_a.md) | 账户/配置/**代理**/卡片配置/仪表板/角色/标签页/启动器/**托盘**等 14 个服务封装（含每个函数对应的命令名） |
 | [reference/frontend/utils_services_b.md](reference/frontend/utils_services_b.md) | 更新、Wiki 解析、图片缓存、技能描述解析、日志、崩溃上报、诊断导出、滚动条、启动进度 |
-| [reference/frontend/ui_components.md](reference/frontend/ui_components.md) | `src/components/ui/` 全部 37 个通用组件（含 `radio-group.tsx`）+ `primitives`/`icons`/`morph-icon`（含每个组件的 props） |
+| [reference/frontend/ui_components.md](reference/frontend/ui_components.md) | `src/components/ui/` 全部 38 个通用组件（含 `radio-group.tsx`、`remote-thumb.tsx`）+ `primitives`/`icons`/`morph-icon`（含每个组件的 props） |
 | [reference/frontend/types_locales_styles.md](reference/frontend/types_locales_styles.md) | `src/types/*`、`locales/*`（命名空间清单）、`globals.css`（主题变量体系） |
 
 ---

@@ -372,14 +372,14 @@
 
 > 四个命令都是薄封装：参数校验与「roleId → (userId, bindingUid)」解析、cred 刷新都在 `AccountService`（见 [services_account.md](services_account.md)），网络与解析在 `ArknightsService`（见 [services_others.md](services_others.md)）。
 >
-> 前端接入现状：`get_arknights_player_info` / `get_arknights_attendance` / `do_arknights_attendance` 已被「账户信息」「账户进度」「签到」三处调用（按角色所属游戏分流），`get_arknights_cultivate` 仍**没有前端调用方**。
+> 前端接入现状：`get_arknights_player_info` / `get_arknights_attendance` / `do_arknights_attendance` 已被「账户信息」「账户进度」「签到」三处调用（按角色所属游戏分流）；2026-11 起 `get_arknights_player_info` 另有 `src/utils/arknightsDataService.ts` 封装，供「公开招募」「基地数据」卡片与 `/recruitment` `/building` `/game-data` 页面调用。`get_arknights_cultivate` 仍**没有前端调用方**。
 
 ### `get_arknights_player_info`
 - 位置：arknights.rs:24（async）
 - 参数：`state: State<'_, Arc<Mutex<AccountService>>>`、`role_id: String`、`force: Option<bool>`（默认 `false`）
 - 返回：`Result<serde_json::Value, String>`（`ArknightsPlayerInfo` 的 JSON）
-- 逻辑：`AccountService::get_arknights_player_info(role_id, force)`。`force=false` 时先读缓存（内存 → `<app_data>/arknights/player_info_{uid}.json`），未命中才联网；联网成功后写缓存并更新头像 base64。返回体包含 `status`（昵称/等级/理智/头像）、`chars[]`（干员养成）、`building`（`hire`/`training` **可能为 null**）、`routine`、`campaign`、`tower`、`recruit`、`charInfoMap`。
-- 前端调用方：`src/components/cards/account-info/index.tsx`、`src/components/cards/account-progress/index.tsx`（两者先用 `resolveRoleGame(roleId)` 判断游戏，是明日方舟角色才调本命令，否则走终末地的 `query_role_data`）。
+- 逻辑：`AccountService::get_arknights_player_info(role_id, force)`。`force=false` 时先读缓存（内存 → `<app_data>/arknights/player_info_{uid}.json`），未命中才联网；联网成功后写缓存并更新头像。返回体包含 `status`（昵称/等级/理智/头像）、`chars[]`（干员养成）、`building`（`hire`/`training` **可能为 null**）、`routine`、`campaign`、`tower`、`recruit`（4 个栏位）、`charInfoMap`，以及 2026-11 新增的章节进度字段（`stageInfoMap`/`activity[]`/`activityInfoMap`/三张信息表/`rogue`/`sandbox`/`bossRush`）与 `dataVersion` 结构版本标记（接口不返回，由 `fetch_player_info` 填充；旧缓存为 0，前端 `arknightsDataService` 据此自动强制刷新一次）。
+- 前端调用方：`src/components/cards/account-info/index.tsx`、`src/components/cards/account-progress/index.tsx`（两者先用 `resolveRoleGame(roleId)` 判断游戏，是明日方舟角色才调本命令，否则走终末地的 `query_role_data`）；`src/utils/arknightsDataService.ts`（公开招募/基地数据卡片 + 三个明日方舟页面）。
 
 ### `get_arknights_cultivate`
 - 位置：arknights.rs:43（async）；参数：`state`、`role_id: String`；返回：`Result<serde_json::Value, String>`

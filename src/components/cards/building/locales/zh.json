@@ -1,0 +1,15 @@
+{
+  "building_title": "基地数据",
+  "building_drones": "无人机",
+  "building_drones_full": "已补满",
+  "building_drones_full_in": "距补满 {{time}}",
+  "building_dorm_rest": "宿舍休息进度",
+  "building_manufactures": "制造中",
+  "building_tradings": "订单",
+  "building_tired": "疲劳干员",
+  "building_training": "训练室",
+  "building_specializing": "专精中",
+  "building_idle": "空闲",
+  "building_switch_account": "切换账户",
+  "building_view_page": "查看详情"
+}

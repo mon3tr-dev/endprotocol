@@ -16,9 +16,11 @@
 | `AccountProgressCardSettings` (interface) | card-settings.ts:44 | 字段：roleId?: string |
 | `DomainInfoCardSettings` (interface) | card-settings.ts:51 | 字段：roleId?: string、domainId?: string（区域ID，默认第一个） |
 | `SpaceshipCardSettings` (interface) | card-settings.ts:59 | 帝江号卡片。字段：roleId?: string |
+| `RecruitmentCardSettings` (interface) | card-settings.ts（`SpaceshipCardSettings` 之后） | 公开招募卡片。字段：roleId?: string |
+| `BuildingCardSettings` (interface) | card-settings.ts（`RecruitmentCardSettings` 之后） | 基地数据卡片。字段：roleId?: string |
 | `TestCardSettings` (interface) | card-settings.ts:66 | 示例卡片。字段：customData?: any |
 | `TodoCardSettings` (interface) | card-settings.ts（`TestCardSettings` 之后） | To-Do 卡片。字段：`listId?: string`（绑定到 `todo_lists` 中的一个列表） |
-| `CardSettingsMap` (type) | card-settings.ts（文件末尾） | 卡片类型 ID → settings 接口的映射：character_list / attendance / achievement / account_info / account_progress / domain_info / spaceship / test_card / **system_resource / todo**（新卡片在此注册）；文件顶部 `import type { SystemResourceCardSettings } from "./system-resource"` |
+| `CardSettingsMap` (type) | card-settings.ts（文件末尾） | 卡片类型 ID → settings 接口的映射：character_list / attendance / achievement / account_info / account_progress / domain_info / spaceship / **recruitment / building** / test_card / **system_resource / todo**（新卡片在此注册）；文件顶部 `import type { SystemResourceCardSettings } from "./system-resource"` |
 | `BaseCardSettings` (interface) | card-settings.ts:88 | 通用逃生舱口：`[key: string]: any` |
 
 ## `src/types/system-resource.ts`
@@ -126,8 +128,21 @@
 | `SERVER_LABEL` (const) | index.ts:35 | `Record<"1"\|"2", {zh, en}>` 服务器双语标签（官服/Bilibili服） |
 | `resolveServerLabel()` (function) | index.ts:43 | 按 lang（zh 之外一律 en）解析服务器标签，未知值回退为原始 server 字符串 |
 
+## `src/types/arknights.ts`
+**职责**：《明日方舟》前端数据类型（2026-11 新增），与后端 `src-tauri/src/models/arknights.rs` 一一对应；公开招募/基地数据卡片与 `/recruitment` `/building` `/game-data` 页面共用。只收录用到的字段（接口给的大字段不建模，后端解析时已忽略）。
+
+**导出**：`ARKNIGHTS_DATA_VERSION`（=1，与后端 `models::arknights::ARKNIGHTS_DATA_VERSION` 同步）、`ArknightsProgress`、`ArknightsPlayerInfo`、`ArknightsStatus`、`ArknightsAp`、`ArknightsSecretary`、`ArknightsAvatar`、`ArknightsRecruitSlot`、`ArknightsBuilding`、`ArknightsLabor`、`ArknightsHire`、`ArknightsTraining`、`ArknightsTrainee`、`ArknightsTrainer`、`ArknightsRoomSegment`、`ArknightsTradingOrder`、`ArknightsOrderItem`、`ArknightsClue`、`ArknightsRoomChar`、`ArknightsCharInfo`、`ArknightsStageInfo`、`ArknightsActivityProgress`、`ArknightsActivityZone`、`ArknightsActivityInfo`、`ArknightsNamedInfo`、`ArknightsRogue`、`ArknightsRogueRecord`、`ArknightsSandbox`、`ArknightsBossRush`、`ARKNIGHTS_MOOD_DIVISOR`（360000）、`ARKNIGHTS_MOOD_MAX`（24）、`arknightsMoodOf(ap)`、`arknightsMoodPercent(ap)`、`ARKNIGHTS_PORTRAIT_BASE`、`arknightsPortraitUrl(charId)`。
+
+**要点**：
+- `ArknightsRecruitSlot.state`：0=未开放 / 1=空闲 / 2=招募中；「已完成」= state 2 且 `finishTs` 已过（前端现算，见 `recruit-shared.ts`）。
+- `building.hire` / `building.training` / `clue` 在真实返回里可能是 **null**（容器级 default），前端必须判空。
+- `dataVersion` 为 0 表示旧格式缓存 —— `arknightsDataService` 自动强制刷新一次。
+- 心情换算：`ap / 360000` = 0..24 点（`arknightsMoodOf`/`arknightsMoodPercent`）。
+- 章节进度聚合：`activity[].zones[]` 逐区相加 `clearedStage/totalStage`；分区不下发名称，只做活动级聚合。
+- **干员头像不在接口里**（`charInfoMap` 无图片字段、`charAssets` 实测空数组），但官方 CDN 有确定规律 `https://web.hycdn.cn/arknights/game/assets/char/portrait/{charId}.png`（实测 12 个含 token 干员的 id 均 200），`arknightsPortraitUrl` 按此拼地址；封面用接口自带的 `activityInfoMap[].picUrl`（约 57% 覆盖，空时前端回退字母占位，见 `RemoteThumb`）。
+
 ## `src/locales/zh/translation.json`
-**职责**：中文 i18n 资源，共 873 行、795 个叶子 key、20 个顶层命名空间。
+**职责**：中文 i18n 资源，共 989 行、903 个叶子 key、24 个顶层命名空间（2026-11 加入 recruitment/building/gamedata 三页后更新）。
 **顶层命名空间清单**（这是重点，要完整列出）：
 
 | 命名空间/key 前缀 | 用途 | 大致行号 |
@@ -164,12 +179,16 @@
 | `tray.*` | 托盘悬浮面板：品牌标题、理智/每日活跃/每周事务/通行证标签、等级、已满/回满/下次回复、未选用户提示、显示主窗口/退出（13 个 key） | :660 |
 | `launcher.*` | 启动器：安装/更新/校验修复/渠道切换/预下载/预下载中/预下载确认/启动设置/磁盘与文件扫描等完整流程；含 `launcher.game_group_endfield` / `launcher.game_group_arknights`（标题栏与切换栏按当前游戏取名，:795-796）、`launcher.no_announcements`（公告空态，:799）、`launcher.switch_channel_account_warning`（换服账号不互通提示，:815）、`launcher.switch_game_running`（游戏运行中禁止换服提示，:818）、`launcher.dir_locked_by`（安装目录被占用提示，body 列出占用进程，:819）、`launcher.prev_banner` / `launcher.next_banner` / `launcher.banner_page`（横幅翻页键 aria 标签，:820-822）；子分组 `launcher.sidebar.*`（游戏界面右侧官方社媒栏：标题/打开网页提示/仅支持扫码，:848）（本文件最大分组，143 个 key） | :707 |
 | `todo_page.*` | To-Do 页面：标题/描述、导入导出、新建/搜索列表、分组、空态等 | :644 |
+| `domain_page.*` / `spaceship_page.*` | 区域信息 / 帝江号页面（副标题、切换账户、空态等） | :145 / :152 |
+| `recruitment_page.*` | 公开招募页面（**明日方舟**）：栏位 `{{number}}`、四种状态、剩余/完成时间、办公室刷新 `{{used}}/{{total}}`、空态 | :160 |
+| `building_page.*` | 基地数据页面（**明日方舟**）：无人机（距补满 `{{time}}`）、宿舍休息、疲劳干员、各设施 `room_*`、心情/订单/线索、训练室 | :175 |
+| `gamedata_page.*` | 游戏数据页面（**明日方舟**）：主线进度、章节分组 `chapter_type_*`（别传/插曲/支线/活动）、行内状态 `state_done`/`state_ongoing`、`max_kills`、`medal_progress`、`bp_level`、`relics` | :214 |
 
 - **与 en/translation.json 的 key 差异**：无。经脚本对比，zh 与 en 叶子 key 均为 795 个，键集合完全一致（既无 zh 缺键也无 en 缺键），且两文件结构逐行对齐（行号一一对应）。
 - **异常（两边共有）**：`settings.update` 内存在重复键 —— `latest_version` 同时出现于 :177 与 :187、`release_date` 同时出现于 :179 与 :188。JSON 解析时后者覆盖前者（zh 实际生效值为 :187 的“远端最新版本”、:188 的“发布日期”；en 同理）。建议后续合并为 `latest_version_remote` 之类的独立键。
 
 ## `src/locales/en/translation.json`
-**职责**：英文 i18n 资源，与 zh 文件同为 873 行、795 个叶子 key、20 个顶层命名空间，行号与 zh 完全对应（见上表）。
+**职责**：英文 i18n 资源，与 zh 文件同为 989 行、903 个叶子 key、24 个顶层命名空间，行号与 zh 完全对应（见上表）。
 - 主要差异仅在文案语言，个别本地化选择值得注意：`settings.characters.cultivation_talents` zh 为“基建技能”而 en 为 “O.M.V. Dijiang Skills”（帝江号相关译名）；`settings.logs.level_*` en 使用大写日志级别（DEBUG/INFO/WARN/ERROR），`source_frontend/source_backend` 缩写为 FE/BE。
 - 同样存在 `settings.update` 的 `latest_version` / `release_date` 重复键（:177/:187、:179/:188），与 zh 完全一致。
 

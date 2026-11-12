@@ -9,7 +9,8 @@ import type { GameId } from "@/utils/accountService";
  * 而且很容易漏掉某一处，表现为「侧栏能进、卡片加不出来」这种自相矛盾的状态。
  *
  * 数据层的依据（后端已就绪的《明日方舟》链路）：
- * - `get_arknights_player_info`：等级/理智/主线/干员数/日常周常/剿灭
+ * - `get_arknights_player_info`：等级/理智/主线/干员数/日常周常/剿灭，
+ *   以及公招（`recruit[]`）、基建（`building`）、章节进度（`activity[]`）
  * - `get_arknights_cultivate`：仓库
  * - `get_arknights_attendance` / `do_arknights_attendance`：签到
  * - `get_arknights_gacha_categories` + 寻访记录：抽卡页
@@ -42,6 +43,12 @@ export const CARD_GAME_SUPPORT: Record<string, GameId[]> = {
   // 明日方舟读 `status.ap` + `routine.daily/weekly`
   account_progress: ["endfield", "arknights"],
 
+  // —— 明日方舟独占（读 `player/info` 的 recruit / building）——
+  // 公开招募：`player/info.recruit[]`（4 个栏位 + 剩余时间）
+  recruitment: ["arknights"],
+  // 基地数据：`player/info.building`（无人机、宿舍休息进度、各设施）
+  building: ["arknights"],
+
   // —— 与游戏无关（系统资源、待办）——
   // 它们不读任何游戏数据，因此**不该**被某个游戏挡住，
   // 也不需要打「支持某游戏」的徽标 —— 打了反而误导。
@@ -69,6 +76,10 @@ export const PAGE_GAME_SUPPORT: Record<string, GameId[]> = {
   medals: ["endfield"],
   domain: ["endfield"],
   spaceship: ["endfield"],
+  // 明日方舟数据页（读 `player/info`）
+  recruitment: ["arknights"],
+  building: ["arknights"],
+  gamedata: ["arknights"], // 游戏数据：章节/活动进度（页面专属，无卡片）
 };
 
 /** 侧边栏导航键 → 路由。 */
@@ -81,6 +92,9 @@ export const NAV_ROUTES: Record<string, string> = {
   todo: "/todo",
   domain: "/domain",
   spaceship: "/spaceship",
+  recruitment: "/recruitment",
+  building: "/building",
+  gamedata: "/game-data",
 };
 
 /**

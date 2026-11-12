@@ -243,6 +243,66 @@
 - i18n key：`spaceship_page.{subtitle,switch_account,total_rooms,stationed_total,room_levels,section_rooms}`、`common.{unknown,refresh}`，其余复用卡片命名空间 `card:spaceship_*`。
 - 心情进度条渐变样式抽取为 `getMoodBarClass`（`spaceship-shared.ts`），页面使用；卡片仍用内联条件。
 
+## `src/pages/recruitment.tsx`
+**职责**：公开招募独立页面（**仅明日方舟**，`PAGE_GAME_SUPPORT.recruitment = ["arknights"]`）。页头（`CardIcon "clock"` + 账户下拉（仅列明日方舟账户）+ 刷新）→ 办公室刷新条（`hire.refreshCount/3`）→ **4 个招募栏位**双列卡片（栏位号、状态徽标、`HH:MM:SS` 倒计时按秒重算、进度条、开始/完成时间）。
+
+**导出**：`export default function RecruitmentPage`。
+
+| 符号 | 位置 | 说明 |
+| --- | --- | --- |
+| `ROLE_CONFIG_KEY` | recruitment.tsx:33 | `"recruitment_page_role_id"`，页面独立记忆的账户 |
+| `STATE_BADGE_CLASS` | recruitment.tsx:35 | 四种槽位状态的徽标配色（与 `recruitment` 卡片共用语义） |
+| `padSlots` | recruitment.tsx:42 | 补足 4 个栏位（缺失补 `state:0`） |
+| `RecruitmentPage()` | recruitment.tsx:48 | 页面组件；`nowMs` 每秒重算倒计时 |
+| `loadData` | — | `fetchArknightsPlayerInfo({ roleId })`（旧缓存自动强制刷新） |
+| `handleRefresh` | — | `refreshAccountData()`（`refresh_accounts` 会重拉 player/info 落新缓存）→ 重读 |
+
+**备注**：
+- 路由 `/recruitment`；侧栏 `NavKey = "recruitment"`（`ClockIcon`）。
+- 数据来源：`player/info.recruit[]`；工具函数与 `recruitment` 卡片共用（`cards/recruitment/recruit-shared.ts`）。
+- i18n：`sidebar.recruitment`、`recruitment_page.{subtitle,slot,state_*,remaining,complete_at,start_time,hire_refresh,hire_refresh_usage,empty,switch_account}`。
+
+## `src/pages/building.tsx`
+**职责**：基地数据独立页面（**仅明日方舟**）。页头（`CardIcon "factory"`）→ 概览三卡（**无人机**：value/max + 距补满倒计时；**宿舍休息进度**：平均心情百分比 + 在休人数；**疲劳干员**：计数与头像/名称）→ 办公室/训练室两卡 → 按 `FACILITY_ORDER` 渲染各设施卡片（控制中枢/发电站/贸易站/制造站/宿舍/会客室），每段排班展示**干员头像**（`RemoteThumb` + `arknightsPortraitUrl(charId)`，见下）、槽位、干员心情条（名字来自 `charInfoMap`）、制造站批次进度/倒计时、贸易站订单数、会客室线索（库存/摆放/今日碎片）。
+
+**导出**：`export default function BuildingPage`；文件内 `PageHeader`（账户切换 + 刷新，加载态/正常态共用，自带 `useTranslation`）。
+
+| 符号 | 位置 | 说明 |
+| --- | --- | --- |
+| `ROLE_CONFIG_KEY` | building.tsx:32 | `"building_page_role_id"` |
+| `FACILITY_TITLE_KEY` | building.tsx:37 | 设施键 → `building_page.room_*` i18n 键 |
+| `moodBarClass(mood)` | building.tsx:44 | 心情条配色：≤0 危险红 / <12 警告黄 / 其余成功绿 |
+| `BuildingPage()` | building.tsx:53 | 页面组件；`nowMs` 每秒重算无人机/专精倒计时 |
+| `charName(charId)` | — | `info.charInfoMap[charId].name`，缺失回退 charId |
+| `roomChars(segment)` | — | 排班段 → `{name, mood, percent}` 视图 |
+
+**备注**：
+- 路由 `/building`；侧栏 `NavKey = "building"`（`FactoryIcon`）。
+- 设施状态计算与 `building` 卡片共用（`cards/building/building-shared.ts`）；心情换算来自 `@/types/arknights`（`ap/360000` = 0..24）。
+- **干员头像**：接口不下发（`charAssets` 实测空数组），前端按官方 CDN 规律拼 `char/portrait/{charId}.png`（`arknightsPortraitUrl`，实测 200），经 `RemoteThumb` 下载缓存显示、失败回退首字母占位。
+- i18n：`sidebar.building`、`building_page.*`（room_*/drones/dorm_rest/orders/clue_* 等）。
+- ⚠️ 设施接口是「对象或数组」混用（control/meeting 为对象），后端 `one_or_many` 已收敛成 `Vec`，前端按数组渲染即可。
+
+## `src/pages/game-data.tsx`
+**职责**：游戏数据独立页面（**仅明日方舟**；**页面专属，没有对应卡片**）。页头（`CardIcon "chart"`）→ 主线进度卡（`status.mainStageProgress` + `stageInfoMap[key].code/name`，B 服实测为空 → 占位文案）→ **章节进度卡**（`activity[]` 按 `activityInfoMap[].type` 分组：别传 `SIDESTORY` / 插曲 `MINISTORY` / 支线 `BRANCHLINE` / 其他活动（空串），组内按开始时间倒序；**章节行对齐官方样式 —— 整幅封面横幅按原比例显示**（实测全部统一 1002×180，即 `aspect-[1002/180]`，不裁切），右侧 46% 宽黑色半透明浮层放状态（☑ 已完成 / 进行中）+ `cleared/total` + 白色进度条；复刻徽标压在封面左上；无封面的活动（约 43%）渲染等比例深色底 + 名称）→ 剿灭作战（`campaign.records` + `campaignInfoMap` 名称 + maxKills）→ 集成战略（**等比例小横幅条** `w-36 aspect-[1002/180]` + 主题名/奖章/通票/遗书/首通时间，按 `rogueInfoMap.sort` 排序）与保全派驻（训练场小横幅 + 名/subName + 最好层数）双列 → 沙中之地（`sandbox[]`：基建等级/修复裂隙/最长天数/支线完成数）与历险签约（小横幅 `picUrl` + played/难度）双列。
+
+**导出**：`export default function GameDataPage`；文件内 `PageHeader`、`ChapterRow`（章节聚合行）、`chapterGroupOf(type)`、`CHAPTER_GROUP_ORDER` / `CHAPTER_GROUP_TITLE_KEY`。
+
+| 符号 | 位置 | 说明 |
+| --- | --- | --- |
+| `ROLE_CONFIG_KEY` | game-data.tsx:32 | `"gamedata_page_role_id"` |
+| `chapterGroupOf(type)` | game-data.tsx:36 | `SIDESTORY→sidestory`、`MINISTORY→ministory`、`BRANCHLINE→branchline`、其余（含空串）→`other` |
+| `mainStage` | — | `mainStageProgress` → `stageInfoMap`；code 与 id 可能差 1，**以 code 展示** |
+| `ChapterRow.cover` | — | 章节封面 = `activityInfoMap[actId].picUrl`；**实测统一 1002×180（5.57:1）**，行内用 `aspect-[1002/180]` 按原比例整幅渲染（`RemoteThumb` 加载失败回退首字母占位） |
+| `chapterGroups` | — | 章节聚合（活动名缺失回退 actId）；分区**不下发名称**，故不做分区拆行 |
+
+**备注**：
+- 路由 `/game-data`（NavKey `"gamedata"`，键与路由段不同：`NAV_ROUTES.gamedata = "/game-data"`）；侧栏 `ChartIcon`。
+- 数据全部来自 `get_arknights_player_info`（经 `arknightsDataService`，旧格式缓存自动刷新）；**没有卡片**（用户要求「只要页面不需要卡片」）。
+- 封面/主题图都经 `RemoteThumb`（`@/components/ui/remote-thumb.tsx`）下载缓存，`IntersectionObserver` 式懒加载由缓存管理器天然覆盖（每个缩略图挂载才 load）。
+- i18n：`sidebar.gamedata`、`gamedata_page.*`（chapter_type_*/cleared_stages/max_kills/medal_progress/bp_level/relics 等）。
+- ⚠️ 77 个活动条目几乎都是 `0/total`（未复刻/未开放），页面靠分组 + 时间倒序让「最近有进度」的排前；这是数据源特性，不是 bug。
+
 ## `src/pages/todo.tsx`
 **职责**：To-Do 独立页面。左侧为列表管理（搜索、新建、拖拽排序、分组、复制、删除、设置），右侧为当前列表的完整编辑器（`TodoDetail`，与卡片/弹窗共用）；支持模板新建与 Markdown/JSON 导入导出；以 URL 查询参数 `?list=<id>` 记录当前列表。
 **导出**：`export default TodoPage`。

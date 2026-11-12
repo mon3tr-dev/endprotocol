@@ -272,7 +272,7 @@
 | `get_cached_player_info` | arknights_service.rs:154 | 内存优先，未命中读磁盘并**回填内存**。账户列表走这里 |
 | `cache_player_info` | arknights_service.rs:169 | 头像下载转 base64 → 写内存 → 写磁盘。绑定账户/刷新时调用 |
 | `cache_raw`（私有） | arknights_service.rs:218 | 原始响应留档到 `raw_{kind}_{uid}.json`，接口字段变更时可比对 |
-| `fetch_player_info` | arknights_service.rs:246 | `GET /api/v1/game/player/info?uid=` → `ArknightsPlayerInfo`（不写缓存） |
+| `fetch_player_info` | arknights_service.rs:263 | `GET /api/v1/game/player/info?uid=` → `ArknightsPlayerInfo`（不写缓存）。解析成功后打 `data_version = ARKNIGHTS_DATA_VERSION`（models::arknights）—— 前端 `arknightsDataService` 据此识别旧格式缓存并自动强制刷新一次 |
 | `refresh_player_info` | arknights_service.rs:294 | `fetch_player_info` + `cache_player_info`（绑定/刷新用这个） |
 | `fetch_cultivate` | arknights_service.rs:310 | `GET /api/v1/game/cultivate/player?uid=` → `ArknightsCultivate`（唯一增量是仓库 `items`） |
 | `attendance_status` | arknights_service.rs:365 | `GET /api/v1/game/attendance?gameId=1&uid=` → `ArknightsAttendance`。解析后调 `fill_resource_icons()`（按 `resourceId` 拼 CDN 图标）与 `fill_derived()`（算 `hasToday` / `todayIndex` / `tomorrowIndex`） |

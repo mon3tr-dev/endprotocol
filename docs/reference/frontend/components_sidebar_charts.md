@@ -11,8 +11,8 @@
 | --- | --- | --- |
 | `SearchResult` | dashboard-sidebar.tsx:65 | 接口：`id`、`title`、`description?`、`path`、`category`、`elementId?`（页面内锚点）、`titleEn/titleZh/descriptionEn/descriptionZh/categoryEn/categoryZh?`（跨语言检索字段）、`matchedLang?("current"/"en"/"zh")`、`matchedText?` |
 | `SidebarProps` | dashboard-sidebar.tsx:84 | props：`onNavigate?: () => void`（移动端点击导航后关闭抽屉的回调）、`collapsed?: boolean`（桌面端折叠为仅图标窄轨，默认 `false`）、`onToggleCollapsed?: () => void`（切换折叠状态；提供时页脚渲染折叠/展开按钮） |
-| `NavKey` | dashboard-sidebar.tsx:93 | 联合类型：`"dashboard" \| "characters" \| "medals" \| "attendance" \| "gacha" \| "todo" \| "domain" \| "spaceship"` |
-| `NAV_KEYS` | dashboard-sidebar.tsx:95 | 默认导航顺序数组（8 项，含 `/domain` 区域信息与 `/spaceship` 帝江号页），作为 `navOrder` 初值 |
+| `NavKey` | dashboard-sidebar.tsx:95 | 联合类型：`"dashboard" \| "characters" \| "medals" \| "attendance" \| "gacha" \| "todo" \| "domain" \| "spaceship" \| "recruitment" \| "building" \| "gamedata"` |
+| `NAV_KEYS` | dashboard-sidebar.tsx:97 | 默认导航顺序数组（11 项，含 `/domain` 区域信息与 `/spaceship` 帝江号页，以及 `/recruitment` 公开招募、`/building` 基地数据、`/game-data` 游戏数据——三者仅明日方舟账户可见），作为 `navOrder` 初值 |
 | `GripHandle` | dashboard-sidebar.tsx:106 | 六点拖拽手柄按钮（内联 SVG）。props：`onPointerDown`（必需）、`onDragEnd?`、`isDragging?`；`pointerUp`/`click` 均 `preventDefault+stopPropagation`，hover 时才显示 |
 | `Sidebar` | dashboard-sidebar.tsx:145 | 主组件，约 145-2270 行，见下方内部结构 |
 | `handleNavClick` | dashboard-sidebar.tsx:291 | 导航点击守卫：`preventDefault` → await `runDashboardLeaveHandler()`（当前若停在仪表盘标签页则先截图）→ `navigate(href)` → `onNavigate?.()`。用于除「仪表盘父节点」「子标签」外的全部导航项与底部入口 |

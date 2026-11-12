@@ -618,6 +618,18 @@ character-list / domain-info / spaceship / attendance-settings-modal）都复用
 
 **备注**：`GlassRadioGroup.Item` 必须在 `GlassRadioGroup` 内部使用（否则抛错「必须放在 GlassRadioGroup 内部」）；默认横向、整组宽度 `w-fit`，容器胶囊边框与 `ToggleGroup` 保持一致但内边距/字号更大（`h-8`、`text-sm`）以便承载协议名。
 
+## `src/components/ui/remote-thumb.tsx`
+**职责**：远程缩略图组件（2026-11 新增）：先把 http(s) 地址经 `cacheManager`（后端 `download_image` → 本地文件 → blob URL）下载缓存再显示；**加载失败或地址为空回退为首字母占位块**，加载中显示 pulse 占位。挂载期间 `request` 持有缓存引用防 blob 被回收，卸载 `release`。当前使用方：`/building` 页面（干员头像 `char/portrait/{charId}.png`）、`/game-data` 页面（章节/集成战略/保全/历险签约封面）。
+
+**导出**：`RemoteThumb`。
+**主要依赖**：`react`（useState/useEffect）、`clsx`、`@/utils/imageCacheManager`（`cacheManager`）。
+
+| 符号 | 位置 | 说明 |
+| --- | --- | --- |
+| `RemoteThumb` | remote-thumb.tsx:19 | props：`src?`（远程地址，空则直接渲染占位）、`alt`（占位字母与 aria-label）、`className?`（尺寸/圆角，占位与图片共用）、`fallbackClassName?`（占位块追加样式） |
+
+**备注**：与 `<Img>` 的区别——`Img` 在下载失败时永远停留在 animate-pulse 占位（无法区分失败），本组件通过自己持有 `cacheManager.load` 的 Promise 区分加载中/失败。引用计数模型与 `Img` 相同（mount 时 request、unmount/release）。成功后渲染裸 `<img>`（object-cover）。
+
 ## `src/components/ui/glass/index.ts`
 **职责**：玻璃拟态风格统一出口（barrel）：把各基础文件里的 `Glass*` 组件与类型再导出，供 `@/components/ui/glass` 一键引入。
 **导出**：见下表（32 行导出语句）
@@ -674,8 +686,9 @@ character-list / domain-info / spaceship / attendance-settings-modal）都复用
 | `GithubIcon` | icons.tsx:72 | GitHub 图标 |
 | `MoonIcon`/`SunIcon`/`ComputerIcon`/`HeartIcon`/`SearchIcon`/`HomeIcon`/`ChartIcon`/`SettingsIcon`/`UsersIcon`/`ProjectsIcon`/`CalendarIcon`/`HelpIcon`/`DeveloperIcon`/`AccountIcon`/`StarIcon`/`GachaIcon`/`MedalIcon`/`BookmarkIcon`/`TagIcon`/`FolderIcon`/`BellIcon`/`PlusIcon`/`ChevronLeftIcon`/`EditIcon`/`TrashIcon` | icons.tsx:76-100 | lucide 图标（Moon/Sun/Monitor/Heart/Search/Home/BarChart3/Settings/Users/FolderOpen/Calendar/HelpCircle/Code/User/Star/Sparkles/Award/Bookmark/Tag/Folder/Bell/Plus/ChevronLeft/Pencil/Trash2）的 MorphIcon 封装 |
 | `TerminalIcon`/`CopyIcon`/`ExternalLinkIcon`/`GamepadIcon` | icons.tsx:101-104 | lucide 图标（Terminal/Copy/ExternalLink/Gamepad2）的 MorphIcon 封装，用于游戏启动快捷弹窗的命令/快捷方式/Steam 板块 |
+| `MapIcon`/`SatelliteIcon`/`ClockIcon`/`FactoryIcon` | icons.tsx:105-109 | lucide 图标（Map/Satellite/**Clock**/**Factory**）的 MorphIcon 封装；Clock 用于侧栏「公开招募」，Factory 用于侧栏「基地数据」 |
 | `MoonFilledIcon`/`SunFilledIcon`/`HeartFilledIcon` | icons.tsx:106 | 上述三个图标的再导出别名 |
-| `CARD_ICON_MAP` | icons.tsx:108 | 23 个 key（home/chart/users/star/heart/bookmark/tag/folder/calendar/bell/settings/account/search/developer/projects/file/map/satellite/award/user/help/factory/sprout）→ lucide 图标数据 |
+| `CARD_ICON_MAP` | icons.tsx:110 | 24 个 key（home/chart/users/star/heart/bookmark/tag/folder/calendar/bell/settings/account/search/developer/projects/file/map/satellite/award/user/help/factory/sprout/**clock**）→ lucide 图标数据 |
 | `CardIcon` | icons.tsx:134 | props：`iconKey`（必填）、`size`（默认 24）、`className` + SVGProps；**key 未命中映射时回退为纯文本 span 显示 key 本身**（:141）；渲染前剥离 `from/to/ref`（:142） |
 
 **备注**：`PlusIcon`/`ChevronLeftIcon`/`EditIcon`/`BellIcon` 等名称与 `ui/app-icon.tsx` 中的同名导出重复，来自不同模块，import 时务必确认路径。

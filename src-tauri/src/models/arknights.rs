@@ -14,6 +14,7 @@
 //! 保证字段缺失走 `Default` 而不是整包解析失败。
 
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
 /// 《明日方舟》物品图标 CDN 前缀。
 ///
@@ -183,6 +184,13 @@ pub struct ArknightsSecretary {
     pub skin_id: String,
 }
 
+/// `player/info` 数据结构版本。
+///
+/// 缓存文件是「解析后的结构体落盘」，旧版本程序写的缓存里没有新增字段。
+/// 前端拿到 `dataVersion < ARKNIGHTS_DATA_VERSION` 的响应时应强制联网刷新一次，
+/// 避免「绑定很久的账户」永远看到旧缓存里缺失的章节/活动数据。
+pub const ARKNIGHTS_DATA_VERSION: i32 = 1;
+
 /// 玩家账号全量数据（`GET /api/v1/game/player/info?uid=` 的 `data`）
 ///
 /// 这是明日方舟的**唯一主数据源**：干员养成、基建、任务、剿灭、保全、公招全在里面，
@@ -195,18 +203,51 @@ pub struct ArknightsPlayerInfo {
     pub chars: Vec<ArknightsChar>,
     /// 干员静态信息表：charId → {id, name, profession, rarity, ...}
     pub char_info_map: serde_json::Map<String, serde_json::Value>,
-    /// 公共招募栏位
+    /// 公共招募栏位（实测恒 4 个；`state == 2` 表示招募进行中）
     pub recruit: Vec<ArknightsRecruitSlot>,
     /// 每日/每周任务
     pub routine: ArknightsRoutine,
-    /// 剿灭作战
+    /// 剿灭作战（各据点最大击杀数）
     pub campaign: ArknightsCampaign,
-    /// 保全派驻
+    /// 保全派驻（各训练场最好成绩）
     pub tower: ArknightsTower,
     /// 基建
     pub building: ArknightsBuilding,
     /// 数据生成时间戳
     pub current_ts: i64,
+
+    // ---- 以下为「游戏数据页」用的章节/活动进度字段（2026-11 新增）----
+    // ⚠️ 非 Value 值的映射必须用 BTreeMap：serde_json 1.0.151 起 Map<String, V>
+    // 只对 V = Value 实现了 Serialize/Deserialize/Clone/Debug/Default。
+    // 用 BTreeMap 还能让缓存文件键序稳定（按键排序）。
+
+    /// 主线关卡展示信息表：只包含 `status.mainStageProgress` 指向的那一关。
+    ///
+    /// 实测它**不是全关卡表** —— 键最多只有 1 个（B 服账号甚至整个为空），
+    /// 用途是给 `mainStageProgress`（如 `main_15-09`）补出可读的关卡号/名称。
+    pub stage_info_map: BTreeMap<String, ArknightsStageInfo>,
+    /// 各活动/章节的通关进度（77 项左右，含复刻）。分区进度为
+    /// `clearedStage / totalStage`，聚合时逐区相加。
+    pub activity: Vec<ArknightsActivityProgress>,
+    /// 活动静态信息表：actId → {name, type, startTime...}（提供章节名/分组）
+    pub activity_info_map: BTreeMap<String, ArknightsActivityInfo>,
+    /// 剿灭据点信息表：campId → {name, picUrl}
+    pub campaign_info_map: BTreeMap<String, ArknightsNamedInfo>,
+    /// 集成战略主题信息表：rogueId → {name, picUrl, sort}
+    pub rogue_info_map: BTreeMap<String, ArknightsNamedInfo>,
+    /// 保全派驻训练场信息表：towerId → {name, subName, picUrl}
+    pub tower_info_map: BTreeMap<String, ArknightsNamedInfo>,
+    /// 集成战略（各主题的报酬/遗书/通票进度）
+    pub rogue: ArknightsRogue,
+    /// 沙中之地（沙盒）进度
+    pub sandbox: Vec<ArknightsSandbox>,
+    /// 历险签约（bossRush）记录
+    pub boss_rush: Vec<ArknightsBossRush>,
+    /// 本结构体的版本标记（[`ARKNIGHTS_DATA_VERSION`]）。接口本身不下发，
+    /// 由 [`crate::services::arknights_service::ArknightsService`] 在拉取后填充；
+    /// 旧缓存读到 0 即表示缓存格式过期，前端应强制刷新。
+    #[serde(default)]
+    pub data_version: i32,
 }
 
 /// 一个已拥有干员的养成状态（`data.chars[]`）
@@ -273,12 +314,24 @@ pub struct ArknightsRoutine {
 }
 
 /// 剿灭作战（`data.campaign`）
+///
+/// `records[]` 是**全部据点**（含未开放的轮换据点）的最大击杀数，
+/// 据点名要查 `campaignInfoMap[campaignId].name`。
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 #[serde(rename_all = "camelCase", default)]
 pub struct ArknightsCampaign {
     pub reward: ArknightsProgress,
     #[serde(default)]
-    pub records: Vec<serde_json::Value>,
+    pub records: Vec<ArknightsCampaignRecord>,
+}
+
+/// 剿灭作战的一个据点记录（`campaign.records[]`）
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+#[serde(rename_all = "camelCase", default)]
+pub struct ArknightsCampaignRecord {
+    pub campaign_id: String,
+    /// 历史最大击杀数（400 = 常规据点满奖励）
+    pub max_kills: i64,
 }
 
 /// 保全派驻（`data.tower`）
@@ -287,7 +340,16 @@ pub struct ArknightsCampaign {
 pub struct ArknightsTower {
     pub reward: ArknightsTowerReward,
     #[serde(default)]
-    pub records: Vec<serde_json::Value>,
+    pub records: Vec<ArknightsTowerRecord>,
+}
+
+/// 保全派驻的一个训练场记录（`tower.records[]`）
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+#[serde(rename_all = "camelCase", default)]
+pub struct ArknightsTowerRecord {
+    pub tower_id: String,
+    /// 最好成绩（通关层数）
+    pub best: i32,
 }
 
 /// 保全派驻奖励进度
@@ -298,6 +360,192 @@ pub struct ArknightsTowerReward {
     pub lower_item: ArknightsProgress,
     /// 本期结束时间戳
     pub term_ts: i64,
+}
+
+/// 主线关卡展示信息（`stageInfoMap` 的值）
+///
+/// ⚠️ 接口只对「`mainStageProgress` 指向的那一关」下发这个结构，
+/// 键就是关卡 id（如 `main_15-09`）。B 服账号实测整个 map 为空。
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+#[serde(rename_all = "camelCase", default)]
+pub struct ArknightsStageInfo {
+    /// 关卡 id，如 `main_15-09`
+    pub id: String,
+    /// 展示用关卡号，如 `15-10`（id 与关卡号可能不一致，以 code 为准展示）
+    pub code: String,
+    /// 关卡名（如「怀黍离」章末关）
+    pub name: String,
+    /// 所属分区 id（如 `act2mainss_zone1`）
+    pub zone_id: String,
+    /// `MAIN` / `SUB` 等
+    pub stage_type: String,
+    /// `NORMAL` / `TOUGH` 等
+    pub difficulty: String,
+    /// 理智消耗
+    pub ap_cost: i32,
+}
+
+/// 一个活动/章节的通关进度（`data.activity[]`）
+///
+/// 每个活动有 1~5 个分区（zone），进度按分区给出，聚合展示时逐区相加。
+/// `actReplicaId` 非空表示这是复刻（进度挂在复刻活动上，`actId` 仍指向原活动）。
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+#[serde(rename_all = "camelCase", default)]
+pub struct ArknightsActivityProgress {
+    /// 活动 id（名称查 `activityInfoMap[actId]`）
+    pub act_id: String,
+    /// 复刻活动 id（非复刻为空串）
+    pub act_replica_id: String,
+    #[serde(default)]
+    pub zones: Vec<ArknightsActivityZone>,
+}
+
+/// 活动内一个分区的通关进度
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+#[serde(rename_all = "camelCase", default)]
+pub struct ArknightsActivityZone {
+    pub zone_id: String,
+    pub zone_replica_id: String,
+    /// 已通关关卡数
+    pub cleared_stage: i32,
+    /// 分区总关卡数（0 = 分区未开放/无内容）
+    pub total_stage: i32,
+}
+
+/// 活动静态信息（`activityInfoMap` 的值，裁剪后只留展示字段）
+///
+/// `type` 实测取值：`SIDESTORY`（别传）/ `MINISTORY`（插曲）/ `BRANCHLINE`（支线）/
+/// 空串（新活动未标注）。`picUrl` 为**章节封面图**（bbs.hycdn.cn），
+/// 但**覆盖率只有约 57%**（44/77）—— 新活动与一部分老活动是空串，
+/// 前端必须为空时回退到字母占位。接口原样给 `dropItemIds` 等大字段，
+/// 这里不建模、反序列化时忽略。
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+#[serde(rename_all = "camelCase", default)]
+pub struct ArknightsActivityInfo {
+    pub id: String,
+    /// 活动名（如「众生行记」）
+    pub name: String,
+    /// 活动类别（`SIDESTORY` / `MINISTORY` / `BRANCHLINE`，可为空串）
+    #[serde(rename = "type", default)]
+    pub kind: String,
+    /// 开始时间戳（用于章节列表排序）
+    pub start_time: i64,
+    /// 结束时间戳
+    pub end_time: i64,
+    /// 活动横幅图（可能为空串）
+    pub pic_url: String,
+}
+
+/// 剿灭据点 / 集成战略主题 / 保全训练场共用的一般信息表条目
+///
+/// 三张表（`campaignInfoMap` / `rogueInfoMap` / `towerInfoMap`）的值都有
+/// `{id, name, picUrl}`，`rogueInfoMap` 多 `sort`、`towerInfoMap` 多 `subName`，
+/// 统一用 Option 容纳。
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+#[serde(rename_all = "camelCase", default)]
+pub struct ArknightsNamedInfo {
+    pub id: String,
+    pub name: String,
+    pub pic_url: String,
+    /// 仅保全训练场有（如「罗德岛制药」）
+    pub sub_name: String,
+    /// 仅集成战略有（主题排序号）
+    pub sort: i32,
+}
+
+/// 集成战略进度（`data.rogue`）
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+#[serde(rename_all = "camelCase", default)]
+pub struct ArknightsRogue {
+    #[serde(default)]
+    pub records: Vec<ArknightsRogueRecord>,
+}
+
+/// 一个集成战略主题的进度（`rogue.records[]`）
+///
+/// ⚠️ `bank` 的键是 `current/record`（不是 `total`），与 [`ArknightsProgress`] 不同形，
+/// 单独建模。
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+#[serde(rename_all = "camelCase", default)]
+pub struct ArknightsRogueRecord {
+    /// 主题 id（名称查 `rogueInfoMap`）
+    pub rogue_id: String,
+    /// 通票等级
+    pub bp_level: i32,
+    /// 首次通关时间戳（0 = 未通关）
+    pub clear_time: i64,
+    /// 前置储备（current）与历史最高（record）
+    pub bank: ArknightsRogueBank,
+    /// 主题奖章进度
+    pub medal: ArknightsProgress,
+    /// 收藏遗书数
+    pub relic_cnt: i32,
+}
+
+/// 集成战略前置储备（`rogue.records[].bank`）
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+#[serde(rename_all = "camelCase", default)]
+pub struct ArknightsRogueBank {
+    pub current: i64,
+    pub record: i64,
+}
+
+/// 沙中之地（沙盒）进度（`data.sandbox[]`）
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+#[serde(rename_all = "camelCase", default)]
+pub struct ArknightsSandbox {
+    /// 沙盒 id（如 `sandbox_1`）
+    pub id: String,
+    /// 沙盒名（如「沙洲遗闻」）
+    pub name: String,
+    /// 基建等级
+    pub base_lv: i32,
+    /// 主线任务进度
+    pub main_quest: i32,
+    /// 已解锁节点数
+    pub unlock_node: i32,
+    /// 击杀数
+    pub enemy_kill: i32,
+    /// 最长存续天数
+    pub max_day: i32,
+    /// 最长挑战天数
+    pub max_day_challenge: i32,
+    /// 创建裂隙数
+    pub create_rift: i32,
+    /// 修复裂隙进度（实测 `[0, 5]` = 当前/目标）
+    #[serde(default)]
+    pub fix_rift: Vec<i32>,
+    /// 支线任务（接口键名为 `subQuest`，单复数不一致，显式映射）
+    #[serde(rename = "subQuest", default)]
+    pub sub_quests: Vec<ArknightsSandboxQuest>,
+}
+
+/// 沙盒支线任务（`sandbox[].subQuest[]`）
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+#[serde(rename_all = "camelCase", default)]
+pub struct ArknightsSandboxQuest {
+    pub id: String,
+    pub name: String,
+    pub done: bool,
+}
+
+/// 历险签约记录（`data.bossRush[]`）
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+#[serde(rename_all = "camelCase", default)]
+pub struct ArknightsBossRush {
+    pub id: String,
+    pub pic_url: String,
+    pub record: ArknightsBossRushRecord,
+}
+
+/// 历险签约的单期记录
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+#[serde(rename_all = "camelCase", default)]
+pub struct ArknightsBossRushRecord {
+    /// 达成的难度（空串 = 未挑战）
+    pub difficulty: String,
+    pub played: bool,
+    pub stage_id: String,
 }
 
 /// 基建（`data.building`）
@@ -454,6 +702,64 @@ pub struct ArknightsRoomSegment {
     pub speed: f64,
     /// 宿舍舒适度
     pub comfort: i32,
+
+    // ---- 以下字段只有个别设施才有（缺省即空值）----
+
+    /// 贸易站当前库存订单（`tradings[]` 才有）
+    #[serde(default)]
+    pub stock: Vec<ArknightsTradingOrder>,
+    /// 贸易站订单上限
+    pub stock_limit: i32,
+    /// 贸易站订单策略（`O_GOLD` = 龙门币订单）
+    pub strategy: String,
+    /// 会客室线索信息（仅 `meeting`；未解锁时为 null/缺失）
+    pub clue: Option<ArknightsClue>,
+}
+
+/// 贸易站的一笔订单（`stock[]`）
+///
+/// 实测形状：`{ "delivery": [{"count":2,"id":"3003","type":"MATERIAL"}],
+/// "gain": {"count":1000,"id":"4001","type":"GOLD"}, "instId": 2959, "type": "O_GOLD" }`。
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+#[serde(rename_all = "camelCase", default)]
+pub struct ArknightsTradingOrder {
+    /// 卖出货物（原样保留，前端可展开）
+    #[serde(default)]
+    pub delivery: Vec<ArknightsOrderItem>,
+    /// 收益（如 1000 龙门币）
+    pub gain: Option<ArknightsOrderItem>,
+    pub inst_id: i64,
+    #[serde(rename = "type", default)]
+    pub kind: String,
+}
+
+/// 订单里的一件物品
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+#[serde(rename_all = "camelCase", default)]
+pub struct ArknightsOrderItem {
+    pub id: String,
+    pub count: i64,
+    #[serde(rename = "type", default)]
+    pub kind: String,
+}
+
+/// 会客室线索（`meeting.clue`）
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+#[serde(rename_all = "camelCase", default)]
+pub struct ArknightsClue {
+    /// 摆放中的线索派系（如 `RHODES` / `BLACKSTEEL`）
+    #[serde(default)]
+    pub board: Vec<String>,
+    /// 今日碎片奖励是否已领
+    pub daily_reward: bool,
+    /// 待接收的线索数
+    pub need_receive: i32,
+    /// 库存线索数
+    pub own: i32,
+    /// 已接收未领取数
+    pub received: i32,
+    /// 是否正在传递线索
+    pub sharing: bool,
 }
 
 /// 设施内的一名干员
@@ -990,6 +1296,78 @@ mod tests {
             "building.control[].chars 没解析到"
         );
         assert!(info.building.control[0].chars[0].ap >= 0);
+
+        // ---- 游戏数据页字段（章节进度 / 信息表 / 其他模式）----
+        // 主线关卡展示信息：键 = mainStageProgress 指向的关卡 id
+        let stage = info
+            .stage_info_map
+            .get("main_15-09")
+            .expect("stageInfoMap 没解析到");
+        assert_eq!(stage.code, "15-10");
+        assert_eq!(stage.name, "怀黍离");
+        assert_eq!(stage.ap_cost, 24);
+
+        // 活动章节进度：聚合 = 逐区相加
+        assert_eq!(info.activity.len(), 2, "activity 没解析到");
+        let act55 = info
+            .activity
+            .iter()
+            .find(|a| a.act_id == "act55side")
+            .expect("act55side 没解析到");
+        assert!(act55.act_replica_id.is_empty());
+        let cleared: i32 = act55.zones.iter().map(|z| z.cleared_stage).sum();
+        let total: i32 = act55.zones.iter().map(|z| z.total_stage).sum();
+        assert_eq!((cleared, total), (18, 27), "act55side 聚合进度");
+        let replica = info
+            .activity
+            .iter()
+            .find(|a| a.act_id == "1stact")
+            .expect("复刻活动没解析到");
+        assert_eq!(replica.act_replica_id, "act13d2");
+
+        // 信息表（名称 / 类别 / 排序 / 封面）
+        let act_info = info.activity_info_map.get("act55side").expect("activityInfoMap");
+        assert_eq!(act_info.name, "时间啊，向前！");
+        assert_eq!(act_info.kind, "", "新活动 type 可为空串");
+        assert!(act_info.pic_url.is_empty(), "act55side 实测无封面（picUrl 覆盖率约 57%，必须能容忍空串）");
+        let replica_info = info.activity_info_map.get("1stact").expect("1stact");
+        assert_eq!(replica_info.kind, "SIDESTORY");
+        assert!(
+            replica_info.pic_url.starts_with("https://bbs.hycdn.cn/"),
+            "1stact 实测带章节封面 picUrl"
+        );
+        assert_eq!(
+            info.campaign_info_map.get("camp_01").expect("campaignInfoMap").name,
+            "切尔诺伯格"
+        );
+        assert_eq!(
+            info.rogue_info_map.get("rogue_5").expect("rogueInfoMap").sort,
+            5
+        );
+        assert_eq!(
+            info.tower_info_map.get("tower_tr_01").expect("towerInfoMap").sub_name,
+            "罗德岛制药"
+        );
+
+        // 集成战略：bank 的键是 current/record（不是 total）
+        assert_eq!(info.rogue.records.len(), 2, "rogue.records 没解析到");
+        let rogue5 = info
+            .rogue
+            .records
+            .iter()
+            .find(|r| r.rogue_id == "rogue_5")
+            .expect("rogue_5 没解析到");
+        assert_eq!(rogue5.bank.record, 3);
+        assert_eq!(rogue5.medal.total, 12);
+
+        // 沙盒（subQuest 键名显式映射）与历险签约
+        assert_eq!(info.sandbox.len(), 1, "sandbox 没解析到");
+        assert_eq!(info.sandbox[0].fix_rift, vec![0, 5]);
+        assert_eq!(info.sandbox[0].sub_quests.len(), 1, "subQuest 没解析到");
+        assert_eq!(info.boss_rush.len(), 1, "bossRush 没解析到");
+
+        // 原始响应不带 dataVersion（由服务层填充）；旧缓存/裸接口解析后为 0
+        assert_eq!(info.data_version, 0, "接口本身不下发 dataVersion");
 
         assert!(info.current_ts > 0, "currentTs 没解析到");
     }

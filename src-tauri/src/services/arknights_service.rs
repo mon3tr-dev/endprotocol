@@ -286,10 +286,13 @@ impl ArknightsService {
             message: "data not found in arknights player/info response".to_string(),
         })?;
 
-        let info: ArknightsPlayerInfo =
+        let mut info: ArknightsPlayerInfo =
             serde_json::from_value(data.clone()).map_err(|error| AppError::AuthError {
                 message: format!("Failed to parse ArknightsPlayerInfo: {}", error),
             })?;
+
+        // 打上结构版本标记：前端据此判断缓存是否为旧格式（缺失章节进度等新字段）
+        info.data_version = crate::models::arknights::ARKNIGHTS_DATA_VERSION;
 
         log_info!(
             "arknights player/info: name={}, level={}, chars={}, storeTs={}",

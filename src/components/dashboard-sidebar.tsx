@@ -19,6 +19,9 @@ import {
   BookmarkIcon,
   MapIcon,
   SatelliteIcon,
+  ClockIcon,
+  FactoryIcon,
+  ChartIcon,
 } from "@/components/icons";
 import { siteConfig } from "@/config/site";
 import { ThemeSwitch } from "@/components/theme-switch";
@@ -92,7 +95,18 @@ interface SidebarProps {
   onToggleCollapsed?: () => void;
 }
 
-type NavKey = "dashboard" | "characters" | "medals" | "attendance" | "gacha" | "todo" | "domain" | "spaceship";
+type NavKey =
+  | "dashboard"
+  | "characters"
+  | "medals"
+  | "attendance"
+  | "gacha"
+  | "todo"
+  | "domain"
+  | "spaceship"
+  | "recruitment"
+  | "building"
+  | "gamedata";
 
 const NAV_KEYS: NavKey[] = [
   "dashboard",
@@ -103,6 +117,9 @@ const NAV_KEYS: NavKey[] = [
   "todo",
   "domain",
   "spaceship",
+  "recruitment",
+  "building",
+  "gamedata",
 ];
 
 function GripHandle({
@@ -2126,6 +2143,186 @@ export const Sidebar = ({
                           onPointerDown={(e) => startNavDrag("spaceship", e)}
                           onDragEnd={endNavDrag}
                           isDragging={draggingNav === "spaceship"}
+                        />
+                      )}
+                    </div>
+                  );
+
+                case "recruitment":
+                  return (
+                    <div
+                      key="recruitment"
+                      data-flip-id="recruitment"
+                      className="relative group"
+                      onMouseEnter={() =>
+                        draggingNav &&
+                        draggingNav !== "recruitment" &&
+                        swapNav(draggingNav, "recruitment")
+                      }
+                    >
+                      <Link
+                        to="/recruitment"
+                        onClick={(e) => void handleNavClick(e, "/recruitment")}
+                        title={
+                          collapsed
+                            ? t("sidebar.recruitment") || "Recruitment"
+                            : undefined
+                        }
+                        className={clsx(
+                          "flex items-center rounded-xl transition-all duration-300 ease-in-out",
+                          collapsed
+                            ? "justify-center px-0 py-2.5 gap-0"
+                            : "gap-3 pl-3 pr-8 py-2.5",
+                          draggingNav === "recruitment" ? "opacity-60" : "",
+                          location.pathname === "/recruitment"
+                            ? "lg-control text-foreground"
+                            : "text-foreground hover:text-foreground",
+                        )}
+                      >
+                        <ClockIcon
+                          className={clsx(
+                            "w-5 h-5 flex-shrink-0 transition-all duration-200",
+                            location.pathname === "/recruitment"
+                              ? ""
+                              : "group-hover:scale-110 group-hover:rotate-12",
+                          )}
+                        />
+                        <span
+                          className={clsx(
+                            "text-sm font-semibold whitespace-nowrap overflow-hidden transition-all duration-300 ease-in-out",
+                            collapsed
+                              ? "max-w-0 opacity-0"
+                              : "max-w-[10rem] opacity-100",
+                          )}
+                        >
+                          {t("sidebar.recruitment") || "Recruitment"}
+                        </span>
+                      </Link>
+                      {!collapsed && (
+                        <GripHandle
+                          onPointerDown={(e) => startNavDrag("recruitment", e)}
+                          onDragEnd={endNavDrag}
+                          isDragging={draggingNav === "recruitment"}
+                        />
+                      )}
+                    </div>
+                  );
+
+                case "building":
+                  return (
+                    <div
+                      key="building"
+                      data-flip-id="building"
+                      className="relative group"
+                      onMouseEnter={() =>
+                        draggingNav &&
+                        draggingNav !== "building" &&
+                        swapNav(draggingNav, "building")
+                      }
+                    >
+                      <Link
+                        to="/building"
+                        onClick={(e) => void handleNavClick(e, "/building")}
+                        title={
+                          collapsed
+                            ? t("sidebar.building") || "Building"
+                            : undefined
+                        }
+                        className={clsx(
+                          "flex items-center rounded-xl transition-all duration-300 ease-in-out",
+                          collapsed
+                            ? "justify-center px-0 py-2.5 gap-0"
+                            : "gap-3 pl-3 pr-8 py-2.5",
+                          draggingNav === "building" ? "opacity-60" : "",
+                          location.pathname === "/building"
+                            ? "lg-control text-foreground"
+                            : "text-foreground hover:text-foreground",
+                        )}
+                      >
+                        <FactoryIcon
+                          className={clsx(
+                            "w-5 h-5 flex-shrink-0 transition-all duration-200",
+                            location.pathname === "/building"
+                              ? ""
+                              : "group-hover:scale-110 group-hover:rotate-12",
+                          )}
+                        />
+                        <span
+                          className={clsx(
+                            "text-sm font-semibold whitespace-nowrap overflow-hidden transition-all duration-300 ease-in-out",
+                            collapsed
+                              ? "max-w-0 opacity-0"
+                              : "max-w-[10rem] opacity-100",
+                          )}
+                        >
+                          {t("sidebar.building") || "Building"}
+                        </span>
+                      </Link>
+                      {!collapsed && (
+                        <GripHandle
+                          onPointerDown={(e) => startNavDrag("building", e)}
+                          onDragEnd={endNavDrag}
+                          isDragging={draggingNav === "building"}
+                        />
+                      )}
+                    </div>
+                  );
+
+                case "gamedata":
+                  return (
+                    <div
+                      key="gamedata"
+                      data-flip-id="gamedata"
+                      className="relative group"
+                      onMouseEnter={() =>
+                        draggingNav &&
+                        draggingNav !== "gamedata" &&
+                        swapNav(draggingNav, "gamedata")
+                      }
+                    >
+                      <Link
+                        to="/game-data"
+                        onClick={(e) => void handleNavClick(e, "/game-data")}
+                        title={
+                          collapsed
+                            ? t("sidebar.gamedata") || "Game Data"
+                            : undefined
+                        }
+                        className={clsx(
+                          "flex items-center rounded-xl transition-all duration-300 ease-in-out",
+                          collapsed
+                            ? "justify-center px-0 py-2.5 gap-0"
+                            : "gap-3 pl-3 pr-8 py-2.5",
+                          draggingNav === "gamedata" ? "opacity-60" : "",
+                          location.pathname === "/game-data"
+                            ? "lg-control text-foreground"
+                            : "text-foreground hover:text-foreground",
+                        )}
+                      >
+                        <ChartIcon
+                          className={clsx(
+                            "w-5 h-5 flex-shrink-0 transition-all duration-200",
+                            location.pathname === "/game-data"
+                              ? ""
+                              : "group-hover:scale-110 group-hover:rotate-12",
+                          )}
+                        />
+                        <span
+                          className={clsx(
+                            "text-sm font-semibold whitespace-nowrap overflow-hidden transition-all duration-300 ease-in-out",
+                            collapsed
+                              ? "max-w-0 opacity-0"
+                              : "max-w-[10rem] opacity-100",
+                          )}
+                        >
+                          {t("sidebar.gamedata") || "Game Data"}
+                        </span>
+                      </Link>
+                      {!collapsed && (
+                        <GripHandle
+                          onPointerDown={(e) => startNavDrag("gamedata", e)}
+                          onDragEnd={endNavDrag}
+                          isDragging={draggingNav === "gamedata"}
                         />
                       )}
                     </div>
