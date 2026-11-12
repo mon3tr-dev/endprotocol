@@ -1,9 +1,9 @@
 {
-  "recruitment_title": "Recruitment",
+  "recruitment_title": "Open Recruitment",
   "recruitment_slot": "Slot {{number}}",
   "recruitment_slot_running": "Recruiting",
   "recruitment_slot_finished": "Finished",
-  "recruitment_slot_free": "Free",
+  "recruitment_slot_free": "Vacant",
   "recruitment_slot_locked": "Locked",
   "recruitment_switch_account": "Switch Account",
   "recruitment_view_page": "Details"

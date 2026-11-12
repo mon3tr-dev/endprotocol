@@ -38,7 +38,7 @@ const ROLE_CONFIG_KEY = "gamedata_page_role_id";
 /** 各区块折叠状态（sectionKey → 是否折叠），持久化到 ConfigService */
 const FOLD_CONFIG_KEY = "gamedata_page_folded";
 
-/** 活动类别 → i18n 键与展示顺序（SIDESTORY 别传 / MINISTORY 插曲 / BRANCHLINE 支线 / 其他活动） */
+/** 活动类别 → i18n 键与展示顺序（SIDESTORY 别传 / MINISTORY 故事集 / BRANCHLINE 插曲 / 其他活动） */
 const CHAPTER_GROUP_ORDER = [
   "sidestory",
   "ministory",
@@ -424,7 +424,7 @@ export default function GameDataPage() {
   }, [info]);
 
   const sandboxList = useMemo(() => info?.sandbox ?? [], [info]);
-  /** 历险签约（引航者试炼）：解析期数并按期数倒序（#06 在前，对齐官方排序） */
+  /** 引航者试炼（Trials for Navigator）：解析期数并按期数倒序（#06 在前，对齐官方排序） */
   const bossRushList = useMemo(
     () =>
       (info?.bossRush ?? [])
@@ -758,7 +758,7 @@ export default function GameDataPage() {
             </CollapsibleCard>
           </div>
 
-          {/* 沙中之地 + 历险签约 */}
+          {/* 生息演算 + 引航者试炼 */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
             <CollapsibleCard
               sectionKey="sandbox"
@@ -830,12 +830,12 @@ export default function GameDataPage() {
                           className="text-xs text-foreground truncate"
                           title={
                             b.num != null
-                              ? t("gamedata_page.bossrush_name")
+                              ? t("gamedata_page.bossrush_season", { n: b.num })
                               : b.id
                           }
                         >
                           {b.num != null
-                            ? t("gamedata_page.bossrush_name")
+                            ? t("gamedata_page.bossrush_season", { n: b.num })
                             : b.id}
                         </div>
                         {b.num != null && (

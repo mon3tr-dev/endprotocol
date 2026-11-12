@@ -1,14 +1,14 @@
 {
   "building_title": "Base Data",
   "building_drones": "Drones",
-  "building_drones_full": "Fully charged",
+  "building_drones_full": "Full",
   "building_drones_full_in": "Full in {{time}}",
-  "building_dorm_rest": "Dorm Rest Progress",
+  "building_dorm_rest": "Dorm Rest",
   "building_manufactures": "Producing",
   "building_tradings": "Orders",
-  "building_tired": "Tired",
+  "building_tired": "Fatigued",
   "building_training": "Training",
-  "building_specializing": "Specializing",
+  "building_specializing": "Specialization",
   "building_idle": "Idle",
   "building_switch_account": "Switch Account",
   "building_view_page": "Details"

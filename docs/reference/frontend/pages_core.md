@@ -244,7 +244,7 @@
 - 心情进度条渐变样式抽取为 `getMoodBarClass`（`spaceship-shared.ts`），页面使用；卡片仍用内联条件。
 
 ## `src/pages/recruitment.tsx`
-**职责**：公开招募独立页面（**仅明日方舟**，`PAGE_GAME_SUPPORT.recruitment = ["arknights"]`）。页头（`CardIcon "clock"` + 账户下拉（仅列明日方舟账户）+ 刷新）→ 办公室刷新条（`hire.refreshCount/3`）→ **4 个招募栏位**双列卡片（栏位号、状态徽标、`HH:MM:SS` 倒计时按秒重算、进度条、开始/完成时间）。
+**职责**：公开招募独立页面（**仅明日方舟**，`PAGE_GAME_SUPPORT.recruitment = ["arknights"]`）。页头（`CardIcon "clock"` + 账户下拉（仅列明日方舟账户）+ 刷新）→ **联络次数**条（`hire.refreshCount/3`，人力资源办公室产出）→ **4 个招募栏位**双列卡片（栏位号、状态徽标、`HH:MM:SS` 倒计时按秒重算、进度条、开始/完成时间）。
 
 **导出**：`export default function RecruitmentPage`。
 
@@ -263,28 +263,37 @@
 - i18n：`sidebar.recruitment`、`recruitment_page.{subtitle,slot,state_*,remaining,complete_at,start_time,hire_refresh,hire_refresh_usage,empty,switch_account}`。
 
 ## `src/pages/building.tsx`
-**职责**：基地数据独立页面（**仅明日方舟**）。页头（`CardIcon "factory"`）→ 概览三卡（**无人机**：value/max + 距补满倒计时；**宿舍休息进度**：平均心情百分比 + 在休人数；**疲劳干员**：计数与头像/名称）→ 办公室/训练室两卡 → 按 `FACILITY_ORDER` 渲染各设施卡片（控制中枢/发电站/贸易站/制造站/宿舍/会客室），每段排班展示**干员头像**（`RemoteThumb` + `arknightsPortraitUrl(charId)`，见下）、槽位、干员心情条（名字来自 `charInfoMap`）、制造站批次进度/倒计时、贸易站订单数、会客室线索（库存/摆放/今日碎片）。
+**职责**：基地数据独立页面（**仅明日方舟**）。页头（`CardIcon "factory"`）→ 概览三卡（**无人机**：value/max + 距补满倒计时；**宿舍休息进度**：平均心情百分比 + 在休人数；**疲劳干员**：计数 + **全部**疲劳干员的小头像 chip（`flex-wrap` + `max-h-44` 内滚，`title` 里带房间位置））→ 办公室/训练室两卡（训练室带**受训干员与训练员的头像**）→ 按 `FACILITY_ORDER` 渲染各设施卡片（控制中枢/发电站/贸易站/制造站/宿舍/会客室），每段排班展示**干员头像**（`RemoteThumb` + `arknightsPortraitUrl(charId)`，见下）、槽位、干员心情条（名字来自 `charInfoMap`）、制造站批次进度/倒计时、贸易站订单数、会客室线索（库存/摆放/今日线索奖励）。
 
 **导出**：`export default function BuildingPage`；文件内 `PageHeader`（账户切换 + 刷新，加载态/正常态共用，自带 `useTranslation`）。
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
-| `ROLE_CONFIG_KEY` | building.tsx:32 | `"building_page_role_id"` |
-| `FACILITY_TITLE_KEY` | building.tsx:37 | 设施键 → `building_page.room_*` i18n 键 |
-| `moodBarClass(mood)` | building.tsx:44 | 心情条配色：≤0 危险红 / <12 警告黄 / 其余成功绿 |
-| `BuildingPage()` | building.tsx:53 | 页面组件；`nowMs` 每秒重算无人机/专精倒计时 |
+| `ROLE_CONFIG_KEY` | building.tsx:49 | `"building_page_role_id"` |
+| `FACILITY_TITLE_KEY` | building.tsx:54 | 设施键 → `building_page.room_*` i18n 键 |
+| `moodBarClass(mood)` | building.tsx:64 | 心情条配色：≤0 危险红 / <12 警告黄 / 其余成功绿 |
+| `BuildingPage()` | building.tsx:70 | 页面组件；`nowMs` 每秒重算无人机/专精/办公室刷新倒计时 |
 | `charName(charId)` | — | `info.charInfoMap[charId].name`，缺失回退 charId |
+| `facilityTitle(key)` | — | 设施键 / `hire` / `training` → i18n 标题 |
+| `slotLabel(slotId)` | — | `locateRoomSlot` + i18n；解析不到返回 `null`（不显示 id） |
 | `roomChars(segment)` | — | 排班段 → `{name, mood, percent}` 视图 |
 
 **备注**：
 - 路由 `/building`；侧栏 `NavKey = "building"`（`FactoryIcon`）。
 - 设施状态计算与 `building` 卡片共用（`cards/building/building-shared.ts`）；心情换算来自 `@/types/arknights`（`ap/360000` = 0..24）。
-- **干员头像**：接口不下发（`charAssets` 实测空数组），前端按官方 CDN 规律拼 `char/portrait/{charId}.png`（`arknightsPortraitUrl`，实测 200），经 `RemoteThumb` 下载缓存显示、失败回退首字母占位。
-- i18n：`sidebar.building`、`building_page.*`（room_*/drones/dorm_rest/orders/clue_* 等）。
+- **干员头像**：接口不下发（`charAssets` 实测空数组），前端按官方 CDN 拼地址 —— 小方形缩略图用 `arknightsAvatarUrl`（`char_skin/avatar/{charId}%231.png`，180×180 脸部特写），竖长图才用 `arknightsPortraitUrl`（`char/portrait/{charId}.png`，180×360 半身像；塞进方块会被裁成躯干）。经 `RemoteThumb` 下载缓存显示、失败回退首字母占位。
+- **槽位 id 不上界面**：接口的 `slotId`（`slot_24` 之类）是内部主键，页面统一用 `locateRoomSlot` 翻成 `building_page.facility_room`（「贸易站 2」）或设施名；`tiredChars[].roomSlotId` 实测可能指向接口没下发的房间，此时只显示干员名、**不显示 id**。
+- **疲劳干员全部显示**：`tiredChars` 实测可能有很多条（B 服账号 7 条），不要 `slice` 截断；用 `flex-wrap` + `max-h-44 overflow-y-auto` 兜住高度。
+- **线索用词**：会客室那三处统一叫「线索」（`今日线索奖励已领/未领`），不要写「碎片」—— 游戏里没有「碎片」这个东西。
+- **⚠️ 术语必须用官方原文**（英文一律照 International 版，别直译）：制造站 = **Factory**（加工站才是 Workshop）、无人机 = **Drones**、心情 = **Morale**、宿舍舒适度 = **Ambience**、公开招募 = **Open Recruitment**、办公室（人力资源办公室）= **Human Resources Office**（产出「联络次数 / Liaison Count」，不是"办公室刷新"）、专精 = **Specialization**；四个章节分类是 `SIDESTORY`=**别传/Side Story**、`MINISTORY`=**故事集/Story Collection**、`BRANCHLINE`=**插曲/Intermezzo**、空串=**活动/Event**（⚠️ 曾把 MINISTORY 当「插曲」、BRANCHLINE 当「支线」，两个都错位一格）；模式名：剿灭作战 = Annihilation、集成战略 = Integrated Strategies、保全派驻 = **Stationary Security Service**、生息演算 = **Reclamation Algorithm**（原「沙中之地/Sandbox」是错的）、引航者试炼 = **Trials for Navigator**（原「历险签约/Boss Rush」是错的）、复刻 = **Rerun**。
+- **训练室**：`building.training.level` 依赖后端 `dataVersion >= 3` 的模型；旧缓存下 `level` 为 `undefined`，页面用 `?? 0` 兜底。专精结束后接口仍保留 `trainee` 但 `targetSkill = -1`，此时显示受训干员 + 「空闲」而不是整块隐藏。
+- **人力资源办公室（`building.hire`）**：`refreshCount` 是**当前持有**的「联络次数」（0..3，满 3 封顶、随时间恢复、可跨天累积），**不是"今日已用"**；`completeWorkTime` 是**下次 +1 恢复**的时间戳。判断"已满"必须看 `refreshCount >= 3`，**不能**看 `completeWorkTime` 是否过期（那只说明此刻刚好恢复了一次）。
+- **制造站**：只有 `complete > 0` 才算「有待收取」—— 空闲站的 `completeWorkTime` 是上一次生产的残留时间戳，不能当作完成标志。
+- i18n：`sidebar.building`、`building_page.*`（room_*/drones/dorm_rest/orders/clue_*/hire_refresh_*/facility_* 等）。**英文必须用官方术语**：控制中枢 Control Center、发电站 Power Plant、贸易站 Trading Post、制造站 **Factory**（不是 Workshop）、宿舍 Dormitory、会客室 Reception Room、办公室 Office、训练室 Training Room、无人机 Drones、心情 **Morale**、舒适度 **Ambience**、专精 Specialization。
 - ⚠️ 设施接口是「对象或数组」混用（control/meeting 为对象），后端 `one_or_many` 已收敛成 `Vec`，前端按数组渲染即可。
 
 ## `src/pages/game-data.tsx`
-**职责**：游戏数据独立页面（**仅明日方舟**；**页面专属，没有对应卡片**）。页头（`CardIcon "chart"`）之后**全部区块均为 `CollapsibleCard` 可折叠卡片**（点击标题行折叠/展开，带 `grid-rows` 高度动画；折叠状态持久化在配置 `gamedata_page_folded`）：主线进度（`status.mainStageProgress` + `stageInfoMap[key].code/name`，B 服实测为空 → 占位文案）→ **章节进度按类别拆成 4 张独立卡片**（`activity[]` 按 `activityInfoMap[].type` 分组：别传 `SIDESTORY` / 插曲 `MINISTORY` / 支线 `BRANCHLINE` / 其他活动（空串），组内按开始时间倒序，标题行右侧显示行数徽标，空分组不出卡；**章节行**：有封面时封面按原比例整幅渲染、宽度缩到行的 1/3（`w-1/3 aspect-[1002/180]`，实测统一 1002×180 不裁切），复刻徽标压在封面左上，右侧 46% 宽内联放状态（☑ 已完成 / 进行中）+ `cleared/total` + 进度条（`ChapterStatus`，语义 token 色）；**无封面的活动（约 43%，插曲全部无封面）不渲染占位封面，降级为紧凑行**——复刻徽标 + 名称一行，右侧同宽 46% 内联状态/计数/进度条）→ 剿灭作战（**据点行**：`h-16` 卡片，`campaignInfoMap[].picUrl` 作为整行背景（1002×180 横幅，右侧 `mask-image` 8%→72% 渐隐以免压住文字），左侧据点名 + **阵营徽标**（`campaignInfoMap[cid].campaignZoneId` → `campaignZoneInfoMap[zoneId].name`，如哥伦比亚/谢拉格/维多利亚/汐斯塔/炎国；缺表时不显示徽标），右侧「最高剿灭数 N」）→ 集成战略（**图片行**：固定行高 `h-14`；缩略图 `absolute inset-y-0 left-0 h-full w-auto` **绝对定位铺在行左缘、不占布局**（保持 1002:180 原比例不裁剪、上下无缝隙），右端 `mask-image` 在 15%→58% 处渐隐到卡片背景；文字块 `pl-[33%]` **精确落在行左侧 1/3 处、压在图片渐隐区上**；**行内字段对齐官方「集成战略」页：投资系统 = `bank.current`、解锁道具 = `relicCnt`**，右上角为主题奖章 `medal.current/total`，按 `rogueInfoMap.sort` **降序**排序（= 官方顺序，最新主题在最上，如 `sort=6` 的「沉沦者的黑流树海」排第一；升序会把顺序整个颠倒）。⚠️ `bpLevel`（通票等级）不在官方该页展示；`clearTime` 实测是 `0/2/6` 这类小整数**而非时间戳**，曾按日期格式化成「01-01 08:00 首通」，现已不再渲染）与保全派驻（同款图片行 + 名/subName + 最好层数）双列，两者 `picUrl` 为空时**不渲染缩略图**（文字块也不加左内边距）→ 沙中之地（`sandbox[]`：基建等级/修复裂隙/最长天数/支线完成数）与**历险签约（引航者试炼）**双列 —— 签约行与集成战略同款图片行：缩略图绝对定位铺左 + 模式名 `gamedata_page.bossrush_name`（引航者试炼 / Trials for Navigator）与黄色 `#NN` 期数徽标（从 `actNbossrush` 解析，期数倒序）一起压在左侧 1/3 处、不出图右，右侧 played/难度或「暂无记录」。
+**职责**：游戏数据独立页面（**仅明日方舟**；**页面专属，没有对应卡片**）。页头（`CardIcon "chart"`）之后**全部区块均为 `CollapsibleCard` 可折叠卡片**（点击标题行折叠/展开，带 `grid-rows` 高度动画；折叠状态持久化在配置 `gamedata_page_folded`）：主线进度（`status.mainStageProgress` + `stageInfoMap[key].code/name`，B 服实测为空 → 占位文案）→ **章节进度按类别拆成 4 张独立卡片**（`activity[]` 按 `activityInfoMap[].type` 分组：别传 `SIDESTORY` / 故事集 `MINISTORY` / 插曲 `BRANCHLINE` / 其他活动（空串），组内按开始时间倒序，标题行右侧显示行数徽标，空分组不出卡；**章节行**：有封面时封面按原比例整幅渲染、宽度缩到行的 1/3（`w-1/3 aspect-[1002/180]`，实测统一 1002×180 不裁切），复刻徽标压在封面左上，右侧 46% 宽内联放状态（☑ 已完成 / 进行中）+ `cleared/total` + 进度条（`ChapterStatus`，语义 token 色）；**无封面的活动（约 43%，插曲全部无封面）不渲染占位封面，降级为紧凑行**——复刻徽标 + 名称一行，右侧同宽 46% 内联状态/计数/进度条）→ 剿灭作战（**据点行**：`h-16` 卡片，`campaignInfoMap[].picUrl` 作为整行背景（1002×180 横幅，右侧 `mask-image` 8%→72% 渐隐以免压住文字），左侧据点名 + **阵营徽标**（`campaignInfoMap[cid].campaignZoneId` → `campaignZoneInfoMap[zoneId].name`，如哥伦比亚/谢拉格/维多利亚/汐斯塔/炎国；缺表时不显示徽标），右侧「最高剿灭数 N」）→ 集成战略（**图片行**：固定行高 `h-14`；缩略图 `absolute inset-y-0 left-0 h-full w-auto` **绝对定位铺在行左缘、不占布局**（保持 1002:180 原比例不裁剪、上下无缝隙），右端 `mask-image` 在 15%→58% 处渐隐到卡片背景；文字块 `pl-[33%]` **精确落在行左侧 1/3 处、压在图片渐隐区上**；**行内字段对齐官方「集成战略」页：投资系统 = `bank.current`、收藏品 = `relicCnt`**，右上角为主题奖章 `medal.current/total`，按 `rogueInfoMap.sort` **降序**排序（= 官方顺序，最新主题在最上，如 `sort=6` 的「沉沦者的黑流树海」排第一；升序会把顺序整个颠倒）。⚠️ `bpLevel`（通票等级）不在官方该页展示；`clearTime` 实测是 `0/2/6` 这类小整数**而非时间戳**，曾按日期格式化成「01-01 08:00 首通」，现已不再渲染）与保全派驻（Stationary Security Service，同款图片行 + 名/subName + 最好成绩关卡数）双列，两者 `picUrl` 为空时**不渲染缩略图**（文字块也不加左内边距）→ 生息演算（Reclamation Algorithm，`sandbox[]`：基建等级/修复裂隙/最长天数/支线完成数）与**引航者试炼（Trials for Navigator）**双列 —— 试炼行与集成战略同款图片行：缩略图绝对定位铺左 + 期数文案 `gamedata_page.bossrush_season`（第 N 期 / Season N）与黄色 `#NN` 期数徽标（从 `actNbossrush` 解析，期数倒序）一起压在左侧 1/3 处、不出图右，右侧 played/难度或「暂无记录」。
 
 **导出**：`export default function GameDataPage`；文件内 `PageHeader`、`ChapterRow`（章节聚合行）、`ChapterStatus`（章节行右侧状态块）、`CollapsibleCard`（可折叠区块卡）、`chapterGroupOf(type)`、`parseBossRushNum(id)`、`bossRushBadgeLabel(num)`、`CHAPTER_GROUP_ORDER` / `CHAPTER_GROUP_TITLE_KEY`。
 

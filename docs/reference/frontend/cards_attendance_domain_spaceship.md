@@ -235,7 +235,9 @@
 
 ## `src/components/cards/domain-info/index.tsx`
 
-**职责**：大世界区域（domain）信息卡片。展示当前区域名称/等级、区域货币（谷地/武陵调度卷）余额进度、基建建设点列表；支持切换账号、切换区域、查看建设点详情列表三个弹窗。数据类型与格式化工具抽取到 `domain-shared.ts`，与独立页面 `src/pages/domain.tsx` 共用。
+**职责**：大世界**地区**（domain）信息卡片。展示当前地区名称/建设等级、地区调度券（谷地/武陵 Stock Bill）余额进度、**据点**（Outpost）列表；支持切换账号、切换地区、查看据点详情列表三个弹窗。数据类型与格式化工具抽取到 `domain-shared.ts`，与独立页面 `src/pages/domain.tsx` 共用。
+
+> ⚠️ **术语**（终末地官方）：`domain` = **地区 / Region**（不是"区域"，页面/侧栏都叫「地区信息 / Region Info」）；`settlements` = **据点 / Outpost**（**不是「基建建设点」**——那是错误翻译）；`moneyMgr` = **调度券 / Stock Bill**（⚠️ 简中是「调度**券**」不是「调度**卷**」，曾写错）。地区建设等级 = **Regional Development Level**，据点的 `exp` = **繁荣度 / Prosperity**。
 
 **导出**：`DomainInfoCard`（默认导出）；`DomainData`/`DomainSettlement` 从 `./domain-shared` 再导出（向后兼容）。
 **主要依赖**：`GlassButton/GlassCard/GlassProgressCircle`、`useCardData`、`roleDataService`、`CardConfigService`、`getAccounts`、`AccountAvatar`、`Img`、`logError`、`resolveServerLabel`、`CustomModal*`、类型 `Account`/`DomainInfoCardSettings`、`./domain-shared`（`DomainData`/`DomainSettlement`/`formatMoney`/`formatDateTime`/`getMoneyName`）。
@@ -244,7 +246,7 @@
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
-| `domain-shared.ts` | 独立文件 | `DomainSettlement`/`DomainData` 接口、`formatMoney`（`≥10000` 转 `x.xw`）、`formatDateTime`（秒级时间戳 → `MM-DD HH:mm`）、`DOMAIN_MONEY_NAMES`（`domain_1` 谷地调度卷 / `domain_2` 武陵调度卷）、`getMoneyName(domainId, lang)`——卡片与 `/domain` 页面共用 |
+| `domain-shared.ts` | 独立文件 | `DomainSettlement`/`DomainData` 接口、`formatMoney`（`≥10000` 转 `x.xw`）、`formatDateTime`（秒级时间戳 → `MM-DD HH:mm`）、`DOMAIN_MONEY_NAMES`（`domain_1` 谷地调度券 / `domain_2` 武陵调度券，**注意是「券」不是「卷」**）、`getMoneyName(domainId, lang)`——卡片与 `/domain` 页面共用 |
 | state | 82-91 | `customRoleId`（初值 `settings.roleId`）、`domainId`（初值 `settings.domainId`）、`isRoleSelectOpen`、`isDomainSelectOpen`、`isListOpen`、`accounts` |
 | `effectiveRoleId` | 93 | `customRoleId ?? defaultRoleId` |
 | `useCardData<DomainData[]>` | 95-103 | `roleDataService.queryData(effectiveRoleId, "char_detail", ["domain"])`，取 `result["domain"]`；`reloadKey = effectiveRoleId` |
@@ -273,7 +275,7 @@
 
 | 弹窗 | 行号 | 结构 |
 | --- | --- | --- |
-| 建设点详情列表（`isListOpen`） | 326-460 | Header 331-334（域名 · `domain_info_settlements`）；Body 335-454：区域等级行 337-342、货币行 343-351、分隔+列表 353-452（空态 357-360；滚动容器 362，条目 363-449：头像/名称/等级/MAX 徽标 377-397，货币进度条 401-419，经验进度条 420-437，上次产出 438-445）；Footer 455-459（`common.close`） |
+| 据点详情列表（`isListOpen`） | 326-460 | Header 331-334（域名 · `domain_info_settlements`）；Body 335-454：地区建设等级行 337-342、调度券行 343-351、分隔+列表 353-452（空态 357-360；滚动容器 362，条目 363-449：头像/名称/等级/MAX 徽标 377-397，调度券进度条 401-419，繁荣度进度条 420-437，上次产出 438-445）；Footer 455-459（`common.close`） |
 | 切换区域（`isDomainSelectOpen`） | 462-498 | Header 467-469（`domain_info_switch_domain`）；Body 470-492 列出 `domains`（472-490，当前项显示 `card:current`）；Footer 493-497（`common.cancel`） |
 | 切换账号（`isRoleSelectOpen`） | 500-549 | Header 505-507（`card:select_role`）；Body 508-543 空态 510-513（`card:no_accounts`）/账号条目 515-541（头像、昵称、`resolveServerLabel`·`Lv.`、当前标记）；Footer 544-548（`common.cancel`） |
 
@@ -293,8 +295,8 @@
 | 字段 | 行号 | 值 | 说明 |
 | --- | --- | --- | --- |
 | `id` | 2 | `"domain_info"` | 卡片类型标识（= settings 键名） |
-| `name` | 3-6 | `{zh:"区域信息", en:"Domain Info"}` | 多语言名称 |
-| `description` | 7-10 | `{zh:"展示大世界区域信息（等级、货币、基建建设点）", en:"…"}` | 多语言描述 |
+| `name` | 3-6 | `{zh:"地区信息", en:"Region Info"}` | 多语言名称 |
+| `description` | 7-10 | `{zh:"展示地区建设等级、调度券与据点繁荣度", en:"Display Regional Development Level, Stock Bills and Outpost Prosperity"}` | 多语言描述 |
 | `icon` | 11 | `"map"` | 图标键 |
 | `defaultSize` | 12 | `{w:4,h:2}` | 默认 4×2 |
 | `version` | 13 | `"1.0.0"` | 版本 |
@@ -307,9 +309,9 @@
 
 | 键 | 值 | 使用处 |
 | --- | --- | --- |
-| `domain_info_level` | 区域等级 | index:258、338、481 |
+| `domain_info_level` | 地区建设等级 | index:258、338、481 |
 | `domain_info_money` | 货币 | index:279、345（作为 `getMoneyName` 的兜底） |
-| `domain_info_settlements` | 基建建设点 | index:291、333、355 |
+| `domain_info_settlements` | 据点 | index:291、333、355 |
 | `domain_info_settlement_level` | 等级 | index:312、391 |
 | `domain_info_settlement_exp` | 经验 | index:423 |
 | `domain_info_settlement_money` | 货币 | index:404 |
@@ -324,6 +326,8 @@
 ## `src/components/cards/spaceship/index.tsx`
 
 **职责**：帝江号（spaceship）卡片。展示各舱室等级与派驻干员头像（心情色环），点开舱室弹窗查看每位干员的心情/信赖进度条；支持切换账号弹窗。总控中枢置顶，未识别舱室类型不展示。数据类型与心情/信赖计算工具抽取到 `spaceship-shared.ts`，与独立页面 `src/pages/spaceship.tsx` 共用。
+
+> ⚠️ **`ROOM_META` 只映射 0/1/2/5**（总控中枢/制造舱/培养舱/会客室）。实测响应里还会出现 `type: 3`——该舱 `chars` 恒为空、只有 1 级，且**没有官方命名依据**，所以刻意不映射：`sortSpaceshipRooms` 的 `filter(getRoomMeta(r.type))` 会把它过滤掉，符合「未识别类型不展示」。顺带提醒：这张表漏 key 会让整舱**静默消失**（不报错），改动前请先用 `user_debug/card_detail.json` 里真实的 `rooms[].type` 取值核对。
 
 **导出**：`SpaceshipCard`（默认导出）；`SpaceShipRoomChar`/`SpaceShipRoom` 从 `./spaceship-shared` 再导出（向后兼容）。
 **主要依赖**：`Glass*` 组件、`useCardData`、`roleDataService`、`CardConfigService`、`getAccounts`、`AccountAvatar`、`Img`、`logError`、`resolveServerLabel`、`useImageRequest`、`CustomModal*`、`CardIcon`、类型 `Account`/`CharDetailData`/`CharacterItem`/`SpaceshipCardSettings`、`./spaceship-shared`（`SpaceShipRoom`/`SpaceShipRoomChar`/`StationedCharView`/`TRUST_TEXT_CLASS`/`getMoodPercent`/`getTrustPercent`/`getTrustLevel`/`getMoodRingClass`/`getMoodTextClass`/`getRoomMeta`/`collectSpaceshipIds`/`sortSpaceshipRooms`）。
@@ -380,7 +384,7 @@
 | 字段 | 行号 | 值 | 说明 |
 | --- | --- | --- | --- |
 | `id` | 2 | `"spaceship"` | 卡片类型标识（= settings 键名） |
-| `name` | 3-6 | `{zh:"帝江号", en:"Spaceship"}` | 多语言名称 |
+| `name` | 3-6 | `{zh:"帝江号", en:"Dijiang"}` | 多语言名称 |
 | `description` | 7-10 | `{zh:"展示帝江号各舱室等级与派驻干员（心情、信赖）", en:"…"}` | 多语言描述 |
 | `icon` | 11 | `"satellite"` | 图标键（也用于总控舱 `ROOM_META[0].icon`） |
 | `defaultSize` | 12 | `{w:4,h:3}` | 默认 4×3 |
@@ -447,18 +451,24 @@
 
 ## `src/components/cards/building/`（基地数据卡片，仅明日方舟）
 
-### `src/components/cards/building/building-shared.ts`（121 行）
+### `src/components/cards/building/building-shared.ts`（228 行）
 卡片与 `/building` 页面共用的设施状态计算。心情换算复用 `@/types/arknights` 的 `arknightsMoodOf` / `arknightsMoodPercent`（`ap/360000` = 0..24 点）。
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
-| `FACILITY_ORDER` | building-shared.ts:15 | 设施展示顺序：`control → powers → tradings → manufactures → dormitories → meeting` |
-| `laborPercent(labor)` | building-shared.ts:27 | 无人机填充 0..100 |
-| `laborRemainingMs(labor, nowMs)` | building-shared.ts:38 | ⚠️ 接口 `remainSecs` 以 `lastUpdateTime`（快照时间）为基准，**要减去本地已流逝时间** |
-| `dormRestSummary(building)` | building-shared.ts:49 | 宿舍在休干员的平均心情百分比 + 人数（`< 23.95` 点视为仍在休息） |
-| `manufactureState(segment, nowMs)` | building-shared.ts:82 | `producing`（`completeWorkTime` 在未来，进度按批次时间窗估算）/ `done`（`complete>0` 或批次已到期）/ `idle` |
-| `tradingSummary(segment)` | building-shared.ts:102 | `stock.length` / `stockLimit` / `strategy == "O_GOLD"`（龙门币订单） |
-| `roomMoodPercent(segment)` | building-shared.ts:116 | 设施内干员平均心情百分比 |
+| `FACILITY_ORDER` | building-shared.ts:29 | 设施展示顺序：`control → powers → tradings → manufactures → dormitories → meeting` |
+| `laborPercent(labor)` | building-shared.ts:41 | 无人机填充 0..100 |
+| `laborRemainingMs(labor, nowMs)` | building-shared.ts:52 | ⚠️ 接口 `remainSecs` 以 `lastUpdateTime`（快照时间）为基准，**要减去本地已流逝时间** |
+| `dormRestSummary(building)` | building-shared.ts:63 | 宿舍在休干员的平均心情百分比 + 人数（`< 23.95` 点视为仍在休息） |
+| `manufactureState(segment, nowMs)` | building-shared.ts:107 | `producing`（`completeWorkTime` 在未来，进度按批次时间窗估算）/ `done`（**仅看 `complete>0`**）/ `idle`。⚠️ 空闲站的 `completeWorkTime` 是**上一次生产的残留时间戳**（实测四个站全部 `weight:0`、`complete:0` 但时间戳已过期），只按「时间戳已过期」判 `done` 会让空闲站一直显示「有待收取」 |
+| `HIRE_REFRESH_LIMIT` | building-shared.ts:126 | 「联络次数」上限（3，满即封顶、不再恢复） |
+| `hireRefreshState(hire, nowMs)` | building-shared.ts:159 | `{used, total, remainMs, ready}`；`used` = **当前持有**的联络次数（非"今日已用"），`ready` = **已满 3 次**（判据是 `refreshCount >= 3`，**不是** `completeWorkTime` 过期）；`completeWorkTime` 是**下次 +1 恢复**的时间戳 |
+| `trainingState(training)` | building-shared.ts:171 | `{hasTrainee, specializing, traineeId, trainerId}`；`specializing` 要求 `trainee.targetSkill >= 0`（实测专精结束仍留 `trainee` 且 `targetSkill = -1`） |
+| `locateRoomSlot(building, slotId)` | building-shared.ts:192 | 内部 `slot_32` → `{key, index}`；解析不到返回 `null`（`tiredChars[].roomSlotId` 实测会指向接口没下发的房间），调用方此时**不能显示 id 本身** |
+| `tradingSummary(segment)` | building-shared.ts:209 | `stock.length` / `stockLimit` / `strategy == "O_GOLD"`（龙门币订单） |
+| `roomMoodPercent(segment)` | building-shared.ts:223 | 设施内干员平均心情百分比 |
+
+> ⚠️ **槽位 id（`slot_32`）是接口内部标识，不应该出现在界面上**。`/building` 页面用 `locateRoomSlot` 把它翻成「贸易站 2」这种可读文案；解析不到时直接不显示。`training.level` 在 `dataVersion < 3` 的旧缓存里缺失（后端当时没建模），所以卡片/页面都要 `?? 0` 兜底。
 
 ### `src/components/cards/building/index.tsx`（379 行）
 **职责**：基地数据卡片。头部 + **无人机**（value/max + 进度条 + 距补满倒计时）与**宿舍休息进度**（平均百分比条 + 休息人数）两块并列 + 底部汇总条（制造中/订单/疲劳干员/训练室状态）+「查看详情」跳 `/building`。

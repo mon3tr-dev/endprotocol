@@ -131,7 +131,7 @@
 ## `src/types/arknights.ts`
 **职责**：《明日方舟》前端数据类型（2026-11 新增），与后端 `src-tauri/src/models/arknights.rs` 一一对应；公开招募/基地数据卡片与 `/recruitment` `/building` `/game-data` 页面共用。只收录用到的字段（接口给的大字段不建模，后端解析时已忽略）。
 
-**导出**：`ARKNIGHTS_DATA_VERSION`（=1，与后端 `models::arknights::ARKNIGHTS_DATA_VERSION` 同步）、`ArknightsProgress`、`ArknightsPlayerInfo`、`ArknightsStatus`、`ArknightsAp`、`ArknightsSecretary`、`ArknightsAvatar`、`ArknightsRecruitSlot`、`ArknightsBuilding`、`ArknightsLabor`、`ArknightsHire`、`ArknightsTraining`、`ArknightsTrainee`、`ArknightsTrainer`、`ArknightsRoomSegment`、`ArknightsTradingOrder`、`ArknightsOrderItem`、`ArknightsClue`、`ArknightsRoomChar`、`ArknightsTiredChar`、`ArknightsCampaign`、`ArknightsTower`、`ArknightsCharInfo`、`ArknightsStageInfo`、`ArknightsActivityProgress`、`ArknightsActivityZone`、`ArknightsActivityInfo`、`ArknightsNamedInfo`、`ArknightsRogue`、`ArknightsRogueRecord`、`ArknightsSandbox`、`ArknightsBossRush`、`ARKNIGHTS_MOOD_DIVISOR`（360000）、`ARKNIGHTS_MOOD_MAX`（24）、`arknightsMoodOf(ap)`、`arknightsMoodPercent(ap)`、`ARKNIGHTS_PORTRAIT_BASE`、`arknightsPortraitUrl(charId)`。
+**导出**：`ARKNIGHTS_DATA_VERSION`（=3，与后端 `models::arknights::ARKNIGHTS_DATA_VERSION` 同步）、`ArknightsProgress`、`ArknightsPlayerInfo`、`ArknightsStatus`、`ArknightsAp`、`ArknightsSecretary`、`ArknightsAvatar`、`ArknightsRecruitSlot`、`ArknightsBuilding`、`ArknightsLabor`、`ArknightsHire`、`ArknightsTraining`、`ArknightsTrainee`、`ArknightsTrainer`、`ArknightsRoomSegment`、`ArknightsTradingOrder`、`ArknightsOrderItem`、`ArknightsClue`、`ArknightsRoomChar`、`ArknightsTiredChar`、`ArknightsCampaign`、`ArknightsTower`、`ArknightsCharInfo`、`ArknightsStageInfo`、`ArknightsActivityProgress`、`ArknightsActivityZone`、`ArknightsActivityInfo`、`ArknightsNamedInfo`、`ArknightsRogue`、`ArknightsRogueRecord`、`ArknightsSandbox`、`ArknightsBossRush`、`ARKNIGHTS_MOOD_DIVISOR`（360000）、`ARKNIGHTS_MOOD_MAX`（24）、`arknightsMoodOf(ap)`、`arknightsMoodPercent(ap)`、`ARKNIGHTS_PORTRAIT_BASE`、`arknightsPortraitUrl(charId)`、`ARKNIGHTS_AVATAR_BASE`、`arknightsAvatarUrl(charId)`。
 
 **要点**：
 - `ArknightsRecruitSlot.state`：0=未开放 / 1=空闲 / 2=招募中；「已完成」= state 2 且 `finishTs` 已过（前端现算，见 `recruit-shared.ts`）。
@@ -139,7 +139,7 @@
 - `dataVersion` 为 0 表示旧格式缓存 —— `arknightsDataService` 自动强制刷新一次。
 - 心情换算：`ap / 360000` = 0..24 点（`arknightsMoodOf`/`arknightsMoodPercent`）。
 - 章节进度聚合：`activity[].zones[]` 逐区相加 `clearedStage/totalStage`；分区不下发名称，只做活动级聚合。
-- **干员头像不在接口里**（`charInfoMap` 无图片字段、`charAssets` 实测空数组），但官方 CDN 有确定规律 `https://web.hycdn.cn/arknights/game/assets/char/portrait/{charId}.png`（实测 12 个含 token 干员的 id 均 200），`arknightsPortraitUrl` 按此拼地址；封面用接口自带的 `activityInfoMap[].picUrl`（约 57% 覆盖，**空时前端不渲染封面**，章节行降级为紧凑行、历险签约图标不渲染）。
+- **干员头像不在接口里**（`charInfoMap` 无图片字段、`charAssets` 实测空数组），但官方 CDN 有确定规律：**半身像** `https://web.hycdn.cn/arknights/game/assets/char/portrait/{charId}.png`（180×360，实测 12 个含 token 干员的 id 均 200）→ `arknightsPortraitUrl`；**方形头像** `https://web.hycdn.cn/arknights/game/assets/char_skin/avatar/{charId}%231.png`（180×180，实测 24/24 覆盖）→ `arknightsAvatarUrl`。⚠️ 小尺寸方块一律用后者——半身像塞进正方形缩略图会被 `object-cover` 裁成躯干、看不见脸。封面用接口自带的 `activityInfoMap[].picUrl`（约 57% 覆盖，**空时前端不渲染封面**，章节行降级为紧凑行、引航者试炼图标不渲染）。
 
 ## `src/locales/zh/translation.json`
 **职责**：中文 i18n 资源，共 989 行、903 个叶子 key、24 个顶层命名空间（2026-11 加入 recruitment/building/gamedata 三页后更新）。
@@ -180,9 +180,9 @@
 | `launcher.*` | 启动器：安装/更新/校验修复/渠道切换/预下载/预下载中/预下载确认/启动设置/磁盘与文件扫描等完整流程；含 `launcher.game_group_endfield` / `launcher.game_group_arknights`（标题栏与切换栏按当前游戏取名，:795-796）、`launcher.no_announcements`（公告空态，:799）、`launcher.switch_channel_account_warning`（换服账号不互通提示，:815）、`launcher.switch_game_running`（游戏运行中禁止换服提示，:818）、`launcher.dir_locked_by`（安装目录被占用提示，body 列出占用进程，:819）、`launcher.prev_banner` / `launcher.next_banner` / `launcher.banner_page`（横幅翻页键 aria 标签，:820-822）；子分组 `launcher.sidebar.*`（游戏界面右侧官方社媒栏：标题/打开网页提示/仅支持扫码，:848）（本文件最大分组，143 个 key） | :707 |
 | `todo_page.*` | To-Do 页面：标题/描述、导入导出、新建/搜索列表、分组、空态等 | :644 |
 | `domain_page.*` / `spaceship_page.*` | 区域信息 / 帝江号页面（副标题、切换账户、空态等） | :145 / :152 |
-| `recruitment_page.*` | 公开招募页面（**明日方舟**）：栏位 `{{number}}`、四种状态、剩余/完成时间、办公室刷新 `{{used}}/{{total}}`、空态 | :160 |
-| `building_page.*` | 基地数据页面（**明日方舟**）：无人机（距补满 `{{time}}`）、宿舍休息、疲劳干员、各设施 `room_*`、心情/订单/线索、训练室 | :175 |
-| `gamedata_page.*` | 游戏数据页面（**明日方舟**）：主线进度、章节分组 `chapter_type_*`（别传/插曲/支线/活动）、行内状态 `state_done`/`state_ongoing`、`max_kills`、`medal_progress`、`bp_level`、`relics`、`bossrush_name`（引航者试炼 / Trials for Navigator）、`not_played`（暂无记录） | :214 |
+| `recruitment_page.*` | 公开招募页面（**明日方舟**）：栏位 `{{number}}`、四种状态、剩余/完成时间、**联络次数** `hire_refresh`/`{{used}}/{{total}}`/`hire_refresh_ready`、空态 | :160 |
+| `building_page.*` | 基地数据页面（**明日方舟**）：无人机（距补满 `{{time}}`）、宿舍休息、疲劳干员、各设施 `room_*`、`facility_room`/`facility_rooms`/`level_short`（槽位文案）、`facility_not_built`、`hire_refresh_next`/`hire_refresh_ready`、心情/订单/线索、训练室 | :175 |
+| `gamedata_page.*` | 游戏数据页面（**明日方舟**）：主线进度、章节分组 `chapter_type_*`（别传 Side Story / 故事集 Story Collection / 插曲 Intermezzo / 活动 Event）、行内状态 `state_done`/`state_ongoing`、`max_kills`、`medal_progress`、`bp_level`、`relics`（Collectibles）、`bank_invest`（Investments）、`bossrush_name`（Trials for Navigator）、`bossrush_season`（第 N 期 / Season N）、`not_played`（暂无记录） | :214 |
 
 - **与 en/translation.json 的 key 差异**：无。经脚本对比，zh 与 en 叶子 key 均为 795 个，键集合完全一致（既无 zh 缺键也无 en 缺键），且两文件结构逐行对齐（行号一一对应）。
 - **异常（两边共有）**：`settings.update` 内存在重复键 —— `latest_version` 同时出现于 :177 与 :187、`release_date` 同时出现于 :179 与 :188。JSON 解析时后者覆盖前者（zh 实际生效值为 :187 的“远端最新版本”、:188 的“发布日期”；en 同理）。建议后续合并为 `latest_version_remote` 之类的独立键。
