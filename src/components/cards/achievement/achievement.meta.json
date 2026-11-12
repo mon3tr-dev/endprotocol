@@ -2,11 +2,11 @@
   "id": "achievement",
   "name": {
     "zh": "光荣之路",
-    "en": "Glory Road"
+    "en": "Path of Glory"
   },
   "description": {
     "zh": "展示已获得的蚀刻章",
-    "en": "Display earned achievement medals"
+    "en": "Display earned Engraved Medals"
   },
   "icon": "award",
   "defaultSize": { "w": 4, "h": 2 },

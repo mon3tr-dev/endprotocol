@@ -24,6 +24,16 @@ export const MOOD_MAX = 10000;
 export const TRUST_CLOSE_THRESHOLD = 300;
 export const TRUST_MAX_THRESHOLD = 1500;
 
+/**
+ * 舱室类型 → i18n key 与图标。
+ *
+ * 实测（`data.detail.spaceShip.rooms[].type`）：`0` 总控中枢、`1` 制造舱、
+ * `2` 培养舱、`5` 会客室。
+ *
+ * ⚠️ 实测响应里还会出现 `type: 3`（`chars` 恒为空、仅 1 级），**不要**给它编一个
+ * 「展柜」之类的名字：该值没有官方命名依据，硬加映射会把一个空壳舱当正经舱室展示出来。
+ * 保持未映射 → `sortSpaceshipRooms` 会把它过滤掉，符合「未识别类型不展示」的既有约定。
+ */
 export const ROOM_META: Record<number, { key: string; icon: string }> = {
   0: { key: "control", icon: "satellite" },
   1: { key: "manufacturing", icon: "factory" },

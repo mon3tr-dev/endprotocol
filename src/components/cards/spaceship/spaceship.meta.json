@@ -2,11 +2,11 @@
   "id": "spaceship",
   "name": {
     "zh": "帝江号",
-    "en": "Spaceship"
+    "en": "Dijiang"
   },
   "description": {
     "zh": "展示帝江号各舱室等级与派驻干员（心情、信赖）",
-    "en": "Display spaceship cabins and stationed operators (mood, trust)"
+    "en": "Display Dijiang cabin levels and stationed operators (Mood, Trust)"
   },
   "icon": "satellite",
   "defaultSize": { "w": 4, "h": 3 },

@@ -44,9 +44,16 @@ export function formatDateTime(ts: string | undefined): string {
   return `${mo}-${day} ${h}:${mi}`;
 }
 
+/**
+ * 区域调度券名称（终末地官方术语：Stock Bill；简中为「调度券」，不是「调度卷」）。
+ *
+ * 每个地区各有自己的调度券，互不通用：
+ * - 四号谷地 → Valley Stock Bill / 谷地调度券
+ * - 武陵 → Wuling Stock Bill / 武陵调度券
+ */
 const DOMAIN_MONEY_NAMES: Record<string, { zh: string; en: string }> = {
-  domain_1: { zh: "谷地调度卷", en: "Valley Dispatch Ticket" },
-  domain_2: { zh: "武陵调度卷", en: "Wuling Dispatch Ticket" },
+  domain_1: { zh: "谷地调度券", en: "Valley Stock Bill" },
+  domain_2: { zh: "武陵调度券", en: "Wuling Stock Bill" },
 };
 
 export function getMoneyName(

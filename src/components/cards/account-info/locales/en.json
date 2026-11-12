@@ -1,13 +1,13 @@
 {
   "account_info_role_id": "ID",
   "account_info_uid": "UID",
-  "account_info_awaken_day": "Awakened",
-  "account_info_level": "Authority",
+  "account_info_awaken_day": "Awakening Day",
+  "account_info_level": "Authority Lv.",
   "account_info_explore_level": "Exploration Lv.",
   "account_info_copy": "Copy",
   "account_info_switch_account": "Switch Account",
   "account_info_main_mission": "Main Mission",
-  "account_info_char_num": "Chars",
+  "account_info_char_num": "Operators",
   "account_info_weapon_num": "Weapons",
   "account_info_doc_num": "Archives",
   "refresh": "Refresh"

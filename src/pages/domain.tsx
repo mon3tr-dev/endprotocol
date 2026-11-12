@@ -373,7 +373,7 @@ export default function DomainPage() {
             </div>
           </GlassCard>
 
-          {/* 基建建设点 */}
+          {/* 据点（Outpost） */}
           <section className="space-y-3">
             <div className="flex items-center justify-between">
               <h2 className="text-sm font-semibold uppercase text-muted">

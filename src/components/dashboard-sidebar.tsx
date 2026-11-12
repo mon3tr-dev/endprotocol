@@ -2046,7 +2046,7 @@ export const Sidebar = ({
                         to="/domain"
                         onClick={(e) => void handleNavClick(e, "/domain")}
                         title={
-                          collapsed ? t("sidebar.domain") || "Domain" : undefined
+                          collapsed ? t("sidebar.domain") || "Region Info" : undefined
                         }
                         className={clsx(
                           "flex items-center rounded-xl transition-all duration-300 ease-in-out",
@@ -2075,7 +2075,7 @@ export const Sidebar = ({
                               : "max-w-[10rem] opacity-100",
                           )}
                         >
-                          {t("sidebar.domain") || "Domain"}
+                          {t("sidebar.domain") || "Region Info"}
                         </span>
                       </Link>
                       {!collapsed && (
@@ -2105,7 +2105,7 @@ export const Sidebar = ({
                         onClick={(e) => void handleNavClick(e, "/spaceship")}
                         title={
                           collapsed
-                            ? t("sidebar.spaceship") || "Spaceship"
+                            ? t("sidebar.spaceship") || "Dijiang"
                             : undefined
                         }
                         className={clsx(
@@ -2135,7 +2135,7 @@ export const Sidebar = ({
                               : "max-w-[10rem] opacity-100",
                           )}
                         >
-                          {t("sidebar.spaceship") || "Spaceship"}
+                          {t("sidebar.spaceship") || "Dijiang"}
                         </span>
                       </Link>
                       {!collapsed && (

@@ -1,12 +1,12 @@
 {
   "id": "domain_info",
   "name": {
-    "zh": "区域信息",
-    "en": "Domain Info"
+    "zh": "地区信息",
+    "en": "Region Info"
   },
   "description": {
-    "zh": "展示大世界区域信息（等级、货币、基建建设点）",
-    "en": "Display domain info (level, money, base settlements)"
+    "zh": "展示地区建设等级、调度券与据点繁荣度",
+    "en": "Display Regional Development Level, Stock Bills and Outpost Prosperity"
   },
   "icon": "map",
   "defaultSize": { "w": 4, "h": 2 },

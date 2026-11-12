@@ -1,7 +1,7 @@
 {
-  "spaceship_title": "Spaceship",
+  "spaceship_title": "Dijiang",
   "spaceship_rooms_count": "{{n}} cabins",
-  "spaceship_stationed_count": "{{n}} on duty",
+  "spaceship_stationed_count": "{{n}} stationed",
   "spaceship_no_stationed": "None stationed",
   "spaceship_mood": "Mood",
   "spaceship_trust": "Trust",
@@ -9,7 +9,7 @@
   "spaceship_trust_close": "Close",
   "spaceship_trust_trust": "Trusted",
   "spaceship_room_control": "Control Nexus",
-  "spaceship_room_manufacturing": "Manufacturing Cabin",
+  "spaceship_room_manufacturing": "MFG Cabin",
   "spaceship_room_growth": "Growth Chamber",
   "spaceship_room_reception": "Reception Room",
   "spaceship_room_unknown": "Unknown Cabin",
