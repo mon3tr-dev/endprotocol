@@ -432,20 +432,20 @@
 | `formatCountdown(ms, lang)` | recruit-shared.ts:57 | `< 1 天 → HH:MM:SS`；`≥ 1 天 → Xd HH:MM:SS`（zh 用「天」） |
 | `formatShortDateTime(ts)` | recruit-shared.ts:71 | `MM-DD HH:mm`（本地时区） |
 
-### `src/components/cards/recruitment/index.tsx`（360 行）
-**职责**：公开招募卡片。头部（头像/账户名/游戏徽标）+ 状态汇总徽标 + **2×2 栏位网格**（每格：栏位号、状态徽标、`HH:MM:SS` 倒计时、进度条）+ 底部「查看详情」跳 `/recruitment`。
+### `src/components/cards/recruitment/index.tsx`（344 行）
+**职责**：公开招募卡片。头部（头像/账户名/游戏徽标）+ 状态汇总徽标 + **2×2 栏位网格**（每格：栏位号、状态徽标、`HH:MM:SS` 倒计时、进度条）。**不提供「查看详情」入口** —— `/recruitment` 页面展示的信息与卡片一致，点击跳转没有增量价值。
 
 **导出**：`RecruitmentCard`（默认导出）。
-**主要依赖**：`useCardData`、`fetchArknightsPlayerInfo`（@/utils/arknightsDataService）、`filterAccountsForCard(accs, "recruitment")`、`CardConfigService`、`RecruitmentCardSettings`、`useNavigate`（跳转页面）、`recruit-shared`。
+**主要依赖**：`useCardData`、`fetchArknightsPlayerInfo`（@/utils/arknightsDataService）、`filterAccountsForCard(accs, "recruitment")`、`CardConfigService`、`RecruitmentCardSettings`、`recruit-shared`。
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
-| `padSlots(recruit)` | index.tsx:40 | 不足 4 个补 `{state:0,startTs:-1,finishTs:-1}`，保证 2×2 网格完整 |
-| `RecruitmentCard` | index.tsx:46 | 默认导出组件 |
+| `padSlots(recruit)` | index.tsx:39 | 不足 4 个补 `{state:0,startTs:-1,finishTs:-1}`，保证 2×2 网格完整 |
+| `RecruitmentCard` | index.tsx:45 | 默认导出组件 |
 | `nowMs` state + interval | index.tsx 内 | **每秒重算**倒计时（数据来自缓存快照，不重新请求） |
 | `summary` | index.tsx 内 | 四种状态的计数徽标（只显示 > 0 的） |
 
-卡片 i18n 键（`recruitment/locales/{zh,en}.json`，合并进 `card` 命名空间）：`recruitment_title`、`recruitment_slot`（`{{number}}`）、`recruitment_slot_running/_finished/_free/_locked`、`recruitment_switch_account`、`recruitment_view_page`。
+卡片 i18n 键（`recruitment/locales/{zh,en}.json`，合并进 `card` 命名空间）：`recruitment_title`、`recruitment_slot`（`{{number}}`）、`recruitment_slot_running/_finished/_free/_locked`、`recruitment_switch_account`。
 
 ---
 

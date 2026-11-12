@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { GlassButton, GlassCard, GlassProgressCircle } from "@/components/ui/glass";
 import { useTranslation } from "react-i18next";
 import { BaseCardProps } from "../registry/types";
@@ -49,7 +48,6 @@ export default function RecruitmentCard({
   settings,
 }: BaseCardProps) {
   const { t, i18n } = useTranslation();
-  const navigate = useNavigate();
   const [customRoleId, setCustomRoleId] = useState<string | undefined>(
     (settings as RecruitmentCardSettings)?.roleId,
   );
@@ -286,20 +284,6 @@ export default function RecruitmentCard({
               </div>
             );
           })}
-        </div>
-
-        {/* 底部：跳转独立页面 */}
-        <div className="mt-2 flex items-center justify-end border-t border-separator/60 pt-1.5">
-          <button
-            type="button"
-            onClick={() => navigate("/recruitment")}
-            className="text-[10px] text-muted hover:text-foreground lg-hoverable transition-colors flex items-center gap-1"
-          >
-            {t("card:recruitment_view_page")}
-            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-            </svg>
-          </button>
         </div>
       </GlassCard>
 
