@@ -18,26 +18,29 @@
 ---
 
 ## `src-tauri/src/utils/error.rs`
-**职责**：定义全后端统一错误枚举 `AppError`（27 行），用 `thiserror` 派生 `Display` 与三个自动 `From` 转换，供 service/command 层的 `Result<T, AppError>` 使用。
-**导出**：`pub enum AppError`（error.rs:5）。
+**职责**：定义全后端统一错误枚举 `AppError`（约 60 行），用 `thiserror` 派生 `Display` 与三个自动 `From` 转换，供 service/command 层的 `Result<T, AppError>` 使用；并提供会话失效判定 `AppError::is_session_invalid`。
+**导出**：`pub enum AppError`、`impl AppError`（`is_session_invalid`）、`SESSION_INVALID_MARKER`。
 **主要依赖**：`thiserror`、`reqwest`、`serde_json`、`std::io`。
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
-| `AppError`（enum，`#[derive(Debug, Error)]`） | error.rs:4-5 | 应用错误根类型；字段式变体用具名字段 `{ message }` / `{ code, message }` |
-| `AppError::HttpError(reqwest::Error)` | error.rs:6-7 | Display：`HTTP request failed: {0}`；`#[from] reqwest::Error` ⇒ `From<reqwest::Error>` 自动实现，`?` 可直接转换（常用于 `capture::send` 返回的 `reqwest::Error`，见 services/skland_service.rs:569） |
-| `AppError::JsonError(serde_json::Error)` | error.rs:9-10 | Display：`JSON serialization failed: {0}`；`#[from] serde_json::Error` ⇒ `From<serde_json::Error>` |
-| `AppError::IoError(std::io::Error)` | error.rs:12-13 | Display：`IO error: {0}`；`#[from] std::io::Error` ⇒ `From<std::io::Error>` |
-| `AppError::AuthError { message: String }` | error.rs:15-16 | Display：`Authentication failed: {message}`；无 `From`，手动构造，是登录/签名校验/数美接口失败的主力变体（services/account_service.rs:167、233、1893；services/skland_service.rs:109、393） |
-| `AppError::ConfigError { message: String }` | error.rs:18-19 | Display：`Configuration error: {message}`；无 `From`，多用于 Mutex 中毒、路径获取失败包装（services/config_service.rs:19、57、86；services/avatar_cache_service.rs:87） |
-| `AppError::NetworkError { message: String }` | error.rs:21-22 | Display：`Network error: {message}`；无 `From`，用于代理连通性测试等网络类失败（`utils/proxy.rs`） |
-| `AppError::ValidationError { message: String }` | error.rs:24-25 | Display：`Invalid input: {message}`；无 `From`，入参校验失败（如代理未启用/主机为空） |
-| `AppError::ApiError { code: i32, message: String }` | error.rs:27-28 | Display：`API error (code={code}): {message}`；无 `From`，用于远端业务错误码 |
+| `AppError`（enum，`#[derive(Debug, Error)]`） | `AppError` | 应用错误根类型；字段式变体用具名字段 `{ message }` / `{ code, message }` |
+| `AppError::HttpError(reqwest::Error)` | `HttpError` | Display：`HTTP request failed: {0}`；`#[from] reqwest::Error` ⇒ `From<reqwest::Error>` 自动实现，`?` 可直接转换 |
+| `AppError::JsonError(serde_json::Error)` | `JsonError` | Display：`JSON serialization failed: {0}`；`#[from] serde_json::Error` ⇒ `From<serde_json::Error>` |
+| `AppError::IoError(std::io::Error)` | `IoError` | Display：`IO error: {0}`；`#[from] std::io::Error` ⇒ `From<std::io::Error>` |
+| `AppError::AuthError { message: String }` | `AuthError` | Display：`Authentication failed: {message}`；无 `From`，手动构造，是登录/签名校验/数美接口失败的主力变体 |
+| `AppError::ConfigError { message: String }` | `ConfigError` | Display：`Configuration error: {message}`；无 `From`，多用于 Mutex 中毒、路径获取失败包装 |
+| `AppError::NetworkError { message: String }` | `NetworkError` | Display：`Network error: {message}`；无 `From`，用于代理连通性测试等网络类失败（`utils/proxy.rs`） |
+| `AppError::ValidationError { message: String }` | `ValidationError` | Display：`Invalid input: {message}`；无 `From`，入参校验失败（如代理未启用/主机为空） |
+| `AppError::ApiError { code: i32, message: String }` | `ApiError` | Display：`API error (code={code}): {message}`；无 `From`，用于远端业务错误码 |
+| `AppError::is_session_invalid(&self)` | `impl AppError` | 判断是否为「该 cred 已对数据域失效」：`AuthError` 看是否带 `SESSION_INVALID_MARKER`，`ApiError` 转交 `api_health::is_session_invalid`，`HttpError` 看 401/403 |
+| `SESSION_INVALID_MARKER` | 文件末尾常量 | `"SESSION_INVALID"`；由 `call_skland_api` 拼进错误文案，供上层稳定识别（不解析服务端原文） |
 
 **备注**：
 - 三个 `#[from]` 是 `thiserror` 生成的 `From` 实现的全部来源；其余变体只能显式构造。
 - 调用面覆盖 account / avatar_cache / char_detail / char_wiki_detail / config / attendance / proxy 等 service 与 command；`AppError` 不实现 `serde::Serialize`，因此 `#[tauri::command]` 层通常把它转成 `String` 再返回。
-- 存在对 `AppError` 的模式匹配工具函数，如 `account_service::is_new_device_verification_error(&AppError)`（services/account_service.rs:2929）。
+- `is_session_invalid` 是**替代**宽泛 `to_string().contains("API error")` 的显式判据：后者会把「请勿重复签到」这类正常业务码也算成故障。
+- 存在对 `AppError` 的模式匹配工具函数，如 `account_service::is_new_device_verification_error(&AppError)`。
 
 ---
 
@@ -502,30 +505,37 @@
 ---
 
 ## `src-tauri/src/utils/api_health.rs`
-**职责**：API 连续失败熔断器（约 222 行）。记录森空岛接口连续失败次数、分类与服务器时间偏差；达到阈值后置位全局 `BLOCKED`，后续 `call_skland_api` 立即失败，避免前端无限等待，并通过 `app:api-health` 事件通知前端弹出提示。
-**导出**：`ApiFailureKind`、`ApiHealthSnapshot`、`CLOCK_SKEW_THRESHOLD_SECONDS`、`init`、`ensure_available`、`record_success`、`record_failure`、`reset`、`snapshot`、`classify_error`、`is_benign_business_error`。私有：`BLOCK_THRESHOLD`、`SIGNATURE_BLOCK_THRESHOLD`、`DEVICE_FINGERPRINT_BLOCK_THRESHOLD`、`ATTENDANCE_ALREADY_SIGNED_CODE`、`APP_HANDLE`、`BLOCKED`、`STATE`、`state`。
+**职责**：API 连续失败熔断器（约 300 行）。记录森空岛接口连续失败次数、分类与服务器时间偏差；达到阈值后置位全局 `BLOCKED`，后续 `call_skland_api` 立即失败，避免前端无限等待，并通过 `app:api-health` 事件通知前端弹出提示。熔断带**冷却期**（到点自动放行一次探测），不再是只能靠用户手动解除的永久闩锁。
+**导出**：`ApiFailureKind`、`ApiHealthSnapshot`、`CLOCK_SKEW_THRESHOLD_SECONDS`、`init`、`is_blocked`、`ensure_available`、`clear_after_repair`、`record_success`、`record_failure`、`reset`、`snapshot`、`classify_error`、`is_benign_business_error`、`is_session_invalid`。私有：`BLOCK_THRESHOLD`、`SIGNATURE_BLOCK_THRESHOLD`、`DEVICE_FINGERPRINT_BLOCK_THRESHOLD`、`BLOCK_COOLDOWN_SECS`、`ATTENDANCE_ALREADY_SIGNED_CODE`、`SESSION_INVALID_CODE`、`APP_HANDLE`、`BLOCKED`、`BLOCKED_UNTIL_MS`、`STATE`、`state`、`now_millis`、`clear_block`。
 **主要依赖**：`chrono`、`serde::Serialize`、`std::sync::{Mutex, OnceLock}`、`std::sync::atomic`、`tauri::{AppHandle, Emitter}`、`crate::utils::AppError`。
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
-| `BLOCK_THRESHOLD` / `SIGNATURE_BLOCK_THRESHOLD` / `DEVICE_FINGERPRINT_BLOCK_THRESHOLD` | :10 / :12 / :15 | 普通错误连续 5 次、签名类 3 次、数美设备指纹 3 次触发熔断 |
-| `CLOCK_SKEW_THRESHOLD_SECONDS` | :17 | 服务器时间与本地时间偏差 ≥180 秒即判定为时钟异常，单次失败也直接熔断 |
-| `ApiFailureKind`（`Serialize`、`snake_case`） | :23-36 | `ClockSkew / Signature / Auth / Network / Server / Parse / DeviceFingerprint / Unknown`，作为事件与导出清单的枚举值；`DeviceFingerprint` 对应数美设备指纹接口失败（前端提示重启电脑并同步时区） |
-| `ApiHealthSnapshot`（`Serialize`） | :38-46 | `blocked`、`consecutive_failures`、`kind`、`message`、`clock_skew_seconds`、`last_failure_at`；`Default` 为未熔断空状态 |
-| `init(app)` | :66 | 保存 `AppHandle` 供事件广播；状态惰性初始化 |
-| `ensure_available()` | :72 | 已熔断时返回 `AppError::AuthError`，消息包含失败次数与最后一次错误；`call_skland_api` 在每次请求前调用 |
-| `record_success()` | :88 | 未熔断时把计数/分类/偏差清零（任一成功请求即解除连续失败累计） |
-| `record_failure(kind, message, clock_skew_seconds)` | :97 | 累计失败；确认时钟偏差或达到阈值时置 `BLOCKED` 并 `emit("app:api-health", snapshot)`，否则只记 warn 日志 |
-| `reset()` | :159 | 用户修复问题后清空熔断与计数（命令 `reset_api_health`） |
-| `snapshot()` | :171 | 返回当前状态（命令 `get_api_health`、诊断 manifest） |
-| `classify_error(code, message, clock_skew_seconds)` | :197 | 按服务器时间偏差、sign/timestamp/签名/过期、cred/token/401/403、5xx 等关键字分类；`数美`/`deviceprofile`/`device_id` 归类为 `DeviceFingerprint` |
-| `is_benign_business_error(code, message)` | :185 | 白名单：`code=10001`（已签到）或文案含 `重复签到`/`已签到`/`已经签到`/`already signed` 时返回 `true`，表示「目标状态已达成」的幂等成功，不应计失败、重试或告警 |
+| `BLOCK_THRESHOLD` / `SIGNATURE_BLOCK_THRESHOLD` / `DEVICE_FINGERPRINT_BLOCK_THRESHOLD` | 文件头常量 | 普通错误连续 5 次、签名类 3 次、数美设备指纹 3 次触发熔断 |
+| `BLOCK_COOLDOWN_SECS` | 文件头常量 | 熔断冷却 120 秒；到点后 `ensure_available` 自动解除并放行一次探测（半开恢复） |
+| `CLOCK_SKEW_THRESHOLD_SECONDS` | 文件头常量 | 服务器时间与本地时间偏差 ≥180 秒即判定为时钟异常，单次失败也直接熔断 |
+| `SESSION_INVALID_CODE` | 文件头常量 | 森空岛「数据接口拒绝当前会话」的业务码 `10000`（文案 `请求异常`） |
+| `ApiFailureKind`（`Serialize`、`snake_case`） | 枚举 | `ClockSkew / Signature / Auth / Network / Server / Parse / DeviceFingerprint / Unknown`，作为事件与导出清单的枚举值；`DeviceFingerprint` 对应数美设备指纹接口失败（前端提示重启电脑并同步时区） |
+| `ApiHealthSnapshot`（`Serialize`） | 结构体 | `blocked`、`consecutive_failures`、`kind`、`message`、`clock_skew_seconds`、`last_failure_at`；`Default` 为未熔断空状态 |
+| `init(app)` | `init` | 保存 `AppHandle` 供事件广播；状态惰性初始化 |
+| `is_blocked()` | `is_blocked` | 当前是否熔断中 |
+| `ensure_available()` | `ensure_available` | 已熔断且冷却未到时返回 `AppError::AuthError`（消息含失败次数与最后一次错误）；**冷却已到则自动解除并放行**。`call_skland_api` 每轮请求前调用 |
+| `clear_after_repair(reason)` | `clear_after_repair` | 凭证自愈成功后调用：解除熔断并清零，使随后的重试能真正发出 |
+| `record_success()` | `record_success` | 未熔断时把计数/分类/偏差清零（任一成功请求即解除连续失败累计） |
+| `record_failure(kind, message, clock_skew_seconds)` | `record_failure` | 累计失败；确认时钟偏差或达到阈值时置 `BLOCKED` + 写冷却到期时间，并 `emit("app:api-health", snapshot)`，否则只记 warn 日志 |
+| `reset()` | `reset` | 用户修复问题后清空熔断与计数（命令 `reset_api_health`） |
+| `snapshot()` | `snapshot` | 返回当前状态（命令 `get_api_health`、诊断 manifest） |
+| `classify_error(code, message, clock_skew_seconds)` | `classify_error` | 按服务器时间偏差 → **会话失效（先判）** → `数美`/`deviceprofile`/`device_id` → sign/timestamp/签名/过期 → cred/token/401/403 → 5xx 顺序分类 |
+| `is_benign_business_error(code, message)` | `is_benign_business_error` | 白名单：`code=10001`（已签到）或文案含 `重复签到`/`已签到`/`已经签到`/`already signed` 时返回 `true`，表示「目标状态已达成」的幂等成功，不应计失败、重试或告警 |
+| `is_session_invalid(code, message)` | `is_session_invalid` | `code=10000` 或文案含 `请求异常`/`unauthorized`（且不是幂等结果）时返回 `true`：表示**该 cred 已对数据域失效**，唯一解法是换 cred，而不是重试网络 |
 
 **备注**：
 - 由 `services/skland_service.rs` 的 `call_skland_api` 调用：请求前 `ensure_available`，成功置 `record_success`，HTTP/JSON/业务错误按类型 `record_failure`；并从响应头 `Date` 计算本地时钟偏差。
 - `call_skland_api` 在计失败/重试之前先用 `is_benign_business_error` 拦截「请勿重复签到」这类结果：命中即 `record_success()` 并原样返回 JSON（`Ok`，`code` 非 0），由调用方按幂等成功处理（`commands/attendance.rs::do_attendance`、`AccountService::do_attendance_for_role`）。
 - 数美设备指纹（dId 获取）失败的计数在 `SklandService::fetch_new_did` 内部完成（`DeviceFingerprint`，阈值 3），`call_skland_api` 中 dId 失败不再重复计 `Network`。
 - 事件名 `app:api-health`；payload 即 `ApiHealthSnapshot`。前端 `src/utils/crashReporting.ts` 监听后收起 Splash 并把账户标记为不可用（`src/utils/accountAvailability.ts`），弹窗为非致命，可关闭后继续使用应用。
+- **`10000 请求异常` 必须归为 `Auth` 而不是 `Server`**：它是服务端轮换会话后数据接口的单点拒绝（同一时刻 `/api/v1/user/check` 仍返回 `code=0`）。归成 `Server` 会把「换一把 cred 就好」的问题报成网络故障并白白重试。判定顺序上 `is_session_invalid` 必须早于通用关键字匹配。
+- **熔断不得挡住修复路径**：`SklandService::refresh_cred_by_hytoken` 与 `check_cred` 都**不调** `ensure_available()`。换 cred 只依赖 hytoken，是熔断的解药；若也被拦，恢复链会被自己锁死（旧行为：必须手动重新登录才能恢复）。
 - 静默模式不初始化该服务（不建立 WebView，也无业务请求）。
 
 ---

@@ -353,6 +353,111 @@ pub struct AccountService {
 }
 
 impl AccountService {
+    /// 依据失效的 cred 反查账号并换一把新凭据，供
+    /// [`crate::services::cred_recovery`] 的钩子调用。
+    ///
+    /// 成功时**立即写回配置**（`account_token_{user_id}.cred/token`），这样后续
+    /// 所有用旧凭据发起的调用都能读到新值，也避免同一次故障里反复兑换。
+    async fn recover_credential_by_cred(
+        config_service: Arc<Mutex<ConfigService>>,
+        skland_service: Arc<SklandService>,
+        stale_cred: String,
+    ) -> Option<(String, String)> {
+        // 反查：哪个账号的 cred 等于这把失效凭据。同时取回 hytoken。
+        let (user_id, hytoken) = {
+            let config = config_service.lock().ok()?;
+            let all = config.get_all();
+            let mut found = None;
+            for (key, value) in &all {
+                let Some(user_id) = key.strip_prefix("account_token_") else {
+                    continue;
+                };
+                let cred = value.get("cred").and_then(|v| v.as_str());
+                if cred != Some(stale_cred.as_str()) {
+                    continue;
+                }
+                let hytoken = value
+                    .get("hytoken")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+                found = Some((user_id.to_string(), hytoken));
+                break;
+            }
+            found?
+        };
+
+        let hytoken = match hytoken {
+            Some(h) if !h.is_empty() => h,
+            _ => {
+                log_warn!(
+                    "cred_recovery: no hytoken for user {}; cannot refresh credential automatically",
+                    user_id
+                );
+                return None;
+            }
+        };
+
+        log_info!(
+            "cred_recovery: refreshing credential for user {} after session-invalid",
+            user_id
+        );
+        let (new_cred, new_token, _) = match skland_service
+            .refresh_cred_by_hytoken(&hytoken, None)
+            .await
+        {
+            Ok(pair) => pair,
+            Err(error) => {
+                log_error!(
+                    "cred_recovery: refresh_cred_by_hytoken failed for user {}: {}",
+                    user_id,
+                    error
+                );
+                return None;
+            }
+        };
+
+        // 写回配置：只动 cred / token（hytoken、roles、user_info、device_token 全部保留）
+        if let Ok(mut config) = config_service.lock() {
+            let token_key = format!("account_token_{}", user_id);
+            let mut data: serde_json::Value = config.get(&token_key).unwrap_or(json!({}));
+            if let Some(obj) = data.as_object_mut() {
+                obj.insert("cred".to_string(), json!(new_cred));
+                obj.insert("token".to_string(), json!(new_token));
+            }
+            if let Err(error) = config.set(token_key, data) {
+                log_error!(
+                    "cred_recovery: failed to persist refreshed credential for user {}: {}",
+                    user_id,
+                    error
+                );
+            }
+        }
+
+        log_info!(
+            "cred_recovery: credential rotated for user {} (new_cred_len={})",
+            user_id,
+            new_cred.len()
+        );
+        Some((new_cred, new_token))
+    }
+
+    /// 注册（幂等）凭证自愈钩子。重复调用只有第一次生效。
+    fn install_cred_recovery_hook(
+        config_service: Arc<Mutex<ConfigService>>,
+        skland_service: Arc<SklandService>,
+    ) {
+        let hook: crate::services::cred_recovery::RecoveryHook =
+            Arc::new(move |stale_cred: String| {
+                let config_service = config_service.clone();
+                let skland_service = skland_service.clone();
+                Box::pin(async move {
+                    Self::recover_credential_by_cred(config_service, skland_service, stale_cred)
+                        .await
+                })
+            });
+        crate::services::cred_recovery::install(hook);
+    }
+
     /// 创建新的账户服务实例
     pub fn new(
         config_service: Arc<Mutex<ConfigService>>,
@@ -377,6 +482,10 @@ impl AccountService {
             skland_service.clone(),
             avatar_cache_service.clone(),
         ));
+
+        // 注册凭证自愈钩子：`call_skland_api` 判定会话失效时就地换 cred。
+        // 钩子必须能反查到账号，所以在这里把 config/skland 两个服务交给它。
+        Self::install_cred_recovery_hook(config_service.clone(), skland_service.clone());
 
         Self {
             config_service,
@@ -1688,9 +1797,22 @@ impl AccountService {
                         (new_cred, new_token)
                     }
                     Ok(None) => {
-                        // cred 仍然有效，使用原有的
-                        log_debug!("get_accounts: Cred still valid for user {}", user_id);
-                        (cred, token)
+                        // cred 仍然有效，使用**配置里的最新值**。
+                        //
+                        // 不能用 `collect_role_targets` 在循环开始时的快照：同一批次里
+                        // 前一个角色可能已触发会话失效自愈（cred 被服务端轮换并写回配置），
+                        // 继续用快照就会拿旧凭据再撞一次 401 —— 这正是日志里
+                        // 「一个账号的所有角色轮流失败、各触发一次刷新」的来源。
+                        match self.read_skland_credentials(&user_id) {
+                            Ok((current_cred, current_token)) => {
+                                log_debug!(
+                                    "get_accounts: Cred still valid for user {}",
+                                    user_id
+                                );
+                                (current_cred, current_token)
+                            }
+                            Err(_) => (cred, token),
+                        }
                     }
                     Err(e) => {
                         tracing::error!("Failed to check/refresh cred for user {}: {}", user_id, e);
@@ -1814,7 +1936,8 @@ impl AccountService {
 
                         // 检查是否是 SYNC FAILED 错误，尝试自动刷新 cred
                         let error_string = e.to_string();
-                        let is_sync_failed = error_string.contains("API error")
+                        let is_sync_failed = e.is_session_invalid()
+                            || error_string.contains("API error")
                             || error_string.contains("Failed to parse JSON")
                             || error_string.contains("HTTP request failed");
 
@@ -2324,9 +2447,18 @@ impl AccountService {
                         (new_cred, new_token)
                     }
                     Ok(None) => {
-                        // cred 仍然有效，使用原有的
-                        log_debug!("refresh_accounts: Cred still valid for user {}", user_id);
-                        (cred, token)
+                        // cred 仍然有效，使用**配置里的最新值**（理由同 `get_accounts`：
+                        // 同批次前一个角色可能已触发会话自愈并写回了新凭据）。
+                        match self.read_skland_credentials(&user_id) {
+                            Ok((current_cred, current_token)) => {
+                                log_debug!(
+                                    "refresh_accounts: Cred still valid for user {}",
+                                    user_id
+                                );
+                                (current_cred, current_token)
+                            }
+                            Err(_) => (cred, token),
+                        }
                     }
                     Err(e) => {
                         tracing::error!("Failed to check/refresh cred for user {}: {}", user_id, e);
@@ -2445,7 +2577,8 @@ impl AccountService {
 
                         // 检查是否是 SYNC FAILED 错误，尝试自动刷新 cred
                         let error_string = e.to_string();
-                        let is_sync_failed = error_string.contains("API error")
+                        let is_sync_failed = e.is_session_invalid()
+                            || error_string.contains("API error")
                             || error_string.contains("Failed to parse JSON")
                             || error_string.contains("HTTP request failed");
 

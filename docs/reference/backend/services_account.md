@@ -197,10 +197,13 @@ Step 2 `get_skland_code`（`POST /user/oauth2/v2/grant`）→ Step 3 `get_skland
 - 扫码方式在授权成功后用 `expected_user_id` 校验是否为同一森空岛账户，不一致即拦截（上方 Step 3.1），凭证不会落盘。
 - 数美设备指纹接口连续失败（`ApiFailureKind::DeviceFingerprint`）时前端提示「重启电脑并同步时区」；修复后点击重试会调用 `reset_api_health` 解除熔断。
 
-### token 与 cred 刷新（57-297、610-781 行）
-- 主入口 `check_and_refresh_user_cred`（610）转发到 `AsyncAccountService`（57）：`check_cred` 有效 → 直接返回 `Ok(None)`（**不再回填 u8token**）；失效或 `check_cred` 报错 → `refresh_cred_by_hytoken(hyt token, device_token)` 换新 cred/token 并写回 `account_token_{user_id}`；无 hytoken → `AuthError`（提示 re-login）。
+### token 与 cred 刷新（`check_and_refresh_user_cred`、`recover_credential_by_cred`）
+- 主入口 `check_and_refresh_user_cred` 转发到 `AsyncAccountService`：`check_cred` 有效 → 直接返回 `Ok(None)`（**不再回填 u8token**）；失效或 `check_cred` 报错 → `refresh_cred_by_hytoken(hytoken, device_token)` 换新 cred/token 并写回 `account_token_{user_id}`；无 hytoken → `AuthError`（提示 re-login）。
 - `refresh_cred_by_hytoken` 已删除 u8 分支（原 Step 1.5），返回 `(cred, token, user_id)` 三元组 —— 换 cred 不再有任何「顺手取令牌」的副作用。
-- `get_accounts` / `refresh_accounts` 内部：每次取角色详情前刷新；错误串含 `hytoken/OAuth/grant failed` → 标记 `HYTOKEN_EXPIRED`；错误串含 `API error/Failed to parse JSON/HTTP request failed` → 视为同步失败，再用 hytoken 自动刷新并重试一次详情接口。
+- **⚠️ `check_cred` 为真不代表数据接口可用**：服务端轮换会话后 `/api/v1/user/check` 仍返回 `code=0`，而数据接口已经 401 + `code=10000 请求异常`。因此不能只靠本函数判断会话健康 —— 请求层的 `call_skland_api` 会就地自愈（见下条）。
+- **`recover_credential_by_cred(config, skland, stale_cred)`（私有 async）**：按**失效的 cred** 反查 `account_token_*`，取出该账号 hytoken → `refresh_cred_by_hytoken` → 把新 cred/token **写回配置**（保留 hytoken / roles / user_info / device_token）→ `Option<(cred, token)>`。注册为 `services/cred_recovery.rs` 的全局钩子（`install_cred_recovery_hook`，在 `AccountService::new` 里装一次，幂等），供 `SklandService::call_skland_api` 在会话失效时调用。
+- `get_accounts` / `refresh_accounts` 内部：每次取角色详情前刷新；错误串含 `hytoken/OAuth/grant failed` → 标记 `HYTOKEN_EXPIRED`；`AppError::is_session_invalid()` 或错误串含 `API error/Failed to parse JSON/HTTP request failed` → 视为同步失败，再用 hytoken 自动刷新并重试一次详情接口。
+- **`Ok(None)` 分支必须回读配置**：`collect_role_targets` 在批次开始时快照了全部凭据；同批次前一个角色若已触发会话自愈并写回新 cred，继续用快照就会拿旧凭据再撞一次 401。因此 `Ok(None)` 时改用 `read_skland_credentials(&user_id)` 取当前值。
 - u8token 不再「续期」，而是每次同步前用 `fetch_role_u8token` 现换（不缓存、不落盘）。
 
 ### 角色数据查询与缓存（496-600、1018-1399、1540-1840、3064-3096 行）

@@ -16,4 +16,4 @@ pub mod proxy;
 pub mod redact;
 pub mod steam;
 
-pub use error::AppError;
+pub use error::{AppError, SESSION_INVALID_MARKER};

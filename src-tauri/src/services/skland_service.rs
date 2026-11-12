@@ -18,7 +18,7 @@ use crate::models::role::{
     BindingResponse, GameBinding, GameRoleBinding, GAME_ARKNIGHTS, GAME_ENDFIELD,
 };
 use crate::services::config_service::ConfigService;
-use crate::utils::{api_health, capture, http_client, AppError};
+use crate::utils::{api_health, capture, http_client, AppError, SESSION_INVALID_MARKER};
 use crate::{log_debug, log_error, log_info, log_warn};
 
 type HmacSha256 = Hmac<Sha256>;
@@ -500,15 +500,48 @@ impl SklandService {
             )
     }
 
+    /// 重新申请 dId 并**写回缓存**。
+    ///
+    /// 旧实现（`config.remove("did_cache")` + `fetch_new_did`）只换了本次请求用的
+    /// dId，却没有写回缓存 —— 于是下一次调用又读不到缓存、又去数美换一把新的。
+    /// 结果是一次 401 之后**每次请求都要多付一次指纹申请**，且 dId 永不稳定。
+    async fn rotate_did(&self) -> Result<String, AppError> {
+        {
+            let mut config = self.config_service.lock().map_err(|e| AppError::ConfigError {
+                message: format!("Lock failed: {}", e),
+            })?;
+            config.remove("did_cache");
+        }
+        let new_did = self.fetch_new_did().await?;
+        {
+            let mut config = self.config_service.lock().map_err(|e| AppError::ConfigError {
+                message: format!("Lock failed: {}", e),
+            })?;
+            config.set("did_cache".to_string(), json!(new_did))?;
+        }
+        Ok(new_did)
+    }
+
     /// 统一的 Skland API 调用入口
     ///
     /// 自动处理：
-    /// - dId 获取/缓存/失效重试（最多 2 次）
+    /// - dId 获取/缓存/失效轮换（**轮换后写回缓存**，避免每次请求都重申请指纹）
     /// - timestamp 生成
     /// - sign 计算（HMAC-SHA256 + MD5）
     /// - 认证 header 注入（cred、dId、sign、timestamp、User-Agent 等）
     /// - 请求日志记录
     /// - JSON 解析 + code != 0 错误检查（已知幂等结果如「请勿重复签到」除外）
+    /// - **会话失效自愈**：数据接口返回 `code=10000 请求异常` 时，就地用该账号的
+    ///   `hytoken` 换一把新 cred（见 [`crate::services::cred_recovery`]）再重试一次
+    ///
+    /// # 为什么需要会话自愈
+    ///
+    /// 服务端轮换会话后，`/api/v1/user/check` 依旧返回 `code=0`，只有数据接口拒绝。
+    /// 因此 `check_and_refresh_user_cred` 永远判定「cred 有效」、永不刷新；随后每个
+    /// 角色都撞 401 → 连续失败浇满熔断计数 → 所有账号一起变「账号不可用」。
+    /// 用户唯有重新登录才能恢复，因为只有那条路径真的重走了
+    /// `hytoken → generate_cred_by_code`。这里把同一个动作做进请求层，故障窗口
+    /// 从「必须重新登录」收敛成「一次额外请求」。
     ///
     /// # 参数
     /// - `method` - "GET" 或 "POST"
@@ -534,10 +567,27 @@ impl SklandService {
         let client = http_client::create_client();
         let mut last_err: Option<AppError> = None;
 
-        // 连续失败守卫：已判定 API 异常（如本地时间错误）时直接失败，
-        // 避免前端持续等待/重试。
-        for attempt in 0..2 {
-            api_health::ensure_available()?;
+        // 本次调用实际使用的凭据：会话失效时会就地换成新的一对。
+        let mut cred = cred.to_string();
+        let mut token = token.to_string();
+        // 已经用过「换 cred」这条修复路径，不再重复触发（避免换出一堆凭据）。
+        let mut cred_refreshed = false;
+        // 是否轮换 dId。**只在与设备指纹/签名相关的失败后轮换**：
+        // 会话失效与 dId 无关，为它多申请一次指纹毫无意义，还会白白消耗数美接口
+        // （那条链路有自己的熔断阈值 3）。
+        let mut need_did_rotation = false;
+
+        // 最多 3 轮：
+        // 0) 缓存 dId + 原 cred —— 正常路径
+        // 1) 轮换 dId —— dId 被服务器判无效
+        // 2) 会话已失效时已换成新 cred —— 用新凭据再试一次
+        for attempt in 0..3 {
+            // 熔断守卫：若本次调用已经拿到过具体错误（例如刚刚换 cred 失败后的
+            // SESSION_INVALID），优先把那个原因返回给上层 —— 否则恢复失败的真正
+            // 原因会被 "API requests are paused" 覆盖，日志里只剩下一句笼统的熔断。
+            if let Err(paused) = api_health::ensure_available() {
+                return Err(last_err.unwrap_or(paused));
+            }
 
             let did = if attempt == 0 {
                 match self.get_or_refresh_did().await {
@@ -549,17 +599,18 @@ impl SklandService {
                         continue;
                     }
                 }
-            } else {
-                {
-                    let mut config =
-                        self.config_service
-                            .lock()
-                            .map_err(|e| AppError::ConfigError {
-                                message: format!("Lock failed: {}", e),
-                            })?;
-                    config.remove("did_cache");
+            } else if need_did_rotation {
+                need_did_rotation = false;
+                match self.rotate_did().await {
+                    Ok(d) => d,
+                    Err(e) => {
+                        last_err = Some(e);
+                        continue;
+                    }
                 }
-                match self.fetch_new_did().await {
+            } else {
+                // 会话失效重试：dId 没坏，继续用缓存那把（取不到才现申请）。
+                match self.get_or_refresh_did().await {
                     Ok(d) => d,
                     Err(e) => {
                         last_err = Some(e);
@@ -571,7 +622,7 @@ impl SklandService {
             let ts = Utc::now().timestamp().to_string();
             let body_str = body.as_ref().map(|b| b.to_string()).unwrap_or_default();
             let sign_input = query.unwrap_or(&body_str);
-            let sign = self.calculate_sign(path, sign_input, &ts, &did, token);
+            let sign = self.calculate_sign(path, sign_input, &ts, &did, &token);
 
             let url = if let Some(q) = query {
                 format!("https://zonai.skland.com{}?{}", path, q)
@@ -586,12 +637,19 @@ impl SklandService {
                 crate::utils::redact::redact_url(&url)
             );
 
-            let mut req = self.build_skland_request(&client, method, &url, cred, &did, &sign, &ts);
+            let mut req =
+                self.build_skland_request(&client, method, &url, &cred, &did, &sign, &ts);
             if let Some(ref b) = body {
                 req = req.json(b);
             }
             for (key, value) in &extra_headers {
-                req = req.header(key.as_str(), value.as_str());
+                // 换过 cred 时 `token` 头必须跟着换 —— 它和 cred 是一对，
+                // 沿用旧 token 会让重试继续被判会话失效。
+                if key.eq_ignore_ascii_case("token") {
+                    req = req.header(key.as_str(), token.as_str());
+                } else {
+                    req = req.header(key.as_str(), value.as_str());
+                }
             }
 
             let start_time = std::time::Instant::now();
@@ -670,8 +728,68 @@ impl SklandService {
                         api_message,
                         clock_skew_seconds,
                     );
+
+                    // 签名/时间类失败才值得换 dId：dId 参与签名的 header JSON，
+                    // 一旦被服务器判为无效，换新 dId 是唯一可能的修复动作。
+                    if matches!(
+                        kind,
+                        api_health::ApiFailureKind::Signature
+                            | api_health::ApiFailureKind::ClockSkew
+                    ) {
+                        need_did_rotation = true;
+                    }
+
+                    // ---- 会话失效自愈（本文件最关键的修复点）----
+                    //
+                    // 服务端轮换会话后，数据接口回 `401 code=10000 请求异常`，而
+                    // `/api/v1/user/check` 依旧 `code=0`，所以上层永远认为「cred 有效」、
+                    // 永不刷新；随后每个角色都撞 401，连续失败把熔断打满，**所有账号一起**
+                    // 变「账号不可用」，只有重新登录才能恢复。
+                    //
+                    // 这里就地补上「重新登录」做过的那一步：用该账号的 hytoken 换一把
+                    // 新 cred，然后继续下一轮重试。只做一次，且失败时不吞掉原因。
+                    if api_health::is_session_invalid(code, api_message) && !cred_refreshed {
+                        cred_refreshed = true;
+                        log_warn!(
+                            "Skland API session invalid (code={}); attempting credential recovery: {}",
+                            code,
+                            crate::utils::redact::redact_url(path)
+                        );
+                        match crate::services::cred_recovery::refresh_for_cred(&cred).await {
+                            Some((new_cred, new_token)) => {
+                                log_info!(
+                                    "Credential recovery succeeded for {} (new_cred_len={}), retrying",
+                                    crate::utils::redact::redact_url(path),
+                                    new_cred.len()
+                                );
+                                cred = new_cred;
+                                token = new_token;
+                                // 修复成功：解除熔断，否则下一轮会被 ensure_available 直接拒掉
+                                api_health::clear_after_repair("credential rotated after session-invalid");
+                                last_err = Some(AppError::AuthError { message });
+                                continue;
+                            }
+                            None => {
+                                log_warn!(
+                                    "Credential recovery unavailable (no hytoken or refresh failed) for {}",
+                                    crate::utils::redact::redact_url(path)
+                                );
+                            }
+                        }
+                    }
+
+                    if api_health::is_session_invalid(code, api_message) {
+                        // 打上固定标记，让上层（AccountService / 前端）能识别出
+                        // 「该走刷新或重新登录」而不是「该重试网络」。
+                        last_err = Some(AppError::AuthError {
+                            message: format!("{SESSION_INVALID_MARKER} {message}"),
+                        });
+                    } else {
+                        last_err = Some(AppError::AuthError {
+                            message: message.clone(),
+                        });
+                    }
                     api_health::record_failure(kind, &message, clock_skew_seconds);
-                    last_err = Some(AppError::AuthError { message });
                     continue;
                 }
                 Err(e) => {
@@ -844,8 +962,16 @@ impl SklandService {
     }
 
     /// 检查 cred 是否有效
+    ///
+    /// ⚠️ **只代表「这个 cred 还能通过身份校验」，不代表数据接口可用。**
+    /// 服务端轮换会话后本接口仍返回 `code=0`，而数据接口已经 401 + `code=10000`；
+    /// 因此调用方不能只凭 `Ok(true)` 就认定会话健康 —— 数据接口的会话失效由
+    /// [`Self::call_skland_api`] 内的自愈逻辑单独处理。
     pub async fn check_cred(&self, cred: &str) -> Result<bool, AppError> {
-        api_health::ensure_available()?;
+        // 注意：这里刻意**不**调 `ensure_available()`。本接口是身份校验探针，
+        // 而熔断往往正是由「数据接口 10000」造成的误判 —— 让探针也被自己挡住，
+        // 就会把「能不能自我修复」也一并挡掉（原先的日志就是
+        // `check_cred API call failed: API requests are paused ...`）。
         let client = http_client::create_client();
 
         let start_time = std::time::Instant::now();
@@ -892,12 +1018,17 @@ impl SklandService {
     ///
     /// 只换森空岛凭据，**不碰 u8token** —— 抽卡令牌按角色单独授权，
     /// 入口是 [`crate::services::account_service::AccountService::authorize_role_u8token`]。
+    ///
+    /// ⚠️ **不经过熔断守卫**：这条链路是熔断的「解药」而不是「病因」。它既不依赖
+    /// dId/签名，也不依赖那把已经失效的 cred（只依赖 hytoken）。旧实现在这里调
+    /// `ensure_available()`，于是熔断一旦触发，唯一的修复路径也被自己锁死 ——
+    /// 这正是「必须手动重新登录才能恢复」的机制性根因（重新登录之所以有效，是因为
+    /// 它走的是登录链路，并顺手 `reset_api_health`）。
     pub async fn refresh_cred_by_hytoken(
         &self,
         hytoken: &str,
         _device_token: Option<&str>,
     ) -> Result<(String, String, String), AppError> {
-        api_health::ensure_available()?;
         // Step 1: OAuth grant（hytoken → skland sk_code）
         let sk_code = self.oauth_grant_to_sk_code(hytoken).await?;
 

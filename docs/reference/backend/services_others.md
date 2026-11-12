@@ -4,30 +4,51 @@
 > 覆盖 `src-tauri/src/services/` 下除 `account_service.rs` / `skland_service.rs` / `game_launcher_service.rs` 外的全部文件。
 
 ## `src-tauri/src/services/mod.rs`
-**职责**：服务层的模块声明清单，15 行，把 15 个服务模块公开为 `pub mod`。
+**职责**：服务层的模块声明清单，16 行，把 16 个服务模块公开为 `pub mod`。
 
-**导出**：`account_service`、`arknights_gacha_service`、`arknights_service`、`avatar_cache_service`、`char_detail_service`、`char_wiki_detail_service`、`config_service`、`data_query`、`game_launcher_service`、`gacha_service`、`network_service`、`secret_registry`、`secret_store`、`skland_service`、`system_resource_service`（全部为模块，无类型/方法）。
+**导出**：`account_service`、`arknights_gacha_service`、`arknights_service`、`avatar_cache_service`、`char_detail_service`、`char_wiki_detail_service`、`config_service`、`cred_recovery`、`data_query`、`game_launcher_service`、`gacha_service`、`network_service`、`secret_registry`、`secret_store`、`skland_service`、`system_resource_service`（全部为模块，无类型/方法）。
 
 **状态**：不注册任何 Tauri State，仅提供命名空间。
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
-| `pub mod account_service` | mod.rs:1 | 账户服务（其他文档负责） |
-| `pub mod arknights_gacha_service` | mod.rs:2 | **《明日方舟》寻访记录服务**（`ak-webview` 的 cate/history 抓取、归一化与文件缓存） |
-| `pub mod arknights_service` | mod.rs:3 | **《明日方舟》数据服务**（player/info、cultivate、attendance 的拉取、解析与文件缓存） |
-| `pub mod avatar_cache_service` | mod.rs:4 | 图片/头像本地缓存服务 |
-| `pub mod char_detail_service` | mod.rs:5 | 角色详情获取与图片懒加载处理 |
-| `pub mod char_wiki_detail_service` | mod.rs:6 | Wiki 物品详情批量/按需缓存 |
-| `pub mod config_service` | mod.rs:7 | JSON 配置读写（app_config.json）+ 机密字段分流 |
-| `pub mod data_query` | mod.rs:8 | 数据路径解析与 API 名枚举 |
-| `pub mod game_launcher_service` | mod.rs:9 | 游戏启动器（其他文档负责） |
-| `pub mod gacha_service` | mod.rs:10 | 抽卡记录抓取与本地存储（**仅终末地** `ef-webview`） |
-| `pub mod network_service` | mod.rs:11 | 统一数据查询入口（聚合子服务） |
-| `pub mod secret_registry` | mod.rs:12 | **机密字段登记表**（唯一判定来源） |
-| `pub mod secret_store` | mod.rs:13 | **机密存储后端**（OS 凭据库 / 加密文件降级） |
-| `pub mod skland_service` | mod.rs:14 | 森兰 API 底层调用（其他文档负责） |
+| `pub mod account_service` | mod.rs | 账户服务（其他文档负责） |
+| `pub mod arknights_gacha_service` | mod.rs | **《明日方舟》寻访记录服务**（`ak-webview` 的 cate/history 抓取、归一化与文件缓存） |
+| `pub mod arknights_service` | mod.rs | **《明日方舟》数据服务**（player/info、cultivate、attendance 的拉取、解析与文件缓存） |
+| `pub mod avatar_cache_service` | mod.rs | 图片/头像本地缓存服务 |
+| `pub mod char_detail_service` | mod.rs | 角色详情获取与图片懒加载处理 |
+| `pub mod char_wiki_detail_service` | mod.rs | Wiki 物品详情批量/按需缓存 |
+| `pub mod config_service` | mod.rs | JSON 配置读写（app_config.json）+ 机密字段分流 |
+| `pub mod cred_recovery` | mod.rs | **凭证自愈钩子**（会话失效时用 hytoken 换 cred，见下节） |
+| `pub mod data_query` | mod.rs | 数据路径解析与 API 名枚举 |
+| `pub mod game_launcher_service` | mod.rs | 游戏启动器（其他文档负责） |
+| `pub mod gacha_service` | mod.rs | 抽卡记录抓取与本地存储（**仅终末地** `ef-webview`） |
+| `pub mod network_service` | mod.rs | 统一数据查询入口（聚合子服务） |
+| `pub mod secret_registry` | mod.rs | **机密字段登记表**（唯一判定来源） |
+| `pub mod secret_store` | mod.rs | **机密存储后端**（OS 凭据库 / 加密文件降级） |
+| `pub mod skland_service` | mod.rs | 森兰 API 底层调用（其他文档负责） |
 
-**备注**：无 HTTP 端点、无配置键、无文件路径。`data_query`、`secret_registry` 是纯函数模块（含单元测试），不属于「服务实例」。
+**备注**：无 HTTP 端点、无配置键、无文件路径。`data_query`、`secret_registry`、`cred_recovery` 是纯函数模块（前两者含单元测试），不属于「服务实例」。
+
+---
+
+## `src-tauri/src/services/cred_recovery.rs`
+**职责**：凭证自愈钩子（约 60 行）。把「数据接口拒绝当前 cred」的请求接回 hytoken 刷新链路：`SklandService::call_skland_api` 判定会话失效时，通过这里注册的回调换一把新 cred 后重试。
+**导出**：`RefreshedCred`、`RecoveryFuture`、`RecoveryHook`、`install`、`refresh_for_cred`。私有：`HOOK`（`OnceLock<RecoveryHook>`）。
+**主要依赖**：`std::future::Future`、`std::pin::Pin`、`std::sync::{Arc, OnceLock}`。
+
+| 符号 | 位置 | 说明 |
+| --- | --- | --- |
+| `RefreshedCred` | 类型别名 | `(String, String)`，即 `(新 cred, 新 token)` |
+| `RecoveryFuture` | 类型别名 | `Pin<Box<dyn Future<Output = Option<RefreshedCred>> + Send>>` |
+| `RecoveryHook` | 类型别名 | `Arc<dyn Fn(String) -> RecoveryFuture + Send + Sync>`；入参是**旧的 cred** |
+| `install(hook)` | `install` | 注册回调（幂等，只有第一次生效）；由 `AccountService::new` 调用 |
+| `refresh_for_cred(cred)` | `refresh_for_cred` | 依据失效的 cred 换新凭据；未注册钩子时返回 `None` |
+
+**备注**：
+- **为什么用回调**：`SklandService` 被 `AccountService` 持有，反向依赖会成环。钩子由 `AccountService::new` 注册一次，`SklandService` 只保留一个 `Arc<dyn Fn>`，两者仍是单向依赖。
+- **为什么用旧 cred 反查**：`call_skland_api` 手里只有 cred，而 `account_token_{user_id}.cred` 正好是它的索引。
+- 钩子实现是 `AccountService::recover_credential_by_cred`（反查账号 → `refresh_cred_by_hytoken` → 写回配置）。
 
 ---
 

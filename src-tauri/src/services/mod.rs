@@ -5,6 +5,7 @@ pub mod avatar_cache_service;
 pub mod char_detail_service;
 pub mod char_wiki_detail_service;
 pub mod config_service;
+pub mod cred_recovery;
 pub mod data_query;
 pub mod gacha_service;
 pub mod game_launcher_service;
