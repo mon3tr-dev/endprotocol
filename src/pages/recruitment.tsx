@@ -30,6 +30,7 @@ import {
   formatShortDateTime,
   type RecruitSlotState,
 } from "@/components/cards/recruitment/recruit-shared";
+import { hireRefreshState } from "@/components/cards/building/building-shared";
 import type {
   ArknightsPlayerInfo,
   ArknightsRecruitSlot,
@@ -163,7 +164,10 @@ export default function RecruitmentPage() {
   );
 
   const slots = useMemo(() => padSlots(info?.recruit), [info]);
-  const hire = info?.building?.hire ?? null;
+  const hire = useMemo(
+    () => hireRefreshState(info?.building?.hire, nowMs),
+    [info, nowMs],
+  );
 
   const stateLabel = (state: RecruitSlotState) =>
     state === "running"
@@ -296,16 +300,29 @@ export default function RecruitmentPage() {
         </GlassCard>
       ) : (
         <div className="space-y-4">
-          {/* 办公室刷新（公开招募的附带信息） */}
-          {hire && (
+          {/* 人力资源办公室的「联络次数」（公开招募刷标签用的次数） */}
+          {info?.building?.hire && (
             <GlassCard className="px-4 py-2.5 border border-separator/90">
               <div className="flex items-center justify-between gap-3 text-xs">
                 <span className="text-muted">{t("recruitment_page.hire_refresh")}</span>
-                <span className="font-medium text-foreground">
-                  {t("recruitment_page.hire_refresh_usage", {
-                    used: Math.min(hire.refreshCount ?? 0, 3),
-                    total: 3,
-                  })}
+                <span className="flex items-center gap-2 font-medium text-foreground">
+                  <span>
+                    {t("recruitment_page.hire_refresh_usage", {
+                      used: hire.used,
+                      total: hire.total,
+                    })}
+                  </span>
+                  <span
+                    className={`px-1.5 py-0.5 rounded-md text-[11px] ${
+                      hire.ready
+                        ? "text-success-text bg-success/15"
+                        : "text-muted bg-default-100/60"
+                    }`}
+                  >
+                    {hire.ready
+                      ? t("recruitment_page.hire_refresh_ready")
+                      : formatCountdown(hire.remainMs, i18n.language)}
+                  </span>
                 </span>
               </div>
             </GlassCard>

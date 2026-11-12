@@ -1427,7 +1427,7 @@ derive 均为 `Serialize, Deserialize, Clone, Debug` + 容器 `rename_all = "cam
 | `rogue` | `ArknightsRogue` | 容器 default | 集成战略各主题进度 |
 | `sandbox` | `Vec<ArknightsSandbox>` | 容器 default | 沙中之地（沙盒）进度 |
 | `boss_rush` | `Vec<ArknightsBossRush>` | 容器 default | 历险签约记录 |
-| `data_version` | `i32` | 容器 default | **接口不返回**，由 `ArknightsService::fetch_player_info` 填 `ARKNIGHTS_DATA_VERSION`（=1）；旧格式缓存读到 0，前端据此自动强制刷新一次 |
+| `data_version` | `i32` | 容器 default | **接口不返回**，由 `ArknightsService::fetch_player_info` 填 `ARKNIGHTS_DATA_VERSION`（当前 =3；1 = 章节进度、2 = 剿灭阵营、3 = 训练室 `level`/`slotId`）；旧格式缓存读到更小值，前端据此自动强制刷新一次 |
 
 > ⚠️ **非 Value 值的映射必须用 `BTreeMap` 而不是 `serde_json::Map`**：serde_json 1.0.151 起
 > `Map<String, V>` 只对 `V = Value` 实现了 Serialize/Deserialize/Clone/Debug/Default，
@@ -1452,7 +1452,7 @@ derive 均为 `Serialize, Deserialize, Clone, Debug` + 容器 `rename_all = "cam
 | --- | --- | --- |
 | `ArknightsLabor` | arknights.rs:311 | `value` / `max_value` / `remain_secs`（按 `lastUpdateTime` 计算）/ `last_update_time`（无人机） |
 | `ArknightsHire` | arknights.rs:322 | `refresh_count`（上限 3）/ `complete_work_time`（办公室刷新） |
-| `ArknightsTraining` | arknights.rs:331 | `trainee`（`Option`）/ `trainer`（`Option`）/ `speed`（**`f64`**）/ `remain_point`（**`f64`**）/ `remain_secs`（按请求时间计算） |
+| `ArknightsTraining` | arknights.rs:331 | `trainee`（`Option`）/ `trainer`（`Option`）/ `speed`（**`f64`**）/ `remain_point`（**`f64`**）/ `remain_secs`（按请求时间计算）/ **`level` / `slot_id` / `slot_state` / `last_update_time`（dataVersion 3 补建，缺 `level` 时基地页会显示「等级 」而没有数字）** |
 | `ArknightsHire` | arknights.rs:322 | `refresh_count`（上限 3）/ `complete_work_time` / `level` / `slot_id` / `slot_state` / `state` / `chars` |
 | `ArknightsTrainee` | arknights.rs:346 | `char_id` / `target_skill`（-1 表示空位） |
 | `ArknightsTrainer` | arknights.rs:356 | `char_id` |

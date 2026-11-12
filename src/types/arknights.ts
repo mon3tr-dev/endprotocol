@@ -11,7 +11,7 @@
  */
 
 /** `player/info` 数据结构版本（与后端 ARKNIGHTS_DATA_VERSION 同步） */
-export const ARKNIGHTS_DATA_VERSION = 2;
+export const ARKNIGHTS_DATA_VERSION = 3;
 
 /** 「当前/总量」对（理智、任务进度、奖章进度等） */
 export interface ArknightsProgress {
@@ -122,7 +122,7 @@ export interface ArknightsRecruitSlot {
 export interface ArknightsBuilding {
   /** 无人机（未建控制中枢时可能为 null） */
   labor: ArknightsLabor | null;
-  /** 办公室（公开招募刷新），未建造时为 null */
+  /** 人力资源办公室（产出「联络次数」用于刷新公开招募标签），未建造时为 null */
   hire: ArknightsHire | null;
   /** 训练室（技能专精），无进行中专精时可能为 null */
   training: ArknightsTraining | null;
@@ -145,11 +145,15 @@ export interface ArknightsLabor {
   lastUpdateTime: number;
 }
 
-/** 办公室（`building.hire`）—— 公开招募刷新 */
+/**
+ * 人力资源办公室（`building.hire`）—— 产出「联络次数」。
+ *
+ * 联络次数用于刷新公开招募的标签（Tag），满 3 次封顶、随时间自动恢复、可跨天累积。
+ */
 export interface ArknightsHire {
-  /** 已用刷新次数（上限 3） */
+  /** **当前持有**的联络次数（0..3，满了停在 3；不是"每日已用"） */
   refreshCount: number;
-  /** 下次刷新完成时间戳 */
+  /** 下次恢复一次联络次数的时间戳 */
   completeWorkTime: number;
   level: number;
   slotId: string;
@@ -170,6 +174,12 @@ export interface ArknightsTraining {
   remainSecs: number;
   /** 训练室等级（接口下发，缺省 0） */
   level?: number;
+  /** 槽位标识，如 `slot_13` */
+  slotId?: string;
+  /** 槽位状态（2 = 工作中） */
+  slotState?: number;
+  /** 设施最近一次数据刷新时间戳 */
+  lastUpdateTime?: number;
 }
 
 export interface ArknightsTrainee {
@@ -236,7 +246,7 @@ export interface ArknightsOrderItem {
 export interface ArknightsClue {
   /** 摆放中的线索派系（RHODES / BLACKSTEEL ...） */
   board: string[];
-  /** 今日碎片奖励是否已领 */
+  /** 今日线索奖励是否已领 */
   dailyReward: boolean;
   needReceive: number;
   own: number;
@@ -390,9 +400,24 @@ export const ARKNIGHTS_MOOD_MAX = 24;
 export const ARKNIGHTS_PORTRAIT_BASE =
   "https://web.hycdn.cn/arknights/game/assets/char/portrait/";
 
-/** 按 charId 拼干员头像地址 */
+/**
+ * 干员**方形头像** CDN 前缀（180×180，人物居中）。
+ *
+ * ⚠️ 和 `portrait`（180×360 半身像）不是一回事：半身像塞进正方形缩略图里
+ * `object-cover` 会把头切掉、只剩躯干。小尺寸圆形/方形头像一律用这个。
+ * `#1` 是默认皮肤（URL 里要编码成 `%231`）。
+ */
+export const ARKNIGHTS_AVATAR_BASE =
+  "https://web.hycdn.cn/arknights/game/assets/char_skin/avatar/";
+
+/** 按 charId 拼干员半身像地址（180×360，适合竖长卡片） */
 export function arknightsPortraitUrl(charId: string): string {
   return `${ARKNIGHTS_PORTRAIT_BASE}${charId}.png`;
+}
+
+/** 按 charId 拼干员方形头像地址（180×180，适合小缩略图） */
+export function arknightsAvatarUrl(charId: string): string {
+  return `${ARKNIGHTS_AVATAR_BASE}${encodeURIComponent(`${charId}#1`)}.png`;
 }
 
 /** 由 ap 原始值换算心情点数（0..24，保留 1 位小数） */

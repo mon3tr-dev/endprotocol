@@ -193,7 +193,9 @@ pub struct ArknightsSecretary {
 /// 变更记录：
 /// - 1：章节进度 / 信息表 / 其他模式（2026-11）
 /// - 2：剿灭阵营（`campaignZoneInfoMap` + `campaignInfoMap[].campaignZoneId`）
-pub const ARKNIGHTS_DATA_VERSION: i32 = 2;
+/// - 3：训练室补上 `level` / `slotId` / `slotState` / `lastUpdateTime`
+///   （旧缓存缺 `level`，基地页面会显示「等级 」而没有数字）
+pub const ARKNIGHTS_DATA_VERSION: i32 = 3;
 
 /// 玩家账号全量数据（`GET /api/v1/game/player/info?uid=` 的 `data`）
 ///
@@ -636,6 +638,11 @@ pub struct ArknightsHire {
 }
 
 /// 训练室（`building.training`）—— 技能专精
+///
+/// 实测（两个官服/B 服账号都如此）：
+/// `{ lastUpdateTime, level, remainPoint, remainSecs, slotId, slotState, speed,
+/// trainee, trainer }`。**`level` / `slotId` / `slotState` 必须建模**，否则界面
+/// 只能显示「等级 」而没有数字（2026-11 前的真实 bug）。
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 #[serde(rename_all = "camelCase", default)]
 pub struct ArknightsTraining {
@@ -650,6 +657,14 @@ pub struct ArknightsTraining {
     pub remain_point: f64,
     /// 距离完成的剩余秒数（**按请求时间计算**）
     pub remain_secs: i64,
+    /// 训练室等级（接口下发；缺失走 0）
+    pub level: i32,
+    /// 槽位标识，如 `slot_13`
+    pub slot_id: String,
+    /// 槽位状态（2 = 工作中）
+    pub slot_state: i32,
+    /// 设施最近一次数据刷新时间戳
+    pub last_update_time: i64,
 }
 
 /// 正在专精的干员
@@ -1309,6 +1324,10 @@ mod tests {
             training.trainer.is_some(),
             "training.trainer 没解析到"
         );
+        // ★ 回归：训练室等级/槽位必须在模型里（缺失时页面显示「等级 」无数字）
+        assert_eq!(training.level, 3, "training.level 没解析到");
+        assert!(training.slot_id.starts_with("slot_"), "training.slotId");
+        assert!(training.last_update_time > 0, "training.lastUpdateTime 没解析到");
 
         // 设施排班能解析
         assert!(!info.building.control.is_empty(), "building.control 没解析到");

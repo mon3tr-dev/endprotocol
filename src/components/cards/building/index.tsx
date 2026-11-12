@@ -27,6 +27,7 @@ import {
   laborRemainingMs,
   manufactureState,
   tradingSummary,
+  trainingState,
 } from "./building-shared";
 import { formatCountdown } from "../recruitment/recruit-shared";
 
@@ -153,7 +154,7 @@ export default function BuildingCard({
       orderCount,
       orderLimit,
       tiredCount: building?.tiredChars?.length ?? 0,
-      specializing: Boolean(building?.training?.trainee && building.training.trainee.targetSkill >= 0),
+      specializing: trainingState(building?.training).specializing,
     };
   }, [building, nowMs]);
 

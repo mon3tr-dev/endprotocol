@@ -26,14 +26,18 @@ import {
   arknightsMoodOf,
   arknightsMoodPercent,
   dormRestSummary,
+  hireRefreshState,
   laborPercent,
   laborRemainingMs,
+  locateRoomSlot,
   manufactureState,
   tradingSummary,
+  trainingState,
   FACILITY_ORDER,
   type FacilityKey,
+  type RoomSlotOwner,
 } from "@/components/cards/building/building-shared";
-import { arknightsPortraitUrl } from "@/types/arknights";
+import { arknightsAvatarUrl } from "@/types/arknights";
 import { formatCountdown } from "@/components/cards/recruitment/recruit-shared";
 import { RemoteThumb } from "@/components/ui/remote-thumb";
 import type {
@@ -175,12 +179,43 @@ export default function BuildingPage() {
   const labor = building?.labor ?? null;
   const laborPct = laborPercent(labor);
   const dronesFull = laborPct >= 100 || !labor;
+  const hire = useMemo(() => hireRefreshState(building?.hire, nowMs), [building, nowMs]);
+  const training = useMemo(() => trainingState(building?.training), [building]);
+
+  /** 设施键/办公室/训练室 → i18n 标题 */
+  const facilityTitle = useCallback(
+    (key: RoomSlotOwner) =>
+      t(key === "hire" ? "building_page.office" : key === "training" ? "building_page.training" : FACILITY_TITLE_KEY[key]),
+    [t],
+  );
 
   /** charId → 干员名（charInfoMap 缺失时回退 charId） */
   const charName = useCallback(
     (charId: string) =>
       (info?.charInfoMap && info.charInfoMap[charId]?.name) || charId,
     [info],
+  );
+
+  /**
+   * 内部槽位 id（`slot_32`）→ 人话。解析不到位置时返回 `null`，
+   * 调用方**不要**把 id 本身显示出来（那是接口的数据库主键，不是玩家能看懂的东西）。
+   */
+  const slotLabel = useCallback(
+    (slotId: string | null | undefined): string | null => {
+      const hit = locateRoomSlot(building, slotId);
+      if (!hit) return null;
+      // 同一设施有多个房间时才有必要带序号
+      const total = hit.key === "hire" || hit.key === "training"
+        ? 1
+        : (building?.[hit.key] ?? []).length;
+      return total > 1
+        ? t("building_page.facility_room", {
+            room: facilityTitle(hit.key),
+            index: hit.index + 1,
+          })
+        : facilityTitle(hit.key);
+    },
+    [building, facilityTitle, t],
   );
 
   /** 一段排班里的干员心情条列表 */
@@ -306,22 +341,29 @@ export default function BuildingPage() {
                   {building.tiredChars?.length ?? 0}
                 </span>
               </div>
-              <div className="mt-2 text-[11px] text-muted space-y-1 min-h-[32px]">
+              <div className="mt-2 text-[11px] text-muted min-h-[32px]">
                 {(building.tiredChars?.length ?? 0) === 0 ? (
                   <span>{t("building_page.tired_none")}</span>
                 ) : (
-                  building.tiredChars.slice(0, 2).map((c) => (
-                    <div key={`${c.charId}-${c.roomSlotId}`} className="flex items-center gap-1.5 min-w-0">
-                      <RemoteThumb
-                        src={arknightsPortraitUrl(c.charId)}
-                        alt={charName(c.charId)}
-                        className="w-8 h-8 rounded-md border border-separator"
-                      />
-                      <span className="truncate">
-                        {charName(c.charId)} · {c.roomSlotId}
-                      </span>
-                    </div>
-                  ))
+                  <div className="flex flex-wrap gap-1.5 max-h-44 overflow-y-auto pr-0.5">
+                    {building.tiredChars.map((c, tiredIdx) => {
+                      const where = slotLabel(c.roomSlotId);
+                      return (
+                        <div
+                          key={`${tiredIdx}-${c.charId}-${c.roomSlotId}`}
+                          title={where ? `${charName(c.charId)} · ${where}` : charName(c.charId)}
+                          className="flex items-center gap-1 rounded-md border border-separator/60 bg-default-50/40 pl-0.5 pr-1.5 py-0.5 min-w-0 max-w-full"
+                        >
+                          <RemoteThumb
+                            src={arknightsAvatarUrl(c.charId)}
+                            alt={charName(c.charId)}
+                            className="w-6 h-6 rounded border border-separator shrink-0"
+                          />
+                          <span className="truncate max-w-[7rem]">{charName(c.charId)}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
                 )}
               </div>
             </GlassCard>
@@ -341,14 +383,26 @@ export default function BuildingPage() {
                 ) : null}
               </div>
               {building.hire ? (
-                <div className="mt-2 text-xs text-muted">
-                  {t("building_page.hire_refresh_usage", {
-                    used: Math.min(building.hire.refreshCount ?? 0, 3),
-                    total: 3,
-                  })}
+                <div className="mt-2 text-xs text-muted space-y-0.5">
+                  <div>
+                    {t("building_page.hire_refresh")}:{" "}
+                    {t("building_page.hire_refresh_usage", {
+                      used: hire.used,
+                      total: hire.total,
+                    })}
+                  </div>
+                  <div className={hire.ready ? "text-success-text" : "text-muted"}>
+                    {hire.ready
+                      ? t("building_page.hire_refresh_ready")
+                      : t("building_page.hire_refresh_next", {
+                          time: formatCountdown(hire.remainMs, i18n.language),
+                        })}
+                  </div>
                 </div>
               ) : (
-                <div className="mt-2 text-xs text-muted/70">—</div>
+                <div className="mt-2 text-xs text-muted/70">
+                  {t("building_page.facility_not_built")}
+                </div>
               )}
             </GlassCard>
 
@@ -359,36 +413,66 @@ export default function BuildingPage() {
                 </span>
                 {building.training ? (
                   <span className="text-[11px] text-muted">
-                    {t("building_page.level", { level: building.training.level })}
+                    {t("building_page.level", { level: building.training.level ?? 0 })}
                   </span>
                 ) : null}
               </div>
-              {building.training?.trainee && building.training.trainee.targetSkill >= 0 ? (
-                <div className="mt-2 text-xs text-muted space-y-0.5">
-                  <div className="truncate">
-                    {t("building_page.trainee")}:{" "}
-                    <span className="text-foreground font-medium">
-                      {charName(building.training.trainee.charId)}
-                    </span>
+              {training.hasTrainee ? (
+                <div className="mt-2 text-xs text-muted space-y-1">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <RemoteThumb
+                      src={arknightsAvatarUrl(training.traineeId)}
+                      alt={charName(training.traineeId)}
+                      className="w-10 h-10 rounded-lg border border-separator shrink-0"
+                    />
+                    <div className="min-w-0">
+                      <div className="text-[10px] text-muted leading-tight">
+                        {t("building_page.trainee")}
+                      </div>
+                      <div className="text-foreground font-medium truncate leading-tight">
+                        {charName(training.traineeId)}
+                      </div>
+                    </div>
                   </div>
-                  {building.training.trainer && (
-                    <div className="truncate">
-                      {t("building_page.trainer")}:{" "}
-                      <span className="text-foreground font-medium">
-                        {charName(building.training.trainer.charId)}
-                      </span>
+                  {training.trainerId && (
+                    <div className="flex items-center gap-2 min-w-0">
+                      <RemoteThumb
+                        src={arknightsAvatarUrl(training.trainerId)}
+                        alt={charName(training.trainerId)}
+                        className="w-10 h-10 rounded-lg border border-separator shrink-0"
+                      />
+                      <div className="min-w-0">
+                        <div className="text-[10px] text-muted leading-tight">
+                          {t("building_page.trainer")}
+                        </div>
+                        <div className="text-foreground font-medium truncate leading-tight">
+                          {charName(training.trainerId)}
+                        </div>
+                      </div>
                     </div>
                   )}
                   <div>
-                    {t("building_page.training_specializing")} · ×
-                    {(building.training.speed ?? 0).toFixed(2)}
-                    {(building.training.remainSecs ?? 0) > 0 &&
-                      ` · ${formatCountdown((building.training.remainSecs ?? 0) * 1000, i18n.language)}`}
+                    {training.specializing ? (
+                      <>
+                        {t("building_page.training_specializing")}
+                        {" · ×"}
+                        {(building.training?.speed ?? 0).toFixed(2)}
+                        {(building.training?.remainSecs ?? 0) > 0 &&
+                          ` · ${formatCountdown(
+                            (building.training?.remainSecs ?? 0) * 1000,
+                            i18n.language,
+                          )}`}
+                      </>
+                    ) : (
+                      t("building_page.training_idle")
+                    )}
                   </div>
                 </div>
               ) : (
                 <div className="mt-2 text-xs text-muted">
-                  {t("building_page.training_idle")}
+                  {building.training
+                    ? t("building_page.training_idle")
+                    : t("building_page.facility_not_built")}
                 </div>
               )}
             </GlassCard>
@@ -406,7 +490,7 @@ export default function BuildingPage() {
                   </span>
                   <span className="text-[11px] text-muted">
                     {segments.length > 1
-                      ? `${segments.length}`
+                      ? t("building_page.facility_rooms", { n: segments.length })
                       : t("building_page.level", { level: segments[0]?.level ?? 0 })}
                   </span>
                 </div>
@@ -424,11 +508,15 @@ export default function BuildingPage() {
                         key={`${segment.slotId}-${segIdx}`}
                         className="rounded-lg border border-separator/60 bg-default-50/40 px-3 py-2.5 space-y-2 min-w-0"
                       >
-                        {/* 槽位头：等级 / 生产状态 / 订单 */}
+                        {/* 槽位头：房间序号 / 等级 / 生产状态 / 订单 */}
                         <div className="flex items-center justify-between gap-2 text-[11px]">
-                          <span className="text-muted font-mono truncate">
-                            {segment.slotId}
-                            {segments.length > 1 ? ` · L${segment.level}` : ""}
+                          <span className="text-muted truncate">
+                            {segments.length > 1
+                              ? `${t("building_page.facility_room", {
+                                  room: facilityTitle(key),
+                                  index: segIdx + 1,
+                                })} · ${t("building_page.level_short", { level: segment.level ?? 0 })}`
+                              : ""}
                           </span>
                           {manu ? (
                             <span
@@ -515,7 +603,7 @@ export default function BuildingPage() {
                             chars.map((c) => (
                               <div key={`${c.charId}-${c.mood}`} className="flex items-center gap-2.5 min-w-0">
                                 <RemoteThumb
-                                  src={arknightsPortraitUrl(c.charId)}
+                                  src={arknightsAvatarUrl(c.charId)}
                                   alt={c.name}
                                   className="w-10 h-10 rounded-lg border border-separator"
                                 />

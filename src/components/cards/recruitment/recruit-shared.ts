@@ -1,7 +1,7 @@
 /**
  * 公开招募卡片与独立页面共享的类型与格式化工具。
  *
- * 数据来自 `player/info.recruit[]`（4 个栏位）+ `building.hire`（办公室刷新次数）。
+ * 数据来自 `player/info.recruit[]`（4 个栏位）+ `building.hire`（人力资源办公室的「联络次数」）。
  * 倒计时以**客户端时钟**为准（每秒重算），`player/info.currentTs` 只在页面详情里
  * 用来提示「数据快照时间」。
  */
