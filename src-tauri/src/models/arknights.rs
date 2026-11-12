@@ -189,7 +189,11 @@ pub struct ArknightsSecretary {
 /// 缓存文件是「解析后的结构体落盘」，旧版本程序写的缓存里没有新增字段。
 /// 前端拿到 `dataVersion < ARKNIGHTS_DATA_VERSION` 的响应时应强制联网刷新一次，
 /// 避免「绑定很久的账户」永远看到旧缓存里缺失的章节/活动数据。
-pub const ARKNIGHTS_DATA_VERSION: i32 = 1;
+///
+/// 变更记录：
+/// - 1：章节进度 / 信息表 / 其他模式（2026-11）
+/// - 2：剿灭阵营（`campaignZoneInfoMap` + `campaignInfoMap[].campaignZoneId`）
+pub const ARKNIGHTS_DATA_VERSION: i32 = 2;
 
 /// 玩家账号全量数据（`GET /api/v1/game/player/info?uid=` 的 `data`）
 ///
@@ -231,8 +235,13 @@ pub struct ArknightsPlayerInfo {
     pub activity: Vec<ArknightsActivityProgress>,
     /// 活动静态信息表：actId → {name, type, startTime...}（提供章节名/分组）
     pub activity_info_map: BTreeMap<String, ArknightsActivityInfo>,
-    /// 剿灭据点信息表：campId → {name, picUrl}
+    /// 剿灭据点信息表：campId → {name, picUrl, campaignZoneId}
     pub campaign_info_map: BTreeMap<String, ArknightsNamedInfo>,
+    /// 剿灭阵营信息表：zoneId（如 `camp_zone_9`）→ {name}（如「哥伦比亚」）。
+    ///
+    /// 据点条目只给 `campaignZoneId`，阵营名（哥伦比亚/谢拉格/维多利亚…）
+    /// 必须靠这张表翻译；缺失时前端不显示阵营徽标。
+    pub campaign_zone_info_map: BTreeMap<String, ArknightsZoneInfo>,
     /// 集成战略主题信息表：rogueId → {name, picUrl, sort}
     pub rogue_info_map: BTreeMap<String, ArknightsNamedInfo>,
     /// 保全派驻训练场信息表：towerId → {name, subName, picUrl}
@@ -451,6 +460,18 @@ pub struct ArknightsNamedInfo {
     pub sub_name: String,
     /// 仅集成战略有（主题排序号）
     pub sort: i32,
+    /// 仅剿灭据点有：所属阵营 id（如 `camp_zone_9`），阵营名查 `campaignZoneInfoMap`
+    pub campaign_zone_id: String,
+}
+
+/// 剿灭阵营（`data.campaignZoneInfoMap` 的值）
+///
+/// 实测 16 个：`camp_zone_1` 炎国龙门、`camp_zone_9` 哥伦比亚、`camp_zone_13` 谢拉格…
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+#[serde(rename_all = "camelCase", default)]
+pub struct ArknightsZoneInfo {
+    pub id: String,
+    pub name: String,
 }
 
 /// 集成战略进度（`data.rogue`）

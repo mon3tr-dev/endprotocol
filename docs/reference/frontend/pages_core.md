@@ -284,23 +284,36 @@
 - ⚠️ 设施接口是「对象或数组」混用（control/meeting 为对象），后端 `one_or_many` 已收敛成 `Vec`，前端按数组渲染即可。
 
 ## `src/pages/game-data.tsx`
-**职责**：游戏数据独立页面（**仅明日方舟**；**页面专属，没有对应卡片**）。页头（`CardIcon "chart"`）→ 主线进度卡（`status.mainStageProgress` + `stageInfoMap[key].code/name`，B 服实测为空 → 占位文案）→ **章节进度卡**（`activity[]` 按 `activityInfoMap[].type` 分组：别传 `SIDESTORY` / 插曲 `MINISTORY` / 支线 `BRANCHLINE` / 其他活动（空串），组内按开始时间倒序；**章节行对齐官方样式 —— 整幅封面横幅按原比例显示**（实测全部统一 1002×180，即 `aspect-[1002/180]`，不裁切），右侧 46% 宽黑色半透明浮层放状态（☑ 已完成 / 进行中）+ `cleared/total` + 白色进度条；复刻徽标压在封面左上；无封面的活动（约 43%）渲染等比例深色底 + 名称）→ 剿灭作战（`campaign.records` + `campaignInfoMap` 名称 + maxKills）→ 集成战略（**等比例小横幅条** `w-36 aspect-[1002/180]` + 主题名/奖章/通票/遗书/首通时间，按 `rogueInfoMap.sort` 排序）与保全派驻（训练场小横幅 + 名/subName + 最好层数）双列 → 沙中之地（`sandbox[]`：基建等级/修复裂隙/最长天数/支线完成数）与历险签约（小横幅 `picUrl` + played/难度）双列。
+**职责**：游戏数据独立页面（**仅明日方舟**；**页面专属，没有对应卡片**）。页头（`CardIcon "chart"`）之后**全部区块均为 `CollapsibleCard` 可折叠卡片**（点击标题行折叠/展开，带 `grid-rows` 高度动画；折叠状态持久化在配置 `gamedata_page_folded`）：主线进度（`status.mainStageProgress` + `stageInfoMap[key].code/name`，B 服实测为空 → 占位文案）→ **章节进度按类别拆成 4 张独立卡片**（`activity[]` 按 `activityInfoMap[].type` 分组：别传 `SIDESTORY` / 插曲 `MINISTORY` / 支线 `BRANCHLINE` / 其他活动（空串），组内按开始时间倒序，标题行右侧显示行数徽标，空分组不出卡；**章节行**：有封面时封面按原比例整幅渲染、宽度缩到行的 1/3（`w-1/3 aspect-[1002/180]`，实测统一 1002×180 不裁切），复刻徽标压在封面左上，右侧 46% 宽内联放状态（☑ 已完成 / 进行中）+ `cleared/total` + 进度条（`ChapterStatus`，语义 token 色）；**无封面的活动（约 43%，插曲全部无封面）不渲染占位封面，降级为紧凑行**——复刻徽标 + 名称一行，右侧同宽 46% 内联状态/计数/进度条）→ 剿灭作战（**据点行**：`h-16` 卡片，`campaignInfoMap[].picUrl` 作为整行背景（1002×180 横幅，右侧 `mask-image` 8%→72% 渐隐以免压住文字），左侧据点名 + **阵营徽标**（`campaignInfoMap[cid].campaignZoneId` → `campaignZoneInfoMap[zoneId].name`，如哥伦比亚/谢拉格/维多利亚/汐斯塔/炎国；缺表时不显示徽标），右侧「最高剿灭数 N」）→ 集成战略（**图片行**：固定行高 `h-14`；缩略图 `absolute inset-y-0 left-0 h-full w-auto` **绝对定位铺在行左缘、不占布局**（保持 1002:180 原比例不裁剪、上下无缝隙），右端 `mask-image` 在 15%→58% 处渐隐到卡片背景；文字块 `pl-[33%]` **精确落在行左侧 1/3 处、压在图片渐隐区上**；**行内字段对齐官方「集成战略」页：投资系统 = `bank.current`、解锁道具 = `relicCnt`**，右上角为主题奖章 `medal.current/total`，按 `rogueInfoMap.sort` **降序**排序（= 官方顺序，最新主题在最上，如 `sort=6` 的「沉沦者的黑流树海」排第一；升序会把顺序整个颠倒）。⚠️ `bpLevel`（通票等级）不在官方该页展示；`clearTime` 实测是 `0/2/6` 这类小整数**而非时间戳**，曾按日期格式化成「01-01 08:00 首通」，现已不再渲染）与保全派驻（同款图片行 + 名/subName + 最好层数）双列，两者 `picUrl` 为空时**不渲染缩略图**（文字块也不加左内边距）→ 沙中之地（`sandbox[]`：基建等级/修复裂隙/最长天数/支线完成数）与**历险签约（引航者试炼）**双列 —— 签约行与集成战略同款图片行：缩略图绝对定位铺左 + 模式名 `gamedata_page.bossrush_name`（引航者试炼 / Trials for Navigator）与黄色 `#NN` 期数徽标（从 `actNbossrush` 解析，期数倒序）一起压在左侧 1/3 处、不出图右，右侧 played/难度或「暂无记录」。
 
-**导出**：`export default function GameDataPage`；文件内 `PageHeader`、`ChapterRow`（章节聚合行）、`chapterGroupOf(type)`、`CHAPTER_GROUP_ORDER` / `CHAPTER_GROUP_TITLE_KEY`。
+**导出**：`export default function GameDataPage`；文件内 `PageHeader`、`ChapterRow`（章节聚合行）、`ChapterStatus`（章节行右侧状态块）、`CollapsibleCard`（可折叠区块卡）、`chapterGroupOf(type)`、`parseBossRushNum(id)`、`bossRushBadgeLabel(num)`、`CHAPTER_GROUP_ORDER` / `CHAPTER_GROUP_TITLE_KEY`。
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
-| `ROLE_CONFIG_KEY` | game-data.tsx:32 | `"gamedata_page_role_id"` |
-| `chapterGroupOf(type)` | game-data.tsx:36 | `SIDESTORY→sidestory`、`MINISTORY→ministory`、`BRANCHLINE→branchline`、其余（含空串）→`other` |
+| `ROLE_CONFIG_KEY` | game-data.tsx:33 | `"gamedata_page_role_id"` |
+| `FOLD_CONFIG_KEY` | game-data.tsx:36 | `"gamedata_page_folded"`，各区块折叠状态（`Record<sectionKey, boolean>`）的持久化键 |
+| `chapterGroupOf(type)` | game-data.tsx:42 | `SIDESTORY→sidestory`、`MINISTORY→ministory`、`BRANCHLINE→branchline`、其余（含空串）→`other` |
+| `parseBossRushNum(id)` | game-data.tsx:63 | `act6bossrush → 6`，正则不匹配返回 `null`（名称回退原始 id） |
+| `bossRushBadgeLabel(num)` | game-data.tsx:69 | `6 → "#06"`（两位补零） |
+| `ChapterStatus` | game-data.tsx:88 | 章节行右侧状态 + 进度块（内联语义 token 色，有封面行与无封面紧凑行共用） |
+| `CollapsibleCard` | game-data.tsx:166 | 可折叠区块卡：标题行（标题 + 可选徽标 + 折叠箭头）点击切换（`aria-expanded`）；**展开/收起带动画**——内容区用 `grid-template-rows: 0fr ↔ 1fr` + `opacity` + 内层 `-translate-y-1`，`duration-300 ease-out`（沿用 `pages/account.tsx` 的方案，无需测量高度）；折叠后内容保留在 DOM，用 `aria-hidden` + `inert` 屏蔽交互与可访问性树 |
+| `IMAGE_ROW_CLASS` | game-data.tsx:73 | 图片行容器：`relative h-14` 固定行高 + `overflow-hidden`，供缩略图绝对定位填满、无上下缝隙 |
+| `IMAGE_THUMB_CLASS` | game-data.tsx:77 | 行内横幅缩略图：`absolute inset-y-0 left-0 h-full w-auto max-w-none`（不占布局、保持 1002:180 原比例不裁剪），右端 `mask-image` 15%→58% 渐隐到背景 |
+| `IMAGE_TEXT_CLASS` | game-data.tsx:81 | 图片行文字块（`relative z-10`）；有图时由调用方追加 `pl-[33%]` 压在行左侧 1/3 处 |
+| `rogueRecords` | game-data.tsx:391 | 集成战略各主题进度，按 `rogueInfoMap.sort` **降序**（官方顺序）；`bank`（投资系统）与 `relicCnt`（解锁道具）是页面实际展示字段 |
+| `campaigns` | — | 剿灭据点：`campaign.records` + `campaignInfoMap`（名/封面）+ `campaignZoneInfoMap[campaignZoneId].name`（阵营），`maxKills` |
+| `towerRecords` | — | 保全派驻训练场；直接沿用接口 `tower.records` 原始顺序（实测已与官方一致：7/9/10 号 → 阿尔斯特 → 塔山） |
 | `mainStage` | — | `mainStageProgress` → `stageInfoMap`；code 与 id 可能差 1，**以 code 展示** |
-| `ChapterRow.cover` | — | 章节封面 = `activityInfoMap[actId].picUrl`；**实测统一 1002×180（5.57:1）**，行内用 `aspect-[1002/180]` 按原比例整幅渲染（`RemoteThumb` 加载失败回退首字母占位） |
+| `ChapterRow.cover` | — | 章节封面 = `activityInfoMap[actId].picUrl`；**实测统一 1002×180（5.57:1）**，有值时行内用 `w-1/3 aspect-[1002/180]` 按原比例整幅渲染（宽度为行的 1/3，不裁切；`RemoteThumb` 加载失败回退首字母占位）；**空时不渲染封面**（紧凑行） |
 | `chapterGroups` | — | 章节聚合（活动名缺失回退 actId）；分区**不下发名称**，故不做分区拆行 |
+| `bossRushList` | game-data.tsx:360 | `bossRush` 附加解析出的期数 `num`，按期数倒序（`#06` 在前，对齐官方排序） |
 
 **备注**：
 - 路由 `/game-data`（NavKey `"gamedata"`，键与路由段不同：`NAV_ROUTES.gamedata = "/game-data"`）；侧栏 `ChartIcon`。
 - 数据全部来自 `get_arknights_player_info`（经 `arknightsDataService`，旧格式缓存自动刷新）；**没有卡片**（用户要求「只要页面不需要卡片」）。
 - 封面/主题图都经 `RemoteThumb`（`@/components/ui/remote-thumb.tsx`）下载缓存，`IntersectionObserver` 式懒加载由缓存管理器天然覆盖（每个缩略图挂载才 load）。
-- i18n：`sidebar.gamedata`、`gamedata_page.*`（chapter_type_*/cleared_stages/max_kills/medal_progress/bp_level/relics 等）。
+- 折叠状态经 `ConfigService` 持久化：`gamedata_page_folded`（`Record<sectionKey, boolean>`；章节卡 key 为 `chapters_<group>`，其余为 `main`/`campaign`/`rogue`/`tower`/`sandbox`/`bossrush`；首次进入读取一次、变更即写回）。
+- i18n：`sidebar.gamedata`、`gamedata_page.*`（chapter_type_*/state_*/max_kills/medal_progress/bank_invest=投资系统/relics=解锁道具/bossrush_name/not_played=暂无记录 等；`bp_level`、`cleared_at`、`not_cleared` 已不再被本页使用）。
 - ⚠️ 77 个活动条目几乎都是 `0/total`（未复刻/未开放），页面靠分组 + 时间倒序让「最近有进度」的排前；这是数据源特性，不是 bug。
 
 ## `src/pages/todo.tsx`

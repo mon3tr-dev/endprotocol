@@ -11,7 +11,7 @@
  */
 
 /** `player/info` 数据结构版本（与后端 ARKNIGHTS_DATA_VERSION 同步） */
-export const ARKNIGHTS_DATA_VERSION = 1;
+export const ARKNIGHTS_DATA_VERSION = 2;
 
 /** 「当前/总量」对（理智、任务进度、奖章进度等） */
 export interface ArknightsProgress {
@@ -37,10 +37,16 @@ export interface ArknightsPlayerInfo {
   activityInfoMap: Record<string, ArknightsActivityInfo>;
   /** 剿灭据点信息表：campId → 名称 */
   campaignInfoMap: Record<string, ArknightsNamedInfo>;
+  /** 剿灭阵营信息表：zoneId → 阵营名（哥伦比亚/谢拉格/维多利亚…） */
+  campaignZoneInfoMap: Record<string, ArknightsZoneInfo>;
+  /** 剿灭作战（各据点历史最大击杀） */
+  campaign: ArknightsCampaign;
   /** 集成战略主题信息表：rogueId → 名称/排序 */
   rogueInfoMap: Record<string, ArknightsNamedInfo>;
   /** 保全派驻训练场信息表：towerId → 名称/副标题 */
   towerInfoMap: Record<string, ArknightsNamedInfo>;
+  /** 保全派驻（各训练场最好成绩） */
+  tower: ArknightsTower;
   /** 集成战略（各主题进度） */
   rogue: ArknightsRogue;
   /** 沙中之地（沙盒）进度 */
@@ -121,7 +127,7 @@ export interface ArknightsBuilding {
   /** 训练室（技能专精），无进行中专精时可能为 null */
   training: ArknightsTraining | null;
   /** 疲劳干员（心情耗尽仍在工作） */
-  tiredChars: ArknightsRoomChar[];
+  tiredChars: ArknightsTiredChar[];
   control: ArknightsRoomSegment[];
   powers: ArknightsRoomSegment[];
   tradings: ArknightsRoomSegment[];
@@ -162,6 +168,8 @@ export interface ArknightsTraining {
   remainPoint: number;
   /** 距离完成的剩余秒数（按请求时间计算） */
   remainSecs: number;
+  /** 训练室等级（接口下发，缺省 0） */
+  level?: number;
 }
 
 export interface ArknightsTrainee {
@@ -247,6 +255,12 @@ export interface ArknightsRoomChar {
   workTime: number;
 }
 
+/** 心情耗尽（发困）的干员（`building.tiredChars`，比 RoomChar 多 `roomSlotId`） */
+export interface ArknightsTiredChar extends ArknightsRoomChar {
+  /** 所在房间槽位，如 `slot_34` */
+  roomSlotId: string;
+}
+
 /** 主线关卡展示信息（`stageInfoMap` 的值） */
 export interface ArknightsStageInfo {
   id: string;
@@ -296,6 +310,27 @@ export interface ArknightsNamedInfo {
   subName: string;
   /** 仅集成战略有（主题排序号） */
   sort: number;
+  /** 仅剿灭据点有：所属阵营 id（如 `camp_zone_9`），阵营名查 `campaignZoneInfoMap` */
+  campaignZoneId: string;
+}
+
+/** 剿灭阵营（`campaignZoneInfoMap` 的值） */
+export interface ArknightsZoneInfo {
+  id: string;
+  name: string;
+}
+
+/** 剿灭作战进度（`data.campaign`）：据点名查 `campaignInfoMap[campaignId]` */
+export interface ArknightsCampaign {
+  reward: ArknightsProgress;
+  /** 全部据点的历史最大击杀（含未开放的轮换据点） */
+  records: { campaignId: string; maxKills: number }[];
+}
+
+/** 保全派驻进度（`data.tower`） */
+export interface ArknightsTower {
+  reward: { higherItem: ArknightsProgress; lowerItem: ArknightsProgress; termTs: number };
+  records: { towerId: string; best: number }[];
 }
 
 /** 集成战略进度（`data.rogue`） */

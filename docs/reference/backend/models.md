@@ -1420,7 +1420,8 @@ derive 均为 `Serialize, Deserialize, Clone, Debug` + 容器 `rename_all = "cam
 | `stage_info_map` | `BTreeMap<String, ArknightsStageInfo>` | 容器 default | 主线关卡展示信息（**只含 `mainStageProgress` 指向的那一关**，B 服实测整表为空） |
 | `activity` | `Vec<ArknightsActivityProgress>` | 容器 default | 各活动/章节通关进度（约 77 项，含复刻） |
 | `activity_info_map` | `BTreeMap<String, ArknightsActivityInfo>` | 容器 default | 活动名/类别/起止时间 |
-| `campaign_info_map` | `BTreeMap<String, ArknightsNamedInfo>` | 容器 default | 剿灭据点名 |
+| `campaign_info_map` | `BTreeMap<String, ArknightsNamedInfo>` | 容器 default | 剿灭据点信息表：campId → `{name, picUrl, campaignZoneId}` |
+| `campaign_zone_info_map` | `BTreeMap<String, ArknightsZoneInfo>` | 容器 default | **剿灭阵营表**：zoneId → `{name}`（16 个，如 `camp_zone_9`=哥伦比亚、`camp_zone_13`=谢拉格、`camp_zone_10`=维多利亚）。据点条目只给 `campaignZoneId`，阵营名靠这张表翻译 |
 | `rogue_info_map` | `BTreeMap<String, ArknightsNamedInfo>` | 容器 default | 集成战略主题名/排序 |
 | `tower_info_map` | `BTreeMap<String, ArknightsNamedInfo>` | 容器 default | 保全训练场名/副标题 |
 | `rogue` | `ArknightsRogue` | 容器 default | 集成战略各主题进度 |
@@ -1487,7 +1488,8 @@ derive 均为 `Serialize, Deserialize, Clone, Debug` + 容器 `rename_all = "cam
 | `ArknightsActivityProgress` | arknights.rs:394 | `act_id` / `act_replica_id`（非复刻为空串）/ `zones[]` |
 | `ArknightsActivityZone` | arknights.rs:406 | `zone_id` / `zone_replica_id` / `cleared_stage` / `total_stage`（0 = 分区无内容） |
 | `ArknightsActivityInfo` | arknights.rs:421 | `id` / `name` / `kind`（serde `type`：`SIDESTORY`/`MINISTORY`/`BRANCHLINE`/**可为空串**）/ `start_time` / `end_time` / `pic_url` |
-| `ArknightsNamedInfo` | arknights.rs:443 | `id` / `name` / `pic_url` / `sub_name`（仅保全）/ `sort`（仅集成战略）——三张信息表共用 |
+| `ArknightsNamedInfo` | arknights.rs:443 | `id` / `name` / `pic_url` / `sub_name`（仅保全）/ `sort`（仅集成战略）/ `campaign_zone_id`（仅剿灭，指向阵营表）——三张信息表共用 |
+| `ArknightsZoneInfo` | arknights.rs:462 | `id` / `name`；`data.campaignZoneInfoMap` 的值（剿灭阵营，如「哥伦比亚」） |
 | `ArknightsRogue` / `ArknightsRogueRecord` / `ArknightsRogueBank` | arknights.rs:456/467/485 | `rogue_id` / `bp_level` / `clear_time`（0=未通关）/ **`bank`（键是 `current`/`record`，不是 `total`）** / `medal: ArknightsProgress` / `relic_cnt` |
 | `ArknightsSandbox` / `ArknightsSandboxQuest` | arknights.rs:493/523 | `id` / `name` / `base_lv` / `main_quest` / `unlock_node` / `enemy_kill` / `max_day` / `max_day_challenge` / `create_rift` / `fix_rift: Vec<i32>`（`[当前, 目标]`）/ `sub_quests`（**接口键名 `subQuest`，显式 rename**） |
 | `ArknightsBossRush` / `ArknightsBossRushRecord` | arknights.rs:532/541 | `id` / `pic_url` / `record { difficulty, played, stage_id }` |

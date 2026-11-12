@@ -619,7 +619,7 @@ character-list / domain-info / spaceship / attendance-settings-modal）都复用
 **备注**：`GlassRadioGroup.Item` 必须在 `GlassRadioGroup` 内部使用（否则抛错「必须放在 GlassRadioGroup 内部」）；默认横向、整组宽度 `w-fit`，容器胶囊边框与 `ToggleGroup` 保持一致但内边距/字号更大（`h-8`、`text-sm`）以便承载协议名。
 
 ## `src/components/ui/remote-thumb.tsx`
-**职责**：远程缩略图组件（2026-11 新增）：先把 http(s) 地址经 `cacheManager`（后端 `download_image` → 本地文件 → blob URL）下载缓存再显示；**加载失败或地址为空回退为首字母占位块**，加载中显示 pulse 占位。挂载期间 `request` 持有缓存引用防 blob 被回收，卸载 `release`。当前使用方：`/building` 页面（干员头像 `char/portrait/{charId}.png`）、`/game-data` 页面（章节/集成战略/保全/历险签约封面）。
+**职责**：远程缩略图组件（2026-11 新增）：先把 http(s) 地址经 `cacheManager`（后端 `download_image` → 本地文件 → blob URL）下载缓存再显示；**加载失败或地址为空回退为首字母占位块**，加载中显示 pulse 占位。挂载期间 `request` 持有缓存引用防 blob 被回收，卸载 `release`。当前使用方：`/building` 页面（干员头像 `char/portrait/{charId}.png`）、`/game-data` 页面（章节/集成战略/保全封面、历险签约图标；该页面保证 `src` 非空才挂载，无封面条目不再渲染占位）。
 
 **导出**：`RemoteThumb`。
 **主要依赖**：`react`（useState/useEffect）、`clsx`、`@/utils/imageCacheManager`（`cacheManager`）。
