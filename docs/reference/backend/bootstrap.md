@@ -26,34 +26,35 @@
 | --- | --- | --- |
 | `mod commands/models/services/tray/utils` | lib.rs:7-11 | 后端模块声明（全部私有） |
 | `use services::*` | lib.rs:14-21 | 导入 8 个服务类型（Account/AvatarCache/Config/Gacha/GameLauncher/Network/Skland/SystemResource） |
-| `run` | lib.rs:28 | 解析 `--silent` / `--launch-game` / `--dx11`：仅 `--silent` → 直接返回（不做任何事）；`--silent --launch-game` → 不可见驻守实例（无托盘/无窗口/不计时/不注册单实例插件）；仅 `--launch-game` 或普通启动 → 完整模式（单实例）并在需要时启动游戏。完整模式在 `RunEvent::Exit` 调用 `utils::game_playtime::finalize()` |
-| `utils::crash::install_panic_hook()` | lib.rs:54 | 在 helper 截获与 `--silent` 空操作检查之后、业务初始化之前安装 panic hook；崩溃写入 `logs/crashes/crash-*.log` 并广播 `app:crash` |
-| `create_config_service` | lib.rs:335 | 初始化现有 `ConfigService`，并校验/更新配置键 `main_exe_path` |
-| `crash::set_app_handle` / `api_health::init` | lib.rs:65 / 246 | 驻守/完整模式设置崩溃广播 handle；完整模式额外初始化 API 熔断器，二者均在 `.setup()` 最前调用 |
-| `attach_parent_console`（私有，仅 Windows debug） | lib.rs:327 | `main.rs` 已无条件使用 GUI 子系统，进程本身不再创建控制台（根除黑窗口闪现：控制台在进程创建期生成，进程内 `ShowWindow(SW_HIDE)` 只能事后隐藏、仍会闪一瞬间）。此函数在 `run()` 最开头（logger / Tauri 初始化之前）尝试 `AttachConsole(ATTACH_PARENT_PROCESS)`：手动 `cargo run` 时附接父终端使日志可见，被 Steam / 快捷方式拉起时附接失败即静默无窗口。附接必须发生在首次 stdio 写入前（`eprintln!` 在 GUI 进程无控制台时会 panic，所有 stderr 写入均需经 `logger::safe_eprintln!`） |
-| `app_ready_for_full_instance` / `dispatch_pending_requests` | lib.rs:431 / 440 | 完整模式 setup 完成后标记就绪，并处理插件在 setup 完成前排队的第二实例请求 |
-| `dispatch_instance_request` | lib.rs:459 | 主实例收到第二实例转交的参数：含 `--launch-game` 时以 `--dx11` 转发启动游戏（`exit_when_game_ends=false`），随后显示主窗口 |
-| `wait_for_game_session`（async） | lib.rs:474 | 驻守实例的驻留等待：每 2 秒通过 `utils::process::is_process_running`（窗口/90 秒启动宽限判定，排除无窗口挂起残留）探测**传入的游戏进程名**（终末地 `Endfield.exe` / 明日方舟 `Arknights.exe`，由 `commands::launcher::channel_process_name` 从渠道解析）；检测到运行后等待其退出；若 120 秒内未出现（启动失败/被取消）也结束等待，供 Steam 判定「游戏中」并记录时长 |
-| `start_game_from_config` | lib.rs:493 | 按 `--game <endfield\|arknights>`（缺省终末地）读该游戏自己那一组配置键（`launcher_install_path[_arknights]` / `launcher_channel[_arknights]` / `launcher_dx11[_arknights]`）并调用 `commands::launcher::launch_game`；`dx11: Option<bool>` 优先取命令行 `--dx11`，`None` 时回退该游戏的 DX11 配置（默认 false）；`exit_when_game_ends=true`（仅驻守实例）时先按渠道算出要等的进程名，启动成功后调用 `wait_for_game_session`，游戏退出后才退出本进程；启动失败时同样退出 |
-| `create_full_windows` / `exclude_from_alt_tab` / `create_main_window` / `app_webview_url` / `dev_asset_url` | lib.rs:584 / 614 / 654 / 712 / 760 | 完整模式按需创建窗口；debug 优先连 Vite，开发服务器不可用时改由自定义协议 `endprotocol` 提供 `frontendDist` 资源。**`create_main_window` 返回 `tauri::Window<R>` 而非 `WebviewWindow<R>`**，且判重用 `app.get_window("main")`：`get_webview_window` 要求窗口下所有 webview 的 label 都等于窗口 label，in-app browser 的子 webview 会让它返回 `None`。`create_full_windows` 在创建托盘面板后立即调用 `exclude_from_alt_tab`（见下一行） |
-| `exclude_from_alt_tab`（私有，仅 Windows 有实现） | lib.rs:624 | **把辅助窗口移出 Windows 的 Alt+Tab 列表**：`skip_taskbar(true)` 只让 tao 调 `ITaskbarList::DeleteTab`（摘任务栏按钮），不碰扩展样式；tao 又默认给窗口加 `WS_EX_APPWINDOW`，explorer（`IsAltTabWindow` 只认 `WS_EX_TOOLWINDOW`）会在窗口第一次显示时把它注册成 Alt+Tab 条目 —— 之后窗口隐藏条目仍在，表现为一张没有界面预览的空白卡片。做法：`GetWindowLongW(GWL_EXSTYLE)` → 去掉 `WS_EX_APPWINDOW`、加上 `WS_EX_TOOLWINDOW` → `SetWindowLongW` + `SetWindowPos(SWP_FRAMECHANGED\|SWP_NOMOVE\|SWP_NOSIZE\|SWP_NOZORDER\|SWP_NOOWNERZORDER\|SWP_NOACTIVATE)`。非 Windows 平台是空实现。**注意已注册进 explorer 的旧条目由 explorer 持有，改样式不会追回，需重启应用（进程退出时条目随之消失）** |
-| `register_dev_asset_protocol` / `dev_asset_error_response` | lib.rs:782 / 706 | debug 专用：注册 `endprotocol` URI scheme，经 `asset_resolver()` 提供构建产物（含 `.html`、目录 `index.html` 与入口 `index.html` 回退） |
-| `.on_page_load(...)`（Builder 钩子） | lib.rs:268-285 | **in-app browser 事件桥**：把 label 以 `inapp-browser-` 开头的子 Webview 的 `PageLoadEvent::Started/Finished` 转成 `browser://page-load` 事件（`{ label, url, event }`）emit 给前端；其它 webview（主窗、tray-panel）直接 return，不产生事件 |
+| `run` | lib.rs:29 | 截获三类游戏 helper（`--endfield-launch-helper` / `--endfield-kill-helper` / `--endfield-session-keeper`，任一命中即以对应退出码退出、不做 Tauri 初始化），再解析 `--silent` / `--launch-game` / `--dx11`：仅 `--silent` → 直接返回（不做任何事）；`--silent --launch-game` → 不可见驻守实例（无托盘/无窗口/不计时/不注册单实例插件）；仅 `--launch-game` 或普通启动 → 完整模式（单实例）并在需要时启动游戏。完整模式在 `RunEvent::Exit` 调用 `utils::game_playtime::finalize()` |
+| `utils::crash::install_panic_hook()` | lib.rs:70 | 在 helper 截获与 `--silent` 空操作检查之后、业务初始化之前安装 panic hook；崩溃写入 `logs/crashes/crash-*.log` 并广播 `app:crash` |
+| `create_config_service` | lib.rs:446 | 初始化现有 `ConfigService`，并校验/更新配置键 `main_exe_path` |
+| `crash::set_app_handle` / `api_health::init` | lib.rs:83 / 322-323 | 驻守/完整模式设置崩溃广播 handle；完整模式额外初始化 API 熔断器，二者均在 `.setup()` 最前调用 |
+| `attach_parent_console`（私有，仅 Windows debug） | lib.rs:438 | `main.rs` 已无条件使用 GUI 子系统，进程本身不再创建控制台（根除黑窗口闪现：控制台在进程创建期生成，进程内 `ShowWindow(SW_HIDE)` 只能事后隐藏、仍会闪一瞬间）。此函数在 `run()` 最开头（logger / Tauri 初始化之前）尝试 `AttachConsole(ATTACH_PARENT_PROCESS)`：手动 `cargo run` 时附接父终端使日志可见，被 Steam / 快捷方式拉起时附接失败即静默无窗口。附接必须发生在首次 stdio 写入前（`eprintln!` 在 GUI 进程无控制台时会 panic，所有 stderr 写入均需经 `logger::safe_eprintln!`） |
+| `app_ready_for_full_instance` / `dispatch_pending_requests` | lib.rs:461 / 470 | 完整模式 setup 完成后标记就绪，并处理插件在 setup 完成前排队的第二实例请求 |
+| `dispatch_instance_request` | lib.rs:489 | 主实例收到第二实例转交的参数：含 `--launch-game` 时以 `--dx11` 转发启动游戏（`exit_when_game_ends=false`），随后显示主窗口 |
+| `wait_for_game_session`（async） | lib.rs:505 | 驻守实例的驻留等待：每 2 秒通过 `utils::process::is_process_running`（窗口/90 秒启动宽限判定，排除无窗口挂起残留）探测**传入的游戏进程名**（终末地 `Endfield.exe` / 明日方舟 `Arknights.exe`，由 `commands::launcher::channel_process_name` 从渠道解析）；检测到运行后等待其退出；若 120 秒内未出现（启动失败/被取消）也结束等待，供 Steam 判定「游戏中」并记录时长 |
+| `start_game_from_config` | lib.rs:524 | 按 `--game <endfield\|arknights>`（缺省终末地）读该游戏自己那一组配置键（`launcher_install_path[_arknights]` / `launcher_channel[_arknights]` / `launcher_dx11[_arknights]`）并调用 `commands::launcher::launch_game`；`dx11: Option<bool>` 优先取命令行 `--dx11`，`None` 时回退该游戏的 DX11 配置（默认 false）；`exit_when_game_ends=true`（仅驻守实例）时先按渠道算出要等的进程名，启动成功后调用 `wait_for_game_session`，游戏退出后才退出本进程；启动失败时同样退出 |
+| `create_full_windows` / `exclude_from_alt_tab` / `create_main_window` / `app_webview_url` / `dev_asset_url` | lib.rs:618 / 658 / 698 / 756 / 805 | 完整模式按需创建窗口；debug 优先连 Vite，开发服务器不可用时改由自定义协议 `endprotocol` 提供 `frontendDist` 资源。**`create_main_window` 返回 `tauri::Window<R>` 而非 `WebviewWindow<R>`**，且判重用 `app.get_window("main")`：`get_webview_window` 要求窗口下所有 webview 的 label 都等于窗口 label，in-app browser 的子 webview 会让它返回 `None`。`create_full_windows` 在创建托盘面板后立即调用 `exclude_from_alt_tab`（见下一行） |
+| `exclude_from_alt_tab`（私有，仅 Windows 有实现） | lib.rs:658 | **把辅助窗口移出 Windows 的 Alt+Tab 列表**：`skip_taskbar(true)` 只让 tao 调 `ITaskbarList::DeleteTab`（摘任务栏按钮），不碰扩展样式；tao 又默认给窗口加 `WS_EX_APPWINDOW`，explorer（`IsAltTabWindow` 只认 `WS_EX_TOOLWINDOW`）会在窗口第一次显示时把它注册成 Alt+Tab 条目 —— 之后窗口隐藏条目仍在，表现为一张没有界面预览的空白卡片。做法：`GetWindowLongW(GWL_EXSTYLE)` → 去掉 `WS_EX_APPWINDOW`、加上 `WS_EX_TOOLWINDOW` → `SetWindowLongW` + `SetWindowPos(SWP_FRAMECHANGED\|SWP_NOMOVE\|SWP_NOSIZE\|SWP_NOZORDER\|SWP_NOOWNERZORDER\|SWP_NOACTIVATE)`。非 Windows 平台是空实现。**注意已注册进 explorer 的旧条目由 explorer 持有，改样式不会追回，需重启应用（进程退出时条目随之消失）** |
+| `register_dev_asset_protocol` / `dev_asset_error_response` | lib.rs:817 / 846 | debug 专用：注册 `endprotocol` URI scheme，经 `asset_resolver()` 提供构建产物（含 `.html`、目录 `index.html` 与入口 `index.html` 回退） |
+| `.on_page_load(...)`（Builder 钩子） | lib.rs:305-318 | **in-app browser 事件桥**：把 label 以 `inapp-browser-` 开头的子 Webview 的 `PageLoadEvent::Started/Finished` 转成 `browser://page-load` 事件（`{ label, url, event }`）emit 给前端；其它 webview（主窗、tray-panel）直接 return，不产生事件 |
 
 ### 内部结构
 
 | 行号区间 | 内容 |
 | --- | --- |
 | lib.rs:27 | `#[cfg_attr(mobile, tauri::mobile_entry_point)]` 属性 |
-| lib.rs:35-42 | **提权启动 helper 截获**：`utils::official_launcher::try_run_helper()` 命中 `--endfield-launch-helper` 时以游戏退出码退出，不做 Tauri 初始化 |
-| lib.rs:44-57 | 解析 `--silent` / `--launch-game`；仅 `--silent` 直接返回（不做任何事）；随后安装 panic hook 并解析 `--dx11`（`Option<bool>`，仅与 `--launch-game` 组合生效） |
-| lib.rs:59-75 | **驻守实例**（`--silent --launch-game`）：不注册单实例插件、不创建窗口/托盘、不初始化 `game_playtime`；初始化 config 后启动游戏，由 `wait_for_game_session` 驻留到游戏退出，再随进程结束退出 |
-| lib.rs:77-241 | 完整模式：初始化日志、创建单实例插件、注册 updater/process/opener/fs 插件与完整命令集 |
-| lib.rs:243-317 | 完整模式 setup：动态窗口、全量服务、原托盘面板和账户刷新；`--launch-game` 时启动游戏 |
-| lib.rs:325-491 | 配置初始化、第二实例请求转发（仅主实例）、按需启动游戏与驻留等待（`wait_for_game_session`） |
-| lib.rs:574-652 | 完整模式窗口动态创建与关闭行为（`create_full_windows` / `exclude_from_alt_tab`） |
-| lib.rs:654-710 | `create_main_window`：主窗口创建与「关闭→隐藏/退出」行为 |
-| lib.rs:712-799 | debug 专用：`endprotocol` 自定义协议，经 `asset_resolver()` 提供 `frontendDist` 构建产物 |
+| lib.rs:36-50 | **提权启动 / 结束游戏 helper 截获**：`try_run_helper()` 命中 `--endfield-launch-helper` 时跑完「伪造官方父进程 + 启动游戏 + 等待退出」并以游戏退出码退出；`try_run_kill_helper()` 命中 `--endfield-kill-helper` 时结束游戏进程后退出。均不做 Tauri 初始化 |
+| lib.rs:52-58 | **会话驻守截获**：`try_run_session_keeper()` 命中 `--endfield-session-keeper` 时驻守游戏会话（继承游戏 / 挂起官方父进程 / 清理 Job 句柄，游戏退出后终止挂起启动器并退出），同样不做 Tauri 初始化 |
+| lib.rs:60-75 | 解析 `--silent` / `--launch-game`；仅 `--silent` 直接返回（不做任何事）；随后安装 panic hook 并解析 `--dx11`（`Option<bool>`，仅与 `--launch-game` 组合生效） |
+| lib.rs:77-93 | **驻守实例**（`--silent --launch-game`）：不注册单实例插件、不创建窗口/托盘、不初始化 `game_playtime`；初始化 config 后启动游戏，由 `wait_for_game_session` 驻留到游戏退出，再随进程结束退出 |
+| lib.rs:85-249 | 完整模式：初始化日志、创建单实例插件、注册 updater/process/opener/fs 插件与完整命令集 |
+| lib.rs:251-325 | 完整模式 setup：动态窗口、全量服务、原托盘面板和账户刷新；`--launch-game` 时启动游戏 |
+| lib.rs:333-522 | 配置初始化、第二实例请求转发（仅主实例）、按需启动游戏与驻留等待（`wait_for_game_session`） |
+| lib.rs:618-660 | 完整模式窗口动态创建与关闭行为（`create_full_windows` / `exclude_from_alt_tab`） |
+| lib.rs:698-754 | `create_main_window`：主窗口创建与「关闭→隐藏/退出」行为 |
+| lib.rs:817-852 | debug 专用：`endprotocol` 自定义协议，经 `asset_resolver()` 提供 `frontendDist` 构建产物 |
 
 **插件注册**：
 | 插件 | 行 | 对应 capability |

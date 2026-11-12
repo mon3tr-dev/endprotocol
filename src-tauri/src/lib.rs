@@ -49,6 +49,14 @@ pub fn run() {
         std::process::exit(code);
     }
 
+    // 会话驻守模式（见 utils/official_launcher.rs）：已提权启动游戏后由本进程拉起的
+    // 独立驻守实例，继承「游戏 + 挂起官方父进程 + 清理 Job」句柄，游戏退出后才收尾。
+    // 它让游戏进程与应用进程生命周期彻底解耦（应用退出不再连带结束游戏），同样必须
+    // 在 logger / tracing / Tauri / 单实例插件初始化之前截获。
+    if let Some(code) = utils::official_launcher::try_run_session_keeper() {
+        std::process::exit(code);
+    }
+
     let args = std::env::args().collect::<Vec<_>>();
     let silent_mode = args.iter().any(|arg| arg == SILENT_ARG);
     let launch_game = args.iter().any(|arg| arg == LAUNCH_GAME_ARG);

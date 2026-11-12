@@ -25,6 +25,16 @@
 //! 签名句柄无法跨越提权边界，所以 helper 里会**重新验签**并自己保持 `FILE_SHARE_READ`
 //! 句柄直到进程创建完成；未提权那一侧的前置校验只是「不想让用户白弹一次 UAC」的 UX 过滤。
 //!
+//! ## 会话驻守：应用退出不影响游戏
+//!
+//! 已提权路径里游戏由应用进程直接创建（保持 Steam overlay 注入链）。若把「终止挂起官方
+//! 父进程」的清理 Job 留在应用进程手里，应用一退出 Job 句柄即关闭，内核会立刻终止挂起的
+//! `Games.exe` —— 游戏依赖父进程存活，会跟着退出。因此创建完成后把清理职责移交给一个
+//! 独立的**会话驻守进程**（[`SESSION_KEEPER_FLAG`]）：它继承「游戏进程 + 挂起官方父进程 +
+//! 清理 Job」三个句柄，游戏退出后才收尾并退出。应用进程自此与游戏生命周期彻底解耦——
+//! 用户关窗、退出、崩溃、更新重启都不影响正在运行的游戏（helper 路径的提权进程本身就是
+//! 驻守进程，无需重复处理）。
+//!
 //! ## 退出码（与 EndfieldNoLauncher 的约定一致）
 //!
 //! `2` 参数无效 · `4` 创建进程失败 · `7` 未找到签名有效的官方启动器 · `8` 等待游戏失败 ·
@@ -54,6 +64,13 @@ pub const HELPER_FLAG: &str = "--endfield-launch-helper";
 /// 未提权的本进程只能结束与它同权限的进程；游戏由提权 helper 创建，因此结束它同样需要
 /// 管理员权限，否则 `OpenProcess(PROCESS_TERMINATE)` 只会得到 `ERROR_ACCESS_DENIED`。
 pub const KILL_HELPER_FLAG: &str = "--endfield-kill-helper";
+
+/// 会话驻守进程的私有首参数（与其它 helper 共用同一个 exe）。
+///
+/// 由 [`launch_in_process`](win::launch_in_process) 在游戏创建成功后以子进程方式拉起，
+/// 继承「游戏进程 + 挂起官方父进程 + 清理 Job」句柄，游戏退出后收尾。它不初始化任何
+/// Tauri/窗口逻辑，退出后 Job 句柄关闭，内核按 `KILL_ON_JOB_CLOSE` 兜底终止挂起启动器。
+pub const SESSION_KEEPER_FLAG: &str = "--endfield-session-keeper";
 
 /// 官方发行方组织名，对应签名者证书的 `O` 字段（2.5.4.10）。
 const PUBLISHER: &str = "Shanghai Hypergryph Network Technology Co., Ltd.";
@@ -261,12 +278,70 @@ pub struct HelperOptions {
     pub help: bool,
 }
 
+/// 会话驻守进程的命令行参数。
+#[derive(Debug, Default, Clone)]
+pub struct KeeperOptions {
+    /// 游戏进程句柄（由应用进程以可继承句柄传入，数值只在驻守进程里有效）。
+    pub game_handle: usize,
+    /// 挂起官方父进程句柄（同上，游戏退出后由驻守进程显式终止）。
+    pub parent_handle: usize,
+    /// 清理 Job 句柄（同上；`0` 表示创建 Job 失败、没有兜底 Job）。
+    ///
+    /// 驻守进程退出时关闭它 —— 这是最后一个句柄，内核按 `KILL_ON_JOB_CLOSE` 终止
+    /// 挂起启动器，即使显式 `TerminateProcess` 因权限/时序失败也能兜底。
+    pub job_handle: usize,
+    /// `--help` / `-h` / `/?`。
+    pub help: bool,
+}
+
+/// 解析会话驻守进程的命令行。
+///
+/// 与 [`parse_kill_options`] 一样只做纯字符串校验（句柄数值在本进程才有效），以便单测。
+pub fn parse_keeper_options(args: &[String]) -> Result<KeeperOptions, String> {
+    let mut options = KeeperOptions::default();
+    let mut index = 0usize;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--help" | "-h" | "/?" => {
+                options.help = true;
+                return Ok(options);
+            }
+            "--game-handle" if index + 1 < args.len() && options.game_handle == 0 => {
+                index += 1;
+                options.game_handle = args[index]
+                    .parse::<usize>()
+                    .map_err(|_| format!("invalid game handle: {}", args[index]))?;
+            }
+            "--parent-handle" if index + 1 < args.len() && options.parent_handle == 0 => {
+                index += 1;
+                options.parent_handle = args[index]
+                    .parse::<usize>()
+                    .map_err(|_| format!("invalid parent handle: {}", args[index]))?;
+            }
+            "--job-handle" if index + 1 < args.len() && options.job_handle == 0 => {
+                index += 1;
+                options.job_handle = args[index]
+                    .parse::<usize>()
+                    .map_err(|_| format!("invalid job handle: {}", args[index]))?;
+            }
+            other => return Err(format!("invalid keeper option: {other}")),
+        }
+        index += 1;
+    }
+    if options.game_handle == 0 || options.parent_handle == 0 {
+        return Err("specify --game-handle <n> and --parent-handle <n>".to_string());
+    }
+    Ok(options)
+}
+
 /// 说明文本（`--help`）。
 pub fn usage() -> String {
     format!(
         "{HELPER_FLAG} --game <Endfield.exe> [--parent <Games.exe>] [--status <file>] [-- <args>]\n\
          {KILL_HELPER_FLAG} --name <Endfield.exe>\n\
-         由 EndProtocol 内部使用：以官方启动器为父进程启动游戏 / 以管理员权限结束游戏。不直接调用。\n"
+         {SESSION_KEEPER_FLAG} --game-handle <n> --parent-handle <n> [--job-handle <n>]\n\
+         由 EndProtocol 内部使用：以官方启动器为父进程启动游戏 / 以管理员权限结束游戏 / \
+         驻守游戏会话直至退出。不直接调用。\n"
     )
 }
 
@@ -380,7 +455,8 @@ mod win {
     use windows_sys::core::{GUID, PCWSTR, PWSTR};
     use windows_sys::Win32::Foundation::{
         CloseHandle, GetLastError, LocalFree, ERROR_CANCELLED, ERROR_NO_MORE_ITEMS, ERROR_SUCCESS,
-        HANDLE, INVALID_HANDLE_VALUE, WAIT_OBJECT_0, WAIT_TIMEOUT,
+        HANDLE, HANDLE_FLAG_INHERIT, INVALID_HANDLE_VALUE, SetHandleInformation, WAIT_OBJECT_0,
+        WAIT_TIMEOUT,
     };
     use windows_sys::Win32::Security::{
         GetTokenInformation, TokenElevation, TOKEN_ELEVATION, TOKEN_QUERY,
@@ -416,8 +492,9 @@ mod win {
         CreateProcessW, DeleteProcThreadAttributeList, GetCurrentProcess, GetExitCodeProcess,
         GetProcessId, InitializeProcThreadAttributeList, OpenProcessToken, TerminateProcess,
         UpdateProcThreadAttribute, WaitForSingleObject, CREATE_NO_WINDOW, CREATE_SUSPENDED,
-        EXTENDED_STARTUPINFO_PRESENT, INFINITE, LPPROC_THREAD_ATTRIBUTE_LIST, PROCESS_INFORMATION,
-        PROC_THREAD_ATTRIBUTE_PARENT_PROCESS, STARTF_USESHOWWINDOW, STARTUPINFOEXW, STARTUPINFOW,
+        DETACHED_PROCESS, EXTENDED_STARTUPINFO_PRESENT, INFINITE, LPPROC_THREAD_ATTRIBUTE_LIST,
+        PROCESS_INFORMATION, PROC_THREAD_ATTRIBUTE_HANDLE_LIST, PROC_THREAD_ATTRIBUTE_PARENT_PROCESS,
+        STARTF_USESHOWWINDOW, STARTUPINFOEXW, STARTUPINFOW,
     };
     use windows_sys::Win32::UI::Shell::{
         CommandLineToArgvW, ShellExecuteExW, SEE_MASK_FLAG_NO_UI, SEE_MASK_NOASYNC,
@@ -1109,6 +1186,18 @@ mod win {
             unsafe { CloseHandle(process.hThread) };
             Ok((OwnedHandle::new(process.hProcess), process.dwProcessId))
         }
+
+        /// 移交所有权：关闭本进程持有的父进程句柄，但**不**终止它。
+        ///
+        /// 直接 `drop` 会触发 `TerminateProcess`；而句柄关闭本身对进程没有任何影响。
+        /// 会话驻守进程已继承同一父进程的句柄并接管其生命周期，应用进程这边只须
+        /// 关掉自己的副本。
+        fn release(&mut self) {
+            let handle = self.process.take();
+            if !handle.is_null() && handle != INVALID_HANDLE_VALUE {
+                unsafe { CloseHandle(handle) };
+            }
+        }
     }
 
     impl Drop for OfficialParent {
@@ -1158,8 +1247,9 @@ mod win {
 
     // ---------------------------- 当前进程直接启动（已提权） ----------------------------
 
-    /// 随本进程关闭的 Job：进程退出（含崩溃）时关闭句柄，内核会终止挂起的官方启动器，
-    /// 避免「游戏还在运行、应用先退出」时留下一个永不恢复的 `Games.exe`。
+    /// 会话清理 Job：句柄由**会话驻守进程**继承并持有，驻守进程退出（= 游戏退出）时关闭
+    /// 句柄，内核按 `KILL_ON_JOB_CLOSE` 终止挂起的官方启动器。应用进程在驻守进程拉起后
+    /// 就不再持有它 —— 应用退出（含崩溃）因此不会连带结束游戏。
     struct LauncherJob(OwnedHandle);
 
     impl LauncherJob {
@@ -1200,13 +1290,19 @@ mod win {
     /// 与 helper 路径的差别只在**由谁创建游戏**：Steam 以非 Steam 游戏方式拉起本应用时，
     /// `gameoverlayrenderer64.dll` 注入的是本进程；保持这条 CreateProcess 链，overlay 才能
     /// 继续注入到游戏。若改由 runas helper 创建，overlay 的注入链会在提权边界处断开。
+    ///
+    /// 创建完成后立即拉起独立的**会话驻守进程**并移交清理职责（见
+    /// [`spawn_session_keeper`]），让游戏进程与应用进程的生命周期彻底解耦：应用退出
+    /// （用户关窗、更新重启、崩溃）不再终止挂起的父进程，游戏可以继续运行到自然结束。
+    /// 驻守进程拉起失败时回退为旧的进程内等待线程 —— 那时游戏仍随应用退出而结束，
+    /// 但不会留下残骸。
     fn launch_in_process(
         mut launcher: VerifiedLauncher,
         game: &Path,
         arguments: &[String],
         status_file: Option<&Path>,
     ) -> Result<ElevatedLaunch, LaunchError> {
-        let parent = OfficialParent::start(&launcher)
+        let mut parent = OfficialParent::start(&launcher)
             .map_err(|error| LaunchError::new(LaunchToken::Create, error))?;
         tracing::info!(
             "[launcher] suspended official parent created in-process, pid {}",
@@ -1223,7 +1319,7 @@ mod win {
             write_status_file(status_file, game_pid);
         }
 
-        // 清理 Job 失败不影响启动；最坏情况只是应用提前退出时挂起父进程残留。
+        // 清理 Job 失败不影响启动；最坏情况只是没有 Job 兜底，驻守进程仍会显式终止父进程。
         let job = match LauncherJob::create() {
             Ok(job) => {
                 if let Err(error) = job.assign(parent.process.get()) {
@@ -1241,21 +1337,229 @@ mod win {
             }
         };
 
-        // 游戏退出后终止挂起的官方父进程；应用先退出时由 Job 兜底。
-        std::thread::spawn(move || {
-            match wait_for_game(game_process.get()) {
-                Ok(code) => tracing::info!(
-                    "[launcher] game exited with code {code}; cleaning up suspended parent"
-                ),
-                Err(error) => tracing::error!("[launcher] {error}"),
+        let keeper = spawn_session_keeper(
+            game_process.get(),
+            parent.process.get(),
+            job.as_ref().map(|job| job.0.get()),
+        );
+        match keeper {
+            Ok(keeper_pid) => {
+                tracing::info!("[launcher] session keeper started, pid {keeper_pid}");
+                // 移交完成：本进程关掉自己的句柄副本即可（关句柄不会终止任何进程）。
+                // 挂起父进程的生命周期由驻守进程持有，游戏退出后才被终止。
+                drop(job);
+                parent.release();
+                drop(game_process);
             }
-            // 先让 OfficialParent 主动终止父进程，再关闭 Job（两者都做是幂等的）。
-            drop(parent);
-            drop(job);
-            drop(game_process);
-        });
+            Err(error) => {
+                tracing::warn!(
+                    "[launcher] {error} — falling back to in-process cleanup; \
+                     the game will exit together with this process"
+                );
+                // 游戏退出后终止挂起的官方父进程；应用先退出时由 Job 兜底（旧行为）。
+                std::thread::spawn(move || {
+                    match wait_for_game(game_process.get()) {
+                        Ok(code) => tracing::info!(
+                            "[launcher] game exited with code {code}; cleaning up suspended parent"
+                        ),
+                        Err(error) => tracing::error!("[launcher] {error}"),
+                    }
+                    // 先让 OfficialParent 主动终止父进程，再关闭 Job（两者都做是幂等的）。
+                    drop(parent);
+                    drop(job);
+                    drop(game_process);
+                });
+            }
+        }
 
         Ok(ElevatedLaunch { helper_pid: None })
+    }
+
+    // ---------------------------- 会话驻守进程 ----------------------------
+
+    /// 当前进程是否由 `launch_in_process` 以会话驻守身份启动；是则驻守游戏会话并返回
+    /// 应使用的退出码。与其它 helper 一样由 `lib.rs::run()` 在 logger/Tauri 初始化之前调用。
+    pub fn try_run_session_keeper() -> Option<i32> {
+        let arguments: Vec<String> = std::env::args_os()
+            .map(|argument| argument.to_string_lossy().into_owned())
+            .collect();
+        if arguments.get(1).map(String::as_str) != Some(SESSION_KEEPER_FLAG) {
+            return None;
+        }
+        // 注意：返回前所有 RAII 对象都要析构完（本函数只是等待，不持有需要清理的资源）。
+        Some(run_session_keeper(&arguments[2..]))
+    }
+
+    fn run_session_keeper(arguments: &[String]) -> i32 {
+        ensure_console_hidden();
+        // 与 run_helper 一致：初始化日志便于诊断；驻守进程与提权 helper 一样会持有日志
+        // 文件句柄直到游戏退出，logger 以共享写打开，多进程追加没有问题。
+        if crate::utils::logger::init_logger().is_ok() {
+            crate::utils::logger::init_tracing_subscriber();
+            tracing::info!("[launcher] session keeper: {}", arguments.join(" "));
+        }
+
+        let options = match parse_keeper_options(arguments) {
+            Ok(options) => options,
+            Err(error) => {
+                tracing::error!("[launcher] invalid session keeper arguments: {error}");
+                return exit_code::INVALID_ARGUMENTS;
+            }
+        };
+        if options.help {
+            tracing::info!("[launcher] {}", usage());
+            return 0;
+        }
+
+        // 句柄数值由应用进程经命令行传入，且通过 HANDLE_LIST 只继承这几个句柄，
+        // 因此在本进程里直接还原成 HANDLE 使用。
+        let game = options.game_handle as HANDLE;
+        let parent = options.parent_handle as HANDLE;
+
+        match wait_for_game(game) {
+            Ok(code) => tracing::info!(
+                "[launcher] session keeper: game exited with code {code}; releasing suspended parent"
+            ),
+            Err(error) => tracing::error!("[launcher] session keeper: {error}"),
+        }
+
+        // 与 OfficialParent::Drop 相同的收尾：显式终止仍在的挂起父进程并等待它消失。
+        // 即使下面失败，本进程结束时关闭继承的 Job 句柄，内核仍会按 KILL_ON_JOB_CLOSE
+        // 兜底终止。
+        unsafe {
+            if !parent.is_null() && parent != INVALID_HANDLE_VALUE {
+                if WaitForSingleObject(parent, 0) == WAIT_TIMEOUT
+                    && TerminateProcess(parent, 0) == 0
+                {
+                    tracing::error!(
+                        "[launcher] session keeper: {}",
+                        windows_error("Terminate suspended parent", last_error())
+                    );
+                }
+                WaitForSingleObject(parent, 5000);
+            }
+        }
+        tracing::info!("[launcher] session keeper done");
+        0
+    }
+
+    /// 拉起会话驻守进程：继承「游戏进程 + 挂起官方父进程 + 清理 Job」句柄，游戏退出后
+    /// 才收尾。驻守进程与本进程之间只有普通父子关系 —— Windows 不会随父进程退出级联
+    /// 终止子进程，因此应用退出（含崩溃）不影响游戏。
+    ///
+    /// 句柄通过 `HANDLE_FLAG_INHERIT` + `PROC_THREAD_ATTRIBUTE_HANDLE_LIST` 精确移交：
+    /// 只继承这三个句柄，避免把日志/Webview 等无关句柄泄漏给驻守进程。句柄数值随后
+    /// 经命令行传给驻守进程（继承的句柄数值不变，可直接还原使用）。
+    fn spawn_session_keeper(
+        game: HANDLE,
+        parent: HANDLE,
+        job: Option<HANDLE>,
+    ) -> Result<u32, String> {
+        let executable = std::env::current_exe()
+            .map_err(|error| format!("cannot resolve own executable: {error}"))?;
+        let executable_text = executable.to_string_lossy().into_owned();
+
+        let mut inherited: Vec<HANDLE> = vec![game, parent];
+        if let Some(job_handle) = job {
+            inherited.push(job_handle);
+        }
+        for &handle in &inherited {
+            if unsafe { SetHandleInformation(handle, HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT) }
+                == 0
+            {
+                return Err(windows_error("Prepare session keeper handles", last_error()));
+            }
+        }
+
+        // 两段式属性列表（与 OfficialParent::create_game 相同的流程）。
+        let mut size = 0usize;
+        unsafe { InitializeProcThreadAttributeList(ptr::null_mut(), 1, 0, &mut size) };
+        if size == 0 {
+            return Err(windows_error("Prepare session keeper attributes", last_error()));
+        }
+        let mut storage = vec![0usize; size.div_ceil(std::mem::size_of::<usize>())];
+        let list = storage.as_mut_ptr() as LPPROC_THREAD_ATTRIBUTE_LIST;
+        let mut actual = size;
+        if unsafe { InitializeProcThreadAttributeList(list, 1, 0, &mut actual) } == 0 {
+            return Err(windows_error("Initialize session keeper attributes", last_error()));
+        }
+        // 无论从哪条路径返回都会删除属性列表。
+        struct KeeperAttributeList(LPPROC_THREAD_ATTRIBUTE_LIST);
+        impl Drop for KeeperAttributeList {
+            fn drop(&mut self) {
+                unsafe { DeleteProcThreadAttributeList(self.0) };
+            }
+        }
+        let _attributes = KeeperAttributeList(list);
+        if unsafe {
+            UpdateProcThreadAttribute(
+                list,
+                0,
+                PROC_THREAD_ATTRIBUTE_HANDLE_LIST as usize,
+                inherited.as_ptr() as *const c_void,
+                inherited.len() * std::mem::size_of::<HANDLE>(),
+                ptr::null_mut(),
+                ptr::null(),
+            )
+        } == 0
+        {
+            return Err(windows_error("Set session keeper handle list", last_error()));
+        }
+
+        let mut parts: Vec<String> = vec![
+            SESSION_KEEPER_FLAG.to_string(),
+            "--game-handle".to_string(),
+            (game as usize).to_string(),
+            "--parent-handle".to_string(),
+            (parent as usize).to_string(),
+        ];
+        if let Some(job_handle) = job {
+            parts.push("--job-handle".to_string());
+            parts.push((job_handle as usize).to_string());
+        }
+
+        let mut command = Vec::new();
+        quote_argument(&executable_text, &mut command);
+        for part in &parts {
+            command.push(b' ' as u16);
+            quote_argument(part, &mut command);
+        }
+
+        let executable_wide = wide(&executable_text);
+        let mut startup = STARTUPINFOEXW::default();
+        startup.StartupInfo.cb = std::mem::size_of::<STARTUPINFOEXW>() as u32;
+        startup.lpAttributeList = list;
+
+        let mut process = PROCESS_INFORMATION::default();
+        // 游戏自身不挂起，驻守进程也不挂起。用 DETACHED_PROCESS 而不是 CREATE_NO_WINDOW：
+        // debug 构建是控制台子系统，CREATE_NO_WINDOW 仍会让驻守进程**继承**应用的终端
+        // （ensure_console_hidden 会把用户自己的终端藏掉）；DETACHED_PROCESS 则完全不
+        // 附着控制台（logger 写 stderr 前有 console_available() 检查，不会 panic）。
+        let created = unsafe {
+            CreateProcessW(
+                executable_wide.as_ptr(),
+                command.as_mut_ptr(),
+                ptr::null(),
+                ptr::null(),
+                1, // bInheritHandles：继承范围已被 HANDLE_LIST 钉死在上面几个句柄。
+                EXTENDED_STARTUPINFO_PRESENT | DETACHED_PROCESS,
+                ptr::null(),
+                ptr::null(),
+                &startup.StartupInfo,
+                &mut process,
+            )
+        };
+        // 无论成败都恢复句柄的非继承标记：应用之后若再用 std::process 起子进程
+        // （std 默认 bInheritHandles=TRUE），不应顺带继承这些会话句柄。
+        for &handle in &inherited {
+            unsafe { SetHandleInformation(handle, HANDLE_FLAG_INHERIT, 0) };
+        }
+        if created == 0 {
+            return Err(windows_error("Start session keeper", last_error()));
+        }
+        unsafe { CloseHandle(process.hThread) };
+        unsafe { CloseHandle(process.hProcess) };
+        Ok(process.dwProcessId)
     }
 
     // ---------------------------- helper：结束游戏 ----------------------------
@@ -1734,7 +2038,7 @@ mod win {
 #[cfg(target_os = "windows")]
 pub use win::{
     kill_game_process, launch_via_official_parent, process_is_elevated, shell_execute_game,
-    try_run_helper, try_run_kill_helper,
+    try_run_helper, try_run_kill_helper, try_run_session_keeper,
 };
 
 // ============================ 非 Windows 桩 ============================
@@ -1765,6 +2069,11 @@ pub fn try_run_helper() -> Option<i32> {
 
 #[cfg(not(target_os = "windows"))]
 pub fn try_run_kill_helper() -> Option<i32> {
+    None
+}
+
+#[cfg(not(target_os = "windows"))]
+pub fn try_run_session_keeper() -> Option<i32> {
     None
 }
 
@@ -1919,6 +2228,51 @@ mod tests {
         assert!(parse_kill_options(&["--name".into()]).is_err());
         assert!(parse_kill_options(&["--nope".into()]).is_err());
         assert!(parse_kill_options(&[]).is_err());
+    }
+
+    #[test]
+    fn parses_keeper_options() {
+        let options = parse_keeper_options(&[
+            "--game-handle".into(),
+            "1234".into(),
+            "--parent-handle".into(),
+            "5678".into(),
+            "--job-handle".into(),
+            "18446744073709551615".into(),
+        ])
+        .expect("parse");
+        assert_eq!(options.game_handle, 1234);
+        assert_eq!(options.parent_handle, 5678);
+        assert_eq!(options.job_handle, usize::MAX);
+    }
+
+    #[test]
+    fn keeper_job_handle_is_optional() {
+        let options = parse_keeper_options(&[
+            "--game-handle".into(),
+            "1".into(),
+            "--parent-handle".into(),
+            "2".into(),
+        ])
+        .expect("parse");
+        assert_eq!(options.job_handle, 0);
+    }
+
+    #[test]
+    fn rejects_invalid_keeper_options() {
+        assert!(parse_keeper_options(&["--game-handle".into(), "abc".into()]).is_err());
+        assert!(parse_keeper_options(&[]).is_err());
+        assert!(parse_keeper_options(&[
+            "--game-handle".into(),
+            "1".into(),
+            "--parent-handle".into(),
+            "2".into(),
+            "--nope".into()
+        ])
+        .is_err());
+        assert!(parse_keeper_options(&["--nope".into(), "1".into()]).is_err());
+        // help 直接短路，不要求其它参数。
+        assert!(parse_keeper_options(&["--help".into()]).unwrap().help);
     }
 
     #[test]

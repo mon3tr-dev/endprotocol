@@ -92,7 +92,7 @@ windows-native-keyring-store = "1.1"
 #   Win32_System_Diagnostics_Debug      —— FormatMessageW（Win32 错误文本）
 #   Win32_System_Diagnostics_ToolHelp   —— CreateToolhelp32Snapshot（utils/process.rs 进程枚举）
 #   Win32_System_RestartManager         —— RmStartSession/RmGetList（utils/dir_lock.rs 目录占用检测：哪个进程锁了文件）
-#   Win32_System_JobObjects             —— 直接启动路径的 Job（应用退出时兜底终止挂起父进程）
+#   Win32_System_JobObjects             —— 直接启动路径的清理 Job（会话驻守进程继承持有，游戏退出时兜底终止挂起父进程）
 #   Win32_System_LibraryLoader          —— FindResourceW / LoadLibraryExW（game_icon 图标提取）
 #   Win32_Storage_FileSystem            —— 文件/句柄相关常量
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_UI_WindowsAndMessaging", "Win32_Storage_Xps", "Win32_System_Com", "Win32_UI_Shell", "Win32_System_Threading", "Win32_System_Power", "Win32_System_Performance", "Win32_Security", "Win32_Security_Cryptography", "Win32_Security_Cryptography_Catalog", "Win32_Security_Cryptography_Sip", "Win32_Security_WinTrust", "Win32_System_Registry", "Win32_System_Environment", "Win32_System_Console", "Win32_System_Diagnostics_Debug", "Win32_System_Diagnostics_ToolHelp", "Win32_System_JobObjects", "Win32_System_LibraryLoader", "Win32_Storage_FileSystem", "Win32_System_RestartManager"] }

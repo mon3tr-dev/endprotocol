@@ -9,7 +9,7 @@
 | `src-tauri/src/commands/` | 20 个文件、**145 处 `#[tauri::command]` 注解**，处理前端 Invoke 请求 | [commands.md](reference/backend/commands.md) |
 | `src-tauri/src/services/` | 15 个服务：`account_service`（状态中枢）、`skland_service`（API 客户端）、`arknights_service`（**《明日方舟》数据：player/info、养成、签到**）、**`arknights_gacha_service`（《明日方舟》寻访记录：ak-webview 的 cate/history）**、`game_launcher_service`、`gacha_service`（终末地 ef-webview 抽卡）、`char_detail_service`、`char_wiki_detail_service`、`config_service`、`avatar_cache_service`、`data_query`、`network_service`、`secret_registry`、`secret_store`、`system_resource_service` | [services_account.md](reference/backend/services_account.md)、[services_skland.md](reference/backend/services_skland.md)、[services_launcher.md](reference/backend/services_launcher.md)、[services_others.md](reference/backend/services_others.md) |
 | `src-tauri/src/models/` | 8 个文件（含 `arknights.rs`：《明日方舟》player/info / cultivate / attendance 模型） | [models.md](reference/backend/models.md) |
-| `src-tauri/src/utils/` | `api_health`（API 熔断）、`error`、`crash`（panic/崩溃报告）、`diagnostics`（诊断导出）、`hg_crypto`、`http_client`、`logger`、`official_launcher`（免启动器启动/提权 helper）、`paths`、`capture` | [utils.md](reference/backend/utils.md) |
+| `src-tauri/src/utils/` | `api_health`（API 熔断）、`error`、`crash`（panic/崩溃报告）、`diagnostics`（诊断导出）、`hg_crypto`、`http_client`、`logger`、`official_launcher`（免启动器启动 / 提权 helper / 会话驻守：应用退出不影响游戏）、`paths`、`capture` | [utils.md](reference/backend/utils.md) |
 | `src-tauri/src/{main,lib,tray}.rs` | 进程入口、插件/状态/命令注册、托盘 | [bootstrap.md](reference/backend/bootstrap.md) |
 | `src-tauri/{Cargo.toml,tauri.conf.json,capabilities/}` | 依赖、窗口与打包配置、权限 | [bootstrap.md](reference/backend/bootstrap.md) |
 

@@ -64,7 +64,7 @@ EndProtocol/
 │   │                              #   （含 todoStore.ts：To-Do 单一数据源）
 ├── src-tauri/                     # ===== 后端源码 =====
 │   ├── src/main.rs                # 进程入口
-│   ├── src/lib.rs                 # 启动模式分流、完整模式单实例、驻守实例、插件/状态/托盘/命令注册
+│   ├── src/lib.rs                 # 启动模式分流、helper/会话驻守截获、完整模式单实例、驻守实例、插件/状态/托盘/命令注册
 │   ├── src/tray.rs                # 完整模式托盘与悬浮面板（驻守实例无托盘）
 │   ├── src/commands/              # 20 个文件（19 命令 + mod.rs）：IPC 命令入口
 │   ├── src/services/              # 14 个服务：account、arknights、《明日方舟》数据、
@@ -93,7 +93,7 @@ EndProtocol/
 ## 4. 项目运行流程
 
 1. **启动阶段**：
-   - `src-tauri/src/main.rs` 启动 Tauri 应用；`lib.rs` 先处理游戏提权 helper，再按参数分流。普通模式创建主窗口和托盘面板并初始化完整服务，且注册单实例插件（同时只允许一个主实例）；`--silent --launch-game` 创建不可见驻守实例（只初始化 LocalAppData 配置和游戏启动链，不创建 WebView/托盘、不计时、不注册单实例插件，可与主实例及多个驻守实例并存）；仅 `--silent` 直接退出，不做任何事。
+   - `src-tauri/src/main.rs` 启动 Tauri 应用；`lib.rs` 先截获游戏提权 helper / 结束游戏 helper / 会话驻守进程（`--endfield-launch-helper` / `--endfield-kill-helper` / `--endfield-session-keeper`），再按参数分流。普通模式创建主窗口和托盘面板并初始化完整服务，且注册单实例插件（同时只允许一个主实例）；`--silent --launch-game` 创建不可见驻守实例（只初始化 LocalAppData 配置和游戏启动链，不创建 WebView/托盘、不计时、不注册单实例插件，可与主实例及多个驻守实例并存）；仅 `--silent` 直接退出，不做任何事。
    - 前端 `src/main.tsx` 挂载 React、初始化 i18n、主题、日志与托盘事件监听。
 2. **前端加载**：
    - `src/App.tsx` 挂载路由，根据用户登录状态跳转至仪表板或账户页。
