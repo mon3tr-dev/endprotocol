@@ -323,6 +323,22 @@ Before pushing:
 
 ---
 
+## Agent skills
+
+### Issue tracker
+
+Issues and specs live in this repo's GitHub Issues (`gh` CLI). See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Five canonical roles mapped to the default label strings (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+single-context — one root `GLOSSARY.md` and `docs/adr/`. See `docs/agents/domain.md`.
+
+---
+
 ## Quick Reference Summary
 
 ```
