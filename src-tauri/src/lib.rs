@@ -1,8 +1,15 @@
-#[cfg(debug_assertions)]
+// 仅桌面 debug：app_webview_url 用它们探测 Vite dev server 是否在监听。
+#[cfg(all(desktop, debug_assertions))]
 use std::net::{TcpStream, ToSocketAddrs};
+// AtomicBool/Ordering 仅用于桌面单实例插件的就绪标记。
+#[cfg(desktop)]
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex as StdMutex};
-use tauri::{Emitter, Manager, Runtime, WebviewUrl, WebviewWindowBuilder};
+use tauri::{Emitter, Manager, Runtime};
+// 动态建窗只在桌面有实现（`WebviewWindowBuilder` 的装饰/透明/磨砂等方法均桌面限定）；
+// `WebviewUrl` 仅被建窗路径（app_webview_url / dev_asset_url）使用。
+#[cfg(desktop)]
+use tauri::{WebviewUrl, WebviewWindowBuilder};
 use tokio::sync::Mutex;
 
 mod commands;
@@ -92,43 +99,61 @@ pub fn run() {
         return;
     }
 
-    // 初始化日志系统（静默模式刻意不初始化完整日志和业务服务）
+    // 初始化日志系统（静默模式刻意不初始化完整日志和业务服务）。
+    // 移动端推迟到 setup：日志目录依赖 utils::paths 的数据目录覆盖值，
+    // 而覆盖值必须等 Tauri 路径解析器可用（setup 拿到 AppHandle）才能注入；
+    // 过早初始化会因目录不可写而失败，日志从此全部落入丢弃实例。
+    #[cfg(desktop)]
     if let Err(e) = utils::logger::init_logger() {
         crate::safe_eprintln!("Failed to initialize logger: {}", e);
     }
 
     // 初始化 tracing subscriber，将 tracing 事件桥接到自定义 Logger
+    #[cfg(desktop)]
     utils::logger::init_tracing_subscriber();
 
+    // 桌面：单实例插件（第二实例参数转发）与其就绪标记 / 请求队列。
+    // 移动端（Android/iOS）没有"第二实例"概念，插件也不支持
+    // （crate 级 cfg(not(android, ios))，init 不存在），整体跳过。
+    #[cfg(desktop)]
     let app_ready = Arc::new(AtomicBool::new(false));
+    #[cfg(desktop)]
     let pending_requests = Arc::new(StdMutex::new(Vec::<Vec<String>>::new()));
-    let ready_for_callback = app_ready.clone();
-    let pending_for_callback = pending_requests.clone();
-    let single_instance_plugin = tauri_plugin_single_instance::init(move |app, argv, _cwd| {
-        if ready_for_callback.load(Ordering::Acquire) {
-            dispatch_instance_request(app, &argv);
-        } else if let Ok(mut pending) = pending_for_callback.lock() {
-            pending.push(argv);
-        } else {
-            write_startup_error("Could not queue a second-instance launch request.");
-        }
-    });
+    #[cfg(desktop)]
+    let single_instance_plugin = {
+        let ready_for_callback = app_ready.clone();
+        let pending_for_callback = pending_requests.clone();
+        tauri_plugin_single_instance::init(move |app, argv, _cwd| {
+            if ready_for_callback.load(Ordering::Acquire) {
+                dispatch_instance_request(app, &argv);
+            } else if let Ok(mut pending) = pending_for_callback.lock() {
+                pending.push(argv);
+            } else {
+                write_startup_error("Could not queue a second-instance launch request.");
+            }
+        })
+    };
 
     let builder = tauri::Builder::default()
-        .plugin(single_instance_plugin)
-        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_fs::init());
 
+    // 桌面专属插件：单实例转发 + 自更新（两者的依赖都只在桌面目标编译）。
+    #[cfg(desktop)]
+    let builder = builder
+        .plugin(single_instance_plugin)
+        .plugin(tauri_plugin_updater::Builder::new().build());
+
     // 开发构建下额外注册一个自定义协议，用于在没有 Vite dev server 时直接提供
-    // frontendDist 中的构建产物（见 app_webview_url）。
-    #[cfg(debug_assertions)]
+    // frontendDist 中的构建产物（见 app_webview_url）。仅桌面：移动端主窗口由
+    // tauri.android.conf.json 静态创建，不走动态建窗/自定义协议路径。
+    #[cfg(all(desktop, debug_assertions))]
     let builder = register_dev_asset_protocol(builder);
 
     // 开发构建下注册 devdeck（内存 / CPU / 资源泄漏监视器，独立窗口，Ctrl+Alt+M）。
     // release 不注册：不创建 deck 窗口、不采样进程，运行时零开销。
-    #[cfg(debug_assertions)]
+    #[cfg(all(desktop, debug_assertions))]
     let builder = builder.plugin(tauri_plugin_devdeck::init());
 
     builder
@@ -318,6 +343,21 @@ pub fn run() {
             let _ = webview.app_handle().emit("browser://page-load", &data);
         })
         .setup(move |app| {
+            // 移动端（Android/iOS）没有 HOME/XDG 目录，`dirs` 系列全部返回 None。
+            // 必须在创建任何服务之前把 Tauri 路径解析器拿到的应用数据目录注入
+            // utils::paths（桌面保持 dirs 行为不变，历史数据位置不受影响）。
+            #[cfg(mobile)]
+            {
+                if let Ok(data_dir) = app.path().app_data_dir() {
+                    utils::paths::set_app_data_dir_override(data_dir);
+                }
+                // 数据目录就绪后初始化日志（桌面在 run() 早期完成）。
+                if let Err(error) = utils::logger::init_logger() {
+                    crate::safe_eprintln!("Failed to initialize logger: {error}");
+                }
+                utils::logger::init_tracing_subscriber();
+            }
+
             // 主窗口与托盘面板仅在完整模式创建，静默模式不建立 WebView。
             utils::crash::set_app_handle(app.handle().clone());
             utils::api_health::init(app.handle().clone());
@@ -345,7 +385,12 @@ pub fn run() {
                 utils::logger::set_log_level(effective);
             }
 
+            // 游戏在线时长统计依赖进程枚举（桌面语义），移动端没有可执行游戏进程。
+            #[cfg(desktop)]
             utils::game_playtime::init(config_service.clone());
+            // 移动端主窗口来自 tauri.conf.json 的静态配置（tauri.android.conf.json），
+            // 不支持运行时动态建窗；托盘面板等辅助窗口同样是桌面专属。
+            #[cfg(desktop)]
             create_full_windows(app.handle())?;
 
             // 启动时自动录制：必须在任何 API 请求发出之前开始
@@ -422,6 +467,8 @@ pub fn run() {
                 start_game_from_config(app.handle(), requested_dx11, false, requested_game);
             }
 
+            // 完整模式就绪标记 + 处理单实例插件排队期间的第二实例请求（仅桌面）。
+            #[cfg(desktop)]
             app_ready_for_full_instance(app.handle(), &app_ready, &pending_requests);
             Ok(())
         })
@@ -429,6 +476,8 @@ pub fn run() {
         .expect("error while running tauri application")
         .run(|_app_handle, event| {
             if let tauri::RunEvent::Exit = event {
+                // 移动端从未初始化时长统计，跳过落盘。
+                #[cfg(desktop)]
                 utils::game_playtime::finalize();
             }
         });
@@ -458,6 +507,8 @@ fn create_config_service() -> Result<Arc<StdMutex<ConfigService>>, String> {
     Ok(config_service)
 }
 
+/// 完整模式 setup 完成：置就绪标记并处理排队的第二实例请求（仅桌面，配合单实例插件）。
+#[cfg(desktop)]
 fn app_ready_for_full_instance<R: Runtime>(
     app: &tauri::AppHandle<R>,
     ready: &Arc<AtomicBool>,
@@ -467,6 +518,7 @@ fn app_ready_for_full_instance<R: Runtime>(
     dispatch_pending_requests(app, pending);
 }
 
+#[cfg(desktop)]
 fn dispatch_pending_requests<R: Runtime>(
     app: &tauri::AppHandle<R>,
     pending: &Arc<StdMutex<Vec<Vec<String>>>>,
@@ -485,7 +537,8 @@ fn dispatch_pending_requests<R: Runtime>(
     }
 }
 
-/// 主实例收到第二实例转交的启动参数：按需启动游戏并显示主窗口。
+/// 主实例收到第二实例转交的启动参数：按需启动游戏并显示主窗口（仅桌面）。
+#[cfg(desktop)]
 fn dispatch_instance_request<R: Runtime>(app: &tauri::AppHandle<R>, args: &[String]) {
     if args.iter().any(|arg| arg == LAUNCH_GAME_ARG) {
         let dx11 = args.iter().any(|arg| arg == DX11_ARG).then_some(true);
@@ -615,6 +668,11 @@ fn write_startup_error(message: &str) {
     }
 }
 
+/// 完整模式窗口创建（仅桌面）：主窗口 + 托盘面板。
+///
+/// 移动端（Android/iOS）不支持运行时动态创建窗口，主窗口由
+/// `tauri.android.conf.json` 的 `app.windows` 静态配置在启动时创建。
+#[cfg(desktop)]
 fn create_full_windows<R: Runtime>(app: &tauri::AppHandle<R>) -> Result<(), String> {
     create_main_window(app)?;
     if app.get_webview_window("tray-panel").is_none() {
@@ -644,7 +702,7 @@ fn create_full_windows<R: Runtime>(app: &tauri::AppHandle<R>) -> Result<(), Stri
     Ok(())
 }
 
-/// 把辅助窗口从 Windows 的 Alt+Tab 列表里排除掉。
+/// 把辅助窗口从 Windows 的 Alt+Tab 列表里排除掉（仅桌面；移动端没有窗口枚举概念）。
 ///
 /// `skip_taskbar(true)` 管不到 Alt+Tab：tao 对它只调用 `ITaskbarList::DeleteTab`
 /// （摘掉任务栏按钮），既不碰扩展样式，也不影响 explorer 的窗口切换列表。而 tao 会给
@@ -654,7 +712,7 @@ fn create_full_windows<R: Runtime>(app: &tauri::AppHandle<R>) -> Result<(), Stri
 ///
 /// Alt+Tab 的判定（explorer 的 `IsAltTabWindow`）只认 `WS_EX_TOOLWINDOW`：带这个样式
 /// 的窗口既不会进任务栏，也不会进 Alt+Tab。这里把 `WS_EX_APPWINDOW` 换成它。
-#[cfg(target_os = "windows")]
+#[cfg(all(target_os = "windows", desktop))]
 fn exclude_from_alt_tab<R: Runtime>(window: &tauri::WebviewWindow<R>) {
     use windows_sys::Win32::UI::WindowsAndMessaging::{
         GetWindowLongW, SetWindowLongW, SetWindowPos, GWL_EXSTYLE, SWP_FRAMECHANGED,
@@ -692,9 +750,18 @@ fn exclude_from_alt_tab<R: Runtime>(window: &tauri::WebviewWindow<R>) {
     }
 }
 
-#[cfg(not(target_os = "windows"))]
+#[cfg(all(not(target_os = "windows"), desktop))]
 fn exclude_from_alt_tab<R: Runtime>(_window: &tauri::WebviewWindow<R>) {}
 
+/// 主窗口创建（仅桌面用动态建窗；移动端由 tauri.android.conf.json 静态创建）。
+///
+/// `create_full_windows` / `tray::show_main_window_focus` 在移动端仍会调用本函数
+/// 兜底（托盘唤回路径），但移动端主窗口由平台配置静态建立、必然已存在，函数会在
+/// 第一个 `get_window("main")` 命中后直接返回，不会走到建窗代码。
+///
+/// 注意：**建窗分支必须整体 `#[cfg(desktop)]`** —— `WebviewWindowBuilder` 的
+/// `center` / `decorations` / `transparent` / `effects` 等方法都在
+/// `#[cfg(desktop)]` 的 impl 块里，移动端编译时不存在。
 pub(crate) fn create_main_window<R: Runtime>(
     app: &tauri::AppHandle<R>,
 ) -> Result<tauri::Window<R>, String> {
@@ -705,54 +772,63 @@ pub(crate) fn create_main_window<R: Runtime>(
         return Ok(window);
     }
 
-    let webview_window = WebviewWindowBuilder::new(app, "main", app_webview_url(app, "index.html")?)
-        .title("endprotocol")
-        .inner_size(1200.0, 700.0)
-        .resizable(true)
-        .center()
-        .decorations(false)
-        .transparent(true)
-        .effects(
-            tauri::window::EffectsBuilder::new()
-                .effect(tauri::window::Effect::Acrylic)
-                .color(tauri::window::Color(18, 18, 20, 30))
-                .build(),
-        )
-        .build()
-        .map_err(|error| error.to_string())?;
+    #[cfg(desktop)]
+    {
+        let webview_window =
+            WebviewWindowBuilder::new(app, "main", app_webview_url(app, "index.html")?)
+                .title("endprotocol")
+                .inner_size(1200.0, 700.0)
+                .resizable(true)
+                .center()
+                .decorations(false)
+                .transparent(true)
+                .effects(
+                    tauri::window::EffectsBuilder::new()
+                        .effect(tauri::window::Effect::Acrylic)
+                        .color(tauri::window::Color(18, 18, 20, 30))
+                        .build(),
+                )
+                .build()
+                .map_err(|error| error.to_string())?;
 
-    if let Some(config) = app.try_state::<Arc<StdMutex<ConfigService>>>() {
-        let config = config.inner().clone();
-        let window_for_close = webview_window.clone();
-        webview_window.on_window_event(move |event| {
-            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                let action = config
-                    .lock()
-                    .ok()
-                    .and_then(|config| config.get::<String>("close_action"))
-                    .unwrap_or_else(|| "ask".to_string());
+        if let Some(config) = app.try_state::<Arc<StdMutex<ConfigService>>>() {
+            let config = config.inner().clone();
+            let window_for_close = webview_window.clone();
+            webview_window.on_window_event(move |event| {
+                if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                    let action = config
+                        .lock()
+                        .ok()
+                        .and_then(|config| config.get::<String>("close_action"))
+                        .unwrap_or_else(|| "ask".to_string());
 
-                // 没有系统托盘时不允许隐藏驻留：窗口一藏，普通用户既找不到入口也
-                // 退不掉进程（单实例插件还会让之后启动的新实例顶到旧实例上）。
-                // 此时「关闭」必须真的等于退出。
-                if !crate::tray::is_tray_available() {
-                    api.prevent_close();
-                    window_for_close.app_handle().exit(0);
-                    return;
+                    // 没有系统托盘时不允许隐藏驻留：窗口一藏，普通用户既找不到入口也
+                    // 退不掉进程（单实例插件还会让之后启动的新实例顶到旧实例上）。
+                    // 此时「关闭」必须真的等于退出。
+                    if !crate::tray::is_tray_available() {
+                        api.prevent_close();
+                        window_for_close.app_handle().exit(0);
+                        return;
+                    }
+
+                    if action != "close" {
+                        api.prevent_close();
+                        let _ = window_for_close.hide();
+                    }
                 }
-
-                if action != "close" {
-                    api.prevent_close();
-                    let _ = window_for_close.hide();
-                }
-            }
-        });
+            });
+        }
     }
 
     app.get_window("main")
         .ok_or_else(|| "main window was not registered after creation".to_string())
 }
 
+/// 解析主窗口/托盘面板要加载的 URL（含 debug 下 Vite dev server 探测与自定义协议回退）。
+///
+/// 仅桌面使用：移动端主窗口由 `tauri.android.conf.json` 静态创建，不做运行时建窗，
+/// 因此移动端不引用本函数（加 `cfg(desktop)` 避免 dead_code 告警）。
+#[cfg(desktop)]
 fn app_webview_url<R: Runtime>(
     #[cfg_attr(not(debug_assertions), allow(unused_variables))]
     app: &tauri::AppHandle<R>,
@@ -798,10 +874,12 @@ fn app_webview_url<R: Runtime>(
 // 而 `tauri://localhost` / `http://tauri.localhost` 协议处理器只查这些空资源，于是报
 // "asset not found: index.html"。这里的自定义协议改为通过 `asset_resolver()` 读取
 // frontendDist（dev 下 `AssetResolver::get` 会回退到磁盘），从而与 release 行为一致。
-#[cfg(debug_assertions)]
+/// 自定义协议名（桌面 debug 专用：Vite dev server 不可用时提供构建产物）。
+#[cfg(all(desktop, debug_assertions))]
 const DEV_ASSET_SCHEME: &str = "endprotocol";
 
-#[cfg(debug_assertions)]
+/// 构造自定义协议 URL（`dev_asset_url` 的调用方 `app_webview_url` 仅桌面存在）。
+#[cfg(all(desktop, debug_assertions))]
 fn dev_asset_url(asset_path: &str) -> Result<WebviewUrl, String> {
     #[cfg(target_os = "windows")]
     let asset_url = format!("http://{DEV_ASSET_SCHEME}.localhost/{asset_path}");
@@ -813,7 +891,7 @@ fn dev_asset_url(asset_path: &str) -> Result<WebviewUrl, String> {
         .map_err(|error| format!("Could not construct frontend asset URL: {error}"))
 }
 
-#[cfg(debug_assertions)]
+#[cfg(all(desktop, debug_assertions))]
 fn register_dev_asset_protocol<R: Runtime>(builder: tauri::Builder<R>) -> tauri::Builder<R> {
     builder.register_uri_scheme_protocol(DEV_ASSET_SCHEME, |context, request| {
         let resolver = context.app_handle().asset_resolver();

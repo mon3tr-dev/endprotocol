@@ -26,7 +26,7 @@
 | `setChannel` | updateService.ts:678 | 切换频道：持久化配置 → 清空缓存与状态 → `emitChange` → 自动调用 `checkForUpdate()` 并刷新消息中心 |
 | `initializeChannel` | updateService.ts:739 | 启动时恢复频道与更新源配置，非法值回退默认（stable/github） |
 | `setSource` | updateService.ts:757 | 持久化更新源 → 清缓存 → `emitChange` → 自动 `checkForUpdate()` 并刷新消息 |
-| `checkForUpdate` | updateService.ts:807 | 核心检查入口：置 `status="checking"` → `performUpdateCheck()` → 回写状态并广播。预览频道会比较稳定版与预览版，endpoint updater 根据本机平台检查签名更新；更新日志按候选版本选择 |
+| `checkForUpdate` | updateService.ts:807 | 核心检查入口：**移动端（`isMobileApp()`）直接返回 `not-available` 且不发起任何 IPC**（Android/iOS 无 updater 插件与安装包渠道）；桌面置 `status="checking"` → `performUpdateCheck()` → 回写状态并广播。预览频道会比较稳定版与预览版，endpoint updater 根据本机平台检查签名更新；更新日志按候选版本选择 |
 | `getCurrentUpdate` | updateService.ts:819 | 返回缓存的 `Update` 或 `ManualUpdate` |
 | `getCurrentUpdateInfo` | updateService.ts:823 | 返回最近一次的 `UpdateInfo` |
 | `getStatus` | updateService.ts:827 | 返回 `UpdateStatus` |
@@ -445,19 +445,23 @@
 
 ## `src/utils/platform.ts`
 **职责**：同步判断当前 WebView/浏览器运行平台，供平台能力受限的 UI 做一致性门控；并把「窗口是否有原生磨砂」「窗口圆角由谁负责」写进根元素供样式层分流。
-**导出**：`isWindowsPlatform(): boolean`、`isMacPlatform(): boolean`、`supportsNativeWindowEffects(): boolean`、`needsSelfDrawnWindowRadius(): boolean`、`applyWindowEffectsSupport(): void`。
-**主要依赖**：浏览器 `navigator.platform` / `navigator.userAgent`、`document.documentElement`。
+**导出**：`isWindowsPlatform(): boolean`、`isMacPlatform(): boolean`、`isAndroidApp(): boolean`、`isIosApp(): boolean`、`isMobileApp(): boolean`、`isDesktopApp(): boolean`、`supportsNativeWindowEffects(): boolean`、`needsSelfDrawnWindowRadius(): boolean`、`applyWindowEffectsSupport(): void`。
+**主要依赖**：浏览器 `navigator.platform` / `navigator.userAgent` / `navigator.userAgentData`、`document.documentElement`。
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
 | `isWindowsPlatform` | platform.ts:1 | 通过 `navigator.platform`（`Win*`）或 UA（`Windows`）判断 Windows；navigator 不存在时返回 `false` |
 | `isMacPlatform` | platform.ts:8 | 通过 `navigator.platform`（`Mac*`）或 UA（`Mac OS X` / `Macintosh`）判断 macOS |
-| `isTauriWindow`（私有） | platform.ts:21 | 读 `window.__TAURI_INTERNALS__`（Tauri v2 在每个 webview 注入）判断是否真在 Tauri 窗口内，不引入 `@tauri-apps/api`，保持本模块零依赖 |
-| `supportsNativeWindowEffects` | platform.ts:38 | Tauri 窗口内且为 Windows 或 macOS 才算有原生窗口磨砂。依据是 Tauri 的 `vibrancy::set_window_effects` 只按 `#[cfg(windows)]` / `#[cfg(target_os = "macos")]` 分发，Linux（WebKitGTK）分支什么都不做；直接用浏览器打开 dev server 时同样按无磨砂处理 |
-| `needsSelfDrawnWindowRadius` | platform.ts:53 | Tauri 窗口内、且非 Windows 也非 macOS（即 Linux）时为 `true`：这类无边框窗口没有系统圆角，需前端自己裁 |
-| `applyWindowEffectsSupport` | platform.ts:68 | 写 `<html data-window-effects="native\|fallback">` 与 `<html data-window-radius="native\|self">`；必须在首屏渲染前调用（`main.tsx` 在 `setStartupPhase(12)` 之后、读配置之前调用，`tray-panel.tsx` 在挂载 React 前调用），否则会先闪一帧透明背景/直角窗口 |
+| `isAndroidApp` | platform.ts:16 | UA 含 `Android`（Tauri Android 系统 WebView 必然命中，桌面 WebView2/WebKitGTK 不含）或 `navigator.userAgentData.platform` 为 Android；`isWindowsPlatform` 在 Android 上恒 false，因此启动器门控自动生效 |
+| `isIosApp` | platform.ts:33 | UA 含 `iphone|ipad|ipod`（预留，Tauri iOS 同按移动端处理） |
+| `isMobileApp` | platform.ts:41 | `isAndroidApp() \|\| isIosApp()`；Android/iOS 移动端门控的统一入口（托盘、更新器、窗口控制、取色器等全部按它隐藏） |
+| `isDesktopApp` | platform.ts:48 | `!isMobileApp()` |
+| `isTauriWindow`（私有） | platform.ts:51 | 读 `window.__TAURI_INTERNALS__`（Tauri v2 在每个 webview 注入）判断是否真在 Tauri 窗口内，不引入 `@tauri-apps/api`，保持本模块零依赖 |
+| `supportsNativeWindowEffects` | platform.ts:68 | Tauri 窗口内且为 Windows 或 macOS 才算有原生窗口磨砂。依据是 Tauri 的 `vibrancy::set_window_effects` 只按 `#[cfg(windows)]` / `#[cfg(target_os = "macos")]` 分发，Linux（WebKitGTK）分支什么都不做；直接用浏览器打开 dev server 时同样按无磨砂处理 |
+| `needsSelfDrawnWindowRadius` | platform.ts:83 | Tauri 窗口内、且**非移动端**、非 Windows 也非 macOS（即 Linux）时为 `true`：这类无边框窗口没有系统圆角，需前端自己裁。移动端（Android/iOS）是系统全屏窗口，排除在 clip-path 兜底之外 |
+| `applyWindowEffectsSupport` | platform.ts:99 | 写 `<html data-window-effects="native\|fallback">` 与 `<html data-window-radius="native\|self">`；必须在首屏渲染前调用（`main.tsx` 在 `setStartupPhase(12)` 之后、读配置之前调用，`tray-panel.tsx` 在挂载 React 前调用），否则会先闪一帧透明背景/直角窗口 |
 
-**备注**：`isWindowsPlatform` 用于限定 Windows 原生屏幕取色器和游戏启动器；`applyWindowEffectsSupport` 供 `globals.css` 分流两条样式——`data-window-effects="fallback"` 时给 `body` 铺不透明的 `--background`，让 `.dashboard-background` 的主题渐变在没有系统 Acrylic 的平台上真正渲染出来；`data-window-radius="self"` 时用 `clip-path: inset(0 round 12px)` 把整个窗口裁圆（Windows 交 DWM、macOS 交系统，只有 Linux 需要）。不依赖 IPC、配置或第三方库。
+**备注**：`isWindowsPlatform` 用于限定 Windows 原生屏幕取色器和游戏启动器；`isMobileApp` 用于 Android/iOS 适配（后端命令层面也有对应 stub，见 `docs/development.md` §2.1 的差异表）；`applyWindowEffectsSupport` 供 `globals.css` 分流两条样式——`data-window-effects="fallback"` 时给 `body` 铺不透明的 `--background`，让 `.dashboard-background` 的主题渐变在没有系统 Acrylic 的平台上真正渲染出来；`data-window-radius="self"` 时用 `clip-path: inset(0 round 12px)` 把整个窗口裁圆（Windows 交 DWM、macOS 交系统，只有 Linux 需要）。不依赖 IPC、配置或第三方库。
 
 ## `src/utils/browserViewService.ts`
 **职责**：in-app browser 原生子 Webview 的后端导航服务封装。JS 侧 `@tauri-apps/api/webview` 的 `Webview` 类只有生命周期与布局方法（无 back/forward/reload/navigate/url），这些能力由 `src-tauri/src/commands/browser.rs` 以 app command 暴露，本文件统一加类型并把失败显式转成返回值，不抛给 UI 层。

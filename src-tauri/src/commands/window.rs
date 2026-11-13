@@ -29,22 +29,36 @@ fn main_window<R: Runtime>(app: &tauri::AppHandle<R>) -> Option<tauri::Window<R>
     app.get_window("main")
 }
 
+/// 最小化主窗口（仅桌面；移动端没有窗口化语义，应用切后台由系统管理）。
+///
+/// `Window::minimize/maximize/unmaximize` 在 tauri 的 `#[cfg(desktop)]` impl 块里，
+/// 移动端编译时不存在，因此整组窗口控制命令在移动端是 no-op。
 #[tauri::command]
 pub fn minimize_window<R: Runtime>(app: tauri::AppHandle<R>) {
-    if let Some(window) = main_window(&app) {
-        let _ = window.minimize();
+    #[cfg(desktop)]
+    {
+        if let Some(window) = main_window(&app) {
+            let _ = window.minimize();
+        }
     }
+    #[cfg(not(desktop))]
+    let _ = app;
 }
 
 #[tauri::command]
 pub fn toggle_maximize_window<R: Runtime>(app: tauri::AppHandle<R>) {
-    if let Some(window) = main_window(&app) {
-        if window.is_maximized().unwrap_or(false) {
-            let _ = window.unmaximize();
-        } else {
-            let _ = window.maximize();
+    #[cfg(desktop)]
+    {
+        if let Some(window) = main_window(&app) {
+            if window.is_maximized().unwrap_or(false) {
+                let _ = window.unmaximize();
+            } else {
+                let _ = window.maximize();
+            }
         }
     }
+    #[cfg(not(desktop))]
+    let _ = app;
 }
 
 #[tauri::command]

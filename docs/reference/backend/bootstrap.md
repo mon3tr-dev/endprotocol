@@ -19,6 +19,7 @@
 
 ## `src-tauri/src/lib.rs`
 **职责**：应用核心装配点。入口首先截获已有提权 helper，安装全局 panic hook，再由单实例插件处理后续启动请求。`--silent` 分支不创建 WebView、不注册完整应用插件和业务服务，只初始化配置、单实例和图标托盘；普通分支才初始化完整服务并动态创建主窗口/托盘面板。游戏启动继续复用 `launcher_start_game`。两种模式都在 setup 中保存 `AppHandle` 供崩溃广播，并调用 `utils::game_playtime::init()` 启动游戏在线时长统计，在 `RunEvent::Exit` 时 `utils::game_playtime::finalize()` 落盘。
+**移动端（Android/iOS）分支**：桌面专属能力全部经 `cfg(desktop)` / `cfg(mobile)` 门控——单实例插件与 updater 插件不注册、devdeck 不注册（desktop+debug）、`create_full_windows`（动态建窗）跳过（主窗口由 `tauri.android.conf.json` 静态创建）、`game_playtime` 不启动；setup 最先注入 `utils::paths` 的数据目录覆盖值（Android 无 HOME/XDG，`dirs` 全返回 None），随后初始化日志（桌面在 `run()` 早期完成）。日志/托盘/单实例的桌面专属依赖见 Cargo.toml 的 target 段。
 **导出**：`pub fn run()`（唯一公开项）；其余为私有模块声明。
 **主要依赖**：`commands`、`models`、`services`、`tray`、`utils` 模块；`services::{account_service, avatar_cache_service, config_service, gacha_service, game_launcher_service, network_service, skland_service}`；`tauri`、`tokio::sync::Mutex`、`std::sync::Arc`。
 
@@ -59,11 +60,12 @@
 **插件注册**：
 | 插件 | 行 | 对应 capability |
 | --- | --- | --- |
-| `tauri_plugin_single_instance` | lib.rs:89（注册 lib.rs:100） | **仅完整模式启用**；保证同时只有一个主实例；驻守实例（`--silent --launch-game`）不注册插件，可同时存在任意多个；Windows 命名互斥体默认按当前 Windows 会话隔离 |
-| `tauri_plugin_updater` | lib.rs:101 | 仅完整模式，`updater:default`（desktop.json） |
-| `tauri_plugin_process` | lib.rs:102 | 仅完整模式，`process:allow-restart`（desktop.json） |
-| `tauri_plugin_opener` | lib.rs:103 | 仅完整模式，`opener:default` / `opener:allow-open-url`（default.json）、`opener:allow-open-path`（desktop.json） |
-| `tauri_plugin_fs` | lib.rs:104 | 仅完整模式；**未授予任何 `fs:*` 权限**（见文末异常） |
+| `tauri_plugin_single_instance` | lib.rs:116（注册 lib.rs:135） | **仅完整模式 + 仅桌面**（`#[cfg(desktop)]`；插件 crate 级 `cfg(not(android, ios))`，移动端不存在）。保证同时只有一个主实例；驻守实例（`--silent --launch-game`）不注册插件，可同时存在任意多个；Windows 命名互斥体默认按当前 Windows 会话隔离 |
+| `tauri_plugin_updater` | lib.rs:136 | **仅桌面**（依赖只在 `cfg(not(any(android, ios)))` 目标编译）。仅完整模式，`updater:default`（desktop.json） |
+| `tauri_plugin_process` | lib.rs:128 | 全平台注册；`process:allow-restart` 仅桌面授予（desktop.json 有 platforms 限定） |
+| `tauri_plugin_opener` | lib.rs:129 | 仅完整模式，`opener:default` / `opener:allow-open-url`（default.json）、`opener:allow-open-path`（desktop.json） |
+| `tauri_plugin_fs` | lib.rs:130 | 仅完整模式；**未授予任何 `fs:*` 权限**（见文末异常） |
+| `tauri_plugin_devdeck` | lib.rs:147 | **仅桌面 + debug**（`#[cfg(all(desktop, debug_assertions))]`；依赖同样只在桌面目标编译） |
 
 **稳定命令行参数**：`--game <endfield\|arknights>` 选择要启动的游戏（缺省终末地）；`--silent` 单独出现时不启动应用、不创建窗口/托盘/驻守进程，直接退出；`--silent --launch-game` 启动一个**不可见驻守实例**（无窗口、无托盘、不计时、不注册单实例插件）并启动 config 中配置的游戏，每 2 秒探测该渠道对应的游戏进程（终末地 `Endfield.exe` / 明日方舟 `Arknights.exe`），游戏退出（或 120 秒内未检测到游戏进程）后退出；仅 `--launch-game` 时以正常完整模式启动应用并一并启动游戏；`--dx11` 仅与 `--launch-game` 组合生效——存在时给游戏进程追加 `-force-d3d11`，不存在时使用应用内设置 `launcher_dx11`（默认 false）。完整模式注册单实例插件，因此同时只允许一个主实例；驻守实例彼此独立，且不受主实例或其它驻守实例启停影响。第二实例按普通启动方式转发给主实例并显示主窗口（`--dx11` 随请求转发）。debug 模式优先使用配置的 Vite `devUrl`；若开发服务器未运行，则在同一进程内注册自定义协议 `endprotocol`（Windows 为 `http://endprotocol.localhost`，其余平台为 `endprotocol://localhost`），由 `asset_resolver()` 回退读取 `frontendDist` 中构建好的文件（注册于 `register_dev_asset_protocol`），二者均不可用时返回明确错误。注意不能用 `tauri://localhost` / `http://tauri.localhost`：dev 构建不含内嵌资源，Tauri 协议处理器会直接报 `asset not found`。
 
@@ -123,6 +125,7 @@
 
 ## `src-tauri/src/tray.rs`
 **职责**：系统托盘图标与托盘悬浮面板（tray-panel 窗口）的创建、定位、显隐与 tooltip 更新，并记录托盘是否真的可用（289 行）。仅在完整模式创建；`--silent --launch-game` 驻守实例不显示托盘。
+**移动端**：`tauri::tray` API 只在桌面存在，托盘构建路径（`build_tray`/`show_panel_at_position`/桌面版 `setup_tray`）整体 `#[cfg(desktop)]`；移动端 `setup_tray` 为 no-op stub（直接 `Ok(())`），`TRAY_AVAILABLE` 保持 false → `is_tray_available()` 恒 false（`minimize_to_tray` 退化为退出应用）；`update_tray_menu` 的 `tray_by_id` 段被 cfg 排除，`show/hide_tray_panel` 因面板窗口不存在而自然 no-op；`show_main_window_focus` / `TrayUserInfo` / `is_tray_available` 跨平台编译（`commands/tray.rs`、`commands/window.rs` 依赖它们）。
 **导出**：`TrayUserInfo`、`show_main_window_focus`、`setup_tray`、`update_tray_menu`、`show_tray_panel`、`hide_tray_panel`、`is_tray_available`；私有 `show_panel_at_position`、`build_tray`、`tray_effectively_available`、`status_notifier_host_available`。
 **主要依赖**：`tauri::tray::{TrayIconBuilder, TrayIconEvent, MouseButton}`、`tauri::{Emitter, Manager, Runtime}`、`windows-sys`（仅 Windows 分支）、`crate::services::config_service::ConfigService`。
 
@@ -195,9 +198,10 @@
 | `dependencies.indexmap` | :52 | 有序 map（带 `serde`） |
 | `dependencies.tauri-plugin-process` | :52 | `2.3.1`，应用重启 |
 | `dependencies.tauri-plugin-single-instance` | :53 | `2`，第二实例参数转发；Windows 命名互斥体按登录会话命名空间隔离 |
-| `dependencies.walkdir` / `rfd` | :55-56 | 目录遍历（校验/扫描）、原生文件对话框（游戏目录与用户选定的快捷方式保存位置） |
+| `dependencies.rfd` | Cargo.toml（桌面 target 段） | `0.18`，原生文件对话框（游戏目录与用户选定的快捷方式保存位置）；**仅桌面目标编译**（Android 无实现，无法构建），`commands/launcher.rs` / `commands/startup.rs` 的对话框命令在移动端提供返回明确错误的 stub |
 | `target.x86_64-pc-windows-msvc.rustflags` | :57-58 | 意图是 `-fuse-ld=lld`（lld 链接器）——**该 key 在 Cargo.toml 中无效**，见文末异常 |
-| `target.'cfg(not(android,ios))'.dependencies` | :61-62 | `tauri-plugin-updater = "2"`，仅桌面平台启用（完整模式注册） |
+| `target.'cfg(not(any(android,ios)))'.dependencies` | Cargo.toml 末段 | **桌面专属依赖**（Android/iOS 不编译）：`tauri`（补 `tray-icon` + `unstable` feature）、`reqwest`（补 `native-tls`，维持 Windows SChannel）、`tauri-plugin-single-instance`（插件 crate 级不支持移动端）、`tauri-plugin-updater`、`tauri-plugin-devdeck`（debug 监视器）、`rfd`。同包在公共段与桌面段重复声明时 feature 按目标合并 |
+| `target.'cfg(target_os = "android")'.dependencies` | Cargo.toml | **Android 专属**：`rustls` + `webpki-roots`。用于在 `utils/http_client.rs` 里显式构造使用内置根证书的 `rustls::ClientConfig`，绕开 `rustls-platform-verifier`（reqwest 0.13 rustls 后端的固定依赖，在 Android 上未初始化会 panic） |
 | `profile.dev.debug` | :64 | `"line-tables-only"` — **在 workspace 中被忽略**（见异常） |
 | `profile.dev.incremental` | :65 | `true` — 同上 |
 
@@ -228,7 +232,7 @@
 | `build.devUrl` | :8 | `http://localhost:1420` |
 | `build.beforeBuildCommand` | :9 | `pnpm build` |
 | `build.frontendDist` | :10 | `../dist` |
-| `app.windows` | :13 | 空数组；主窗口与 tray-panel 仅在完整模式由 `lib.rs:create_full_windows` 创建，驻守模式不创建 WebView |
+| `app.windows` | :13 | 空数组；主窗口与 tray-panel 仅在完整模式由 `lib.rs:create_full_windows` 创建（仅桌面），驻守模式不创建 WebView。**Android** 上由平台覆盖配置 `tauri.android.conf.json` 静态声明 `main` 窗口（移动端不支持运行时建窗） |
 | `app.security.csp` | :15 | `null` — 关闭 CSP（未设置内容安全策略） |
 | `bundle.active` | :19 | `true` — 启用打包 |
 | `bundle.createUpdaterArtifacts` | :20 | `true` — 生成 updater 用的签名产物 |
@@ -240,6 +244,21 @@
 | `bundle.windows.nsis.languages` | :38 | `["SimpChinese", "English"]` |
 | `plugins.updater.pubkey` | :44 | minisign 公钥（`dW50cnVzdGVkIGNvbW1lbnQ6...` base64） |
 | `plugins.updater.endpoints` | :45-49 | 三个更新源，按序回退：`https://updates.msk-network.cn/stable/latest.json` → `https://updates.msk-network.cn/preview/latest.json` → `https://github.com/mon3tr-dev/endprotocol/releases/latest/download/latest.json` |
+
+---
+
+## `src-tauri/tauri.android.conf.json`
+**职责**：Android 平台覆盖配置（Tauri 构建目标为 Android 时与 `tauri.conf.json` 深度合并）。核心作用是**静态声明主窗口**：移动端不支持 `WebviewWindowBuilder` 运行时建窗（桌面路径 `create_full_windows` 已被 `#[cfg(desktop)]` 排除），`main` 窗口必须由 `app.windows` 在启动时创建。
+**导出**：无（JSON 配置）。
+
+### 逐 key 说明
+| Key | 用途 |
+| --- | --- |
+| `app.windows[0].label` | `"main"`，与桌面动态创建的主窗口同 label（托盘唤回、窗口命令都用它寻址） |
+| `app.windows[0].title` / `url` | `"endprotocol"` / `"index.html"`（dev 构建由 CLI 自动改写到 devUrl） |
+| `app.windows[0].width` / `height` / `resizable` | 1200×700 / true——移动端通常忽略具体尺寸（全屏），保留仅为语义完整 |
+
+**备注**：不设 `decorations` / `transparent` / `effects`（移动端窗口由系统管理，透明窗口在 Android 上不可靠）。iOS 对应的 `tauri.ios.conf.json` 尚未创建。
 
 ---
 

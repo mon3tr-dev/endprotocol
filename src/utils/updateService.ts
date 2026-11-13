@@ -6,7 +6,7 @@ import { addMessage, updateMessage, removeMessage, removeMessagesByTag, type App
 import { pushGlobalAlert } from "@/components/ui/global-alert";
 import { getConfig, setConfig } from "./configService";
 import logger from "./logger";
-import { isWindowsPlatform } from "./platform";
+import { isWindowsPlatform, isMobileApp } from "./platform";
 
 // ============================================================================
 // Types
@@ -805,6 +805,17 @@ export async function setSource(source: UpdateSource): Promise<void> {
 }
 
 export async function checkForUpdate(): Promise<UpdateCheckResult> {
+  // 移动端（Android/iOS）没有 updater 插件与自更新渠道：直接返回「不可用」，
+  // 不发起任何 IPC。检查/下载/安装入口在设置页与更新弹窗中一并隐藏。
+  if (isMobileApp()) {
+    return {
+      available: false,
+      update: null,
+      changelog: null,
+      changelogStatus: "idle",
+      status: "not-available",
+    };
+  }
   status = "checking";
   emitChange();
 

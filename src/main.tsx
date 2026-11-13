@@ -26,7 +26,7 @@ import {
 } from "@/utils/startupProgress";
 import { installCrashHandlers } from "@/utils/crashReporting";
 import { loadAccountAvailability } from "@/utils/accountAvailability";
-import { applyWindowEffectsSupport } from "@/utils/platform";
+import { applyWindowEffectsSupport, isDesktopApp } from "@/utils/platform";
 import {
   applyThemeColor,
   applyThemeMode,
@@ -40,7 +40,11 @@ installCrashHandlers();
 
 // 开发构建（或显式 VITE_DEV_DECK=1 的度量构建）下启动 devdeck 内存监视器：
 // 独立窗口，Ctrl+Alt+M 打开。动态 import + 常量门控，Release 构建下整个分支被消除。
-if (import.meta.env.DEV || import.meta.env.VITE_DEV_DECK === "1") {
+// 移动端（Android/iOS）跳过：devdeck 插件仅桌面编译注册，调用只会得到"命令不存在"。
+if (
+  (import.meta.env.DEV || import.meta.env.VITE_DEV_DECK === "1") &&
+  isDesktopApp()
+) {
   void import("tauri-plugin-devdeck").then((mod) => mod.startDevdeck());
 }
 

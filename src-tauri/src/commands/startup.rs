@@ -371,6 +371,8 @@ pub fn steam_shortcut_defaults(
 }
 
 /// 选择图标图片（`.ico` / `.png` / `.exe`）。取消返回 `None`。
+/// 桌面走 rfd 原生对话框；移动端 rfd 无法编译，返回明确错误。
+#[cfg(desktop)]
 #[tauri::command]
 pub fn pick_steam_icon() -> Result<Option<String>, String> {
     Ok(rfd::FileDialog::new()
@@ -380,7 +382,15 @@ pub fn pick_steam_icon() -> Result<Option<String>, String> {
         .map(|path| path.to_string_lossy().into_owned()))
 }
 
+/// 移动端 stub：无原生文件选择对话框。
+#[cfg(not(desktop))]
+#[tauri::command]
+pub fn pick_steam_icon() -> Result<Option<String>, String> {
+    Err("File selection is not available on this platform".to_string())
+}
+
 /// 选择游戏 exe（图标提取源）。取消返回 `None`。
+#[cfg(desktop)]
 #[tauri::command]
 pub fn pick_steam_icon_source() -> Result<Option<String>, String> {
     Ok(rfd::FileDialog::new()
@@ -388,6 +398,13 @@ pub fn pick_steam_icon_source() -> Result<Option<String>, String> {
         .add_filter("Windows executable", &["exe"])
         .pick_file()
         .map(|path| path.to_string_lossy().into_owned()))
+}
+
+/// 移动端 stub：无原生文件选择对话框。
+#[cfg(not(desktop))]
+#[tauri::command]
+pub fn pick_steam_icon_source() -> Result<Option<String>, String> {
+    Err("File selection is not available on this platform".to_string())
 }
 
 /// 从指定 exe 提取图标，写出到缓存目录并返回 `.ico` 路径。

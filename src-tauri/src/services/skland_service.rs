@@ -1,4 +1,4 @@
-use base64::engine::general_purpose::STANDARD as BASE64;
+﻿use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
 use chrono::Utc;
 use digest::Digest;
@@ -23,7 +23,7 @@ use crate::{log_debug, log_error, log_info, log_warn};
 
 type HmacSha256 = Hmac<Sha256>;
 
-/// 解析 HTTP `Date` 响应头（RFC 7231 使用 GMT 格式）。
+/// è§£æž HTTP `Date` å“åº”å¤´ï¼ˆRFC 7231 ä½¿ç”¨ GMT æ ¼å¼ï¼‰ã€‚
 fn parse_http_date(value: &str) -> Option<chrono::DateTime<Utc>> {
     chrono::DateTime::parse_from_rfc2822(value)
         .map(|time| time.with_timezone(&Utc))
@@ -36,15 +36,15 @@ fn parse_http_date(value: &str) -> Option<chrono::DateTime<Utc>> {
 
 const ORG: &str = "UWXspnCCJN4sfYlNfqps";
 
-/// 抽卡域 OAuth grant 的 appCode（`type: 1`）。与换 skland cred 的 `4ca99fa6b56cc2ba`
-/// （`type: 0`）不是同一个，混用会直接拿不到 token。
+/// æŠ½å¡åŸŸ OAuth grant çš„ appCodeï¼ˆ`type: 1`ï¼‰ã€‚ä¸Žæ¢ skland cred çš„ `4ca99fa6b56cc2ba`
+/// ï¼ˆ`type: 0`ï¼‰ä¸æ˜¯åŒä¸€ä¸ªï¼Œæ··ç”¨ä¼šç›´æŽ¥æ‹¿ä¸åˆ° tokenã€‚
 const U8_GRANT_APP_CODE: &str = "be36d44aa36bfb5b";
 
-/// 账号绑定域名（`binding_list` / `u8_token_by_uid`）。
+/// è´¦å·ç»‘å®šåŸŸåï¼ˆ`binding_list` / `u8_token_by_uid`ï¼‰ã€‚
 const BINDING_API_HOST: &str = "binding-api-account-prod.hypergryph.com";
 const PUB_KEY_DER: &str = "MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQCmxMNr7n8ZeT0tE1R9j/mPixoinPkeM+k4VGIn/s0k7N5rJAfnZ0eMER+QhwFvshzo0LNmeUkpR8uIlU/GEVr8mN28sKmwd2gpygqj0ePnBmOW4v0ZVwbSYK+izkhVFk2V/doLoMbWy6b+UnA8mkjvg0iYWRByfRsK2gdl7llqCwIDAQAB";
 
-/// Skland 服务
+/// Skland æœåŠ¡
 pub struct SklandService {
     config_service: std::sync::Arc<std::sync::Mutex<ConfigService>>,
 }
@@ -54,9 +54,9 @@ impl SklandService {
         Self { config_service }
     }
 
-    /// 获取或缓存的 dId
+    /// èŽ·å–æˆ–ç¼“å­˜çš„ dId
     async fn get_or_refresh_did(&self) -> Result<String, AppError> {
-        // 尝试从配置中获取缓存的 dId
+        // å°è¯•ä»Žé…ç½®ä¸­èŽ·å–ç¼“å­˜çš„ dId
         let cached_did: Option<String> = {
             let config = self
                 .config_service
@@ -71,10 +71,10 @@ impl SklandService {
             return Ok(did);
         }
 
-        // 缓存不存在，获取新的 dId
+        // ç¼“å­˜ä¸å­˜åœ¨ï¼ŒèŽ·å–æ–°çš„ dId
         let new_did = self.fetch_new_did().await?;
 
-        // 保存到配置
+        // ä¿å­˜åˆ°é…ç½®
         {
             let mut config = self
                 .config_service
@@ -88,18 +88,18 @@ impl SklandService {
         Ok(new_did)
     }
 
-    /// 获取新的 dId - 1:1 复刻 Python 脚本
+    /// èŽ·å–æ–°çš„ dId - 1:1 å¤åˆ» Python è„šæœ¬
     ///
-    /// 数美设备指纹接口（`fp-it.portal101.cn`）失败时会按
-    /// [`api_health::ApiFailureKind::DeviceFingerprint`] 计数：连续失败达到阈值后
-    /// 判定为设备指纹环境异常，前端据此提示用户重启电脑并同步时区。
+    /// æ•°ç¾Žè®¾å¤‡æŒ‡çº¹æŽ¥å£ï¼ˆ`fp-it.portal101.cn`ï¼‰å¤±è´¥æ—¶ä¼šæŒ‰
+    /// [`api_health::ApiFailureKind::DeviceFingerprint`] è®¡æ•°ï¼šè¿žç»­å¤±è´¥è¾¾åˆ°é˜ˆå€¼åŽ
+    /// åˆ¤å®šä¸ºè®¾å¤‡æŒ‡çº¹çŽ¯å¢ƒå¼‚å¸¸ï¼Œå‰ç«¯æ®æ­¤æç¤ºç”¨æˆ·é‡å¯ç”µè„‘å¹¶åŒæ­¥æ—¶åŒºã€‚
     async fn fetch_new_did(&self) -> Result<String, AppError> {
         api_health::ensure_available()?;
         let result = self.fetch_new_did_inner().await;
         if let Err(error) = &result {
             api_health::record_failure(
                 api_health::ApiFailureKind::DeviceFingerprint,
-                &format!("数美设备指纹接口请求失败: {}", error),
+                &format!("æ•°ç¾Žè®¾å¤‡æŒ‡çº¹æŽ¥å£è¯·æ±‚å¤±è´¥: {}", error),
                 None,
             );
         }
@@ -107,14 +107,14 @@ impl SklandService {
     }
 
     async fn fetch_new_did_inner(&self) -> Result<String, AppError> {
-        // 生成 uid 和 pri_id
+        // ç”Ÿæˆ uid å’Œ pri_id
         let uid = Uuid::new_v4().to_string();
         let uid_bytes = uid.as_bytes();
         let pri_id = hex::encode(md5::Md5::digest(uid_bytes))[..16].to_string();
 
-        let client = reqwest::Client::new();
+        let client = crate::utils::http_client::default_client();
 
-        // RSA 加密 uid 得到 ep
+        // RSA åŠ å¯† uid å¾—åˆ° ep
         let pub_key_bytes = BASE64
             .decode(PUB_KEY_DER)
             .map_err(|e| AppError::AuthError {
@@ -125,9 +125,9 @@ impl SklandService {
                 message: format!("Failed to parse public key: {}", e),
             })?;
         let ep = {
-            // rsa 0.9 仍绑 rand_core 0.6；rand 0.10 的 ThreadRng 实现的是 rand_core
-            // 0.10 的 trait，两者类型不互通。这里用 rsa 自带 `rand_core::OsRng`
-            //（系统熵源，语义与原 thread_rng 一致）。
+            // rsa 0.9 ä»ç»‘ rand_core 0.6ï¼›rand 0.10 çš„ ThreadRng å®žçŽ°çš„æ˜¯ rand_core
+            // 0.10 çš„ traitï¼Œä¸¤è€…ç±»åž‹ä¸äº’é€šã€‚è¿™é‡Œç”¨ rsa è‡ªå¸¦ `rand_core::OsRng`
+            //ï¼ˆç³»ç»Ÿç†µæºï¼Œè¯­ä¹‰ä¸ŽåŽŸ thread_rng ä¸€è‡´ï¼‰ã€‚
             let mut rng = rsa::rand_core::OsRng;
             let ep_bytes = rsa_pub_key
                 .encrypt(&mut rng, Pkcs1v15Encrypt, uid.as_bytes())
@@ -141,7 +141,7 @@ impl SklandService {
         log_debug!("EP_BASE64: {}", ep);
         log_debug!("EP_LENGTH: {}", ep.len());
 
-        // 构造指纹数据（与 Python 完全一致）
+        // æž„é€ æŒ‡çº¹æ•°æ®ï¼ˆä¸Ž Python å®Œå…¨ä¸€è‡´ï¼‰
         let curr_ms = Utc::now().timestamp_millis();
         let smid_hash = hex::encode(md5::Md5::digest(Uuid::new_v4().to_string().as_bytes()));
         let smid = format!("{}{}00", Utc::now().format("%Y%m%d%H%M%S"), smid_hash);
@@ -154,7 +154,7 @@ impl SklandService {
         log_debug!("  vpw: {}", vpw);
         log_debug!("  trees: {}", trees);
 
-        // 所有需要混淆的字段
+        // æ‰€æœ‰éœ€è¦æ··æ·†çš„å­—æ®µ
         let mut target = serde_json::Map::new();
         target.insert("ua".to_string(), json!("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36 Edg/129.0.0.0"));
         target.insert("platform".to_string(), json!("Win32"));
@@ -171,7 +171,7 @@ impl SklandService {
         target.insert("protocol".to_string(), json!(102));
         target.insert("version".to_string(), json!("3.0.0"));
 
-        // DES 加密规则（从 Python 代码提取）
+        // DES åŠ å¯†è§„åˆ™ï¼ˆä»Ž Python ä»£ç æå–ï¼‰
         let des_rules = vec![
             ("appId", "uy7mzc4h", "xx"),
             ("box", "", "jf"),
@@ -200,17 +200,17 @@ impl SklandService {
             ("vpw", "r9924ab5", "ca"),
         ];
 
-        // 对每个字段进行 DES 加密或保持原样
+        // å¯¹æ¯ä¸ªå­—æ®µè¿›è¡Œ DES åŠ å¯†æˆ–ä¿æŒåŽŸæ ·
         let mut obfuscated = serde_json::Map::new();
         log_debug!("=== STEP 4: DES Obfuscation Details ===");
 
-        // 创建 des_rules 的查找表
+        // åˆ›å»º des_rules çš„æŸ¥æ‰¾è¡¨
         let des_rules_map: std::collections::HashMap<&str, (&str, &str)> = des_rules
             .iter()
             .map(|(field, key, obf)| (*field, (*key, *obf)))
             .collect();
 
-        // 明确按照 Python target 的字段顺序插入，以保证 JSON 键顺序一致
+        // æ˜Žç¡®æŒ‰ç…§ Python target çš„å­—æ®µé¡ºåºæ’å…¥ï¼Œä»¥ä¿è¯ JSON é”®é¡ºåºä¸€è‡´
         let field_order = [
             "ua",
             "platform",
@@ -232,7 +232,7 @@ impl SklandService {
             if let Some(value) = target.get(field_name) {
                 if let Some(&(key, obf_name)) = des_rules_map.get(field_name) {
                     if !key.is_empty() {
-                        // 需要 DES 加密，转换为字符串后加密
+                        // éœ€è¦ DES åŠ å¯†ï¼Œè½¬æ¢ä¸ºå­—ç¬¦ä¸²åŽåŠ å¯†
                         let value_str = if value.is_string() {
                             value.as_str().unwrap().to_string()
                         } else {
@@ -251,7 +251,7 @@ impl SklandService {
 
                         obfuscated.insert(obf_name.to_string(), serde_json::Value::String(enc));
                     } else {
-                        // 不需要加密，保持原始类型
+                        // ä¸éœ€è¦åŠ å¯†ï¼Œä¿æŒåŽŸå§‹ç±»åž‹
                         log_debug!(
                             "Keep Original - Field: {}, ObfName: {}, Value: {}",
                             field_name,
@@ -265,7 +265,7 @@ impl SklandService {
             }
         }
 
-        // 手动根据 field_order 构建 JSON 字符串以确保键顺序与 Python 完全一致
+        // æ‰‹åŠ¨æ ¹æ® field_order æž„å»º JSON å­—ç¬¦ä¸²ä»¥ç¡®ä¿é”®é¡ºåºä¸Ž Python å®Œå…¨ä¸€è‡´
         let mut parts: Vec<String> = Vec::new();
         for &field_name in &field_order {
             if let Some(&(_key, obf_name)) = des_rules_map.get(field_name) {
@@ -281,7 +281,7 @@ impl SklandService {
         log_debug!("JSON_LENGTH: {}", obfuscated_json.len());
         log_debug!("JSON_HEX: {}", hex::encode(obfuscated_json.as_bytes()));
 
-        // Gzip 压缩，使用 GzBuilder 并固定 mtime=0，匹配 Python gzip.compress(..., mtime=0)
+        // Gzip åŽ‹ç¼©ï¼Œä½¿ç”¨ GzBuilder å¹¶å›ºå®š mtime=0ï¼ŒåŒ¹é… Python gzip.compress(..., mtime=0)
         use flate2::Compression;
         use flate2::GzBuilder;
         use std::io::Write;
@@ -297,13 +297,13 @@ impl SklandService {
         log_debug!("GZIP_LENGTH: {}", compressed.len());
         log_debug!("GZIP_BASE64_LENGTH: {}", base64_gzip.len());
 
-        // AES-128-CBC 加密（特殊填充：先加 \x00，再补到16字节倍数）
-        // cipher 0.5：`BlockEncrypt` 更名 `BlockCipherEncrypt`；`generic_array`
-        // 模块更名 `array`（hybrid-array，`Array` 类型 + `From<&[u8; N]>`）。
+        // AES-128-CBC åŠ å¯†ï¼ˆç‰¹æ®Šå¡«å……ï¼šå…ˆåŠ  \x00ï¼Œå†è¡¥åˆ°16å­—èŠ‚å€æ•°ï¼‰
+        // cipher 0.5ï¼š`BlockEncrypt` æ›´å `BlockCipherEncrypt`ï¼›`generic_array`
+        // æ¨¡å—æ›´å `array`ï¼ˆhybrid-arrayï¼Œ`Array` ç±»åž‹ + `From<&[u8; N]>`ï¼‰ã€‚
         use aes::cipher::{BlockCipherEncrypt, KeyInit};
 
         let mut data = base64_gzip.as_bytes().to_vec();
-        data.push(0x00); // 关键点：先添加一个 \x00
+        data.push(0x00); // å…³é”®ç‚¹ï¼šå…ˆæ·»åŠ ä¸€ä¸ª \x00
         let pad_len = 16 - (data.len() % 16);
         if pad_len < 16 {
             data.extend(vec![0u8; pad_len]);
@@ -315,7 +315,7 @@ impl SklandService {
             message: format!("AES key error: {}", e),
         })?;
 
-        // 手动实现 CBC 模式（与 Python 和测试代码一致）
+        // æ‰‹åŠ¨å®žçŽ° CBC æ¨¡å¼ï¼ˆä¸Ž Python å’Œæµ‹è¯•ä»£ç ä¸€è‡´ï¼‰
         let mut prev_block = *iv;
         let mut result = Vec::new();
 
@@ -339,7 +339,7 @@ impl SklandService {
         let aes_data = hex::encode(result);
         log_debug!("AES data length: {}", aes_data.len());
 
-        // 请求数美接口
+        // è¯·æ±‚æ•°ç¾ŽæŽ¥å£
         let payload = json!({
             "appId": "default",
             "compress": 2,
@@ -350,7 +350,7 @@ impl SklandService {
             "os": "web"
         });
 
-        log_info!("=== HTTP REQUEST: 数美设备指纹 ===");
+        log_info!("=== HTTP REQUEST: æ•°ç¾Žè®¾å¤‡æŒ‡çº¹ ===");
         log_info!("Method: POST");
         log_info!("URL: https://fp-it.portal101.cn/deviceprofile/v4");
 
@@ -368,7 +368,7 @@ impl SklandService {
         let resp_headers = resp.headers().clone();
         let resp_text = resp.text().await?;
 
-        log_info!("=== HTTP RESPONSE: 数美设备指纹 ===");
+        log_info!("=== HTTP RESPONSE: æ•°ç¾Žè®¾å¤‡æŒ‡çº¹ ===");
         log_info!("Status: {}", status);
         log_info!("Time: {:?}", elapsed);
         log_debug!("Response Headers:");
@@ -384,11 +384,11 @@ impl SklandService {
                 message: format!("Failed to parse response as JSON: {}", e),
             })?;
 
-        // 打印完整的响应用于调试
-        log_debug!("数美接口完整响应: {}", resp_text);
+        // æ‰“å°å®Œæ•´çš„å“åº”ç”¨äºŽè°ƒè¯•
+        log_debug!("æ•°ç¾ŽæŽ¥å£å®Œæ•´å“åº”: {}", resp_text);
 
-        // 检查是否有错误码（注意：数美接口某些非0码也可能成功，如1100）
-        // 只有当没有deviceId字段时才认为失败
+        // æ£€æŸ¥æ˜¯å¦æœ‰é”™è¯¯ç ï¼ˆæ³¨æ„ï¼šæ•°ç¾ŽæŽ¥å£æŸäº›éž0ç ä¹Ÿå¯èƒ½æˆåŠŸï¼Œå¦‚1100ï¼‰
+        // åªæœ‰å½“æ²¡æœ‰deviceIdå­—æ®µæ—¶æ‰è®¤ä¸ºå¤±è´¥
         let has_device_id = resp_json
             .get("detail")
             .and_then(|d| d.get("deviceId").or_else(|| d.get("device_id")))
@@ -405,15 +405,15 @@ impl SklandService {
             .is_some();
 
         if !has_device_id {
-            // 如果没有deviceId，才检查错误码
+            // å¦‚æžœæ²¡æœ‰deviceIdï¼Œæ‰æ£€æŸ¥é”™è¯¯ç 
             if let Some(code) = resp_json.get("code").and_then(|c| c.as_i64()) {
                 return Err(AppError::AuthError {
-                    message: format!("数美接口返回错误码 {}: {}", code, resp_text),
+                    message: format!("æ•°ç¾ŽæŽ¥å£è¿”å›žé”™è¯¯ç  {}: {}", code, resp_text),
                 });
             }
         }
 
-        // 尝试多种可能的响应结构
+        // å°è¯•å¤šç§å¯èƒ½çš„å“åº”ç»“æž„
         let device_id = resp_json
             .get("detail")
             .and_then(|d| d.get("deviceId").or_else(|| d.get("device_id")))
@@ -435,22 +435,22 @@ impl SklandService {
         Ok(format!("B{}", device_id))
     }
 
-    /// 计算森空岛特定的 Sign
+    /// è®¡ç®—æ£®ç©ºå²›ç‰¹å®šçš„ Sign
     fn calculate_sign(&self, path: &str, body: &str, ts: &str, did: &str, token: &str) -> String {
-        // 构造 header JSON 字符串（按 Python 的键顺序和紧凑格式）
+        // æž„é€  header JSON å­—ç¬¦ä¸²ï¼ˆæŒ‰ Python çš„é”®é¡ºåºå’Œç´§å‡‘æ ¼å¼ï¼‰
         let h_ca_str = format!(
             "{{\"platform\":\"1\",\"timestamp\":\"{}\",\"dId\":\"{}\",\"vName\":\"1.45.1\"}}",
             ts, did
         );
 
-        // 1. 拼接原始字符串: path + body + ts + header_json
+        // 1. æ‹¼æŽ¥åŽŸå§‹å­—ç¬¦ä¸²: path + body + ts + header_json
         let raw_data = format!("{}{}{}{}", path, body, ts, h_ca_str);
 
         // Debug: print the exact inputs used to compute the sign
         log_debug!("calculate_sign header_json: {}", h_ca_str);
         log_debug!("calculate_sign raw: {}", raw_data);
 
-        // 2. HMAC-SHA256（digest 0.11：`KeyInit` 需显式导入）
+        // 2. HMAC-SHA256ï¼ˆdigest 0.11ï¼š`KeyInit` éœ€æ˜¾å¼å¯¼å…¥ï¼‰
         use hmac::KeyInit as _;
         let mut mac = HmacSha256::new_from_slice(token.as_bytes()).expect("HMAC key error");
         mac.update(raw_data.as_bytes());
@@ -458,7 +458,7 @@ impl SklandService {
 
         log_debug!("calculate_sign hex_hmac: {}", hmac_res);
 
-        // 3. MD5（digest 0.11 的输出为 hybrid-array，不实现 LowerHex，改用 hex::encode）
+        // 3. MD5ï¼ˆdigest 0.11 çš„è¾“å‡ºä¸º hybrid-arrayï¼Œä¸å®žçŽ° LowerHexï¼Œæ”¹ç”¨ hex::encodeï¼‰
         let digest = Md5::digest(hmac_res.as_bytes());
         let md5_hex = hex::encode(digest);
         log_debug!("calculate_sign md5: {}", md5_hex);
@@ -466,7 +466,7 @@ impl SklandService {
         md5_hex
     }
 
-    /// 构建通用的 Skland HTTP 请求
+    /// æž„å»ºé€šç”¨çš„ Skland HTTP è¯·æ±‚
     fn build_skland_request(
         &self,
         client: &reqwest::Client,
@@ -500,11 +500,11 @@ impl SklandService {
             )
     }
 
-    /// 重新申请 dId 并**写回缓存**。
+    /// é‡æ–°ç”³è¯· dId å¹¶**å†™å›žç¼“å­˜**ã€‚
     ///
-    /// 旧实现（`config.remove("did_cache")` + `fetch_new_did`）只换了本次请求用的
-    /// dId，却没有写回缓存 —— 于是下一次调用又读不到缓存、又去数美换一把新的。
-    /// 结果是一次 401 之后**每次请求都要多付一次指纹申请**，且 dId 永不稳定。
+    /// æ—§å®žçŽ°ï¼ˆ`config.remove("did_cache")` + `fetch_new_did`ï¼‰åªæ¢äº†æœ¬æ¬¡è¯·æ±‚ç”¨çš„
+    /// dIdï¼Œå´æ²¡æœ‰å†™å›žç¼“å­˜ â€”â€” äºŽæ˜¯ä¸‹ä¸€æ¬¡è°ƒç”¨åˆè¯»ä¸åˆ°ç¼“å­˜ã€åˆåŽ»æ•°ç¾Žæ¢ä¸€æŠŠæ–°çš„ã€‚
+    /// ç»“æžœæ˜¯ä¸€æ¬¡ 401 ä¹‹åŽ**æ¯æ¬¡è¯·æ±‚éƒ½è¦å¤šä»˜ä¸€æ¬¡æŒ‡çº¹ç”³è¯·**ï¼Œä¸” dId æ°¸ä¸ç¨³å®šã€‚
     async fn rotate_did(&self) -> Result<String, AppError> {
         {
             let mut config = self.config_service.lock().map_err(|e| AppError::ConfigError {
@@ -522,38 +522,38 @@ impl SklandService {
         Ok(new_did)
     }
 
-    /// 统一的 Skland API 调用入口
+    /// ç»Ÿä¸€çš„ Skland API è°ƒç”¨å…¥å£
     ///
-    /// 自动处理：
-    /// - dId 获取/缓存/失效轮换（**轮换后写回缓存**，避免每次请求都重申请指纹）
-    /// - timestamp 生成
-    /// - sign 计算（HMAC-SHA256 + MD5）
-    /// - 认证 header 注入（cred、dId、sign、timestamp、User-Agent 等）
-    /// - 请求日志记录
-    /// - JSON 解析 + code != 0 错误检查（已知幂等结果如「请勿重复签到」除外）
-    /// - **会话失效自愈**：数据接口返回 `code=10000 请求异常` 时，就地用该账号的
-    ///   `hytoken` 换一把新 cred（见 [`crate::services::cred_recovery`]）再重试一次
+    /// è‡ªåŠ¨å¤„ç†ï¼š
+    /// - dId èŽ·å–/ç¼“å­˜/å¤±æ•ˆè½®æ¢ï¼ˆ**è½®æ¢åŽå†™å›žç¼“å­˜**ï¼Œé¿å…æ¯æ¬¡è¯·æ±‚éƒ½é‡ç”³è¯·æŒ‡çº¹ï¼‰
+    /// - timestamp ç”Ÿæˆ
+    /// - sign è®¡ç®—ï¼ˆHMAC-SHA256 + MD5ï¼‰
+    /// - è®¤è¯ header æ³¨å…¥ï¼ˆcredã€dIdã€signã€timestampã€User-Agent ç­‰ï¼‰
+    /// - è¯·æ±‚æ—¥å¿—è®°å½•
+    /// - JSON è§£æž + code != 0 é”™è¯¯æ£€æŸ¥ï¼ˆå·²çŸ¥å¹‚ç­‰ç»“æžœå¦‚ã€Œè¯·å‹¿é‡å¤ç­¾åˆ°ã€é™¤å¤–ï¼‰
+    /// - **ä¼šè¯å¤±æ•ˆè‡ªæ„ˆ**ï¼šæ•°æ®æŽ¥å£è¿”å›ž `code=10000 è¯·æ±‚å¼‚å¸¸` æ—¶ï¼Œå°±åœ°ç”¨è¯¥è´¦å·çš„
+    ///   `hytoken` æ¢ä¸€æŠŠæ–° credï¼ˆè§ [`crate::services::cred_recovery`]ï¼‰å†é‡è¯•ä¸€æ¬¡
     ///
-    /// # 为什么需要会话自愈
+    /// # ä¸ºä»€ä¹ˆéœ€è¦ä¼šè¯è‡ªæ„ˆ
     ///
-    /// 服务端轮换会话后，`/api/v1/user/check` 依旧返回 `code=0`，只有数据接口拒绝。
-    /// 因此 `check_and_refresh_user_cred` 永远判定「cred 有效」、永不刷新；随后每个
-    /// 角色都撞 401 → 连续失败浇满熔断计数 → 所有账号一起变「账号不可用」。
-    /// 用户唯有重新登录才能恢复，因为只有那条路径真的重走了
-    /// `hytoken → generate_cred_by_code`。这里把同一个动作做进请求层，故障窗口
-    /// 从「必须重新登录」收敛成「一次额外请求」。
+    /// æœåŠ¡ç«¯è½®æ¢ä¼šè¯åŽï¼Œ`/api/v1/user/check` ä¾æ—§è¿”å›ž `code=0`ï¼Œåªæœ‰æ•°æ®æŽ¥å£æ‹’ç»ã€‚
+    /// å› æ­¤ `check_and_refresh_user_cred` æ°¸è¿œåˆ¤å®šã€Œcred æœ‰æ•ˆã€ã€æ°¸ä¸åˆ·æ–°ï¼›éšåŽæ¯ä¸ª
+    /// è§’è‰²éƒ½æ’ž 401 â†’ è¿žç»­å¤±è´¥æµ‡æ»¡ç†”æ–­è®¡æ•° â†’ æ‰€æœ‰è´¦å·ä¸€èµ·å˜ã€Œè´¦å·ä¸å¯ç”¨ã€ã€‚
+    /// ç”¨æˆ·å”¯æœ‰é‡æ–°ç™»å½•æ‰èƒ½æ¢å¤ï¼Œå› ä¸ºåªæœ‰é‚£æ¡è·¯å¾„çœŸçš„é‡èµ°äº†
+    /// `hytoken â†’ generate_cred_by_code`ã€‚è¿™é‡ŒæŠŠåŒä¸€ä¸ªåŠ¨ä½œåšè¿›è¯·æ±‚å±‚ï¼Œæ•…éšœçª—å£
+    /// ä»Žã€Œå¿…é¡»é‡æ–°ç™»å½•ã€æ”¶æ•›æˆã€Œä¸€æ¬¡é¢å¤–è¯·æ±‚ã€ã€‚
     ///
-    /// # 参数
-    /// - `method` - "GET" 或 "POST"
-    /// - `path` - API 路径（如 `/api/v1/game/endfield/card/detail`）
-    /// - `query` - GET 请求的 query string（如 `"roleId=xxx&serverId=yyy"`），POST 传 `None`
-    /// - `body` - POST 请求的 JSON body，GET 传 `None`
-    /// - `cred` - 认证凭证
-    /// - `token` - 签名 token
+    /// # å‚æ•°
+    /// - `method` - "GET" æˆ– "POST"
+    /// - `path` - API è·¯å¾„ï¼ˆå¦‚ `/api/v1/game/endfield/card/detail`ï¼‰
+    /// - `query` - GET è¯·æ±‚çš„ query stringï¼ˆå¦‚ `"roleId=xxx&serverId=yyy"`ï¼‰ï¼ŒPOST ä¼  `None`
+    /// - `body` - POST è¯·æ±‚çš„ JSON bodyï¼ŒGET ä¼  `None`
+    /// - `cred` - è®¤è¯å‡­è¯
+    /// - `token` - ç­¾å token
     ///
-    /// # 返回
-    /// 解析后的完整 JSON 响应（`code == 0`；或 [`api_health::is_benign_business_error`]
-    /// 判定为幂等成功的业务码，此时调用方需自行识别 `code`）
+    /// # è¿”å›ž
+    /// è§£æžåŽçš„å®Œæ•´ JSON å“åº”ï¼ˆ`code == 0`ï¼›æˆ– [`api_health::is_benign_business_error`]
+    /// åˆ¤å®šä¸ºå¹‚ç­‰æˆåŠŸçš„ä¸šåŠ¡ç ï¼Œæ­¤æ—¶è°ƒç”¨æ–¹éœ€è‡ªè¡Œè¯†åˆ« `code`ï¼‰
     pub async fn call_skland_api(
         &self,
         method: &str,
@@ -567,24 +567,24 @@ impl SklandService {
         let client = http_client::create_client();
         let mut last_err: Option<AppError> = None;
 
-        // 本次调用实际使用的凭据：会话失效时会就地换成新的一对。
+        // æœ¬æ¬¡è°ƒç”¨å®žé™…ä½¿ç”¨çš„å‡­æ®ï¼šä¼šè¯å¤±æ•ˆæ—¶ä¼šå°±åœ°æ¢æˆæ–°çš„ä¸€å¯¹ã€‚
         let mut cred = cred.to_string();
         let mut token = token.to_string();
-        // 已经用过「换 cred」这条修复路径，不再重复触发（避免换出一堆凭据）。
+        // å·²ç»ç”¨è¿‡ã€Œæ¢ credã€è¿™æ¡ä¿®å¤è·¯å¾„ï¼Œä¸å†é‡å¤è§¦å‘ï¼ˆé¿å…æ¢å‡ºä¸€å †å‡­æ®ï¼‰ã€‚
         let mut cred_refreshed = false;
-        // 是否轮换 dId。**只在与设备指纹/签名相关的失败后轮换**：
-        // 会话失效与 dId 无关，为它多申请一次指纹毫无意义，还会白白消耗数美接口
-        // （那条链路有自己的熔断阈值 3）。
+        // æ˜¯å¦è½®æ¢ dIdã€‚**åªåœ¨ä¸Žè®¾å¤‡æŒ‡çº¹/ç­¾åç›¸å…³çš„å¤±è´¥åŽè½®æ¢**ï¼š
+        // ä¼šè¯å¤±æ•ˆä¸Ž dId æ— å…³ï¼Œä¸ºå®ƒå¤šç”³è¯·ä¸€æ¬¡æŒ‡çº¹æ¯«æ— æ„ä¹‰ï¼Œè¿˜ä¼šç™½ç™½æ¶ˆè€—æ•°ç¾ŽæŽ¥å£
+        // ï¼ˆé‚£æ¡é“¾è·¯æœ‰è‡ªå·±çš„ç†”æ–­é˜ˆå€¼ 3ï¼‰ã€‚
         let mut need_did_rotation = false;
 
-        // 最多 3 轮：
-        // 0) 缓存 dId + 原 cred —— 正常路径
-        // 1) 轮换 dId —— dId 被服务器判无效
-        // 2) 会话已失效时已换成新 cred —— 用新凭据再试一次
+        // æœ€å¤š 3 è½®ï¼š
+        // 0) ç¼“å­˜ dId + åŽŸ cred â€”â€” æ­£å¸¸è·¯å¾„
+        // 1) è½®æ¢ dId â€”â€” dId è¢«æœåŠ¡å™¨åˆ¤æ— æ•ˆ
+        // 2) ä¼šè¯å·²å¤±æ•ˆæ—¶å·²æ¢æˆæ–° cred â€”â€” ç”¨æ–°å‡­æ®å†è¯•ä¸€æ¬¡
         for attempt in 0..3 {
-            // 熔断守卫：若本次调用已经拿到过具体错误（例如刚刚换 cred 失败后的
-            // SESSION_INVALID），优先把那个原因返回给上层 —— 否则恢复失败的真正
-            // 原因会被 "API requests are paused" 覆盖，日志里只剩下一句笼统的熔断。
+            // ç†”æ–­å®ˆå«ï¼šè‹¥æœ¬æ¬¡è°ƒç”¨å·²ç»æ‹¿åˆ°è¿‡å…·ä½“é”™è¯¯ï¼ˆä¾‹å¦‚åˆšåˆšæ¢ cred å¤±è´¥åŽçš„
+            // SESSION_INVALIDï¼‰ï¼Œä¼˜å…ˆæŠŠé‚£ä¸ªåŽŸå› è¿”å›žç»™ä¸Šå±‚ â€”â€” å¦åˆ™æ¢å¤å¤±è´¥çš„çœŸæ­£
+            // åŽŸå› ä¼šè¢« "API requests are paused" è¦†ç›–ï¼Œæ—¥å¿—é‡Œåªå‰©ä¸‹ä¸€å¥ç¬¼ç»Ÿçš„ç†”æ–­ã€‚
             if let Err(paused) = api_health::ensure_available() {
                 return Err(last_err.unwrap_or(paused));
             }
@@ -593,8 +593,8 @@ impl SklandService {
                 match self.get_or_refresh_did().await {
                     Ok(d) => d,
                     Err(e) => {
-                        // 数美设备指纹失败已在 fetch_new_did 内按 DeviceFingerprint 计数，
-                        // 这里不再重复计入 Network。
+                        // æ•°ç¾Žè®¾å¤‡æŒ‡çº¹å¤±è´¥å·²åœ¨ fetch_new_did å†…æŒ‰ DeviceFingerprint è®¡æ•°ï¼Œ
+                        // è¿™é‡Œä¸å†é‡å¤è®¡å…¥ Networkã€‚
                         last_err = Some(e);
                         continue;
                     }
@@ -609,7 +609,7 @@ impl SklandService {
                     }
                 }
             } else {
-                // 会话失效重试：dId 没坏，继续用缓存那把（取不到才现申请）。
+                // ä¼šè¯å¤±æ•ˆé‡è¯•ï¼šdId æ²¡åï¼Œç»§ç»­ç”¨ç¼“å­˜é‚£æŠŠï¼ˆå–ä¸åˆ°æ‰çŽ°ç”³è¯·ï¼‰ã€‚
                 match self.get_or_refresh_did().await {
                     Ok(d) => d,
                     Err(e) => {
@@ -643,8 +643,8 @@ impl SklandService {
                 req = req.json(b);
             }
             for (key, value) in &extra_headers {
-                // 换过 cred 时 `token` 头必须跟着换 —— 它和 cred 是一对，
-                // 沿用旧 token 会让重试继续被判会话失效。
+                // æ¢è¿‡ cred æ—¶ `token` å¤´å¿…é¡»è·Ÿç€æ¢ â€”â€” å®ƒå’Œ cred æ˜¯ä¸€å¯¹ï¼Œ
+                // æ²¿ç”¨æ—§ token ä¼šè®©é‡è¯•ç»§ç»­è¢«åˆ¤ä¼šè¯å¤±æ•ˆã€‚
                 if key.eq_ignore_ascii_case("token") {
                     req = req.header(key.as_str(), token.as_str());
                 } else {
@@ -711,8 +711,8 @@ impl SklandService {
                         .get("message")
                         .and_then(|m| m.as_str())
                         .unwrap_or("unknown");
-                    // 「请勿重复签到」等可预期结果表示目标状态已达成，属于正常响应：
-                    // 既不计入 API 失败、也不重试，原样返回由调用方按幂等成功处理。
+                    // ã€Œè¯·å‹¿é‡å¤ç­¾åˆ°ã€ç­‰å¯é¢„æœŸç»“æžœè¡¨ç¤ºç›®æ ‡çŠ¶æ€å·²è¾¾æˆï¼Œå±žäºŽæ­£å¸¸å“åº”ï¼š
+                    // æ—¢ä¸è®¡å…¥ API å¤±è´¥ã€ä¹Ÿä¸é‡è¯•ï¼ŒåŽŸæ ·è¿”å›žç”±è°ƒç”¨æ–¹æŒ‰å¹‚ç­‰æˆåŠŸå¤„ç†ã€‚
                     if api_health::is_benign_business_error(code, api_message) {
                         api_health::record_success();
                         log_info!(
@@ -729,8 +729,8 @@ impl SklandService {
                         clock_skew_seconds,
                     );
 
-                    // 签名/时间类失败才值得换 dId：dId 参与签名的 header JSON，
-                    // 一旦被服务器判为无效，换新 dId 是唯一可能的修复动作。
+                    // ç­¾å/æ—¶é—´ç±»å¤±è´¥æ‰å€¼å¾—æ¢ dIdï¼šdId å‚ä¸Žç­¾åçš„ header JSONï¼Œ
+                    // ä¸€æ—¦è¢«æœåŠ¡å™¨åˆ¤ä¸ºæ— æ•ˆï¼Œæ¢æ–° dId æ˜¯å”¯ä¸€å¯èƒ½çš„ä¿®å¤åŠ¨ä½œã€‚
                     if matches!(
                         kind,
                         api_health::ApiFailureKind::Signature
@@ -739,15 +739,15 @@ impl SklandService {
                         need_did_rotation = true;
                     }
 
-                    // ---- 会话失效自愈（本文件最关键的修复点）----
+                    // ---- ä¼šè¯å¤±æ•ˆè‡ªæ„ˆï¼ˆæœ¬æ–‡ä»¶æœ€å…³é”®çš„ä¿®å¤ç‚¹ï¼‰----
                     //
-                    // 服务端轮换会话后，数据接口回 `401 code=10000 请求异常`，而
-                    // `/api/v1/user/check` 依旧 `code=0`，所以上层永远认为「cred 有效」、
-                    // 永不刷新；随后每个角色都撞 401，连续失败把熔断打满，**所有账号一起**
-                    // 变「账号不可用」，只有重新登录才能恢复。
+                    // æœåŠ¡ç«¯è½®æ¢ä¼šè¯åŽï¼Œæ•°æ®æŽ¥å£å›ž `401 code=10000 è¯·æ±‚å¼‚å¸¸`ï¼Œè€Œ
+                    // `/api/v1/user/check` ä¾æ—§ `code=0`ï¼Œæ‰€ä»¥ä¸Šå±‚æ°¸è¿œè®¤ä¸ºã€Œcred æœ‰æ•ˆã€ã€
+                    // æ°¸ä¸åˆ·æ–°ï¼›éšåŽæ¯ä¸ªè§’è‰²éƒ½æ’ž 401ï¼Œè¿žç»­å¤±è´¥æŠŠç†”æ–­æ‰“æ»¡ï¼Œ**æ‰€æœ‰è´¦å·ä¸€èµ·**
+                    // å˜ã€Œè´¦å·ä¸å¯ç”¨ã€ï¼Œåªæœ‰é‡æ–°ç™»å½•æ‰èƒ½æ¢å¤ã€‚
                     //
-                    // 这里就地补上「重新登录」做过的那一步：用该账号的 hytoken 换一把
-                    // 新 cred，然后继续下一轮重试。只做一次，且失败时不吞掉原因。
+                    // è¿™é‡Œå°±åœ°è¡¥ä¸Šã€Œé‡æ–°ç™»å½•ã€åšè¿‡çš„é‚£ä¸€æ­¥ï¼šç”¨è¯¥è´¦å·çš„ hytoken æ¢ä¸€æŠŠ
+                    // æ–° credï¼Œç„¶åŽç»§ç»­ä¸‹ä¸€è½®é‡è¯•ã€‚åªåšä¸€æ¬¡ï¼Œä¸”å¤±è´¥æ—¶ä¸åžæŽ‰åŽŸå› ã€‚
                     if api_health::is_session_invalid(code, api_message) && !cred_refreshed {
                         cred_refreshed = true;
                         log_warn!(
@@ -764,7 +764,7 @@ impl SklandService {
                                 );
                                 cred = new_cred;
                                 token = new_token;
-                                // 修复成功：解除熔断，否则下一轮会被 ensure_available 直接拒掉
+                                // ä¿®å¤æˆåŠŸï¼šè§£é™¤ç†”æ–­ï¼Œå¦åˆ™ä¸‹ä¸€è½®ä¼šè¢« ensure_available ç›´æŽ¥æ‹’æŽ‰
                                 api_health::clear_after_repair("credential rotated after session-invalid");
                                 last_err = Some(AppError::AuthError { message });
                                 continue;
@@ -779,8 +779,8 @@ impl SklandService {
                     }
 
                     if api_health::is_session_invalid(code, api_message) {
-                        // 打上固定标记，让上层（AccountService / 前端）能识别出
-                        // 「该走刷新或重新登录」而不是「该重试网络」。
+                        // æ‰“ä¸Šå›ºå®šæ ‡è®°ï¼Œè®©ä¸Šå±‚ï¼ˆAccountService / å‰ç«¯ï¼‰èƒ½è¯†åˆ«å‡º
+                        // ã€Œè¯¥èµ°åˆ·æ–°æˆ–é‡æ–°ç™»å½•ã€è€Œä¸æ˜¯ã€Œè¯¥é‡è¯•ç½‘ç»œã€ã€‚
                         last_err = Some(AppError::AuthError {
                             message: format!("{SESSION_INVALID_MARKER} {message}"),
                         });
@@ -811,16 +811,16 @@ impl SklandService {
         }))
     }
 
-    /// 获取森空岛用户资料（昵称、头像、各游戏等级/积分、社区互动数据）
+    /// èŽ·å–æ£®ç©ºå²›ç”¨æˆ·èµ„æ–™ï¼ˆæ˜µç§°ã€å¤´åƒã€å„æ¸¸æˆç­‰çº§/ç§¯åˆ†ã€ç¤¾åŒºäº’åŠ¨æ•°æ®ï¼‰
     ///
-    /// 对应抓包请求：
+    /// å¯¹åº”æŠ“åŒ…è¯·æ±‚ï¼š
     /// ```text
     /// GET /web/v1/user HTTP/2
     /// host: zonai.skland.com
     /// cred / timestamp / sign / vName / dId / platform: 3 ...
     /// ```
-    /// 无查询参数与请求体，认证 header 由 [`Self::call_skland_api`] 统一注入
-    /// （cred、dId、sign、timestamp、platform、vName），签名算法与其余接口一致。
+    /// æ— æŸ¥è¯¢å‚æ•°ä¸Žè¯·æ±‚ä½“ï¼Œè®¤è¯ header ç”± [`Self::call_skland_api`] ç»Ÿä¸€æ³¨å…¥
+    /// ï¼ˆcredã€dIdã€signã€timestampã€platformã€vNameï¼‰ï¼Œç­¾åç®—æ³•ä¸Žå…¶ä½™æŽ¥å£ä¸€è‡´ã€‚
     pub async fn get_user_info(&self, cred: &str, token: &str) -> Result<SklandUserInfo, AppError> {
         let path = "/web/v1/user";
         let json = self
@@ -838,11 +838,11 @@ impl SklandService {
         Ok(info)
     }
 
-    /// 解析 `GET /web/v1/user` 的响应体
+    /// è§£æž `GET /web/v1/user` çš„å“åº”ä½“
     ///
-    /// - `data.user` → [`SklandUserInfo`] 主体
-    /// - `data.userRts` / `data.background` → 社区互动数据与主页背景（解析失败非致命）
-    /// - `data.pendant` 优先于 `data.user.pendant`
+    /// - `data.user` â†’ [`SklandUserInfo`] ä¸»ä½“
+    /// - `data.userRts` / `data.background` â†’ ç¤¾åŒºäº’åŠ¨æ•°æ®ä¸Žä¸»é¡µèƒŒæ™¯ï¼ˆè§£æžå¤±è´¥éžè‡´å‘½ï¼‰
+    /// - `data.pendant` ä¼˜å…ˆäºŽ `data.user.pendant`
     pub fn parse_user_info_response(json: &serde_json::Value) -> Result<SklandUserInfo, AppError> {
         let data = json.get("data").ok_or_else(|| AppError::AuthError {
             message: "data not found in user info response".to_string(),
@@ -856,14 +856,14 @@ impl SklandService {
                 message: format!("Failed to parse SklandUserInfo: {}", e),
             })?;
 
-        // data.userRts / data.background 与 user 同级，解析失败时保持为空（非致命）
+        // data.userRts / data.background ä¸Ž user åŒçº§ï¼Œè§£æžå¤±è´¥æ—¶ä¿æŒä¸ºç©ºï¼ˆéžè‡´å‘½ï¼‰
         info.stats = data
             .get("userRts")
             .and_then(|value| serde_json::from_value::<SklandUserStats>(value.clone()).ok());
         info.background = data
             .get("background")
             .and_then(|value| serde_json::from_value::<SklandBackground>(value.clone()).ok());
-        // 顶层 pendant 优先，缺失时沿用 user.pendant
+        // é¡¶å±‚ pendant ä¼˜å…ˆï¼Œç¼ºå¤±æ—¶æ²¿ç”¨ user.pendant
         if let Some(pendant) = data
             .get("pendant")
             .and_then(|value| serde_json::from_value::<SklandPendant>(value.clone()).ok())
@@ -874,10 +874,10 @@ impl SklandService {
         Ok(info)
     }
 
-    /// 获取森空岛游戏列表（用于账号资料中的游戏图标）
+    /// èŽ·å–æ£®ç©ºå²›æ¸¸æˆåˆ—è¡¨ï¼ˆç”¨äºŽè´¦å·èµ„æ–™ä¸­çš„æ¸¸æˆå›¾æ ‡ï¼‰
     ///
-    /// 对应抓包请求 `GET /web/v1/game`（host: zonai.skland.com），
-    /// 无查询参数与请求体，header 与签名同样由 [`Self::call_skland_api`] 处理。
+    /// å¯¹åº”æŠ“åŒ…è¯·æ±‚ `GET /web/v1/game`ï¼ˆhost: zonai.skland.comï¼‰ï¼Œ
+    /// æ— æŸ¥è¯¢å‚æ•°ä¸Žè¯·æ±‚ä½“ï¼Œheader ä¸Žç­¾ååŒæ ·ç”± [`Self::call_skland_api`] å¤„ç†ã€‚
     pub async fn get_game_list(
         &self,
         cred: &str,
@@ -892,7 +892,7 @@ impl SklandService {
         Ok(games)
     }
 
-    /// 解析 `GET /web/v1/game` 的响应体，提取 `data.list[].game`
+    /// è§£æž `GET /web/v1/game` çš„å“åº”ä½“ï¼Œæå– `data.list[].game`
     pub fn parse_game_list_response(
         json: &serde_json::Value,
     ) -> Result<Vec<SklandGameInfo>, AppError> {
@@ -911,7 +911,7 @@ impl SklandService {
             .collect())
     }
 
-    /// 获取玩家绑定列表
+    /// èŽ·å–çŽ©å®¶ç»‘å®šåˆ—è¡¨
     pub async fn get_player_binding(
         &self,
         cred: &str,
@@ -932,7 +932,7 @@ impl SklandService {
         Ok(response.data.list)
     }
 
-    /// 获取角色详情
+    /// èŽ·å–è§’è‰²è¯¦æƒ…
     pub async fn get_role_detail(
         &self,
         cred: &str,
@@ -961,21 +961,21 @@ impl SklandService {
         Ok(response)
     }
 
-    /// 检查 cred 是否有效
+    /// æ£€æŸ¥ cred æ˜¯å¦æœ‰æ•ˆ
     ///
-    /// ⚠️ **只代表「这个 cred 还能通过身份校验」，不代表数据接口可用。**
-    /// 服务端轮换会话后本接口仍返回 `code=0`，而数据接口已经 401 + `code=10000`；
-    /// 因此调用方不能只凭 `Ok(true)` 就认定会话健康 —— 数据接口的会话失效由
-    /// [`Self::call_skland_api`] 内的自愈逻辑单独处理。
+    /// âš ï¸ **åªä»£è¡¨ã€Œè¿™ä¸ª cred è¿˜èƒ½é€šè¿‡èº«ä»½æ ¡éªŒã€ï¼Œä¸ä»£è¡¨æ•°æ®æŽ¥å£å¯ç”¨ã€‚**
+    /// æœåŠ¡ç«¯è½®æ¢ä¼šè¯åŽæœ¬æŽ¥å£ä»è¿”å›ž `code=0`ï¼Œè€Œæ•°æ®æŽ¥å£å·²ç» 401 + `code=10000`ï¼›
+    /// å› æ­¤è°ƒç”¨æ–¹ä¸èƒ½åªå‡­ `Ok(true)` å°±è®¤å®šä¼šè¯å¥åº· â€”â€” æ•°æ®æŽ¥å£çš„ä¼šè¯å¤±æ•ˆç”±
+    /// [`Self::call_skland_api`] å†…çš„è‡ªæ„ˆé€»è¾‘å•ç‹¬å¤„ç†ã€‚
     pub async fn check_cred(&self, cred: &str) -> Result<bool, AppError> {
-        // 注意：这里刻意**不**调 `ensure_available()`。本接口是身份校验探针，
-        // 而熔断往往正是由「数据接口 10000」造成的误判 —— 让探针也被自己挡住，
-        // 就会把「能不能自我修复」也一并挡掉（原先的日志就是
-        // `check_cred API call failed: API requests are paused ...`）。
+        // æ³¨æ„ï¼šè¿™é‡Œåˆ»æ„**ä¸**è°ƒ `ensure_available()`ã€‚æœ¬æŽ¥å£æ˜¯èº«ä»½æ ¡éªŒæŽ¢é’ˆï¼Œ
+        // è€Œç†”æ–­å¾€å¾€æ­£æ˜¯ç”±ã€Œæ•°æ®æŽ¥å£ 10000ã€é€ æˆçš„è¯¯åˆ¤ â€”â€” è®©æŽ¢é’ˆä¹Ÿè¢«è‡ªå·±æŒ¡ä½ï¼Œ
+        // å°±ä¼šæŠŠã€Œèƒ½ä¸èƒ½è‡ªæˆ‘ä¿®å¤ã€ä¹Ÿä¸€å¹¶æŒ¡æŽ‰ï¼ˆåŽŸå…ˆçš„æ—¥å¿—å°±æ˜¯
+        // `check_cred API call failed: API requests are paused ...`ï¼‰ã€‚
         let client = http_client::create_client();
 
         let start_time = std::time::Instant::now();
-        log_info!("=== HTTP REQUEST: 检查Cred ===");
+        log_info!("=== HTTP REQUEST: æ£€æŸ¥Cred ===");
         log_info!("Method: GET");
         log_info!("URL: https://zonai.skland.com/api/v1/user/check");
         log_debug!("Request Headers: cred=***");
@@ -1000,7 +1000,7 @@ impl SklandService {
             message: format!("Failed to parse response: {}", e),
         })?;
 
-        log_info!("=== HTTP RESPONSE: 检查Cred ===");
+        log_info!("=== HTTP RESPONSE: æ£€æŸ¥Cred ===");
         log_info!("Status: {}", status);
         log_info!("Time: {:?}", elapsed);
         log_debug!("Response Headers:");
@@ -1009,35 +1009,35 @@ impl SklandService {
                 log_debug!("  {}: {}", name, value_str);
             }
         }
-        // code 为 0 表示 cred 有效
+        // code ä¸º 0 è¡¨ç¤º cred æœ‰æ•ˆ
         let is_valid = json.get("code").and_then(|c| c.as_i64()) == Some(0);
         Ok(is_valid)
     }
 
-    /// 使用 hytoken 重新换取 cred 与 token
+    /// ä½¿ç”¨ hytoken é‡æ–°æ¢å– cred ä¸Ž token
     ///
-    /// 只换森空岛凭据，**不碰 u8token** —— 抽卡令牌按角色单独授权，
-    /// 入口是 [`crate::services::account_service::AccountService::authorize_role_u8token`]。
+    /// åªæ¢æ£®ç©ºå²›å‡­æ®ï¼Œ**ä¸ç¢° u8token** â€”â€” æŠ½å¡ä»¤ç‰ŒæŒ‰è§’è‰²å•ç‹¬æŽˆæƒï¼Œ
+    /// å…¥å£æ˜¯ [`crate::services::account_service::AccountService::authorize_role_u8token`]ã€‚
     ///
-    /// ⚠️ **不经过熔断守卫**：这条链路是熔断的「解药」而不是「病因」。它既不依赖
-    /// dId/签名，也不依赖那把已经失效的 cred（只依赖 hytoken）。旧实现在这里调
-    /// `ensure_available()`，于是熔断一旦触发，唯一的修复路径也被自己锁死 ——
-    /// 这正是「必须手动重新登录才能恢复」的机制性根因（重新登录之所以有效，是因为
-    /// 它走的是登录链路，并顺手 `reset_api_health`）。
+    /// âš ï¸ **ä¸ç»è¿‡ç†”æ–­å®ˆå«**ï¼šè¿™æ¡é“¾è·¯æ˜¯ç†”æ–­çš„ã€Œè§£è¯ã€è€Œä¸æ˜¯ã€Œç—…å› ã€ã€‚å®ƒæ—¢ä¸ä¾èµ–
+    /// dId/ç­¾åï¼Œä¹Ÿä¸ä¾èµ–é‚£æŠŠå·²ç»å¤±æ•ˆçš„ credï¼ˆåªä¾èµ– hytokenï¼‰ã€‚æ—§å®žçŽ°åœ¨è¿™é‡Œè°ƒ
+    /// `ensure_available()`ï¼ŒäºŽæ˜¯ç†”æ–­ä¸€æ—¦è§¦å‘ï¼Œå”¯ä¸€çš„ä¿®å¤è·¯å¾„ä¹Ÿè¢«è‡ªå·±é”æ­» â€”â€”
+    /// è¿™æ­£æ˜¯ã€Œå¿…é¡»æ‰‹åŠ¨é‡æ–°ç™»å½•æ‰èƒ½æ¢å¤ã€çš„æœºåˆ¶æ€§æ ¹å› ï¼ˆé‡æ–°ç™»å½•ä¹‹æ‰€ä»¥æœ‰æ•ˆï¼Œæ˜¯å› ä¸º
+    /// å®ƒèµ°çš„æ˜¯ç™»å½•é“¾è·¯ï¼Œå¹¶é¡ºæ‰‹ `reset_api_health`ï¼‰ã€‚
     pub async fn refresh_cred_by_hytoken(
         &self,
         hytoken: &str,
         _device_token: Option<&str>,
     ) -> Result<(String, String, String), AppError> {
-        // Step 1: OAuth grant（hytoken → skland sk_code）
+        // Step 1: OAuth grantï¼ˆhytoken â†’ skland sk_codeï¼‰
         let sk_code = self.oauth_grant_to_sk_code(hytoken).await?;
 
-        // 注意：这里**不再**顺带获取 u8token。u8token 已改为按角色单独授权
-        // （见 AccountService::authorize_role_u8token），令牌由用户显式授权才获取，
-        // 避免「刷新一次 cred 就把用户刚取消的授权又悄悄装回去」。
-        // `device_token` 形参保留是为了不动调用方签名，换 cred 本身不需要它。
+        // æ³¨æ„ï¼šè¿™é‡Œ**ä¸å†**é¡ºå¸¦èŽ·å– u8tokenã€‚u8token å·²æ”¹ä¸ºæŒ‰è§’è‰²å•ç‹¬æŽˆæƒ
+        // ï¼ˆè§ AccountService::authorize_role_u8tokenï¼‰ï¼Œä»¤ç‰Œç”±ç”¨æˆ·æ˜¾å¼æŽˆæƒæ‰èŽ·å–ï¼Œ
+        // é¿å…ã€Œåˆ·æ–°ä¸€æ¬¡ cred å°±æŠŠç”¨æˆ·åˆšå–æ¶ˆçš„æŽˆæƒåˆæ‚„æ‚„è£…å›žåŽ»ã€ã€‚
+        // `device_token` å½¢å‚ä¿ç•™æ˜¯ä¸ºäº†ä¸åŠ¨è°ƒç”¨æ–¹ç­¾åï¼Œæ¢ cred æœ¬èº«ä¸éœ€è¦å®ƒã€‚
 
-        // Step 2: 使用 sk_code 换取新的 cred 和 token
+        // Step 2: ä½¿ç”¨ sk_code æ¢å–æ–°çš„ cred å’Œ token
         let client = http_client::create_client();
         let start_time = std::time::Instant::now();
         let payload2 = serde_json::json!({
@@ -1117,18 +1117,18 @@ impl SklandService {
         Ok((cred, token, user_id))
     }
 
-    /// 换取抽卡接口（`ef-webview`）使用的 u8 token。
+    /// æ¢å–æŠ½å¡æŽ¥å£ï¼ˆ`ef-webview`ï¼‰ä½¿ç”¨çš„ u8 tokenã€‚
     ///
-    /// 走鹰角通行证链路，一条 hytoken 可为该通行证下**每一个已绑定的渠道 uid** 各换一把：
+    /// èµ°é¹°è§’é€šè¡Œè¯é“¾è·¯ï¼Œä¸€æ¡ hytoken å¯ä¸ºè¯¥é€šè¡Œè¯ä¸‹**æ¯ä¸€ä¸ªå·²ç»‘å®šçš„æ¸ é“ uid** å„æ¢ä¸€æŠŠï¼š
     ///
     /// 1. `POST https://as.hypergryph.com/user/oauth2/v2/grant`
-    ///    body `{ type: 1, appCode: "be36d44aa36bfb5b", token: hytoken }` → `data.token`（L2）
+    ///    body `{ type: 1, appCode: "be36d44aa36bfb5b", token: hytoken }` â†’ `data.token`ï¼ˆL2ï¼‰
     /// 2. `POST https://binding-api-account-prod.hypergryph.com/account/binding/v1/u8_token_by_uid`
-    ///    body `{ uid, token: L2 }` → `data.token`（u8 token）
+    ///    body `{ uid, token: L2 }` â†’ `data.token`ï¼ˆu8 tokenï¼‰
     ///
-    /// **不需要 device token**，也**不需要渠道参数**：官服与 B 服的差异完全落在 `uid` 上
-    /// （同一个通行证换出的多把 token 值不同，各自只能读自己那个 uid 的记录）。
-    /// u8 token 生命周期很短，调用方不应持久化，每次同步现换。
+    /// **ä¸éœ€è¦ device token**ï¼Œä¹Ÿ**ä¸éœ€è¦æ¸ é“å‚æ•°**ï¼šå®˜æœä¸Ž B æœçš„å·®å¼‚å®Œå…¨è½åœ¨ `uid` ä¸Š
+    /// ï¼ˆåŒä¸€ä¸ªé€šè¡Œè¯æ¢å‡ºçš„å¤šæŠŠ token å€¼ä¸åŒï¼Œå„è‡ªåªèƒ½è¯»è‡ªå·±é‚£ä¸ª uid çš„è®°å½•ï¼‰ã€‚
+    /// u8 token ç”Ÿå‘½å‘¨æœŸå¾ˆçŸ­ï¼Œè°ƒç”¨æ–¹ä¸åº”æŒä¹…åŒ–ï¼Œæ¯æ¬¡åŒæ­¥çŽ°æ¢ã€‚
     pub async fn get_u8_token_by_uid(
         &self,
         hytoken: &str,
@@ -1138,7 +1138,7 @@ impl SklandService {
         self.u8_token_by_uid(&oauth_token, binding_uid).await
     }
 
-    /// 一步：hytoken → 抽卡域 OAuth token（type=1，与换 cred 的 type=0 不同）
+    /// ä¸€æ­¥ï¼šhytoken â†’ æŠ½å¡åŸŸ OAuth tokenï¼ˆtype=1ï¼Œä¸Žæ¢ cred çš„ type=0 ä¸åŒï¼‰
     pub async fn u8_oauth_token(&self, hytoken: &str) -> Result<String, AppError> {
         let client = http_client::create_client();
         let payload = serde_json::json!({
@@ -1147,7 +1147,7 @@ impl SklandService {
             "token": hytoken,
         });
 
-        log_info!("=== HTTP REQUEST: 抽卡 OAuth Grant (type=1) ===");
+        log_info!("=== HTTP REQUEST: æŠ½å¡ OAuth Grant (type=1) ===");
         let response = capture::send(
             &client,
             client
@@ -1168,7 +1168,7 @@ impl SklandService {
                 .get("msg")
                 .and_then(|v| v.as_str())
                 .unwrap_or("Unknown error");
-            // appCode 失效与 token 过期都会走到这里，日志里保留原始 msg 便于排查
+            // appCode å¤±æ•ˆä¸Ž token è¿‡æœŸéƒ½ä¼šèµ°åˆ°è¿™é‡Œï¼Œæ—¥å¿—é‡Œä¿ç•™åŽŸå§‹ msg ä¾¿äºŽæŽ’æŸ¥
             log_error!("u8_oauth_token: grant rejected: {}", msg);
             return Err(AppError::AuthError {
                 message: format!("Gacha OAuth grant failed: {}", msg),
@@ -1185,10 +1185,10 @@ impl SklandService {
             })
     }
 
-    /// 二步：OAuth token + 绑定 uid → u8 token
+    /// äºŒæ­¥ï¼šOAuth token + ç»‘å®š uid â†’ u8 token
     ///
-    /// 官服与 B 服各用自己的 `uid` 换，换出来的值不同、互不通用 —— 这是国服多渠道的
-    /// 唯一差异点，因此这里**不接受任何渠道参数**。
+    /// å®˜æœä¸Ž B æœå„ç”¨è‡ªå·±çš„ `uid` æ¢ï¼Œæ¢å‡ºæ¥çš„å€¼ä¸åŒã€äº’ä¸é€šç”¨ â€”â€” è¿™æ˜¯å›½æœå¤šæ¸ é“çš„
+    /// å”¯ä¸€å·®å¼‚ç‚¹ï¼Œå› æ­¤è¿™é‡Œ**ä¸æŽ¥å—ä»»ä½•æ¸ é“å‚æ•°**ã€‚
     pub async fn u8_token_by_uid(
         &self,
         oauth_token: &str,
@@ -1253,7 +1253,7 @@ impl SklandService {
         Ok(token.to_string())
     }
 
-    /// OAuth grant：hytoken → sk_code
+    /// OAuth grantï¼šhytoken â†’ sk_code
     async fn oauth_grant_to_sk_code(&self, hytoken: &str) -> Result<String, AppError> {
         let client = http_client::create_client();
 
@@ -1314,25 +1314,25 @@ impl SklandService {
             .map(|s| s.to_string())
     }
 
-    /// 展平绑定列表里的游戏角色（终末地 + 明日方舟）
+    /// å±•å¹³ç»‘å®šåˆ—è¡¨é‡Œçš„æ¸¸æˆè§’è‰²ï¼ˆç»ˆæœ«åœ° + æ˜Žæ—¥æ–¹èˆŸï¼‰
     ///
-    /// 返回 [`GameRoleBinding`]（含 `game` / 渠道 uid / 服务器 / 昵称 / 等级）。
-    /// 第一条记录的 `binding_uid` 是**换 u8token 必须的键** —— 同一个通行证下官服与
-    /// B 服各有一条绑定记录、各有一个 uid，绝不能丢。
+    /// è¿”å›ž [`GameRoleBinding`]ï¼ˆå« `game` / æ¸ é“ uid / æœåŠ¡å™¨ / æ˜µç§° / ç­‰çº§ï¼‰ã€‚
+    /// ç¬¬ä¸€æ¡è®°å½•çš„ `binding_uid` æ˜¯**æ¢ u8token å¿…é¡»çš„é”®** â€”â€” åŒä¸€ä¸ªé€šè¡Œè¯ä¸‹å®˜æœä¸Ž
+    /// B æœå„æœ‰ä¸€æ¡ç»‘å®šè®°å½•ã€å„æœ‰ä¸€ä¸ª uidï¼Œç»ä¸èƒ½ä¸¢ã€‚
     ///
-    /// 只保留 `app_code` 能识别的游戏：`endfield`（终末地）与 `arknights`（明日方舟）。
-    /// 其余应用（未知 `app_code`）直接跳过，避免把不认识的角色混进列表。
+    /// åªä¿ç•™ `app_code` èƒ½è¯†åˆ«çš„æ¸¸æˆï¼š`endfield`ï¼ˆç»ˆæœ«åœ°ï¼‰ä¸Ž `arknights`ï¼ˆæ˜Žæ—¥æ–¹èˆŸï¼‰ã€‚
+    /// å…¶ä½™åº”ç”¨ï¼ˆæœªçŸ¥ `app_code`ï¼‰ç›´æŽ¥è·³è¿‡ï¼Œé¿å…æŠŠä¸è®¤è¯†çš„è§’è‰²æ··è¿›åˆ—è¡¨ã€‚
     ///
-    /// # ⚠️ 两个游戏的角色躺在不同层级
+    /// # âš ï¸ ä¸¤ä¸ªæ¸¸æˆçš„è§’è‰²èººåœ¨ä¸åŒå±‚çº§
     ///
-    /// - **终末地**：角色在 `bindingList[].roles[]` 里（每项有自己的 `roleId` / `serverId`）
-    /// - **明日方舟**：`bindingList[].roles` 是**空数组**！角色信息就在 `bindingList`
-    ///   这一层 —— `uid` 即角色标识（一个 uid = 一个角色，实测官服/B服各有独立 uid
-    ///   且不会碰撞），`nickName` 是昵称，`channelMasterId` 对应服务器（1=官服 2=B服）
+    /// - **ç»ˆæœ«åœ°**ï¼šè§’è‰²åœ¨ `bindingList[].roles[]` é‡Œï¼ˆæ¯é¡¹æœ‰è‡ªå·±çš„ `roleId` / `serverId`ï¼‰
+    /// - **æ˜Žæ—¥æ–¹èˆŸ**ï¼š`bindingList[].roles` æ˜¯**ç©ºæ•°ç»„**ï¼è§’è‰²ä¿¡æ¯å°±åœ¨ `bindingList`
+    ///   è¿™ä¸€å±‚ â€”â€” `uid` å³è§’è‰²æ ‡è¯†ï¼ˆä¸€ä¸ª uid = ä¸€ä¸ªè§’è‰²ï¼Œå®žæµ‹å®˜æœ/Bæœå„æœ‰ç‹¬ç«‹ uid
+    ///   ä¸”ä¸ä¼šç¢°æ’žï¼‰ï¼Œ`nickName` æ˜¯æ˜µç§°ï¼Œ`channelMasterId` å¯¹åº”æœåŠ¡å™¨ï¼ˆ1=å®˜æœ 2=Bæœï¼‰
     ///
-    /// 早先只遍历 `roles` 的写法会**完全漏掉明日方舟角色**（前端表现为「找不到可绑定的
-    /// 明日方舟角色」），因此这里对明日方舟走单独分支：`roles` 非空就照常展开，
-    /// 为空则用绑定条目本身合成一条。
+    /// æ—©å…ˆåªéåŽ† `roles` çš„å†™æ³•ä¼š**å®Œå…¨æ¼æŽ‰æ˜Žæ—¥æ–¹èˆŸè§’è‰²**ï¼ˆå‰ç«¯è¡¨çŽ°ä¸ºã€Œæ‰¾ä¸åˆ°å¯ç»‘å®šçš„
+    /// æ˜Žæ—¥æ–¹èˆŸè§’è‰²ã€ï¼‰ï¼Œå› æ­¤è¿™é‡Œå¯¹æ˜Žæ—¥æ–¹èˆŸèµ°å•ç‹¬åˆ†æ”¯ï¼š`roles` éžç©ºå°±ç…§å¸¸å±•å¼€ï¼Œ
+    /// ä¸ºç©ºåˆ™ç”¨ç»‘å®šæ¡ç›®æœ¬èº«åˆæˆä¸€æ¡ã€‚
     pub fn extract_game_roles(bindings: &[GameBinding]) -> Vec<GameRoleBinding> {
         let mut roles = Vec::new();
 
@@ -1347,7 +1347,7 @@ impl SklandService {
             };
 
             for role_info in &binding.binding_list {
-                // 已被删除的渠道绑定不再提供角色
+                // å·²è¢«åˆ é™¤çš„æ¸ é“ç»‘å®šä¸å†æä¾›è§’è‰²
                 if role_info.is_delete {
                     log_debug!(
                         "extract_game_roles: skip deleted binding for game={}, uid_len={}",
@@ -1357,7 +1357,7 @@ impl SklandService {
                     continue;
                 }
 
-                // ---- 明日方舟：roles[] 为空，用绑定条目本身当角色 ----
+                // ---- æ˜Žæ—¥æ–¹èˆŸï¼šroles[] ä¸ºç©ºï¼Œç”¨ç»‘å®šæ¡ç›®æœ¬èº«å½“è§’è‰² ----
                 if game == GAME_ARKNIGHTS && role_info.roles.is_empty() {
                     if role_info.uid.is_empty() {
                         log_debug!("extract_game_roles: skip arknights binding without uid");
@@ -1374,14 +1374,14 @@ impl SklandService {
                         binding_uid: role_info.uid.clone(),
                         channel_master_id: role_info.channel_master_id.clone(),
                         channel_name: role_info.channel_name.clone(),
-                        // 渠道主 ID 同时就是服务器标识：`resolveServerLabel` 认 "1"=官服 / "2"=B服
+                        // æ¸ é“ä¸» ID åŒæ—¶å°±æ˜¯æœåŠ¡å™¨æ ‡è¯†ï¼š`resolveServerLabel` è®¤ "1"=å®˜æœ / "2"=Bæœ
                         server_id: role_info.channel_master_id.clone(),
                         server_name: role_info.channel_name.clone(),
-                        // ★ 明日方舟没有 roleId，**uid 即角色标识**。
-                        // 已用真实账号验证 `player/info.status.uid == 绑定 uid`。
+                        // â˜… æ˜Žæ—¥æ–¹èˆŸæ²¡æœ‰ roleIdï¼Œ**uid å³è§’è‰²æ ‡è¯†**ã€‚
+                        // å·²ç”¨çœŸå®žè´¦å·éªŒè¯ `player/info.status.uid == ç»‘å®š uid`ã€‚
                         role_id: role_info.uid.clone(),
                         nickname: role_info.nick_name.clone(),
-                        // 等级只能从 `player/info.status.level` 拿（绑定接口不给）
+                        // ç­‰çº§åªèƒ½ä»Ž `player/info.status.level` æ‹¿ï¼ˆç»‘å®šæŽ¥å£ä¸ç»™ï¼‰
                         level: 0,
                     });
                     continue;
@@ -1407,22 +1407,22 @@ impl SklandService {
     }
 }
 
-/// DES 3DES 加密函数（ECB 模式，Zero Padding）
+/// DES 3DES åŠ å¯†å‡½æ•°ï¼ˆECB æ¨¡å¼ï¼ŒZero Paddingï¼‰
 fn des_encrypt_3des(key: &str, data: &str) -> Result<String, AppError> {
-    // cipher 0.5：`BlockEncrypt` 更名 `BlockCipherEncrypt`，`encrypt_block_b2b`
-    // 由 trait 方法变为固有方法（见 des 0.9）。
+    // cipher 0.5ï¼š`BlockEncrypt` æ›´å `BlockCipherEncrypt`ï¼Œ`encrypt_block_b2b`
+    // ç”± trait æ–¹æ³•å˜ä¸ºå›ºæœ‰æ–¹æ³•ï¼ˆè§ des 0.9ï¼‰ã€‚
     use des::cipher::{BlockCipherEncrypt, KeyInit};
     use des::Des;
 
     let mut data_bytes = data.as_bytes().to_vec();
 
-    // Zero Padding: 填充到8字节的倍数
+    // Zero Padding: å¡«å……åˆ°8å­—èŠ‚çš„å€æ•°
     let pad_len = 8 - (data_bytes.len() % 8);
     if pad_len < 8 {
         data_bytes.extend(vec![0u8; pad_len]);
     }
 
-    // 使用单 DES（与 Python 行为一致）
+    // ä½¿ç”¨å• DESï¼ˆä¸Ž Python è¡Œä¸ºä¸€è‡´ï¼‰
     let cipher = Des::new_from_slice(key.as_bytes()).map_err(|e| AppError::AuthError {
         message: format!("DES key error: {}", e),
     })?;
@@ -1430,7 +1430,7 @@ fn des_encrypt_3des(key: &str, data: &str) -> Result<String, AppError> {
     let mut out = vec![0u8; data_bytes.len()];
 
     for i in (0..data_bytes.len()).step_by(8) {
-        // cipher 0.5 的 Block 是 hybrid-array：&[u8] 不再直接 Into，需定长切片。
+        // cipher 0.5 çš„ Block æ˜¯ hybrid-arrayï¼š&[u8] ä¸å†ç›´æŽ¥ Intoï¼Œéœ€å®šé•¿åˆ‡ç‰‡ã€‚
         let in_block: &[u8; 8] = (&data_bytes[i..i + 8]).try_into().expect("DES block size");
         let out_block: &mut [u8; 8] = (&mut out[i..i + 8]).try_into().expect("DES block size");
         cipher.encrypt_block_b2b(in_block.into(), out_block.into());
@@ -1445,25 +1445,25 @@ mod tests {
 
     #[tokio::test]
     async fn test_fetch_did_format() {
-        // 创建一个临时的 ConfigService
+        // åˆ›å»ºä¸€ä¸ªä¸´æ—¶çš„ ConfigService
         let config_service =
             std::sync::Arc::new(std::sync::Mutex::new(ConfigService::new().unwrap()));
         let service = SklandService::new(config_service);
 
-        // 获取 dId
+        // èŽ·å– dId
         let did = service.fetch_new_did().await.unwrap();
 
-        // 验证 dId 格式
+        // éªŒè¯ dId æ ¼å¼
         assert!(did.starts_with("B"), "dId should start with 'B'");
         println!("Generated dId: {}", did);
         println!("dId length: {}", did.len());
         println!("dId ends with '==': {}", did.ends_with("=="));
 
-        // dId 应该是以 == 结尾的 Base64 字符串
+        // dId åº”è¯¥æ˜¯ä»¥ == ç»“å°¾çš„ Base64 å­—ç¬¦ä¸²
         assert!(did.ends_with("=="), "dId should end with '=='");
     }
 
-    /// 抓包样本：`GET /web/v1/user` 响应体（节选自真实返回）
+    /// æŠ“åŒ…æ ·æœ¬ï¼š`GET /web/v1/user` å“åº”ä½“ï¼ˆèŠ‚é€‰è‡ªçœŸå®žè¿”å›žï¼‰
     const USER_INFO_RESPONSE: &str = r#"{
       "code": 0,
       "message": "OK",
@@ -1481,7 +1481,7 @@ mod tests {
           "operationStatus": 30,
           "identity": 1,
           "kind": 1,
-          "latestIpLocation": "中国",
+          "latestIpLocation": "ä¸­å›½",
           "moderatorStatus": 4,
           "moderatorChangeTime": 0,
           "gender": 0,
@@ -1496,7 +1496,7 @@ mod tests {
               "darkModeIconUrl": "",
               "checkedDays": 0,
               "score": 14,
-              "gameName": "明日方舟",
+              "gameName": "æ˜Žæ—¥æ–¹èˆŸ",
               "levelUrl": "https://bbs.hycdn.cn/asset/score/level-name-thin/Lv1.webp"
             },
             {
@@ -1506,15 +1506,15 @@ mod tests {
               "darkModeIconUrl": "",
               "checkedDays": 0,
               "score": 138,
-              "gameName": "明日方舟：终末地",
+              "gameName": "æ˜Žæ—¥æ–¹èˆŸï¼šç»ˆæœ«åœ°",
               "levelUrl": "https://bbs.hycdn.cn/asset/score/level-name-thin/Lv1.webp"
             }
           ],
           "pendant": {
             "id": 60,
             "iconUrl": "https://bbs.hycdn.cn/image/2026/01/14/f8123f455ec880c750efc0b93bdf5e00.webp",
-            "title": "佩丽卡主题",
-            "description": "参与森空岛明日方舟：终末地全球公测开启活动获取"
+            "title": "ä½©ä¸½å¡ä¸»é¢˜",
+            "description": "å‚ä¸Žæ£®ç©ºå²›æ˜Žæ—¥æ–¹èˆŸï¼šç»ˆæœ«åœ°å…¨çƒå…¬æµ‹å¼€å¯æ´»åŠ¨èŽ·å–"
           },
           "showId": "7345042541775"
         },
@@ -1538,8 +1538,8 @@ mod tests {
         "pendant": {
           "id": 60,
           "iconUrl": "https://bbs.hycdn.cn/image/2026/01/14/f8123f455ec880c750efc0b93bdf5e00.webp",
-          "title": "佩丽卡主题",
-          "description": "参与森空岛明日方舟：终末地全球公测开启活动获取"
+          "title": "ä½©ä¸½å¡ä¸»é¢˜",
+          "description": "å‚ä¸Žæ£®ç©ºå²›æ˜Žæ—¥æ–¹èˆŸï¼šç»ˆæœ«åœ°å…¨çƒå…¬æµ‹å¼€å¯æ´»åŠ¨èŽ·å–"
         },
         "background": {
           "id": 3,
@@ -1563,15 +1563,15 @@ mod tests {
         assert_eq!(info.nickname, "sciencekill");
         assert_eq!(info.show_id, "7345042541775");
         assert_eq!(info.avatar_code, 200092);
-        assert_eq!(info.latest_ip_location, "中国");
+        assert_eq!(info.latest_ip_location, "ä¸­å›½");
         assert!(!info.is_creator);
         assert_eq!(info.score_info_list.len(), 2);
-        assert_eq!(info.score_info_list[0].game_name, "明日方舟");
+        assert_eq!(info.score_info_list[0].game_name, "æ˜Žæ—¥æ–¹èˆŸ");
         assert_eq!(info.score_info_list[1].level, 1);
         assert_eq!(info.score_info_list[1].score, 138);
         assert_eq!(
             info.pendant.as_ref().map(|p| p.title.as_str()),
-            Some("佩丽卡主题")
+            Some("ä½©ä¸½å¡ä¸»é¢˜")
         );
 
         let stats = info.stats.expect("userRts should be parsed");
@@ -1590,7 +1590,7 @@ mod tests {
         assert!(SklandService::parse_user_info_response(&json).is_err());
     }
 
-    /// 抓包样本：`GET /web/v1/game` 响应体（节选自真实返回）
+    /// æŠ“åŒ…æ ·æœ¬ï¼š`GET /web/v1/game` å“åº”ä½“ï¼ˆèŠ‚é€‰è‡ªçœŸå®žè¿”å›žï¼‰
     const GAME_LIST_RESPONSE: &str = r#"{
       "code": 0,
       "message": "OK",
@@ -1599,20 +1599,20 @@ mod tests {
           {
             "game": {
               "gameId": 1,
-              "name": "明日方舟",
+              "name": "æ˜Žæ—¥æ–¹èˆŸ",
               "iconUrl": "https://bbs.hycdn.cn/asset/rhodes_island.png",
               "backgroundUrl": "https://bbs.hycdn.cn/asset/arknights_bg.png",
               "pcIconUrl": "https://bbs.hycdn.cn/asset/rhodes_island.png",
               "backgroundStyle": 1,
-              "description": "明日方舟游戏相关讨论区",
+              "description": "æ˜Žæ—¥æ–¹èˆŸæ¸¸æˆç›¸å…³è®¨è®ºåŒº",
               "checkinIcon": { "key": "gameId1" }
             },
-            "cates": [{ "id": 14, "gameId": 1, "name": "推荐" }]
+            "cates": [{ "id": 14, "gameId": 1, "name": "æŽ¨è" }]
           },
           {
             "game": {
               "gameId": 3,
-              "name": "明日方舟：终末地",
+              "name": "æ˜Žæ—¥æ–¹èˆŸï¼šç»ˆæœ«åœ°",
               "iconUrl": "https://bbs.hycdn.cn/asset/endfield.png",
               "backgroundUrl": "https://bbs.hycdn.cn/asset/endfield_bg.png",
               "backgroundStyle": 1
@@ -1620,7 +1620,7 @@ mod tests {
             "cates": []
           }
         ],
-        "homeTabs": [{ "name": "关注", "kind": "FOLLOW" }]
+        "homeTabs": [{ "name": "å…³æ³¨", "kind": "FOLLOW" }]
       }
     }"#;
 
@@ -1631,13 +1631,13 @@ mod tests {
 
         assert_eq!(games.len(), 2);
         assert_eq!(games[0].game_id, 1);
-        assert_eq!(games[0].name, "明日方舟");
+        assert_eq!(games[0].name, "æ˜Žæ—¥æ–¹èˆŸ");
         assert_eq!(
             games[0].icon_url,
             "https://bbs.hycdn.cn/asset/rhodes_island.png"
         );
         assert_eq!(games[1].game_id, 3);
-        assert_eq!(games[1].name, "明日方舟：终末地");
+        assert_eq!(games[1].name, "æ˜Žæ—¥æ–¹èˆŸï¼šç»ˆæœ«åœ°");
         assert_eq!(games[1].icon_url, "https://bbs.hycdn.cn/asset/endfield.png");
     }
 
@@ -1647,10 +1647,10 @@ mod tests {
         assert!(SklandService::parse_game_list_response(&json).is_err());
     }
 
-    /// 绑定列表样本（**结构照真实返回**）：一个通行证同时绑定了终末地与明日方舟。
+    /// ç»‘å®šåˆ—è¡¨æ ·æœ¬ï¼ˆ**ç»“æž„ç…§çœŸå®žè¿”å›ž**ï¼‰ï¼šä¸€ä¸ªé€šè¡Œè¯åŒæ—¶ç»‘å®šäº†ç»ˆæœ«åœ°ä¸Žæ˜Žæ—¥æ–¹èˆŸã€‚
     ///
-    /// ⚠️ 关键差异：**明日方舟的 `roles` 是空数组**，角色信息在 `bindingList` 这一层
-    /// （`uid` / `nickName` / `channelMasterId`）；终末地才把角色放进 `roles[]`。
+    /// âš ï¸ å…³é”®å·®å¼‚ï¼š**æ˜Žæ—¥æ–¹èˆŸçš„ `roles` æ˜¯ç©ºæ•°ç»„**ï¼Œè§’è‰²ä¿¡æ¯åœ¨ `bindingList` è¿™ä¸€å±‚
+    /// ï¼ˆ`uid` / `nickName` / `channelMasterId`ï¼‰ï¼›ç»ˆæœ«åœ°æ‰æŠŠè§’è‰²æ”¾è¿› `roles[]`ã€‚
     const BINDING_RESPONSE: &str = r#"{
       "code": 0,
       "message": "OK",
@@ -1659,17 +1659,17 @@ mod tests {
         "list": [
           {
             "appCode": "arknights",
-            "appName": "明日方舟",
+            "appName": "æ˜Žæ—¥æ–¹èˆŸ",
             "bindingList": [
               {
                 "uid": "700000011",
                 "isOfficial": false,
                 "isDefault": true,
                 "channelMasterId": "2",
-                "channelName": "bilibili服",
+                "channelName": "bilibiliæœ",
                 "nickName": "Doctor#1234",
                 "isDelete": false,
-                "gameName": "明日方舟",
+                "gameName": "æ˜Žæ—¥æ–¹èˆŸ",
                 "gameId": 1,
                 "roles": [],
                 "defaultRole": null
@@ -1679,10 +1679,10 @@ mod tests {
                 "isOfficial": true,
                 "isDefault": false,
                 "channelMasterId": "1",
-                "channelName": "官服",
+                "channelName": "å®˜æœ",
                 "nickName": "Doctor#1234",
                 "isDelete": false,
-                "gameName": "明日方舟",
+                "gameName": "æ˜Žæ—¥æ–¹èˆŸ",
                 "gameId": 1,
                 "roles": [],
                 "defaultRole": null
@@ -1692,10 +1692,10 @@ mod tests {
                 "isOfficial": false,
                 "isDefault": false,
                 "channelMasterId": "2",
-                "channelName": "bilibili服",
+                "channelName": "bilibiliæœ",
                 "nickName": "Doctor#1234",
                 "isDelete": true,
-                "gameName": "明日方舟",
+                "gameName": "æ˜Žæ—¥æ–¹èˆŸ",
                 "gameId": 1,
                 "roles": [],
                 "defaultRole": null
@@ -1705,28 +1705,28 @@ mod tests {
           },
           {
             "appCode": "endfield",
-            "appName": "明日方舟：终末地",
+            "appName": "æ˜Žæ—¥æ–¹èˆŸï¼šç»ˆæœ«åœ°",
             "bindingList": [
               {
                 "uid": "3000000000000000",
                 "isOfficial": true,
                 "isDefault": true,
                 "channelMasterId": "1",
-                "channelName": "官服",
+                "channelName": "å®˜æœ",
                 "nickName": "",
                 "isDelete": false,
-                "gameName": "明日方舟：终末地",
+                "gameName": "æ˜Žæ—¥æ–¹èˆŸï¼šç»ˆæœ«åœ°",
                 "gameId": 3,
                 "roles": [
                   {
                     "serverId": "1",
                     "roleId": "20000000001",
-                    "nickname": "管理员",
+                    "nickname": "ç®¡ç†å‘˜",
                     "level": 42,
                     "isDefault": true,
                     "isBanned": false,
                     "serverType": "cn",
-                    "serverName": "国服"
+                    "serverName": "å›½æœ"
                   }
                 ],
                 "defaultRole": null
@@ -1745,54 +1745,54 @@ mod tests {
             serde_json::from_str(BINDING_RESPONSE).unwrap();
         let roles = SklandService::extract_game_roles(&bindings.data.list);
 
-        // 终末地 1 个（走 roles[]）+ 明日方舟 2 个（走 bindingList 层，已删渠道被跳过）
+        // ç»ˆæœ«åœ° 1 ä¸ªï¼ˆèµ° roles[]ï¼‰+ æ˜Žæ—¥æ–¹èˆŸ 2 ä¸ªï¼ˆèµ° bindingList å±‚ï¼Œå·²åˆ æ¸ é“è¢«è·³è¿‡ï¼‰
         assert_eq!(roles.len(), 3, "roles={:?}", roles);
 
-        // ---- 终末地：角色来自 roles[] ----
+        // ---- ç»ˆæœ«åœ°ï¼šè§’è‰²æ¥è‡ª roles[] ----
         let endfield = roles.iter().find(|r| r.game == GAME_ENDFIELD).unwrap();
         assert_eq!(endfield.role_id, "20000000001");
-        assert_eq!(endfield.nickname, "管理员");
+        assert_eq!(endfield.nickname, "ç®¡ç†å‘˜");
         assert_eq!(endfield.level, 42);
         assert_eq!(endfield.server_id, "1");
         assert_eq!(endfield.binding_uid, "3000000000000000");
 
-        // ---- 明日方舟：roles 为空，角色标识就是 uid ----
+        // ---- æ˜Žæ—¥æ–¹èˆŸï¼šroles ä¸ºç©ºï¼Œè§’è‰²æ ‡è¯†å°±æ˜¯ uid ----
         let ak_roles: Vec<_> = roles.iter().filter(|r| r.game == GAME_ARKNIGHTS).collect();
-        assert_eq!(ak_roles.len(), 2, "明日方舟角色没被识别出来: {:?}", ak_roles);
+        assert_eq!(ak_roles.len(), 2, "æ˜Žæ—¥æ–¹èˆŸè§’è‰²æ²¡è¢«è¯†åˆ«å‡ºæ¥: {:?}", ak_roles);
 
         let official = ak_roles
             .iter()
             .find(|r| r.channel_master_id == "1")
-            .expect("缺少官服角色");
+            .expect("ç¼ºå°‘å®˜æœè§’è‰²");
         assert_eq!(official.binding_uid, "700000022");
-        // ★ 没有 roleId，uid 即角色标识（`player/info` 靠它寻址）
+        // â˜… æ²¡æœ‰ roleIdï¼Œuid å³è§’è‰²æ ‡è¯†ï¼ˆ`player/info` é å®ƒå¯»å€ï¼‰
         assert_eq!(official.role_id, "700000022");
         assert_eq!(official.nickname, "Doctor#1234");
-        // 等级只能由 player/info 补，绑定接口不给
+        // ç­‰çº§åªèƒ½ç”± player/info è¡¥ï¼Œç»‘å®šæŽ¥å£ä¸ç»™
         assert_eq!(official.level, 0);
-        // 渠道主 ID 同时作为 server_id，前端 resolveServerLabel 认 "1"=官服
+        // æ¸ é“ä¸» ID åŒæ—¶ä½œä¸º server_idï¼Œå‰ç«¯ resolveServerLabel è®¤ "1"=å®˜æœ
         assert_eq!(official.server_id, "1");
-        assert_eq!(official.server_name, "官服");
+        assert_eq!(official.server_name, "å®˜æœ");
 
         let bilibili = ak_roles
             .iter()
             .find(|r| r.channel_master_id == "2")
-            .expect("缺少 B 服角色");
+            .expect("ç¼ºå°‘ B æœè§’è‰²");
         assert_eq!(bilibili.binding_uid, "700000011");
         assert_eq!(bilibili.role_id, "700000011");
         assert_eq!(bilibili.server_id, "2");
 
-        // 已删渠道（uid 700000033）必须被跳过
+        // å·²åˆ æ¸ é“ï¼ˆuid 700000033ï¼‰å¿…é¡»è¢«è·³è¿‡
         assert!(
             !ak_roles.iter().any(|r| r.role_id == "700000033"),
-            "isDelete=true 的渠道绑定不应产出角色"
+            "isDelete=true çš„æ¸ é“ç»‘å®šä¸åº”äº§å‡ºè§’è‰²"
         );
     }
 
     #[test]
     fn test_extract_game_roles_arknights_with_roles_still_works() {
-        // 万一将来接口改成把明日方舟角色放进 roles[]，也要能正常展开（向前兼容）：
-        // roles 非空时走通用分支，roleId 取 roles 里的值而不是 uid。
+        // ä¸‡ä¸€å°†æ¥æŽ¥å£æ”¹æˆæŠŠæ˜Žæ—¥æ–¹èˆŸè§’è‰²æ”¾è¿› roles[]ï¼Œä¹Ÿè¦èƒ½æ­£å¸¸å±•å¼€ï¼ˆå‘å‰å…¼å®¹ï¼‰ï¼š
+        // roles éžç©ºæ—¶èµ°é€šç”¨åˆ†æ”¯ï¼ŒroleId å– roles é‡Œçš„å€¼è€Œä¸æ˜¯ uidã€‚
         let json = r#"{
           "code": 0,
           "message": "OK",
@@ -1801,28 +1801,28 @@ mod tests {
             "list": [
               {
                 "appCode": "arknights",
-                "appName": "明日方舟",
+                "appName": "æ˜Žæ—¥æ–¹èˆŸ",
                 "bindingList": [
                   {
                     "uid": "700000022",
                     "isOfficial": true,
                     "isDefault": true,
                     "channelMasterId": "1",
-                    "channelName": "官服",
+                    "channelName": "å®˜æœ",
                     "nickName": "Doctor#1234",
                     "isDelete": false,
-                    "gameName": "明日方舟",
+                    "gameName": "æ˜Žæ—¥æ–¹èˆŸ",
                     "gameId": 1,
                     "roles": [
                       {
                         "serverId": "1",
                         "roleId": "10000000001",
-                        "nickname": "刀客塔",
+                        "nickname": "åˆ€å®¢å¡”",
                         "level": 120,
                         "isDefault": true,
                         "isBanned": false,
                         "serverType": "cn",
-                        "serverName": "官服"
+                        "serverName": "å®˜æœ"
                       }
                     ],
                     "defaultRole": null
@@ -1841,7 +1841,7 @@ mod tests {
         let official = &roles[0];
         assert_eq!(official.game, GAME_ARKNIGHTS);
         assert_eq!(official.role_id, "10000000001");
-        assert_eq!(official.nickname, "刀客塔");
+        assert_eq!(official.nickname, "åˆ€å®¢å¡”");
         assert_eq!(official.level, 120);
         assert_eq!(official.binding_uid, "700000022");
     }
@@ -1857,17 +1857,17 @@ mod tests {
                 "list": [
                   {
                     "appCode": "unknown_game",
-                    "appName": "未知游戏",
+                    "appName": "æœªçŸ¥æ¸¸æˆ",
                     "bindingList": [
                       {
                         "uid": "1",
                         "isOfficial": true,
                         "isDefault": true,
                         "channelMasterId": "1",
-                        "channelName": "官服",
+                        "channelName": "å®˜æœ",
                         "nickName": "x",
                         "isDelete": false,
-                        "gameName": "未知游戏",
+                        "gameName": "æœªçŸ¥æ¸¸æˆ",
                         "gameId": 99,
                         "roles": [
                           {
@@ -1878,7 +1878,7 @@ mod tests {
                             "isDefault": false,
                             "isBanned": false,
                             "serverType": "cn",
-                            "serverName": "官服"
+                            "serverName": "å®˜æœ"
                           }
                         ],
                         "defaultRole": null

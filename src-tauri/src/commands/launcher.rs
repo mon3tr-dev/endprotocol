@@ -725,6 +725,8 @@ pub(crate) async fn launch_game(
 }
 
 /// æµè§ˆæ–‡ä»¶å¤¹
+/// 浏览文件夹（桌面：rfd 原生对话框；移动端 rfd 无法编译，返回明确错误）。
+#[cfg(desktop)]
 #[tauri::command]
 pub fn launcher_browse_folder() -> Result<Option<String>, String> {
     let dialog = rfd::FileDialog::new().set_title("Select Game Directory");
@@ -732,6 +734,13 @@ pub fn launcher_browse_folder() -> Result<Option<String>, String> {
     Ok(dialog
         .pick_folder()
         .map(|p| p.to_string_lossy().to_string()))
+}
+
+/// 移动端 stub：无原生文件夹选择对话框。
+#[cfg(not(desktop))]
+#[tauri::command]
+pub fn launcher_browse_folder() -> Result<Option<String>, String> {
+    Err("Folder selection is not available on this platform".to_string())
 }
 
 /// ç£ç›˜ç©ºé—´ä¿¡æ¯

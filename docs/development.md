@@ -12,6 +12,7 @@
 - **pnpm** 10（包管理器，仓库使用 `pnpm-lock.yaml`；`package-lock.json` 已废弃，请勿用它安装）
 - **Rust** 最新稳定版
 - **Windows** 构建环境（当前发布目标为 `x86_64-pc-windows-msvc`）
+- **Android 构建（可选）**：Android Studio / Android SDK + NDK + JDK 17，`rustup target add aarch64-linux-android`；详见 §2.1
 
 > **锁文件规则**：仓库根 `Cargo.toml` 是 cargo workspace 根（`members = ["src-tauri"]`），因此**根目录的 `Cargo.lock` 才是有效锁文件**；`src-tauri/Cargo.lock` 已被移除，不要在子目录重新生成（会与 workspace 锁文件打架、并让构建解析到不同版本的 `tauri` crate）。
 
@@ -45,6 +46,75 @@ pnpm tauri build
 
 > 版本号由 CI 从 Git 标签注入 `package.json` 与 `src-tauri/tauri.conf.json`，本地构建的版本号无实际意义。
 
+### 2.1 Android 构建（移动端）
+
+Android 适配已就绪（代码级），构建 APK 需要 Android 工具链：
+
+```bash
+# 一次性：JDK 17 + Android Studio（SDK / NDK / platform-tools），并设置环境变量
+#   ANDROID_HOME=%LOCALAPPDATA%\Android\Sdk
+#   NDK_HOME=%ANDROID_HOME%\ndk\<version>
+rustup target add aarch64-linux-android
+
+# 生成 Android 工程（gen/android 目前不在仓库中，由该命令首次生成；已存在则跳过）
+pnpm tauri android init
+
+# 开发（设备连接 USB 调试或启动模拟器后）
+pnpm tauri android dev
+
+# 构建
+pnpm tauri android build          # debug APK
+pnpm tauri android build --apk    # release APK（签名需在 gen/android 配置签名信息）
+```
+
+**Android 与桌面的行为差异（适配要点）**：
+
+| 项 | 桌面 | Android |
+| --- | --- | --- |
+| 主窗口 | `lib.rs:create_full_windows` 动态创建（含托盘面板） | `tauri.android.conf.json` 的 `app.windows` 静态创建 |
+| 启动器（游戏下载/启动/切服） | 可用 | **禁用**：`stores/launcherMode.ts` 在非 Windows 强制 data 模式，游戏页 UI 不渲染 |
+| 托盘 / 托盘面板 | 可用 | 无系统托盘：`tray::setup_tray` no-op，`is_tray_available()` 恒 false，设置页隐藏相关项 |
+| 自更新 | updater 插件 | 无：后端命令返回明确错误，设置页隐藏更新 UI |
+| 应用数据目录 | `%LOCALAPPDATA%\cn.msk-network.endprotocol`（`dirs`） | `{getDataDir()}`（Tauri 路径解析器 → `utils::paths` 覆盖值，setup 最早注入；实测落在 `/data/user/0/<pkg>/`） |
+| 日志初始化时机 | `run()` 早期 | setup 注入数据目录之后（目录在此之前不可写） |
+| 机密存储 | OS 凭据库（Windows Credential Manager 等） | Android Keystore（keyring 4.2）；不可用时自动降级 AES-GCM 文件（`secrets.enc`） |
+| in-app browser（子 Webview） | 可用 | 不支持（多 Webview 为桌面特性）；游戏页本身已禁用，无暴露面 |
+| 标签页快照 / 屏幕取色 | Windows（PrintWindow / GDI） | 后端返回明确错误，前端已按平台隐藏 |
+| 窗口控制按钮 / 拖拽区 | 标题栏渲染 | 隐藏（系统状态栏管理生命周期）；标题栏让出顶部安全区（`--safe-area-top`） |
+| TLS | reqwest `native-tls`（SChannel） | reqwest 默认 rustls，但**必须显式改用内置根证书**（见下方说明）：reqwest 0.13 的 rustls 后端固定依赖 `rustls-platform-verifier`，该 crate 在 Android 上要求注入 Kotlin 组件并显式初始化，否则首次 HTTPS 握手会在 tokio worker 里 panic |
+
+**桌面专属依赖**集中在 `src-tauri/Cargo.toml` 的 `[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]`：`tauri`（tray-icon + unstable feature）、`tauri-plugin-single-instance`、`tauri-plugin-updater`、`tauri-plugin-devdeck`、`rfd`、reqwest `native-tls`。移动端不编译这些 crate，对应命令在 `commands/` 内提供返回明确错误的 stub。
+
+#### Android TLS：必须绕开 rustls-platform-verifier
+
+reqwest 0.13 的 rustls 后端（`rustls` feature）**无条件**依赖 `rustls-platform-verifier`，而它在 Android 上要求：
+
+1. 在 Android 工程里注入它提供的 Kotlin 组件；
+2. 在 JVM 侧调用 `rustls_platform_verifier::android::init_with_env / init_with_refs` 完成初始化。
+
+否则**首次 HTTPS 握手就会在 tokio worker 线程 panic**（`Expect rustls-platform-verifier to be initialized`），表现为「应用能起来、一联网就崩」。
+
+本项目的处理方式：`utils/http_client.rs` 的 `client_builder()` 在 Android 上用内置 Mozilla 根证书（`webpki-roots`）显式构造 `rustls::ClientConfig`，通过 `use_preconfigured_tls` 交给 reqwest，完全绕开平台校验器。所有 HTTP 客户端必须经由 `http_client::client_builder()` / `create_client()` / `default_client()` 创建，**不要**直接 `reqwest::Client::new()` / `Client::builder()`（那会退回默认 TLS 并在 Android 上 panic）。
+
+对应的 Android 专属依赖（只在 `cfg(target_os = "android")` 段）：
+
+```toml
+[target.'cfg(target_os = "android")'.dependencies]
+rustls = "0.23"
+webpki-roots = "0.26"
+```
+
+#### 实测记录（模拟器）
+
+- 环境：SDK `%LOCALAPPDATA%\Android\Sdk`、NDK r30（`30.0.16248370`）、JDK 21（`C:\Program Files\Android\openjdk\jdk-21.0.8`，需临时加入 PATH）、AVD `api36`（`system-images;android-36.1;google_apis;x86_64`，Pixle 7 1080×2400@420，4 核 / 4 GB）。
+- 模拟器建议用 **`-no-window`（无窗口）** 运行：窗口模式在部分多显示器/缩放环境下会飞到屏幕外且难以纠正；无窗口时用 `adb exec-out screencap -p` / `adb shell screencap` 截图验证界面。
+- 首次 `tauri android init` **必须加 `--ci`**，否则会卡在交互提问（App 名称等）而看起来像挂死。
+- Gradle 发行版（`gradle-9.6.1-bin.zip`，约 134 MB）从 `services.gradle.org` 直连可能被拒（`Connection refused`）。可先下载到 `~/.gradle/wrapper/dists/gradle-9.6.1-bin/<hash>/gradle-9.6.1-bin.zip`；国内可走 `https://mirrors.cloud.tencent.com/gradle/gradle-9.6.1-bin.zip`。
+- **不要直接运行 `gen/android/gradlew.bat`**：Gradle 的 rust 任务会回调 `pnpm tauri android android-studio-script`，需要 CLI 正在运行时生成的 `.tauri/cli-options-server.json`，否则报 `failed to read ... cli-options-server.json`。构建必须由 `pnpm tauri android build` / `dev` 驱动。
+- 只装 `aarch64` 目标无法在 x86_64 模拟器上运行；需 `rustup target add x86_64-linux-android`（`tauri android init` 会安装全部四个目标）。
+
+验证通过的路径：`cargo check --target x86_64-linux-android` → `pnpm tauri android build --debug --apk --target x86_64` → `adb install -r` → 启动后日志出现 `Logger initialized successfully`、数据目录/密钥/日志文件正确落盘、扫码登录可正常拉到二维码并轮询 `https://as.hypergryph.com/general/v1/scan_status`（证明 HTTPS 链路可用）。
+
 ---
 
 ## 3. 技术栈
@@ -71,13 +141,14 @@ pnpm tauri build
 
 | 技术 | 版本 | 用途 |
 | --- | --- | --- |
-| Tauri | 2.12.x | 桌面应用框架（启用 `tray-icon`） |
+| Tauri | 2.12.x | 应用框架（桌面启用 `tray-icon` + `unstable`，移动端无 feature） |
 | Rust | edition 2021 | 后端语言 |
-| reqwest | 0.13 | HTTP 客户端（`native-tls` + `query` feature） |
+| reqwest | 0.13 | HTTP 客户端（`query`/`stream`/`socks`；桌面加 `native-tls`，移动端走默认 rustls） |
 | tokio | 1.x | 异步运行时 |
 | serde / serde_json | 1.x | 序列化 |
-| windows-sys | 0.61 | Win32 API（GDI 截屏、窗口、Shell） |
-| rfd | 0.18 | 原生文件 / 目录选择框 |
+| windows-sys | 0.61 | Win32 API（GDI 截屏、窗口、Shell，仅 Windows 目标） |
+| rfd | 0.18 | 原生文件 / 目录选择框（仅桌面目标） |
+| keyring | 4.2 | OS 凭据库（Windows Credential Manager / macOS Keychain / Secret Service / Android Keystore） |
 | walkdir | 2.x | 安装目录文件扫描 |
 | zip | 9.x | 游戏补丁包解压（`aes-crypto` + `deflate-flate2`） |
 | sysinfo | 0.40 | 系统资源采集 |
@@ -98,7 +169,8 @@ pnpm tauri build
 
 ### Tauri 插件
 
-`tauri-plugin-updater`、`tauri-plugin-process`、`tauri-plugin-opener`、`tauri-plugin-fs`。
+- 全平台：`tauri-plugin-process`、`tauri-plugin-opener`、`tauri-plugin-fs`
+- 仅桌面（`cfg(not(any(target_os = "android", target_os = "ios")))`）：`tauri-plugin-updater`、`tauri-plugin-single-instance`、`tauri-plugin-devdeck`（debug）
 
 ---
 
@@ -134,8 +206,9 @@ endprotocol/
 │   │   ├── lib.rs                        # 插件注册、状态托管、启动任务
 │   │   └── main.rs
 │   ├── capabilities/                     # 权限配置
-│   ├── icons/                            # 应用图标
-│   ├── tauri.conf.json                   # 窗口、打包、更新配置
+│   ├── icons/                            # 应用图标（含 icons/android 的启动器图标）
+│   ├── tauri.conf.json                   # 窗口、打包、更新配置（桌面主配置，app.windows 为空）
+│   ├── tauri.android.conf.json           # Android 平台覆盖配置（静态声明 main 窗口）
 │   └── Cargo.toml
 ├── docs/                                 # 开发文档
 ├── public/assets/icons/                  # 游戏数据图标

@@ -23,7 +23,10 @@ export function DashboardFAB({
   }, [isEditMode]);
 
   return createPortal(
-    <div className="fixed bottom-6 right-6 z-50">
+    // 移动端（<lg）整体抬到右下角菜单按钮上方，避免两个 FAB 重叠；
+    // lg 及以上恢复 bottom-6（菜单按钮只在移动端渲染）。safe-area-bottom
+    // 让 Android 手势条 / iOS Home 条不遮住按钮。
+    <div className="fixed right-6 z-50 [bottom:calc(6rem+var(--safe-area-bottom))] lg:bottom-6">
       {isExpanded && (
         <div className="absolute bottom-16 right-0 flex flex-col gap-2 animate-fade-in">
           <button

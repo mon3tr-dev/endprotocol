@@ -13,6 +13,7 @@ import { invoke } from "@tauri-apps/api/core";
 import logger from "@/utils/logger";
 import { roleDataService } from "@/utils/roleDataService";
 import { getAccounts } from "@/utils/accountService";
+import { isMobileApp } from "@/utils/platform";
 
 /** 与后端 `crate::tray::TrayUserInfo`（camelCase，字段均为 Option）一一对应 */
 export interface TrayUserInfo {
@@ -54,6 +55,8 @@ export async function refreshTrayUserData(
   roleId: string,
 ): Promise<boolean> {
   if (!roleId) return false;
+  // 移动端没有系统托盘，跳过数据组装与推送。
+  if (isMobileApp()) return false;
 
   try {
     const result = await roleDataService.queryData(
@@ -106,6 +109,8 @@ export async function refreshTrayUserData(
  * 设置页切换托盘账号时使用。
  */
 export async function setTrayUser(roleId: string): Promise<void> {
+  // 移动端没有系统托盘，不做任何推送。
+  if (isMobileApp()) return;
   try {
     await invoke("set_tray_user", { roleId });
   } catch {
@@ -121,8 +126,10 @@ let cachedTrayAvailable: boolean | null = null;
  *
  * Linux 上没有 StatusNotifier 宿主（GNOME 默认）时为 false。此时「最小化到托盘」
  * 会把窗口藏起来又不留任何入口，必须禁用，让关闭按钮直接退出应用。
+ * 移动端（Android/iOS）没有系统托盘概念，恒为 false。
  */
 export async function isTrayAvailable(): Promise<boolean> {
+  if (isMobileApp()) return false;
   if (cachedTrayAvailable !== null) return cachedTrayAvailable;
   try {
     cachedTrayAvailable = await invoke<boolean>("tray_available");

@@ -115,8 +115,18 @@ impl Default for LoggerConfig {
             log_to_file: true,
             // 默认 INFO：未开启开发者模式时不记录 DEBUG。
             log_level: LogLevel::Info,
+            // 兜底不再 `unwrap()`：Android 上 `paths::log_dir()` 在数据目录覆盖值
+            // 注入前会失败，而 `std::env::current_dir()` 也可能不可用；此时依次退回
+            // 当前工作目录、系统临时目录。create_dir_all 仍失败时该次文件日志被跳过，
+            // 内存缓冲与控制台输出照常工作。
             log_dir: paths::log_dir()
-                .unwrap_or_else(|_| std::env::current_dir().unwrap().join("logs")),
+                .map_err(|error| error.to_string())
+                .or_else(|_| {
+                    std::env::current_dir()
+                        .map(|dir| dir.join("logs"))
+                        .map_err(|error| error.to_string())
+                })
+                .unwrap_or_else(|_| std::env::temp_dir().join("endprotocol-logs")),
             max_memory_entries: 5000,
         }
     }

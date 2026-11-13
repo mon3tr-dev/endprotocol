@@ -161,7 +161,7 @@ pub async fn test_connection(
         message: "Proxy is not enabled or the host is empty".to_string(),
     })?;
 
-    let client = reqwest::Client::builder()
+    let client = crate::utils::http_client::client_builder()
         .proxy(proxy)
         .timeout(Duration::from_secs(timeout_secs.clamp(1, 60)))
         .build()
@@ -253,7 +253,7 @@ pub async fn auto_detect_proxy() -> Result<ProxyConfigValue, AppError> {
         };
 
         // 短超时探测，避免阻塞太久。
-        let client = match reqwest::Client::builder()
+        let client = match crate::utils::http_client::client_builder()
             .proxy(proxy)
             .timeout(Duration::from_secs(2))
             .build()

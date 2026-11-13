@@ -1,18 +1,24 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use tauri::{
-    tray::{MouseButton, TrayIconBuilder, TrayIconEvent},
-    Emitter, Manager, Runtime,
-};
+use tauri::{Emitter, Manager, Runtime};
+// `tauri::tray`（TrayIconBuilder 等）只在桌面 + tray-icon feature 下存在；
+// 移动端编译时整个托盘构建路径被 cfg(desktop) 排除，只保留 no-op stub。
+#[cfg(desktop)]
+use tauri::tray::{MouseButton, TrayIconBuilder, TrayIconEvent};
 
 use crate::services::config_service::ConfigService;
 
+/// 系统托盘 ID（`app.tray_by_id` 用），仅桌面使用。
+#[cfg(desktop)]
 const TRAY_ID: &str = "main-tray";
+/// 托盘面板窗口 label，与动态创建的托盘面板窗口对应。
 const TRAY_PANEL_LABEL: &str = "tray-panel";
 
 /// 托盘面板回退尺寸（逻辑像素，仅用于取不到真实窗口尺寸时定位）；
-/// 实际窗口尺寸以 `lib.rs::create_full_windows` 为准。
+/// 实际窗口尺寸以 `lib.rs::create_full_windows` 为准。仅桌面使用。
+#[cfg(desktop)]
 const PANEL_WIDTH: f64 = 288.0;
+#[cfg(desktop)]
 const PANEL_HEIGHT: f64 = 376.0;
 
 /// 系统托盘是否可用。
@@ -52,11 +58,16 @@ pub struct TrayUserInfo {
 /// 取窗口用 `Manager::get_window` 而非 `get_webview_window`：后者要求窗口下所有
 /// webview 的 label 都等于窗口 label，in-app browser 的子 webview（`inapp-browser-N`）
 /// 会让它返回 `None`，导致浏览器打开时托盘唤不回主窗口。
+///
+/// `unminimize()` 与 `set_focus()` 的平台差异：`set_focus` / `show` 跨平台可用，
+/// 而 `unminimize` 在 `#[cfg(desktop)]` 的 impl 块里，移动端不存在（移动端也没有
+/// 最小化语义，应用切后台由系统管理）。
 pub fn show_main_window_focus<R: Runtime>(app: &tauri::AppHandle<R>) {
     if let Some(window) = app
         .get_window("main")
         .or_else(|| crate::create_main_window(app).ok())
     {
+        #[cfg(desktop)]
         let _ = window.unminimize();
         let _ = window.show();
 
@@ -81,7 +92,8 @@ pub fn show_main_window_focus<R: Runtime>(app: &tauri::AppHandle<R>) {
     }
 }
 
-/// Position and show the tray panel near the tray icon
+/// Position and show the tray panel near the tray icon（仅桌面）
+#[cfg(desktop)]
 fn show_panel_at_position<R: Runtime>(
     app: &tauri::AppHandle<R>,
     tray_pos: tauri::PhysicalPosition<f64>,
@@ -124,7 +136,8 @@ fn show_panel_at_position<R: Runtime>(
     }
 }
 
-/// Setup the system tray
+/// Setup the system tray（仅桌面；移动端没有系统托盘，直接 no-op 成功）
+#[cfg(desktop)]
 pub fn setup_tray<R: Runtime>(
     app: &tauri::AppHandle<R>,
     config_service: Arc<std::sync::Mutex<ConfigService>>,
@@ -150,6 +163,17 @@ pub fn setup_tray<R: Runtime>(
     }
 }
 
+/// 移动端：不创建托盘，`is_tray_available()` 恒为 false（关闭行为退化为退出应用）。
+#[cfg(not(desktop))]
+pub fn setup_tray<R: Runtime>(
+    _app: &tauri::AppHandle<R>,
+    _config_service: Arc<std::sync::Mutex<ConfigService>>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    Ok(())
+}
+
+/// 构建 tray 图标（仅桌面）。
+#[cfg(desktop)]
 fn build_tray<R: Runtime>(
     app: &tauri::AppHandle<R>,
     tooltip: &str,
@@ -186,10 +210,14 @@ fn build_tray<R: Runtime>(
 }
 
 /// Update the tray tooltip and notify the tray panel
+///
+/// 移动端：托盘不存在（tray_by_id 段被 cfg 排除），托盘面板窗口也不存在，
+/// `get_webview_window` 返回 None → 整个函数退化为 no-op Ok。
 pub fn update_tray_menu<R: Runtime>(
     app: &tauri::AppHandle<R>,
     user_info: &TrayUserInfo,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    #[cfg(desktop)]
     if let Some(tray) = app.tray_by_id(TRAY_ID) {
         let tooltip = user_info.nickname.as_deref().unwrap_or("EndProtocol");
         let _ = tray.set_tooltip(Some(tooltip));
@@ -224,12 +252,12 @@ pub fn hide_tray_panel<R: Runtime>(app: &tauri::AppHandle<R>) -> Result<(), Stri
 }
 
 /// 托盘是否真的能显示给用户。
-#[cfg(not(target_os = "linux"))]
+#[cfg(all(desktop, not(target_os = "linux")))]
 fn tray_effectively_available() -> bool {
     true
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(all(desktop, target_os = "linux"))]
 fn tray_effectively_available() -> bool {
     status_notifier_host_available()
 }
@@ -241,7 +269,7 @@ fn tray_effectively_available() -> bool {
 /// 探测命令优先 `gdbus`（glib2，输出 `(true,)`），退回 `dbus-send`（dbus，输出
 /// `boolean true`）。两者都不可用时按「没有托盘」处理——宁可关闭时退出，也不能
 /// 把用户藏进一个没有入口的后台进程。
-#[cfg(target_os = "linux")]
+#[cfg(all(desktop, target_os = "linux"))]
 fn status_notifier_host_available() -> bool {
     use std::process::Command;
 

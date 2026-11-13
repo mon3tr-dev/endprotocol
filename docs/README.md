@@ -66,6 +66,7 @@
 | 网络代理（HTTP / SOCKS5、系统代理读取、连通性测试） | `src/components/network-settings.tsx`、`src/utils/proxyService.ts`、`src-tauri/src/commands/proxy.rs`、`src-tauri/src/utils/proxy.rs` | [components_settings_panels.md](reference/frontend/components_settings_panels.md)、[utils_services_a.md](reference/frontend/utils_services_a.md)、[commands.md](reference/backend/commands.md)、[utils.md](reference/backend/utils.md) |
 | 网络抓包（开发者页） | `src-tauri/src/utils/capture.rs` | [utils.md](reference/backend/utils.md) |
 | 内嵌浏览器（原生子 Webview，加载禁嵌站点） | `src/components/in-app-browser.tsx`、`src/stores/inAppBrowser.ts`、`src/utils/browserViewService.ts`、`src-tauri/src/commands/browser.rs`、`src-tauri/src/lib.rs`（`on_page_load` 桥） | [components_settings_panels.md](reference/frontend/components_settings_panels.md)、[utils_services_b.md](reference/frontend/utils_services_b.md)、[commands.md](reference/backend/commands.md)、[bootstrap.md](reference/backend/bootstrap.md) |
+| **Android 适配（平台门控总览）** | `src/utils/platform.ts`（`isMobileApp` 等）、`src-tauri/Cargo.toml`（桌面 target 依赖段）、`src-tauri/src/lib.rs`（`cfg(desktop)`/`cfg(mobile)` 分支）、`src-tauri/tauri.android.conf.json` | [development.md](development.md) §2.1 差异表、[utils_services_b.md](reference/frontend/utils_services_b.md)（platform.ts）、[bootstrap.md](reference/backend/bootstrap.md)（lib.rs / Cargo.toml / android 配置） |
 
 ### 1.2 横切关注点
 
@@ -90,11 +91,12 @@
 
 ---
 
-## 2. 开发指南（8 篇）
+## 2. 开发指南（9 篇）
 
 | 文件 | 内容 |
 | --- | --- |
 | [project_structure.md](project_structure.md) | 项目概述、技术栈、目录结构、启动与核心数据流 |
+| [development.md](development.md) | **开发者环境与构建**：本机/CI 构建、**Android 构建与平台差异表**、验证命令、提交规范 |
 | [frontend_development.md](frontend_development.md) | 前端目录约定、编码规范、新增卡片/页面/命令调用的方法 |
 | [backend_development.md](backend_development.md) | Rust 分层、错误处理、异步与状态管理、加密签名说明 |
 | [api_communication.md](api_communication.md) | IPC 机制、命名规范、登录/懒加载/配置同步等数据流 |

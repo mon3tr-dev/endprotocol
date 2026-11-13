@@ -84,7 +84,9 @@ EndProtocol/
 │   │                              #   game_playtime（游戏时长统计）、process（进程探测）、
 │   │                              #   game_icon（exe 图标提取）、
 │   │                              #   steam（Steam 第三方游戏注入与管理员快捷方式）
-│   ├── capabilities/  tauri.conf.json  Cargo.toml
+│   ├── capabilities/  tauri.conf.json  tauri.android.conf.json  Cargo.toml
+│   │                              #   tauri.android.conf.json = Android 平台覆盖配置
+│   │                              #   （静态声明 main 窗口；移动端不支持运行时建窗）
 │   └── gen/                       # Tauri 自动生成（勿手改）
 ├── dist/  target/  node_modules/  # 构建产物与依赖（勿读）
 └── .github/workflows/release.yml  # 发布流水线
@@ -103,7 +105,8 @@ EndProtocol/
    - 后端主动推送用 `emit`（如启动器进度、主题变更），前端 `listen` 订阅。
 4. **持久化**：
    - 配置信息由 `ConfigService` 存储在本地 `app_config.json`（键值 + 点号路径，如 `card_settings.{cardId}`）。
-   - **账户凭据等机密字段不落盘** —— 由 `ConfigService` 分流到操作系统凭据库（Windows Credential Manager / macOS Keychain / Linux Secret Service），配置文件里只留非机密子字段。登记与流程见 [`secure_storage.md`](secure_storage.md)。
+   - **数据根目录**：桌面为 `dirs::data_local_dir()/cn.msk-network.endprotocol`；Android 为 `{filesDir}/cn.msk-network.endprotocol`（由 `lib.rs` setup 注入 `utils::paths` 的覆盖值，因为 Android 无 `$HOME`/XDG）。见 `docs/development.md` §2.1。
+   - **账户凭据等机密字段不落盘** —— 由 `ConfigService` 分流到操作系统凭据库（Windows Credential Manager / macOS Keychain / Linux Secret Service / **Android Keystore**），配置文件里只留非机密子字段。不可用时自动降级为 AES-256-GCM 文件（`secrets.enc`）。登记与流程见 [`secure_storage.md`](secure_storage.md)。
    - 图片经 `ImageCacheService`/`AvatarCacheService` 本地缓存；抽卡记录、Wiki 详情各自落盘。
 
 ## 5. 核心业务流程

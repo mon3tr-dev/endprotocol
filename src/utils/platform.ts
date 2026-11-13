@@ -14,6 +14,39 @@ export function isMacPlatform(): boolean {
 }
 
 /**
+ * 是否运行在 Android（Tauri Android 的系统 WebView UA 必然包含 "Android"，
+ * 桌面 WebView2 / WebKitGTK 的 UA 不会出现该关键词）。
+ * `navigator.userAgentData.platform`（Chromium 90+）作为补充信号。
+ */
+export function isAndroidApp(): boolean {
+  if (typeof navigator === "undefined") return false;
+  const uaData = (
+    navigator as unknown as { userAgentData?: { platform?: string } }
+  ).userAgentData;
+  if (uaData?.platform && /android/i.test(uaData.platform)) return true;
+  return /android/i.test(navigator.userAgent);
+}
+
+/** 是否运行在 iOS（预留：Tauri iOS 同样按移动端处理）。 */
+export function isIosApp(): boolean {
+  if (typeof navigator === "undefined") return false;
+  return /iphone|ipad|ipod/i.test(navigator.userAgent);
+}
+
+/**
+ * 是否运行在移动端（Android / iOS）。桌面 UA 不含移动端关键词，
+ * 因此桌面端（Windows / macOS / Linux）恒为 false。
+ */
+export function isMobileApp(): boolean {
+  return isAndroidApp() || isIosApp();
+}
+
+/** 是否运行在桌面端（Windows / macOS / Linux 的 Tauri 窗口或浏览器）。 */
+export function isDesktopApp(): boolean {
+  return !isMobileApp();
+}
+
+/**
  * 是否运行在 Tauri 窗口内（而非直接用浏览器打开 dev server）。
  * 直接读 `window.__TAURI_INTERNALS__`（Tauri v2 在每个 webview 里注入），
  * 不引入 `@tauri-apps/api` 依赖，保证本模块保持零依赖。
@@ -48,11 +81,15 @@ export function supportsNativeWindowEffects(): boolean {
  * 只有 `clip-path` 加在 `<html>` 上才能既裁到 fixed 层、又不改变它们相对视口的定位。
  *
  * Windows 交给 DWM 的窗口圆角（Win11），macOS 交给系统；只有 Linux（WebKitGTK）
- * 两者都没有，才由前端兜底。
+ * 两者都没有，才由前端兜底。移动端（Android/iOS）是系统全屏窗口，没有
+ * 无边框圆角问题，不参与这个兜底。
  */
 export function needsSelfDrawnWindowRadius(): boolean {
   return (
-    isTauriWindow() && !isWindowsPlatform() && !isMacPlatform()
+    isTauriWindow() &&
+    !isMobileApp() &&
+    !isWindowsPlatform() &&
+    !isMacPlatform()
   );
 }
 

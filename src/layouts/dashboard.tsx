@@ -480,7 +480,10 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
               aria-label="Close sidebar"
               role="button"
             />
-            <div className="lg:hidden fixed inset-y-0 left-0 z-50 w-72 border-r border-separator/60 animate-slide-in-left">
+            <div
+              className="lg:hidden fixed inset-y-0 left-0 z-50 w-72 border-r border-separator/60 animate-slide-in-left"
+              style={{ paddingTop: "var(--safe-area-top)" }}
+            >
               {/*
                * 抽屉自身的磨砂：fixed 定位，不能复用桌面端那条全屏覆盖层。
                * 这里只需要侧边栏的横向遮罩（抽屉从顶部到底，不经过标题栏段）。
@@ -531,7 +534,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
       <button
         type="button"
         onClick={() => setMobileOpen(true)}
-        className="lg:hidden fixed bottom-6 right-6 z-30 p-3.5 rounded-full bg-primary text-primary-foreground shadow-lg [transition:transform_var(--lg-dur-press)_var(--lg-ease-spring),translate_var(--lg-dur-press)_var(--lg-ease-spring),scale_var(--lg-dur-press)_var(--lg-ease-spring)] hover:scale-105 active:scale-95"
+        className="lg:hidden fixed right-6 z-30 p-3.5 rounded-full bg-primary text-primary-foreground shadow-lg [transition:transform_var(--lg-dur-press)_var(--lg-ease-spring),translate_var(--lg-dur-press)_var(--lg-ease-spring),scale_var(--lg-dur-press)_var(--lg-ease-spring)] hover:scale-105 active:scale-95 [bottom:calc(1.5rem+var(--safe-area-bottom))]"
         aria-label="Open menu"
       >
         <svg

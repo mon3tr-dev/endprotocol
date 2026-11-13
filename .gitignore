@@ -36,6 +36,10 @@ design/
 
 target/
 
+# Tauri 生成目录（ACL schema、`tauri android init` 生成的 gen/android 工程等）。
+# 需要把 Android 签名配置纳入版本管理时，再单独 `!src-tauri/gen/android` 放行。
+src-tauri/gen/
+
 .VSCodeCounter/
 
 .pnpm-store

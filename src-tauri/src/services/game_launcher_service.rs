@@ -1,4 +1,4 @@
-use std::fs;
+﻿use std::fs;
 use std::io::{BufWriter, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
@@ -15,37 +15,37 @@ use walkdir::WalkDir;
 use crate::models::game::*;
 use crate::utils::{capture, hg_crypto};
 
-/// 全局下载取消标志
+/// å…¨å±€ä¸‹è½½å–æ¶ˆæ ‡å¿—
 static DOWNLOAD_CANCELLED: AtomicBool = AtomicBool::new(false);
 static SWITCH_CANCELLED: AtomicBool = AtomicBool::new(false);
-/// 本次取消是否同时删除下载缓存（由 launcher_cancel_download 带 install_path 时置位）
+/// æœ¬æ¬¡å–æ¶ˆæ˜¯å¦åŒæ—¶åˆ é™¤ä¸‹è½½ç¼“å­˜ï¼ˆç”± launcher_cancel_download å¸¦ install_path æ—¶ç½®ä½ï¼‰
 static CANCEL_CLEANUP_REQUESTED: AtomicBool = AtomicBool::new(false);
 
-/// 安装暂存目录后缀：固定名称，保证取消/失败后下次运行仍能续传
+/// å®‰è£…æš‚å­˜ç›®å½•åŽç¼€ï¼šå›ºå®šåç§°ï¼Œä¿è¯å–æ¶ˆ/å¤±è´¥åŽä¸‹æ¬¡è¿è¡Œä»èƒ½ç»­ä¼ 
 const INSTALL_STAGING_SUFFIX: &str = ".staging.resume";
-/// 安装暂存目录对应的版本标记文件后缀（与暂存目录同级，避免被当作游戏文件应用）
+/// å®‰è£…æš‚å­˜ç›®å½•å¯¹åº”çš„ç‰ˆæœ¬æ ‡è®°æ–‡ä»¶åŽç¼€ï¼ˆä¸Žæš‚å­˜ç›®å½•åŒçº§ï¼Œé¿å…è¢«å½“ä½œæ¸¸æˆæ–‡ä»¶åº”ç”¨ï¼‰
 const INSTALL_STAGING_VERSION_SUFFIX: &str = ".staging.resume.version";
-/// 小文件复用前重新校验 MD5 的尺寸上限（大文件下载完成时已校验）
+/// å°æ–‡ä»¶å¤ç”¨å‰é‡æ–°æ ¡éªŒ MD5 çš„å°ºå¯¸ä¸Šé™ï¼ˆå¤§æ–‡ä»¶ä¸‹è½½å®Œæˆæ—¶å·²æ ¡éªŒï¼‰
 const STAGED_REUSE_HASH_LIMIT: u64 = 16 * 1024 * 1024;
-/// 预下载分卷暂存目录的版本标记文件
+/// é¢„ä¸‹è½½åˆ†å·æš‚å­˜ç›®å½•çš„ç‰ˆæœ¬æ ‡è®°æ–‡ä»¶
 const PRELOAD_VERSION_MARKER: &str = ".preload_version";
 
-/// 补丁 / 预下载包内的**控制文件**：它们不是游戏文件，不能铺进安装目录。
+/// è¡¥ä¸ / é¢„ä¸‹è½½åŒ…å†…çš„**æŽ§åˆ¶æ–‡ä»¶**ï¼šå®ƒä»¬ä¸æ˜¯æ¸¸æˆæ–‡ä»¶ï¼Œä¸èƒ½é“ºè¿›å®‰è£…ç›®å½•ã€‚
 ///
-/// 逆向依据（Games.exe）：
-/// - `CCopyGameFile` 构造函数用 `package_files` / `delete_files.txt` / `patch.json` 三个名字
-///   建立"跳过名单"（RVA `0x00278dc0`，紧邻 RVA `0x00277c50` 的 `delete_files.txt` 路径构造）；
-/// - 本机官方安装目录 `E:\Endfield Game` 实测只有 `game_files`，没有 `package_files` /
-///   `delete_files.txt` / `patch.json`。
+/// é€†å‘ä¾æ®ï¼ˆGames.exeï¼‰ï¼š
+/// - `CCopyGameFile` æž„é€ å‡½æ•°ç”¨ `package_files` / `delete_files.txt` / `patch.json` ä¸‰ä¸ªåå­—
+///   å»ºç«‹"è·³è¿‡åå•"ï¼ˆRVA `0x00278dc0`ï¼Œç´§é‚» RVA `0x00277c50` çš„ `delete_files.txt` è·¯å¾„æž„é€ ï¼‰ï¼›
+/// - æœ¬æœºå®˜æ–¹å®‰è£…ç›®å½• `E:\Endfield Game` å®žæµ‹åªæœ‰ `game_files`ï¼Œæ²¡æœ‰ `package_files` /
+///   `delete_files.txt` / `patch.json`ã€‚
 ///
-/// `game_files` **不在**排除之列：它是游戏安装目录内的正式文件（官方实测保留）。
+/// `game_files` **ä¸åœ¨**æŽ’é™¤ä¹‹åˆ—ï¼šå®ƒæ˜¯æ¸¸æˆå®‰è£…ç›®å½•å†…çš„æ­£å¼æ–‡ä»¶ï¼ˆå®˜æ–¹å®žæµ‹ä¿ç•™ï¼‰ã€‚
 const ARCHIVE_CONTROL_FILES: [&str; 3] = ["package_files", "delete_files.txt", "patch.json"];
-/// 包内"需要删除的旧文件"清单
+/// åŒ…å†…"éœ€è¦åˆ é™¤çš„æ—§æ–‡ä»¶"æ¸…å•
 const ARCHIVE_DELETE_LIST: &str = "delete_files.txt";
-/// 差量补丁包（含 hpatch `_patch` 条目）的错误前缀：调用方据此回退到清单逐文件下载
+/// å·®é‡è¡¥ä¸åŒ…ï¼ˆå« hpatch `_patch` æ¡ç›®ï¼‰çš„é”™è¯¯å‰ç¼€ï¼šè°ƒç”¨æ–¹æ®æ­¤å›žé€€åˆ°æ¸…å•é€æ–‡ä»¶ä¸‹è½½
 const ERR_DELTA_ARCHIVE: &str = "DELTA_ARCHIVE:";
 
-/// 判断解压产物中的相对路径是否为包内控制文件（只匹配包根下的那几个名字）
+/// åˆ¤æ–­è§£åŽ‹äº§ç‰©ä¸­çš„ç›¸å¯¹è·¯å¾„æ˜¯å¦ä¸ºåŒ…å†…æŽ§åˆ¶æ–‡ä»¶ï¼ˆåªåŒ¹é…åŒ…æ ¹ä¸‹çš„é‚£å‡ ä¸ªåå­—ï¼‰
 fn is_archive_control_file(relative: &Path) -> bool {
     if relative.components().count() != 1 {
         return false;
@@ -58,10 +58,10 @@ fn is_archive_control_file(relative: &Path) -> bool {
         .any(|control| name.eq_ignore_ascii_case(control))
 }
 
-/// 一次公告类请求解析出来的三项内容（Banner / 公告 / 右侧栏）。
+/// ä¸€æ¬¡å…¬å‘Šç±»è¯·æ±‚è§£æžå‡ºæ¥çš„ä¸‰é¡¹å†…å®¹ï¼ˆBanner / å…¬å‘Š / å³ä¾§æ ï¼‰ã€‚
 ///
-/// 单独成结构是为了让 `get_banners` / `get_announcements` / `get_notice_content`
-/// 共用同一套解析与回落逻辑：谁缺哪项就补哪项，不必整份换掉。
+/// å•ç‹¬æˆç»“æž„æ˜¯ä¸ºäº†è®© `get_banners` / `get_announcements` / `get_notice_content`
+/// å…±ç”¨åŒä¸€å¥—è§£æžä¸Žå›žè½é€»è¾‘ï¼šè°ç¼ºå“ªé¡¹å°±è¡¥å“ªé¡¹ï¼Œä¸å¿…æ•´ä»½æ¢æŽ‰ã€‚
 #[derive(Debug, Default)]
 struct NoticeParts {
     banners: Vec<BannerItem>,
@@ -69,8 +69,8 @@ struct NoticeParts {
     sidebars: Vec<SidebarItem>,
 }
 
-/// 读取 `delete_files.txt` 内容：官方是"每行一个相对路径"的清单；
-/// 这里同时兼容 JSON 数组（`["a","b"]` 或 `[{"path":"a"}]`），两种都归一化为相对路径列表。
+/// è¯»å– `delete_files.txt` å†…å®¹ï¼šå®˜æ–¹æ˜¯"æ¯è¡Œä¸€ä¸ªç›¸å¯¹è·¯å¾„"çš„æ¸…å•ï¼›
+/// è¿™é‡ŒåŒæ—¶å…¼å®¹ JSON æ•°ç»„ï¼ˆ`["a","b"]` æˆ– `[{"path":"a"}]`ï¼‰ï¼Œä¸¤ç§éƒ½å½’ä¸€åŒ–ä¸ºç›¸å¯¹è·¯å¾„åˆ—è¡¨ã€‚
 fn parse_delete_list(content: &str) -> Vec<String> {
     let trimmed = content.trim_start();
     if trimmed.starts_with('[') || trimmed.starts_with('{') {
@@ -115,7 +115,7 @@ pub fn cancel_download() {
     DOWNLOAD_CANCELLED.store(true, Ordering::SeqCst);
 }
 
-/// 标记本次取消需要连带删除缓存文件（必须在 cancel_download 之前调用）
+/// æ ‡è®°æœ¬æ¬¡å–æ¶ˆéœ€è¦è¿žå¸¦åˆ é™¤ç¼“å­˜æ–‡ä»¶ï¼ˆå¿…é¡»åœ¨ cancel_download ä¹‹å‰è°ƒç”¨ï¼‰
 pub fn request_cancel_cleanup() {
     CANCEL_CLEANUP_REQUESTED.store(true, Ordering::SeqCst);
 }
@@ -132,16 +132,16 @@ pub fn reset_switch_cancel() {
     SWITCH_CANCELLED.store(false, Ordering::SeqCst);
 }
 
-/// 清理指定安装路径下的所有暂存目录和 .download 缓存文件
+/// æ¸…ç†æŒ‡å®šå®‰è£…è·¯å¾„ä¸‹çš„æ‰€æœ‰æš‚å­˜ç›®å½•å’Œ .download ç¼“å­˜æ–‡ä»¶
 pub fn cleanup_staging_files(install_path: &str) {
     let install_dir = Path::new(install_path);
-    // 删除切换暂存目录
+    // åˆ é™¤åˆ‡æ¢æš‚å­˜ç›®å½•
     let switch_staging = format!("{}.switch.download", install_path);
     if Path::new(&switch_staging).exists() {
         tracing::info!("[cleanup] Removing switch staging: {}", switch_staging);
         let _ = fs::remove_dir_all(&switch_staging);
     }
-    // 删除旧格式 staging 目录
+    // åˆ é™¤æ—§æ ¼å¼ staging ç›®å½•
     if let Some(parent) = install_dir.parent() {
         if let Ok(entries) = fs::read_dir(parent) {
             for entry in entries.flatten() {
@@ -164,7 +164,7 @@ pub fn cleanup_staging_files(install_path: &str) {
             }
         }
     }
-    // 删除安装目录内的 .download 文件
+    // åˆ é™¤å®‰è£…ç›®å½•å†…çš„ .download æ–‡ä»¶
     if install_dir.exists() {
         for entry in WalkDir::new(install_dir).into_iter().flatten() {
             if entry.file_type().is_file() {
@@ -180,7 +180,7 @@ pub fn cleanup_staging_files(install_path: &str) {
     }
 }
 
-/// 目录内是否存在任意文件（用于判断暂存区是否值得保留）
+/// ç›®å½•å†…æ˜¯å¦å­˜åœ¨ä»»æ„æ–‡ä»¶ï¼ˆç”¨äºŽåˆ¤æ–­æš‚å­˜åŒºæ˜¯å¦å€¼å¾—ä¿ç•™ï¼‰
 fn dir_has_files(dir: &Path) -> bool {
     WalkDir::new(dir)
         .into_iter()
@@ -188,10 +188,10 @@ fn dir_has_files(dir: &Path) -> bool {
         .any(|entry| entry.file_type().is_file())
 }
 
-/// 检查指定安装路径下是否存在下载缓存（暂存目录或 .download 文件）
+/// æ£€æŸ¥æŒ‡å®šå®‰è£…è·¯å¾„ä¸‹æ˜¯å¦å­˜åœ¨ä¸‹è½½ç¼“å­˜ï¼ˆæš‚å­˜ç›®å½•æˆ– .download æ–‡ä»¶ï¼‰
 pub fn has_download_cache(install_path: &str) -> bool {
     let install_dir = Path::new(install_path);
-    // 检查 *.staging.* 目录
+    // æ£€æŸ¥ *.staging.* ç›®å½•
     if let Some(parent) = install_dir.parent() {
         if let Ok(entries) = fs::read_dir(parent) {
             for entry in entries.flatten() {
@@ -206,7 +206,7 @@ pub fn has_download_cache(install_path: &str) -> bool {
             }
         }
     }
-    // 检查安装目录内的 .download 文件
+    // æ£€æŸ¥å®‰è£…ç›®å½•å†…çš„ .download æ–‡ä»¶
     if install_dir.exists() {
         for entry in WalkDir::new(install_dir).into_iter().flatten() {
             if entry.file_type().is_file() {
@@ -315,24 +315,24 @@ pub struct GameLauncherService {
     http_client: Client,
     download_client: Client,
     active_operation: Arc<Mutex<Option<ActiveOperation>>>,
-    /// 只串行化「会写安装目录」的长任务（安装/更新、校验修复、预下载、切服）。
-    /// 整个服务此前被 `Arc<Mutex<GameLauncherService>>` 包着，而安装一跑就是几十分钟，
-    /// 期间公告、背景图、状态查询全部排队等锁——前端刷新后启动流程的任务里就有
-    /// 公告和背景图，于是卡死在「正在加载初始数据…」。
+    /// åªä¸²è¡ŒåŒ–ã€Œä¼šå†™å®‰è£…ç›®å½•ã€çš„é•¿ä»»åŠ¡ï¼ˆå®‰è£…/æ›´æ–°ã€æ ¡éªŒä¿®å¤ã€é¢„ä¸‹è½½ã€åˆ‡æœï¼‰ã€‚
+    /// æ•´ä¸ªæœåŠ¡æ­¤å‰è¢« `Arc<Mutex<GameLauncherService>>` åŒ…ç€ï¼Œè€Œå®‰è£…ä¸€è·‘å°±æ˜¯å‡ ååˆ†é’Ÿï¼Œ
+    /// æœŸé—´å…¬å‘Šã€èƒŒæ™¯å›¾ã€çŠ¶æ€æŸ¥è¯¢å…¨éƒ¨æŽ’é˜Ÿç­‰é”â€”â€”å‰ç«¯åˆ·æ–°åŽå¯åŠ¨æµç¨‹çš„ä»»åŠ¡é‡Œå°±æœ‰
+    /// å…¬å‘Šå’ŒèƒŒæ™¯å›¾ï¼ŒäºŽæ˜¯å¡æ­»åœ¨ã€Œæ­£åœ¨åŠ è½½åˆå§‹æ•°æ®â€¦ã€ã€‚
     write_gate: Arc<Semaphore>,
 }
 
 impl GameLauncherService {
     pub fn new() -> Self {
-        let http_client = Client::builder()
+        let http_client = crate::utils::http_client::client_builder()
             .timeout(Duration::from_secs(30))
             .user_agent("EndProtocol/0.1.0")
             .build()
             .expect("Failed to create HTTP client");
 
-        let download_client = Client::builder()
+        let download_client = crate::utils::http_client::client_builder()
             .connect_timeout(Duration::from_secs(30))
-            // 单文件可能下载数十分钟，这里只限制读超时，避免大文件被总超时中断
+            // å•æ–‡ä»¶å¯èƒ½ä¸‹è½½æ•°ååˆ†é’Ÿï¼Œè¿™é‡Œåªé™åˆ¶è¯»è¶…æ—¶ï¼Œé¿å…å¤§æ–‡ä»¶è¢«æ€»è¶…æ—¶ä¸­æ–­
             .read_timeout(Duration::from_secs(120))
             .user_agent("EndProtocol/0.1.0")
             .build()
@@ -346,8 +346,8 @@ impl GameLauncherService {
         }
     }
 
-    /// 取「会写安装目录」的长任务闸门（容量 1）。命令层先 acquire 到 permit 再执行，
-    /// 保证安装/校验/预下载/切服彼此不并发，同时不再堵住只读命令。
+    /// å–ã€Œä¼šå†™å®‰è£…ç›®å½•ã€çš„é•¿ä»»åŠ¡é—¸é—¨ï¼ˆå®¹é‡ 1ï¼‰ã€‚å‘½ä»¤å±‚å…ˆ acquire åˆ° permit å†æ‰§è¡Œï¼Œ
+    /// ä¿è¯å®‰è£…/æ ¡éªŒ/é¢„ä¸‹è½½/åˆ‡æœå½¼æ­¤ä¸å¹¶å‘ï¼ŒåŒæ—¶ä¸å†å µä½åªè¯»å‘½ä»¤ã€‚
     pub fn write_gate(&self) -> Arc<Semaphore> {
         self.write_gate.clone()
     }
@@ -364,13 +364,13 @@ impl GameLauncherService {
         self.active_operation.lock().await.clone()
     }
 
-    // ========== 版本检查 ==========
+    // ========== ç‰ˆæœ¬æ£€æŸ¥ ==========
 
-    /// 从 launcher API 获取最新版本和资源地址
+    /// ä»Ž launcher API èŽ·å–æœ€æ–°ç‰ˆæœ¬å’Œèµ„æºåœ°å€
     ///
-    /// `local_version` 会作为 `version` 字段发给官方接口：
-    /// - 官方客户端始终上报本地版本；只有在带上版本时接口才会返回 `pre_patch`（预下载补丁包）。
-    /// - 全新安装（无本地版本）传 `None`，此时返回的 `pkg.packs` 为完整安装包分卷列表。
+    /// `local_version` ä¼šä½œä¸º `version` å­—æ®µå‘ç»™å®˜æ–¹æŽ¥å£ï¼š
+    /// - å®˜æ–¹å®¢æˆ·ç«¯å§‹ç»ˆä¸ŠæŠ¥æœ¬åœ°ç‰ˆæœ¬ï¼›åªæœ‰åœ¨å¸¦ä¸Šç‰ˆæœ¬æ—¶æŽ¥å£æ‰ä¼šè¿”å›ž `pre_patch`ï¼ˆé¢„ä¸‹è½½è¡¥ä¸åŒ…ï¼‰ã€‚
+    /// - å…¨æ–°å®‰è£…ï¼ˆæ— æœ¬åœ°ç‰ˆæœ¬ï¼‰ä¼  `None`ï¼Œæ­¤æ—¶è¿”å›žçš„ `pkg.packs` ä¸ºå®Œæ•´å®‰è£…åŒ…åˆ†å·åˆ—è¡¨ã€‚
     pub async fn get_latest_package(
         &self,
         channel: &GameChannel,
@@ -427,7 +427,7 @@ impl GameLauncherService {
 
         let body: BatchProxyResponse = serde_json::from_str(&text).map_err(|e| {
             format!(
-                "Failed to parse API response: {} — body preview: {}",
+                "Failed to parse API response: {} â€” body preview: {}",
                 e,
                 &text[..text.len().min(500)]
             )
@@ -459,7 +459,7 @@ impl GameLauncherService {
             ));
         }
 
-        // 预下载补丁包（pre_patch）：官方在正式发版前提供的分卷压缩包
+        // é¢„ä¸‹è½½è¡¥ä¸åŒ…ï¼ˆpre_patchï¼‰ï¼šå®˜æ–¹åœ¨æ­£å¼å‘ç‰ˆå‰æä¾›çš„åˆ†å·åŽ‹ç¼©åŒ…
         let (
             has_preload,
             preload_version,
@@ -491,8 +491,8 @@ impl GameLauncherService {
             _ => (false, None, Vec::new(), 0, 0),
         };
 
-        // 版本补丁包（patch）：官方常规更新的主通道。
-        // patch.patches 是 WinZip AES-256 加密分卷，密码 = patch.cd_key；patch.url 是未加密整包。
+        // ç‰ˆæœ¬è¡¥ä¸åŒ…ï¼ˆpatchï¼‰ï¼šå®˜æ–¹å¸¸è§„æ›´æ–°çš„ä¸»é€šé“ã€‚
+        // patch.patches æ˜¯ WinZip AES-256 åŠ å¯†åˆ†å·ï¼Œå¯†ç  = patch.cd_keyï¼›patch.url æ˜¯æœªåŠ å¯†æ•´åŒ…ã€‚
         let patch_info = game_rsp.patch.as_ref();
         let patch_parts: Vec<PatchPart> = patch_info
             .map(|p| {
@@ -517,8 +517,8 @@ impl GameLauncherService {
             );
         }
 
-        // 解密密钥：官方真值在 patch.cd_key（`pkg` 里没有该键，见 Games.exe ParseLatestGameJson）。
-        // 保留 pkg.cd_key 作为历史形态兜底。
+        // è§£å¯†å¯†é’¥ï¼šå®˜æ–¹çœŸå€¼åœ¨ patch.cd_keyï¼ˆ`pkg` é‡Œæ²¡æœ‰è¯¥é”®ï¼Œè§ Games.exe ParseLatestGameJsonï¼‰ã€‚
+        // ä¿ç•™ pkg.cd_key ä½œä¸ºåŽ†å²å½¢æ€å…œåº•ã€‚
         let cd_key = patch_info
             .and_then(|p| p.normalized_cd_key())
             .or_else(|| {
@@ -555,7 +555,7 @@ impl GameLauncherService {
         ))
     }
 
-    /// 检查游戏安装状态
+    /// æ£€æŸ¥æ¸¸æˆå®‰è£…çŠ¶æ€
     pub async fn check_status(
         &self,
         channel: &GameChannel,
@@ -578,7 +578,7 @@ impl GameLauncherService {
         }
 
         tracing::info!("[check_status] fetching remote package...");
-        // 带上本地版本：官方接口只在这种情况下返回 pre_patch（预下载补丁包）
+        // å¸¦ä¸Šæœ¬åœ°ç‰ˆæœ¬ï¼šå®˜æ–¹æŽ¥å£åªåœ¨è¿™ç§æƒ…å†µä¸‹è¿”å›ž pre_patchï¼ˆé¢„ä¸‹è½½è¡¥ä¸åŒ…ï¼‰
         let (remote, preload_cd_key) = self
             .get_latest_package_with_cd_key(channel, local_version.as_deref())
             .await?;
@@ -592,7 +592,7 @@ impl GameLauncherService {
                 false
             };
 
-        // 预下载可用条件：已安装 + 官方提供预下载补丁包 + 本地版本不是预下载目标版本
+        // é¢„ä¸‹è½½å¯ç”¨æ¡ä»¶ï¼šå·²å®‰è£… + å®˜æ–¹æä¾›é¢„ä¸‹è½½è¡¥ä¸åŒ… + æœ¬åœ°ç‰ˆæœ¬ä¸æ˜¯é¢„ä¸‹è½½ç›®æ ‡ç‰ˆæœ¬
         let has_preload = is_installed
             && remote.has_preload
             && local_version.as_deref() != remote.preload_version.as_deref();
@@ -627,7 +627,7 @@ impl GameLauncherService {
         })
     }
 
-    /// 扫描安装目录，检查已有文件的完整性
+    /// æ‰«æå®‰è£…ç›®å½•ï¼Œæ£€æŸ¥å·²æœ‰æ–‡ä»¶çš„å®Œæ•´æ€§
     pub async fn scan_install_dir(
         &self,
         channel: &GameChannel,
@@ -635,13 +635,13 @@ impl GameLauncherService {
     ) -> Result<FileScanResult, String> {
         let path = Path::new(install_path);
 
-        // 检查核心文件
+        // æ£€æŸ¥æ ¸å¿ƒæ–‡ä»¶
         let has_exe = path.join(channel.executable_name()).exists();
         let has_data = path.join(channel.data_dir_name()).is_dir();
         let has_config = path.join("config.ini").exists();
         let channel_detected = has_exe && has_data && has_config;
 
-        // 获取远程清单
+        // èŽ·å–è¿œç¨‹æ¸…å•
         let remote = self.get_latest_package(channel, None).await?;
         let (manifest, _) = self.fetch_manifest(&remote.resource_base_url).await?;
 
@@ -671,7 +671,7 @@ impl GameLauncherService {
             match fs::metadata(&local_path) {
                 Ok(meta) => {
                     if meta.len() as i64 != entry.size {
-                        // 大小不匹配
+                        // å¤§å°ä¸åŒ¹é…
                         corrupted_files += 1;
                         download_bytes += entry_size;
                         if corrupted_file_list.len() < 20 {
@@ -690,7 +690,7 @@ impl GameLauncherService {
                 }
             }
 
-            // 大小匹配，检查 MD5
+            // å¤§å°åŒ¹é…ï¼Œæ£€æŸ¥ MD5
             match hg_crypto::verify_md5(local_path.to_str().unwrap_or(""), &entry.md5) {
                 Ok(true) => {
                     valid_files += 1;
@@ -725,13 +725,13 @@ impl GameLauncherService {
         })
     }
 
-    /// 读取本地 config.ini 中的版本号
+    /// è¯»å–æœ¬åœ° config.ini ä¸­çš„ç‰ˆæœ¬å·
     fn read_local_version(&self, install_path: &str) -> Result<String, String> {
         let config_path = Path::new(install_path).join("config.ini");
         let content =
             hg_crypto::decrypt_file_to_string(config_path.to_str().ok_or("Invalid config path")?)?;
 
-        // 解析版本号，格式类似 "game_version = x.y.z"
+        // è§£æžç‰ˆæœ¬å·ï¼Œæ ¼å¼ç±»ä¼¼ "game_version = x.y.z"
         for line in content.lines() {
             let line = line.trim();
             if line.starts_with("game_version") || line.starts_with("version") {
@@ -747,7 +747,7 @@ impl GameLauncherService {
         Err("Version not found in config.ini".to_string())
     }
 
-    /// 比较版本号是否相等
+    /// æ¯”è¾ƒç‰ˆæœ¬å·æ˜¯å¦ç›¸ç­‰
     fn versions_equal(a: &str, b: &str) -> bool {
         let parse = |v: &str| -> Vec<u32> {
             let core = v.trim().trim_start_matches('v').trim_start_matches('V');
@@ -764,9 +764,9 @@ impl GameLauncherService {
         a_parts == b_parts
     }
 
-    // ========== 清单下载与解析 ==========
+    // ========== æ¸…å•ä¸‹è½½ä¸Žè§£æž ==========
 
-    /// 下载并解密游戏文件清单
+    /// ä¸‹è½½å¹¶è§£å¯†æ¸¸æˆæ–‡ä»¶æ¸…å•
     pub async fn fetch_manifest(
         &self,
         resource_base_url: &str,
@@ -788,22 +788,22 @@ impl GameLauncherService {
 
         tracing::debug!("[manifest] Encrypted size: {} bytes", encrypted.len());
 
-        // 计算加密字节的 SHA-256 用于状态跟踪
+        // è®¡ç®—åŠ å¯†å­—èŠ‚çš„ SHA-256 ç”¨äºŽçŠ¶æ€è·Ÿè¸ª
         let manifest_sha256 = hg_crypto::sha256_hex(&encrypted);
         tracing::debug!("[manifest] SHA-256: {}", manifest_sha256);
 
-        // AES-256-CBC 解密
+        // AES-256-CBC è§£å¯†
         let decrypted = hg_crypto::decrypt_bytes_to_string(&encrypted)?;
         tracing::debug!("[manifest] Decrypted size: {} bytes", decrypted.len());
 
-        // 解析 NDJSON（每行一个 JSON 对象）
+        // è§£æž NDJSONï¼ˆæ¯è¡Œä¸€ä¸ª JSON å¯¹è±¡ï¼‰
         let files = Self::parse_manifest(&decrypted)?;
         tracing::info!("[manifest] Parsed {} files", files.len());
 
         Ok((files, manifest_sha256))
     }
 
-    /// 解析解密后的清单文本（NDJSON 格式）
+    /// è§£æžè§£å¯†åŽçš„æ¸…å•æ–‡æœ¬ï¼ˆNDJSON æ ¼å¼ï¼‰
     fn parse_manifest(content: &str) -> Result<Vec<ManifestFile>, String> {
         let mut files = Vec::new();
         let mut seen = std::collections::HashSet::new();
@@ -817,10 +817,10 @@ impl GameLauncherService {
             let entry: ManifestFile = serde_json::from_str(line)
                 .map_err(|e| format!("Line {}: JSON parse error: {}", line_num + 1, e))?;
 
-            // 验证路径安全性
+            // éªŒè¯è·¯å¾„å®‰å…¨æ€§
             Self::validate_path(&entry.path)?;
 
-            // 验证 MD5 格式（32 位十六进制）
+            // éªŒè¯ MD5 æ ¼å¼ï¼ˆ32 ä½åå…­è¿›åˆ¶ï¼‰
             if entry.md5.len() != 32 || !entry.md5.chars().all(|c| c.is_ascii_hexdigit()) {
                 return Err(format!(
                     "Line {}: Invalid MD5 '{}' (must be 32 hex chars)",
@@ -833,7 +833,7 @@ impl GameLauncherService {
                 return Err(format!("Line {}: Negative file size", line_num + 1));
             }
 
-            // 检查重复路径
+            // æ£€æŸ¥é‡å¤è·¯å¾„
             let normalized = entry.path.replace('\\', "/");
             if !seen.insert(normalized.clone()) {
                 return Err(format!(
@@ -856,7 +856,7 @@ impl GameLauncherService {
         Ok(files)
     }
 
-    /// 验证路径安全性（防止路径穿越）
+    /// éªŒè¯è·¯å¾„å®‰å…¨æ€§ï¼ˆé˜²æ­¢è·¯å¾„ç©¿è¶Šï¼‰
     fn validate_path(path: &str) -> Result<(), String> {
         if path.is_empty() {
             return Err("Empty path in manifest".to_string());
@@ -889,22 +889,22 @@ impl GameLauncherService {
         Ok(())
     }
 
-    // ========== 文件比较与计划 ==========
+    // ========== æ–‡ä»¶æ¯”è¾ƒä¸Žè®¡åˆ’ ==========
 
-    /// 比较本地文件与清单，生成更新计划。
+    /// æ¯”è¾ƒæœ¬åœ°æ–‡ä»¶ä¸Žæ¸…å•ï¼Œç”Ÿæˆæ›´æ–°è®¡åˆ’ã€‚
     ///
-    /// 先按「是否存在 + 大小是否一致」判断；对其中**大小一致且不超过阈值**的文件再计算
-    /// MD5，以识别「内容变化但大小不变」的文件——最典型的是 `config.ini` 的版本号（它决定
-    /// 本地版本，若不更新则永远提示可更新）。大文件只按大小判断：游戏大资源多为内容寻址，
-    /// 内容变化会改变文件名或大小。由此既避免对数 10GB 本地文件做全量哈希，又能正确探测
-    /// 版本号等小文件的变化。下载得到的文件仍会在写入时校验 MD5。
+    /// å…ˆæŒ‰ã€Œæ˜¯å¦å­˜åœ¨ + å¤§å°æ˜¯å¦ä¸€è‡´ã€åˆ¤æ–­ï¼›å¯¹å…¶ä¸­**å¤§å°ä¸€è‡´ä¸”ä¸è¶…è¿‡é˜ˆå€¼**çš„æ–‡ä»¶å†è®¡ç®—
+    /// MD5ï¼Œä»¥è¯†åˆ«ã€Œå†…å®¹å˜åŒ–ä½†å¤§å°ä¸å˜ã€çš„æ–‡ä»¶â€”â€”æœ€å…¸åž‹çš„æ˜¯ `config.ini` çš„ç‰ˆæœ¬å·ï¼ˆå®ƒå†³å®š
+    /// æœ¬åœ°ç‰ˆæœ¬ï¼Œè‹¥ä¸æ›´æ–°åˆ™æ°¸è¿œæç¤ºå¯æ›´æ–°ï¼‰ã€‚å¤§æ–‡ä»¶åªæŒ‰å¤§å°åˆ¤æ–­ï¼šæ¸¸æˆå¤§èµ„æºå¤šä¸ºå†…å®¹å¯»å€ï¼Œ
+    /// å†…å®¹å˜åŒ–ä¼šæ”¹å˜æ–‡ä»¶åæˆ–å¤§å°ã€‚ç”±æ­¤æ—¢é¿å…å¯¹æ•° 10GB æœ¬åœ°æ–‡ä»¶åšå…¨é‡å“ˆå¸Œï¼Œåˆèƒ½æ­£ç¡®æŽ¢æµ‹
+    /// ç‰ˆæœ¬å·ç­‰å°æ–‡ä»¶çš„å˜åŒ–ã€‚ä¸‹è½½å¾—åˆ°çš„æ–‡ä»¶ä»ä¼šåœ¨å†™å…¥æ—¶æ ¡éªŒ MD5ã€‚
     async fn plan_updates(
         &self,
         manifest: &[ManifestFile],
         install_path: &str,
         max_concurrent: usize,
     ) -> Vec<FilePlan> {
-        /// 超过该大小的文件不再计算 MD5（只按大小判断）。
+        /// è¶…è¿‡è¯¥å¤§å°çš„æ–‡ä»¶ä¸å†è®¡ç®— MD5ï¼ˆåªæŒ‰å¤§å°åˆ¤æ–­ï¼‰ã€‚
         const HASH_MAX_SIZE: i64 = 16 * 1024 * 1024;
 
         let install_dir = Path::new(install_path);
@@ -924,15 +924,15 @@ impl GameLauncherService {
                 .map(|m| m.len() as i64 == entry.size)
                 .unwrap_or(false);
             if !size_ok {
-                // 缺失或大小不符 → 需要下载
+                // ç¼ºå¤±æˆ–å¤§å°ä¸ç¬¦ â†’ éœ€è¦ä¸‹è½½
                 need_download += 1;
                 continue;
             }
             if entry.size <= HASH_MAX_SIZE {
-                // 小文件：需 MD5 确认内容是否变化
+                // å°æ–‡ä»¶ï¼šéœ€ MD5 ç¡®è®¤å†…å®¹æ˜¯å¦å˜åŒ–
                 to_hash.push(idx);
             } else {
-                // 大文件：按大小复用
+                // å¤§æ–‡ä»¶ï¼šæŒ‰å¤§å°å¤ç”¨
                 plans[idx].source_path = Some(local_path.to_string_lossy().to_string());
             }
         }
@@ -981,9 +981,9 @@ impl GameLauncherService {
         plans
     }
 
-    // ========== 下载 ==========
+    // ========== ä¸‹è½½ ==========
 
-    /// 下载单个文件，支持断点续传和重试
+    /// ä¸‹è½½å•ä¸ªæ–‡ä»¶ï¼Œæ”¯æŒæ–­ç‚¹ç»­ä¼ å’Œé‡è¯•
     pub async fn download_file_with_resume(
         &self,
         url: &str,
@@ -993,14 +993,14 @@ impl GameLauncherService {
         let download_path = format!("{}.download", dest_path);
         let download_file = Path::new(&download_path);
 
-        // 确保目标目录存在
+        // ç¡®ä¿ç›®æ ‡ç›®å½•å­˜åœ¨
         if let Some(parent) = Path::new(dest_path).parent() {
             fs::create_dir_all(parent).map_err(|e| format!("Failed to create directory: {}", e))?;
         }
 
         let mut start_byte: u64 = 0;
 
-        // 检查是否有未完成的下载（断点续传）
+        // æ£€æŸ¥æ˜¯å¦æœ‰æœªå®Œæˆçš„ä¸‹è½½ï¼ˆæ–­ç‚¹ç»­ä¼ ï¼‰
         if download_file.exists() {
             if let Ok(meta) = fs::metadata(download_file) {
                 start_byte = meta.len();
@@ -1019,10 +1019,10 @@ impl GameLauncherService {
 
         for attempt in 0..max_retries {
             if attempt > 0 {
-                // 指数退避
+                // æŒ‡æ•°é€€é¿
                 let delay = Duration::from_secs(attempt as u64);
                 tokio::time::sleep(delay).await;
-                start_byte = 0; // 重试时从头下载
+                start_byte = 0; // é‡è¯•æ—¶ä»Žå¤´ä¸‹è½½
             }
 
             let mut req = self.download_client.get(url);
@@ -1041,7 +1041,7 @@ impl GameLauncherService {
                         continue;
                     }
 
-                    // 如果服务器不支持 Range，从头开始
+                    // å¦‚æžœæœåŠ¡å™¨ä¸æ”¯æŒ Rangeï¼Œä»Žå¤´å¼€å§‹
                     if is_ok && start_byte > 0 {
                         start_byte = 0;
                     }
@@ -1049,14 +1049,14 @@ impl GameLauncherService {
                     let total = resp.content_length().unwrap_or(0) + start_byte;
 
                     let mut file = if start_byte > 0 && is_partial {
-                        // 追加模式
+                        // è¿½åŠ æ¨¡å¼
                         fs::OpenOptions::new()
                             .create(true)
                             .append(true)
                             .open(&download_path)
                             .map_err(|e| format!("Failed to open file for append: {}", e))?
                     } else {
-                        // 新建文件
+                        // æ–°å»ºæ–‡ä»¶
                         fs::File::create(&download_path)
                             .map_err(|e| format!("Failed to create file: {}", e))?
                     };
@@ -1066,7 +1066,7 @@ impl GameLauncherService {
                     let mut last_emit = start_byte;
 
                     while let Some(chunk) = stream.next().await {
-                        // 检查取消标志
+                        // æ£€æŸ¥å–æ¶ˆæ ‡å¿—
                         if DOWNLOAD_CANCELLED.load(Ordering::SeqCst) {
                             drop(file);
                             let _ = fs::remove_file(&download_path);
@@ -1078,7 +1078,7 @@ impl GameLauncherService {
                             .map_err(|e| format!("Write error: {}", e))?;
                         downloaded += chunk.len() as u64;
 
-                        // 每 256KB 报告一次进度
+                        // æ¯ 256KB æŠ¥å‘Šä¸€æ¬¡è¿›åº¦
                         if downloaded - last_emit >= 256 * 1024 || downloaded == total {
                             progress_callback(downloaded, total);
                             last_emit = downloaded;
@@ -1088,16 +1088,16 @@ impl GameLauncherService {
                     file.flush().map_err(|e| format!("Flush error: {}", e))?;
                     drop(file);
 
-                    // MD5 校验
+                    // MD5 æ ¡éªŒ
                     if !hg_crypto::verify_md5(
                         &download_path,
                         &hg_crypto::md5_hex(&fs::read(&download_path).unwrap_or_default()),
                     )? {
-                        // 从清单 URL 中无法获取预期 MD5，跳过此处校验
-                        // 清单校验在批量完成后统一进行
+                        // ä»Žæ¸…å• URL ä¸­æ— æ³•èŽ·å–é¢„æœŸ MD5ï¼Œè·³è¿‡æ­¤å¤„æ ¡éªŒ
+                        // æ¸…å•æ ¡éªŒåœ¨æ‰¹é‡å®ŒæˆåŽç»Ÿä¸€è¿›è¡Œ
                     }
 
-                    // 重命名为最终文件
+                    // é‡å‘½åä¸ºæœ€ç»ˆæ–‡ä»¶
                     fs::rename(&download_path, dest_path)
                         .map_err(|e| format!("Failed to rename: {}", e))?;
 
@@ -1116,7 +1116,7 @@ impl GameLauncherService {
         ))
     }
 
-    /// 下载文件并验证 MD5
+    /// ä¸‹è½½æ–‡ä»¶å¹¶éªŒè¯ MD5
     pub async fn download_and_verify(
         &self,
         url: &str,
@@ -1127,7 +1127,7 @@ impl GameLauncherService {
         self.download_file_with_resume(url, dest_path, progress_callback)
             .await?;
 
-        // 下载后验证 MD5
+        // ä¸‹è½½åŽéªŒè¯ MD5
         let verified = hg_crypto::verify_md5(dest_path, expected_md5)
             .map_err(|e| format!("MD5 verify error: {}", e))?;
 
@@ -1142,12 +1142,12 @@ impl GameLauncherService {
         Ok(())
     }
 
-    // ========== 完整安装/更新流程 ==========
+    // ========== å®Œæ•´å®‰è£…/æ›´æ–°æµç¨‹ ==========
 
-    /// 执行完整的安装或更新流程
-    /// 返回下载的总字节数
+    /// æ‰§è¡Œå®Œæ•´çš„å®‰è£…æˆ–æ›´æ–°æµç¨‹
+    /// è¿”å›žä¸‹è½½çš„æ€»å­—èŠ‚æ•°
     ///
-    /// `max_concurrent` 为同时下载的文件数，`resume` 控制中断后是否保留分片以便续传。
+    /// `max_concurrent` ä¸ºåŒæ—¶ä¸‹è½½çš„æ–‡ä»¶æ•°ï¼Œ`resume` æŽ§åˆ¶ä¸­æ–­åŽæ˜¯å¦ä¿ç•™åˆ†ç‰‡ä»¥ä¾¿ç»­ä¼ ã€‚
     pub async fn install_or_update(
         &self,
         channel: &GameChannel,
@@ -1161,7 +1161,7 @@ impl GameLauncherService {
         if self.has_active_operation().await {
             return Err("Another operation is in progress".to_string());
         }
-        // 1. 检查阶段
+        // 1. æ£€æŸ¥é˜¶æ®µ
         tracing::info!(
             "[install] Starting install_or_update: channel={}, path={}",
             channel.as_str(),
@@ -1177,8 +1177,8 @@ impl GameLauncherService {
             verified_bytes: 0,
         });
 
-        // 官方客户端始终上报本地版本：只有带上版本时服务端才会返回 `patch`（含 cd_key）
-        // 与 `pre_patch`。全新安装（无本地版本）时 `patch` 为 null，自动走清单逐文件路径。
+        // å®˜æ–¹å®¢æˆ·ç«¯å§‹ç»ˆä¸ŠæŠ¥æœ¬åœ°ç‰ˆæœ¬ï¼šåªæœ‰å¸¦ä¸Šç‰ˆæœ¬æ—¶æœåŠ¡ç«¯æ‰ä¼šè¿”å›ž `patch`ï¼ˆå« cd_keyï¼‰
+        // ä¸Ž `pre_patch`ã€‚å…¨æ–°å®‰è£…ï¼ˆæ— æœ¬åœ°ç‰ˆæœ¬ï¼‰æ—¶ `patch` ä¸º nullï¼Œè‡ªåŠ¨èµ°æ¸…å•é€æ–‡ä»¶è·¯å¾„ã€‚
         let local_version = self.read_local_version(install_path).ok();
         let (remote, patch_cd_key) = self
             .get_latest_package_with_cd_key(channel, local_version.as_deref())
@@ -1197,12 +1197,12 @@ impl GameLauncherService {
             );
         }
 
-        // 1.5 补丁包优先：官方常规更新走"下载加密分卷 → 7zg 解压 → 覆盖/删除"，比按清单逐文件
-        // 下载省得多（实测终末地 1.6.3→1.6.4 只需 3 MB 补丁包，而清单差异可达 GB 级）。
+        // 1.5 è¡¥ä¸åŒ…ä¼˜å…ˆï¼šå®˜æ–¹å¸¸è§„æ›´æ–°èµ°"ä¸‹è½½åŠ å¯†åˆ†å· â†’ 7zg è§£åŽ‹ â†’ è¦†ç›–/åˆ é™¤"ï¼Œæ¯”æŒ‰æ¸…å•é€æ–‡ä»¶
+        // ä¸‹è½½çœå¾—å¤šï¼ˆå®žæµ‹ç»ˆæœ«åœ° 1.6.3â†’1.6.4 åªéœ€ 3 MB è¡¥ä¸åŒ…ï¼Œè€Œæ¸…å•å·®å¼‚å¯è¾¾ GB çº§ï¼‰ã€‚
         //
-        // 但**差量形态**（V2 索引非空，包内是 `vfs_files/vfs_patch/…_patch`）必须由 hpatch
-        // 结合本地 base 文件生成新文件，本实现不含 hpatch，所以提前判掉、直接走清单逐文件，
-        // 不去白下几 GB 分卷再失败。明日方舟的补丁目前都是这种差量包。
+        // ä½†**å·®é‡å½¢æ€**ï¼ˆV2 ç´¢å¼•éžç©ºï¼ŒåŒ…å†…æ˜¯ `vfs_files/vfs_patch/â€¦_patch`ï¼‰å¿…é¡»ç”± hpatch
+        // ç»“åˆæœ¬åœ° base æ–‡ä»¶ç”Ÿæˆæ–°æ–‡ä»¶ï¼Œæœ¬å®žçŽ°ä¸å« hpatchï¼Œæ‰€ä»¥æå‰åˆ¤æŽ‰ã€ç›´æŽ¥èµ°æ¸…å•é€æ–‡ä»¶ï¼Œ
+        // ä¸åŽ»ç™½ä¸‹å‡  GB åˆ†å·å†å¤±è´¥ã€‚æ˜Žæ—¥æ–¹èˆŸçš„è¡¥ä¸ç›®å‰éƒ½æ˜¯è¿™ç§å·®é‡åŒ…ã€‚
         if remote.has_patch && !remote.patch_parts.is_empty() && !remote.patch_is_delta {
             match patch_cd_key.as_deref() {
                 Some(key) => {
@@ -1254,11 +1254,11 @@ impl GameLauncherService {
             }
         }
 
-        // 1.6 **差量包兜底**：明日方舟的补丁是 V2 差量包（`vfs_files/vfs_patch/…_patch`），
-        // 必须由 hpatch 结合本地 base 生成新文件；本实现不含 hpatch。但服务端同时提供
-        // `patch.url` —— 一个**未加密的整补丁 zip，条目就是最终游戏文件**（实测明日方舟
-        // 79.0.0 这份 3,518,344,483 B / 3616 条，抽样 md5 与清单一致，且无 `_patch` 条目）。
-        // 所以差量包这条路上，用整补丁 zip 铺盘，比按清单逐文件重下省得多。
+        // 1.6 **å·®é‡åŒ…å…œåº•**ï¼šæ˜Žæ—¥æ–¹èˆŸçš„è¡¥ä¸æ˜¯ V2 å·®é‡åŒ…ï¼ˆ`vfs_files/vfs_patch/â€¦_patch`ï¼‰ï¼Œ
+        // å¿…é¡»ç”± hpatch ç»“åˆæœ¬åœ° base ç”Ÿæˆæ–°æ–‡ä»¶ï¼›æœ¬å®žçŽ°ä¸å« hpatchã€‚ä½†æœåŠ¡ç«¯åŒæ—¶æä¾›
+        // `patch.url` â€”â€” ä¸€ä¸ª**æœªåŠ å¯†çš„æ•´è¡¥ä¸ zipï¼Œæ¡ç›®å°±æ˜¯æœ€ç»ˆæ¸¸æˆæ–‡ä»¶**ï¼ˆå®žæµ‹æ˜Žæ—¥æ–¹èˆŸ
+        // 79.0.0 è¿™ä»½ 3,518,344,483 B / 3616 æ¡ï¼ŒæŠ½æ · md5 ä¸Žæ¸…å•ä¸€è‡´ï¼Œä¸”æ—  `_patch` æ¡ç›®ï¼‰ã€‚
+        // æ‰€ä»¥å·®é‡åŒ…è¿™æ¡è·¯ä¸Šï¼Œç”¨æ•´è¡¥ä¸ zip é“ºç›˜ï¼Œæ¯”æŒ‰æ¸…å•é€æ–‡ä»¶é‡ä¸‹çœå¾—å¤šã€‚
         if remote.patch_is_delta && !remote.patch_whole_url.is_empty() {
             tracing::info!(
                 "[install] V2 delta patch detected; using the unencrypted whole patch zip instead (server reports {} bytes of volumes)",
@@ -1291,12 +1291,12 @@ impl GameLauncherService {
             }
         }
 
-        // 2. 下载并解密清单
+        // 2. ä¸‹è½½å¹¶è§£å¯†æ¸…å•
         tracing::info!("[install] Fetching manifest...");
         let (manifest, manifest_sha256) = self.fetch_manifest(&remote.resource_base_url).await?;
         tracing::info!("[install] Manifest loaded: {} files", manifest.len());
 
-        // 3. 比较阶段
+        // 3. æ¯”è¾ƒé˜¶æ®µ
         tracing::info!("[install] Comparing local vs manifest...");
         progress_callback(DownloadProgress {
             downloaded: 0,
@@ -1328,7 +1328,7 @@ impl GameLauncherService {
         );
 
         if files_to_download.is_empty() {
-            // 已经是最新版本：清理可能残留的续传暂存
+            // å·²ç»æ˜¯æœ€æ–°ç‰ˆæœ¬ï¼šæ¸…ç†å¯èƒ½æ®‹ç•™çš„ç»­ä¼ æš‚å­˜
             let stale_staging = format!("{}{}", install_path, INSTALL_STAGING_SUFFIX);
             let stale_marker = format!("{}{}", install_path, INSTALL_STAGING_VERSION_SUFFIX);
             if Path::new(&stale_staging).exists() {
@@ -1340,7 +1340,7 @@ impl GameLauncherService {
             return Ok(remote.version);
         }
 
-        // 4. 创建/复用固定暂存目录（固定名称让取消或失败后的分片在下次继续使用）
+        // 4. åˆ›å»º/å¤ç”¨å›ºå®šæš‚å­˜ç›®å½•ï¼ˆå›ºå®šåç§°è®©å–æ¶ˆæˆ–å¤±è´¥åŽçš„åˆ†ç‰‡åœ¨ä¸‹æ¬¡ç»§ç»­ä½¿ç”¨ï¼‰
         let staging_dir = format!("{}{}", install_path, INSTALL_STAGING_SUFFIX);
         let staging_version_marker = format!("{}{}", install_path, INSTALL_STAGING_VERSION_SUFFIX);
         tracing::info!("[install] Staging dir: {}", staging_dir);
@@ -1365,22 +1365,22 @@ impl GameLauncherService {
         let install_dir = Path::new(install_path);
 
         let result = async {
-            // 5. 只暂存需要更新的文件：本地已存在且 MD5 匹配的文件保持原样，
-            //    不再整目录拷贝到暂存区，更新时只需下载/应用变更文件。
-            // 6. 下载缺失/异常文件（并发下载） — 优先使用预下载文件
+            // 5. åªæš‚å­˜éœ€è¦æ›´æ–°çš„æ–‡ä»¶ï¼šæœ¬åœ°å·²å­˜åœ¨ä¸” MD5 åŒ¹é…çš„æ–‡ä»¶ä¿æŒåŽŸæ ·ï¼Œ
+            //    ä¸å†æ•´ç›®å½•æ‹·è´åˆ°æš‚å­˜åŒºï¼Œæ›´æ–°æ—¶åªéœ€ä¸‹è½½/åº”ç”¨å˜æ›´æ–‡ä»¶ã€‚
+            // 6. ä¸‹è½½ç¼ºå¤±/å¼‚å¸¸æ–‡ä»¶ï¼ˆå¹¶å‘ä¸‹è½½ï¼‰ â€” ä¼˜å…ˆä½¿ç”¨é¢„ä¸‹è½½æ–‡ä»¶
             let total_bytes: u64 = files_to_download
                 .iter()
                 .map(|p| p.manifest.size.max(0) as u64)
                 .sum();
 
-            // 预下载的产物是**加密分卷 zip**（官方 `predownload` 目录同理），不是清单里的
-            // 游戏文件，因此不能按 `manifest.path` 去复用（旧实现就是在这里恒不命中，导致
-            // 预下载流量白费）。分卷的复用发生在补丁包路径：按"同名 + MD5 一致"直接从
-            // 预下载暂存搬到补丁暂存（见 download_parts_to_staging / bUsePreDownloadZip 等价逻辑）。
+            // é¢„ä¸‹è½½çš„äº§ç‰©æ˜¯**åŠ å¯†åˆ†å· zip**ï¼ˆå®˜æ–¹ `predownload` ç›®å½•åŒç†ï¼‰ï¼Œä¸æ˜¯æ¸…å•é‡Œçš„
+            // æ¸¸æˆæ–‡ä»¶ï¼Œå› æ­¤ä¸èƒ½æŒ‰ `manifest.path` åŽ»å¤ç”¨ï¼ˆæ—§å®žçŽ°å°±æ˜¯åœ¨è¿™é‡Œæ’ä¸å‘½ä¸­ï¼Œå¯¼è‡´
+            // é¢„ä¸‹è½½æµé‡ç™½è´¹ï¼‰ã€‚åˆ†å·çš„å¤ç”¨å‘ç”Ÿåœ¨è¡¥ä¸åŒ…è·¯å¾„ï¼šæŒ‰"åŒå + MD5 ä¸€è‡´"ç›´æŽ¥ä»Ž
+            // é¢„ä¸‹è½½æš‚å­˜æ¬åˆ°è¡¥ä¸æš‚å­˜ï¼ˆè§ download_parts_to_staging / bUsePreDownloadZip ç­‰ä»·é€»è¾‘ï¼‰ã€‚
             let reused_bytes = 0u64;
 
-            // 复用上次中断时已下载完成的暂存文件；未完成的分片计入已完成字节，
-            // 下载时由 download_single_file 按 Range 续传。关闭续传时不复用。
+            // å¤ç”¨ä¸Šæ¬¡ä¸­æ–­æ—¶å·²ä¸‹è½½å®Œæˆçš„æš‚å­˜æ–‡ä»¶ï¼›æœªå®Œæˆçš„åˆ†ç‰‡è®¡å…¥å·²å®Œæˆå­—èŠ‚ï¼Œ
+            // ä¸‹è½½æ—¶ç”± download_single_file æŒ‰ Range ç»­ä¼ ã€‚å…³é—­ç»­ä¼ æ—¶ä¸å¤ç”¨ã€‚
             let mut resumed_bytes = reused_bytes;
             let mut staged_reused = 0u64;
             if resume {
@@ -1393,7 +1393,7 @@ impl GameLauncherService {
                     if meta.len() != size {
                         return true;
                     }
-                    // 小文件重新校验 MD5（大文件下载完成时已经校验过）
+                    // å°æ–‡ä»¶é‡æ–°æ ¡éªŒ MD5ï¼ˆå¤§æ–‡ä»¶ä¸‹è½½å®Œæˆæ—¶å·²ç»æ ¡éªŒè¿‡ï¼‰
                     if size <= STAGED_REUSE_HASH_LIMIT
                         && !hg_crypto::verify_md5(dest.to_str().unwrap_or(""), &plan.manifest.md5)
                             .unwrap_or(false)
@@ -1503,7 +1503,7 @@ impl GameLauncherService {
                     .await;
                     drop(permit);
                     if let Err(ref e) = result {
-                        tracing::error!("[install] Download FAILED: {} — {}", file_name, e);
+                        tracing::error!("[install] Download FAILED: {} â€” {}", file_name, e);
                     }
                     (result, file_name)
                 });
@@ -1527,7 +1527,7 @@ impl GameLauncherService {
                     }
                     Err(e) => {
                         tracing::error!(
-                            "[install] Failed {}/{}: {} — {}",
+                            "[install] Failed {}/{}: {} â€” {}",
                             completed,
                             file_count,
                             file_name,
@@ -1559,10 +1559,10 @@ impl GameLauncherService {
                 file_count
             );
 
-            // 7. 跳过全量校验：下载文件在 download_single_file 中已按 MD5 校验，
-            //    本地文件在 plan_updates 中已按大小匹配；安装完成后由前端触发快速校验。
+            // 7. è·³è¿‡å…¨é‡æ ¡éªŒï¼šä¸‹è½½æ–‡ä»¶åœ¨ download_single_file ä¸­å·²æŒ‰ MD5 æ ¡éªŒï¼Œ
+            //    æœ¬åœ°æ–‡ä»¶åœ¨ plan_updates ä¸­å·²æŒ‰å¤§å°åŒ¹é…ï¼›å®‰è£…å®ŒæˆåŽç”±å‰ç«¯è§¦å‘å¿«é€Ÿæ ¡éªŒã€‚
 
-            // 8. 应用阶段：原子替换
+            // 8. åº”ç”¨é˜¶æ®µï¼šåŽŸå­æ›¿æ¢
             progress_callback(DownloadProgress {
                 downloaded: total_bytes,
                 total: total_bytes,
@@ -1575,7 +1575,7 @@ impl GameLauncherService {
 
             self.apply_staged_files(&staging_path, install_dir)?;
 
-            // 9. 保存状态
+            // 9. ä¿å­˜çŠ¶æ€
             tracing::info!("[install] Saving payload state...");
             self.save_payload_state(channel, &remote.version, &manifest_sha256, &manifest)?;
 
@@ -1584,7 +1584,7 @@ impl GameLauncherService {
         }
         .await;
 
-        // 成功时清理暂存；失败/取消且启用续传时保留，供下次安装复用与续传。
+        // æˆåŠŸæ—¶æ¸…ç†æš‚å­˜ï¼›å¤±è´¥/å–æ¶ˆä¸”å¯ç”¨ç»­ä¼ æ—¶ä¿ç•™ï¼Œä¾›ä¸‹æ¬¡å®‰è£…å¤ç”¨ä¸Žç»­ä¼ ã€‚
         let cleanup_requested = CANCEL_CLEANUP_REQUESTED.load(Ordering::SeqCst);
         let keep_staging =
             result.is_err() && resume && !cleanup_requested && dir_has_files(&staging_path);
@@ -1630,9 +1630,9 @@ impl GameLauncherService {
         }
     }
 
-    /// 原子替换：将暂存目录中的文件移动到安装目录
+    /// åŽŸå­æ›¿æ¢ï¼šå°†æš‚å­˜ç›®å½•ä¸­çš„æ–‡ä»¶ç§»åŠ¨åˆ°å®‰è£…ç›®å½•
     fn apply_staged_files(&self, staging: &Path, target: &Path) -> Result<(), String> {
-        // 对于暂存目录中的每个文件，直接复制/覆盖到目标
+        // å¯¹äºŽæš‚å­˜ç›®å½•ä¸­çš„æ¯ä¸ªæ–‡ä»¶ï¼Œç›´æŽ¥å¤åˆ¶/è¦†ç›–åˆ°ç›®æ ‡
         for entry in WalkDir::new(staging) {
             let entry = entry.map_err(|e| format!("Walk error: {}", e))?;
             if entry.file_type().is_file() {
@@ -1653,9 +1653,9 @@ impl GameLauncherService {
 
         Ok(())
     }
-    // ========== 完整性修复 ==========
+    // ========== å®Œæ•´æ€§ä¿®å¤ ==========
 
-    /// 验证游戏文件完整性并修复（多线程校验 + 即时修复）
+    /// éªŒè¯æ¸¸æˆæ–‡ä»¶å®Œæ•´æ€§å¹¶ä¿®å¤ï¼ˆå¤šçº¿ç¨‹æ ¡éªŒ + å³æ—¶ä¿®å¤ï¼‰
     pub async fn verify_and_repair(
         &self,
         channel: &GameChannel,
@@ -1674,7 +1674,7 @@ impl GameLauncherService {
             channel, install_path, max_concurrent, quick
         );
 
-        // 1. 获取远程清单
+        // 1. èŽ·å–è¿œç¨‹æ¸…å•
         tracing::info!("[verify] Step 1: Fetching remote package info...");
         let remote = self.get_latest_package(channel, None).await?;
         tracing::info!(
@@ -1704,7 +1704,7 @@ impl GameLauncherService {
             total_verify_bytes as f64 / 1048576.0
         );
 
-        // 检查安装目录
+        // æ£€æŸ¥å®‰è£…ç›®å½•
         if !install_dir.exists() {
             tracing::error!(
                 "[verify] ERROR: Install directory does not exist: {}",
@@ -1717,7 +1717,7 @@ impl GameLauncherService {
         }
         tracing::info!("[verify] Install directory exists: {}", install_path);
 
-        // ==================== Phase 1: 检查所有文件 ====================
+        // ==================== Phase 1: æ£€æŸ¥æ‰€æœ‰æ–‡ä»¶ ====================
         tracing::info!(
             "[verify] ======== Phase 1: Check files (quick={}) ========",
             quick
@@ -1737,10 +1737,10 @@ impl GameLauncherService {
         let semaphore = Arc::new(Semaphore::new(max_concurrent));
         let mut check_set = tokio::task::JoinSet::new();
 
-        // 需要修复的文件清单
+        // éœ€è¦ä¿®å¤çš„æ–‡ä»¶æ¸…å•
         let repair_list: Arc<Mutex<Vec<(ManifestFile, String)>>> = Arc::new(Mutex::new(Vec::new()));
 
-        // 后台进度发射器（检查阶段）
+        // åŽå°è¿›åº¦å‘å°„å™¨ï¼ˆæ£€æŸ¥é˜¶æ®µï¼‰
         let progress_cb_bg = progress_callback.clone();
         let vb_bg = verified_bytes.clone();
         let cc_bg = checked_count.clone();
@@ -1797,7 +1797,7 @@ impl GameLauncherService {
                     return;
                 }
 
-                // 检查文件是否存在 + 大小（快速模式跳过 MD5）
+                // æ£€æŸ¥æ–‡ä»¶æ˜¯å¦å­˜åœ¨ + å¤§å°ï¼ˆå¿«é€Ÿæ¨¡å¼è·³è¿‡ MD5ï¼‰
                 let exists = local_path.exists();
                 let actual_size = if exists {
                     fs::metadata(&local_path).map(|m| m.len()).unwrap_or(0)
@@ -1812,7 +1812,7 @@ impl GameLauncherService {
                 } else if !size_ok {
                     false
                 } else if quick {
-                    true // 快速模式跳过 MD5
+                    true // å¿«é€Ÿæ¨¡å¼è·³è¿‡ MD5
                 } else {
                     let hash_path = local_path.clone();
                     let hash_expected = entry_md5.clone();
@@ -1879,7 +1879,7 @@ impl GameLauncherService {
             });
         }
 
-        // 等待所有检查任务完成
+        // ç­‰å¾…æ‰€æœ‰æ£€æŸ¥ä»»åŠ¡å®Œæˆ
         tracing::info!("[verify] Waiting for all check tasks to complete...");
         while let Some(result) = check_set.join_next().await {
             if let Err(e) = result {
@@ -1920,8 +1920,8 @@ impl GameLauncherService {
             }
         }
 
-        // ==================== Phase 2: 修复有问题的文件 ====================
-        // 在 drop 前收集损坏文件名列表
+        // ==================== Phase 2: ä¿®å¤æœ‰é—®é¢˜çš„æ–‡ä»¶ ====================
+        // åœ¨ drop å‰æ”¶é›†æŸåæ–‡ä»¶ååˆ—è¡¨
         let damaged_files: Vec<String> = pending_repair.iter().map(|(_, p)| p.clone()).collect();
         let damaged_count = damaged_files.len();
 
@@ -1935,7 +1935,7 @@ impl GameLauncherService {
                 file_count,
                 verified_bytes: total_verify_bytes,
             });
-            tracing::info!("[verify] All files verified OK — no repair needed");
+            tracing::info!("[verify] All files verified OK â€” no repair needed");
             return Ok("All files verified OK".to_string());
         }
 
@@ -1964,7 +1964,7 @@ impl GameLauncherService {
         let sem2 = Arc::new(Semaphore::new(max_concurrent));
         let mut repair_set = tokio::task::JoinSet::new();
 
-        // 后台进度发射器（修复阶段）
+        // åŽå°è¿›åº¦å‘å°„å™¨ï¼ˆä¿®å¤é˜¶æ®µï¼‰
         let progress_cb_bg2 = progress_callback.clone();
         let rb_bg = repaired_bytes.clone();
         let rc_bg = repaired_count.clone();
@@ -2056,7 +2056,7 @@ impl GameLauncherService {
 
         drop(pending_repair);
 
-        // 等待所有修复任务完成
+        // ç­‰å¾…æ‰€æœ‰ä¿®å¤ä»»åŠ¡å®Œæˆ
         tracing::info!("[verify] Waiting for all repair tasks to complete...");
         while let Some(result) = repair_set.join_next().await {
             if let Err(e) = result {
@@ -2078,7 +2078,7 @@ impl GameLauncherService {
             repair_count
         );
 
-        // 最终进度
+        // æœ€ç»ˆè¿›åº¦
         progress_callback(DownloadProgress {
             downloaded: 0,
             total: total_verify_bytes,
@@ -2094,7 +2094,7 @@ impl GameLauncherService {
             total_repaired
         );
 
-        // 构建结果：返回 JSON 结构数据，由前端做本地化
+        // æž„å»ºç»“æžœï¼šè¿”å›ž JSON ç»“æž„æ•°æ®ï¼Œç”±å‰ç«¯åšæœ¬åœ°åŒ–
         let result = if damaged_count > 0 {
             let ok_count = total_checked.saturating_sub(damaged_count);
             let files: Vec<String> = damaged_files.iter().cloned().collect();
@@ -2117,9 +2117,9 @@ impl GameLauncherService {
         Ok(result)
     }
 
-    // ========== 预下载 ==========
+    // ========== é¢„ä¸‹è½½ ==========
 
-    /// 预下载游戏更新资源
+    /// é¢„ä¸‹è½½æ¸¸æˆæ›´æ–°èµ„æº
     pub async fn preload_download(
         &self,
         channel: &GameChannel,
@@ -2130,7 +2130,7 @@ impl GameLauncherService {
         remote_package: Option<RemotePackage>,
     ) -> Result<String, String> {
         CANCEL_CLEANUP_REQUESTED.store(false, Ordering::SeqCst);
-        // 1. 读取本地版本（接口只在上报本地版本时返回 pre_patch）
+        // 1. è¯»å–æœ¬åœ°ç‰ˆæœ¬ï¼ˆæŽ¥å£åªåœ¨ä¸ŠæŠ¥æœ¬åœ°ç‰ˆæœ¬æ—¶è¿”å›ž pre_patchï¼‰
         let local_version = self.read_local_version(install_path).ok();
 
         // Reuse package metadata already fetched by install_preload.
@@ -2176,7 +2176,7 @@ impl GameLauncherService {
             total_bytes
         );
 
-        // 3. 开始下载阶段：复用同版本暂存以支持续传。
+        // 3. å¼€å§‹ä¸‹è½½é˜¶æ®µï¼šå¤ç”¨åŒç‰ˆæœ¬æš‚å­˜ä»¥æ”¯æŒç»­ä¼ ã€‚
         progress_callback(DownloadProgress {
             downloaded: 0,
             total: total_bytes,
@@ -2187,7 +2187,7 @@ impl GameLauncherService {
             verified_bytes: 0,
         });
 
-        // 同版本的旧暂存直接复用，异版本先删除。
+        // åŒç‰ˆæœ¬çš„æ—§æš‚å­˜ç›´æŽ¥å¤ç”¨ï¼Œå¼‚ç‰ˆæœ¬å…ˆåˆ é™¤ã€‚
         let staging_path = match self.preload_staging_dir(install_path) {
             Some(dir)
                 if Self::preload_staging_version(&dir).as_deref()
@@ -2203,13 +2203,13 @@ impl GameLauncherService {
             }
             None => Self::create_preload_staging(install_path, &preload_version)?,
         };
-        // 5. 并发下载所有分卷（download_single_file 内部完成单卷 MD5 校验与断点续传）
+        // 5. å¹¶å‘ä¸‹è½½æ‰€æœ‰åˆ†å·ï¼ˆdownload_single_file å†…éƒ¨å®Œæˆå•å· MD5 æ ¡éªŒä¸Žæ–­ç‚¹ç»­ä¼ ï¼‰
         let downloaded_bytes = Arc::new(AtomicU64::new(0));
         let finished_parts = Arc::new(AtomicUsize::new(0));
         let semaphore = Arc::new(Semaphore::new(max_concurrent.clamp(1, 32)));
         let mut join_set = tokio::task::JoinSet::new();
 
-        // 后台进度发射器
+        // åŽå°è¿›åº¦å‘å°„å™¨
         let progress_cb_bg = progress_callback.clone();
         let db_bg = downloaded_bytes.clone();
         let fp_bg = finished_parts.clone();
@@ -2261,7 +2261,7 @@ impl GameLauncherService {
                     return Err("Download cancelled".to_string());
                 }
 
-                // 续传：已下载且 MD5 一致的分卷直接跳过
+                // ç»­ä¼ ï¼šå·²ä¸‹è½½ä¸” MD5 ä¸€è‡´çš„åˆ†å·ç›´æŽ¥è·³è¿‡
                 if Path::new(&dest_str).exists()
                     && hg_crypto::verify_md5(&dest_str, &part_md5).unwrap_or(false)
                 {
@@ -2289,7 +2289,7 @@ impl GameLauncherService {
             });
         }
 
-        // 等待所有分卷下载完成
+        // ç­‰å¾…æ‰€æœ‰åˆ†å·ä¸‹è½½å®Œæˆ
         let mut failures: Vec<String> = Vec::new();
         while let Some(joined) = join_set.join_next().await {
             match joined {
@@ -2310,7 +2310,7 @@ impl GameLauncherService {
                 file_count: 0,
                 verified_bytes: 0,
             });
-            // 启用续传且未要求清理时保留已下载分卷，下次预下载可继续
+            // å¯ç”¨ç»­ä¼ ä¸”æœªè¦æ±‚æ¸…ç†æ—¶ä¿ç•™å·²ä¸‹è½½åˆ†å·ï¼Œä¸‹æ¬¡é¢„ä¸‹è½½å¯ç»§ç»­
             if !resume || CANCEL_CLEANUP_REQUESTED.load(Ordering::SeqCst) {
                 let _ = fs::remove_dir_all(&staging_path);
             } else {
@@ -2322,7 +2322,7 @@ impl GameLauncherService {
             return Err("Download cancelled".to_string());
         }
 
-        // 6. 有分卷下载/校验失败：保留已下载分卷以备续传，但不标记为已完成
+        // 6. æœ‰åˆ†å·ä¸‹è½½/æ ¡éªŒå¤±è´¥ï¼šä¿ç•™å·²ä¸‹è½½åˆ†å·ä»¥å¤‡ç»­ä¼ ï¼Œä½†ä¸æ ‡è®°ä¸ºå·²å®Œæˆ
         if !failures.is_empty() {
             let _ = self.save_preload_state(channel, &preload_version, false);
             progress_callback(DownloadProgress {
@@ -2348,10 +2348,10 @@ impl GameLauncherService {
             ));
         }
 
-        // 7. 保存预下载状态
+        // 7. ä¿å­˜é¢„ä¸‹è½½çŠ¶æ€
         self.save_preload_state(channel, &preload_version, true)?;
 
-        // 最终进度
+        // æœ€ç»ˆè¿›åº¦
         progress_callback(DownloadProgress {
             downloaded: total_bytes,
             total: total_bytes,
@@ -2374,10 +2374,10 @@ impl GameLauncherService {
         ))
     }
 
-    /// 安装官方预下载补丁：下载 `pre_patch` 分卷、解密解压并应用到安装目录。
+    /// å®‰è£…å®˜æ–¹é¢„ä¸‹è½½è¡¥ä¸ï¼šä¸‹è½½ `pre_patch` åˆ†å·ã€è§£å¯†è§£åŽ‹å¹¶åº”ç”¨åˆ°å®‰è£…ç›®å½•ã€‚
     ///
-    /// 与官方（Games.exe）一致：`pre_patch` 只负责**提前下载分卷**；真正"应用"必须拿到
-    /// `patch.cd_key`（`pre_patch` 对象里没有密钥字段），因此这里要求密钥非空。
+    /// ä¸Žå®˜æ–¹ï¼ˆGames.exeï¼‰ä¸€è‡´ï¼š`pre_patch` åªè´Ÿè´£**æå‰ä¸‹è½½åˆ†å·**ï¼›çœŸæ­£"åº”ç”¨"å¿…é¡»æ‹¿åˆ°
+    /// `patch.cd_key`ï¼ˆ`pre_patch` å¯¹è±¡é‡Œæ²¡æœ‰å¯†é’¥å­—æ®µï¼‰ï¼Œå› æ­¤è¿™é‡Œè¦æ±‚å¯†é’¥éžç©ºã€‚
     pub async fn install_preload(
         &self,
         channel: &GameChannel,
@@ -2395,8 +2395,8 @@ impl GameLauncherService {
             .get_latest_package_with_cd_key(channel, local_version.as_deref())
             .await?;
 
-        // 优先用 pre_patch 分卷；正式发版后 pre_patch 会被撤下，此时退回 patch 分卷
-        // （两者在官方客户端里走的是同一条"下载分卷→7zg 解压"链路）。
+        // ä¼˜å…ˆç”¨ pre_patch åˆ†å·ï¼›æ­£å¼å‘ç‰ˆåŽ pre_patch ä¼šè¢«æ’¤ä¸‹ï¼Œæ­¤æ—¶é€€å›ž patch åˆ†å·
+        // ï¼ˆä¸¤è€…åœ¨å®˜æ–¹å®¢æˆ·ç«¯é‡Œèµ°çš„æ˜¯åŒä¸€æ¡"ä¸‹è½½åˆ†å·â†’7zg è§£åŽ‹"é“¾è·¯ï¼‰ã€‚
         let (parts, expanded_bytes, target_version) = if remote.has_preload
             && !remote.preload_parts.is_empty()
         {
@@ -2431,7 +2431,7 @@ impl GameLauncherService {
             "Preload package cannot be installed: no decryption key (patch.cd_key)".to_string()
         })?;
 
-        // 预下载阶段不要提前把"完成"态抛给前端，等整体应用成功后再发
+        // é¢„ä¸‹è½½é˜¶æ®µä¸è¦æå‰æŠŠ"å®Œæˆ"æ€æŠ›ç»™å‰ç«¯ï¼Œç­‰æ•´ä½“åº”ç”¨æˆåŠŸåŽå†å‘
         let download_progress = progress_callback.clone();
         let inner_progress = Arc::new(move |progress: DownloadProgress| {
             if progress.stage != InstallStage::Completed.as_str() {
@@ -2460,9 +2460,9 @@ impl GameLauncherService {
                 });
                 Ok(version)
             }
-            // 差量预下载包（V2）：包内是 hpatch 用的 `_patch` 数据，不能直接铺进游戏目录。
-            // 分卷已经留好，等正式发版后走「更新」按清单逐文件下载即可，这里给出可读提示
-            // 而不是把内部前缀 `DELTA_ARCHIVE:` 泄漏到界面上。
+            // å·®é‡é¢„ä¸‹è½½åŒ…ï¼ˆV2ï¼‰ï¼šåŒ…å†…æ˜¯ hpatch ç”¨çš„ `_patch` æ•°æ®ï¼Œä¸èƒ½ç›´æŽ¥é“ºè¿›æ¸¸æˆç›®å½•ã€‚
+            // åˆ†å·å·²ç»ç•™å¥½ï¼Œç­‰æ­£å¼å‘ç‰ˆåŽèµ°ã€Œæ›´æ–°ã€æŒ‰æ¸…å•é€æ–‡ä»¶ä¸‹è½½å³å¯ï¼Œè¿™é‡Œç»™å‡ºå¯è¯»æç¤º
+            // è€Œä¸æ˜¯æŠŠå†…éƒ¨å‰ç¼€ `DELTA_ARCHIVE:` æ³„æ¼åˆ°ç•Œé¢ä¸Šã€‚
             Err(error) if error.starts_with(ERR_DELTA_ARCHIVE) => {
                 progress_callback(DownloadProgress {
                     stage: InstallStage::Error.as_str().to_string(),
@@ -2484,13 +2484,13 @@ impl GameLauncherService {
         }
     }
 
-    /// 核心链路：**加密分卷 → 解密解压 → 应用**（预下载安装与版本补丁共用）。
+    /// æ ¸å¿ƒé“¾è·¯ï¼š**åŠ å¯†åˆ†å· â†’ è§£å¯†è§£åŽ‹ â†’ åº”ç”¨**ï¼ˆé¢„ä¸‹è½½å®‰è£…ä¸Žç‰ˆæœ¬è¡¥ä¸å…±ç”¨ï¼‰ã€‚
     ///
-    /// 复现的官方行为：
-    /// - 分卷下载后逐卷 MD5 校验（官方 `Retry times` / 失败整卷重下）；
-    /// - 用 `7zg.exe x -y -o"…" "<分卷>" -p"<cd_key>"` 等价的解密解压（Games.exe `CDecompressAssist::Start`）；
-    /// - 解压产物先落暂存，再按"控制文件不落盘 + delete_files.txt 删除旧文件 + 原子替换"应用；
-    /// - 正式更新时会优先复用预下载暂存里同名同 MD5 的分卷（等价官方 `bUsePreDownloadZip`）。
+    /// å¤çŽ°çš„å®˜æ–¹è¡Œä¸ºï¼š
+    /// - åˆ†å·ä¸‹è½½åŽé€å· MD5 æ ¡éªŒï¼ˆå®˜æ–¹ `Retry times` / å¤±è´¥æ•´å·é‡ä¸‹ï¼‰ï¼›
+    /// - ç”¨ `7zg.exe x -y -o"â€¦" "<åˆ†å·>" -p"<cd_key>"` ç­‰ä»·çš„è§£å¯†è§£åŽ‹ï¼ˆGames.exe `CDecompressAssist::Start`ï¼‰ï¼›
+    /// - è§£åŽ‹äº§ç‰©å…ˆè½æš‚å­˜ï¼Œå†æŒ‰"æŽ§åˆ¶æ–‡ä»¶ä¸è½ç›˜ + delete_files.txt åˆ é™¤æ—§æ–‡ä»¶ + åŽŸå­æ›¿æ¢"åº”ç”¨ï¼›
+    /// - æ­£å¼æ›´æ–°æ—¶ä¼šä¼˜å…ˆå¤ç”¨é¢„ä¸‹è½½æš‚å­˜é‡ŒåŒååŒ MD5 çš„åˆ†å·ï¼ˆç­‰ä»·å®˜æ–¹ `bUsePreDownloadZip`ï¼‰ã€‚
     #[allow(clippy::too_many_arguments)]
     async fn install_from_archive_parts(
         &self,
@@ -2511,7 +2511,7 @@ impl GameLauncherService {
         let staging_path = PathBuf::from(format!("{}.staging.patch", install_path));
         fs::create_dir_all(&staging_path).map_err(|e| format!("Create patch staging: {}", e))?;
 
-        // 可复用的分卷来源：所有预下载暂存目录（官方"预下载产物在正式更新时直接消费"）
+        // å¯å¤ç”¨çš„åˆ†å·æ¥æºï¼šæ‰€æœ‰é¢„ä¸‹è½½æš‚å­˜ç›®å½•ï¼ˆå®˜æ–¹"é¢„ä¸‹è½½äº§ç‰©åœ¨æ­£å¼æ›´æ–°æ—¶ç›´æŽ¥æ¶ˆè´¹"ï¼‰
         let reuse_dirs = self.preload_staging_dirs(install_path);
 
         let total_bytes: u64 = parts.iter().map(|part| part.size()).sum();
@@ -2543,7 +2543,7 @@ impl GameLauncherService {
             return Err(error);
         }
 
-        // 解压（解密在 zip 条目层完成）
+        // è§£åŽ‹ï¼ˆè§£å¯†åœ¨ zip æ¡ç›®å±‚å®Œæˆï¼‰
         let part_paths = parts
             .iter()
             .enumerate()
@@ -2573,14 +2573,14 @@ impl GameLauncherService {
         .map_err(|e| format!("Archive extraction task failed: {}", e))?;
 
         if let Err(error) = extract_result {
-            // 差量包：保留分卷（下次仍需复用），交给调用方回退
+            // å·®é‡åŒ…ï¼šä¿ç•™åˆ†å·ï¼ˆä¸‹æ¬¡ä»éœ€å¤ç”¨ï¼‰ï¼Œäº¤ç»™è°ƒç”¨æ–¹å›žé€€
             if !error.starts_with(ERR_DELTA_ARCHIVE) {
                 let _ = fs::remove_dir_all(&staging_path);
             }
             return Err(error);
         }
 
-        // 解压产物自检：包内 `package_files` 是官方的"本包文件清单"，用它堵住"坏包铺进游戏目录"
+        // è§£åŽ‹äº§ç‰©è‡ªæ£€ï¼šåŒ…å†… `package_files` æ˜¯å®˜æ–¹çš„"æœ¬åŒ…æ–‡ä»¶æ¸…å•"ï¼Œç”¨å®ƒå µä½"ååŒ…é“ºè¿›æ¸¸æˆç›®å½•"
         match Self::verify_archive_package_files(&extracted_dir) {
             Ok(0) => {}
             Ok(checked) => tracing::info!(
@@ -2596,7 +2596,7 @@ impl GameLauncherService {
             }
         }
 
-        // 应用（控制文件不落盘 + delete_files.txt + 原子替换）
+        // åº”ç”¨ï¼ˆæŽ§åˆ¶æ–‡ä»¶ä¸è½ç›˜ + delete_files.txt + åŽŸå­æ›¿æ¢ï¼‰
         let apply_result = self.apply_extracted_files(
             &extracted_dir,
             Path::new(install_path),
@@ -2610,8 +2610,8 @@ impl GameLauncherService {
             return Err(error);
         }
 
-        // 用最新的服务端清单落盘状态。官方补丁/预下载包内自带 `game_files`（新版加密清单，
-        // 实测 md5 与远端 `files/game_files` 一致），优先用它，省一次清单下载。
+        // ç”¨æœ€æ–°çš„æœåŠ¡ç«¯æ¸…å•è½ç›˜çŠ¶æ€ã€‚å®˜æ–¹è¡¥ä¸/é¢„ä¸‹è½½åŒ…å†…è‡ªå¸¦ `game_files`ï¼ˆæ–°ç‰ˆåŠ å¯†æ¸…å•ï¼Œ
+        // å®žæµ‹ md5 ä¸Žè¿œç«¯ `files/game_files` ä¸€è‡´ï¼‰ï¼Œä¼˜å…ˆç”¨å®ƒï¼Œçœä¸€æ¬¡æ¸…å•ä¸‹è½½ã€‚
         let installed_package = self.get_latest_package(channel, None).await?;
         let archive_manifest = Self::read_archive_manifest(&extracted_dir);
         let (manifest, manifest_sha256) = match archive_manifest {
@@ -2634,7 +2634,7 @@ impl GameLauncherService {
             &manifest,
         )?;
 
-        // 成功：清掉补丁暂存与预下载暂存，并把"预下载完成"标记复位
+        // æˆåŠŸï¼šæ¸…æŽ‰è¡¥ä¸æš‚å­˜ä¸Žé¢„ä¸‹è½½æš‚å­˜ï¼Œå¹¶æŠŠ"é¢„ä¸‹è½½å®Œæˆ"æ ‡è®°å¤ä½
         let _ = fs::remove_dir_all(&staging_path);
         self.cleanup_preload_staging(install_path);
         let _ = self.save_preload_state(channel, &installed_package.version, false);
@@ -2647,14 +2647,14 @@ impl GameLauncherService {
         Ok(installed_package.version)
     }
 
-    /// 用**未加密整补丁 zip**（`patch.url`）更新：差量包（V2）走不通时的官方回退形态。
+    /// ç”¨**æœªåŠ å¯†æ•´è¡¥ä¸ zip**ï¼ˆ`patch.url`ï¼‰æ›´æ–°ï¼šå·®é‡åŒ…ï¼ˆV2ï¼‰èµ°ä¸é€šæ—¶çš„å®˜æ–¹å›žé€€å½¢æ€ã€‚
     ///
-    /// 实测依据（明日方舟 79.0.0，`patch.url` 指向 3,518,344,483 B 的 zip）：
-    /// - 3616 个条目、**0 个加密条目**、**0 个 `_patch` 条目**，条目名就是最终游戏文件路径；
-    /// - 抽样 `config.ini` / `WebviewConfig/WebPortalSign.gryph` 的 MD5 与远端清单逐条一致；
-    /// - 包内同样带 `game_files`（16 B）与 `package_files` 等控制文件。
-    /// 所以这条路与"分卷解密解压"共用后半段（自检 + 控制文件过滤 + delete 清单 + 原子替换），
-    /// 只是前半段换成"下载一个明文 zip 再普通解压"。
+    /// å®žæµ‹ä¾æ®ï¼ˆæ˜Žæ—¥æ–¹èˆŸ 79.0.0ï¼Œ`patch.url` æŒ‡å‘ 3,518,344,483 B çš„ zipï¼‰ï¼š
+    /// - 3616 ä¸ªæ¡ç›®ã€**0 ä¸ªåŠ å¯†æ¡ç›®**ã€**0 ä¸ª `_patch` æ¡ç›®**ï¼Œæ¡ç›®åå°±æ˜¯æœ€ç»ˆæ¸¸æˆæ–‡ä»¶è·¯å¾„ï¼›
+    /// - æŠ½æ · `config.ini` / `WebviewConfig/WebPortalSign.gryph` çš„ MD5 ä¸Žè¿œç«¯æ¸…å•é€æ¡ä¸€è‡´ï¼›
+    /// - åŒ…å†…åŒæ ·å¸¦ `game_files`ï¼ˆ16 Bï¼‰ä¸Ž `package_files` ç­‰æŽ§åˆ¶æ–‡ä»¶ã€‚
+    /// æ‰€ä»¥è¿™æ¡è·¯ä¸Ž"åˆ†å·è§£å¯†è§£åŽ‹"å…±ç”¨åŽåŠæ®µï¼ˆè‡ªæ£€ + æŽ§åˆ¶æ–‡ä»¶è¿‡æ»¤ + delete æ¸…å• + åŽŸå­æ›¿æ¢ï¼‰ï¼Œ
+    /// åªæ˜¯å‰åŠæ®µæ¢æˆ"ä¸‹è½½ä¸€ä¸ªæ˜Žæ–‡ zip å†æ™®é€šè§£åŽ‹"ã€‚
     async fn install_from_whole_patch_zip(
         &self,
         channel: &GameChannel,
@@ -2671,7 +2671,7 @@ impl GameLauncherService {
         let archive_path = staging_path.join("patch.zip");
         let archive_str = archive_path.to_string_lossy().to_string();
 
-        // 1) 下载整包（断点续传 + MD5）
+        // 1) ä¸‹è½½æ•´åŒ…ï¼ˆæ–­ç‚¹ç»­ä¼  + MD5ï¼‰
         progress_callback(DownloadProgress {
             downloaded: 0,
             total: 0,
@@ -2700,7 +2700,7 @@ impl GameLauncherService {
             return Err(error);
         }
 
-        // 2) 解压（明文 zip，不需要密码）
+        // 2) è§£åŽ‹ï¼ˆæ˜Žæ–‡ zipï¼Œä¸éœ€è¦å¯†ç ï¼‰
         let extracted_dir = staging_path.join(".extracted");
         if extracted_dir.exists() {
             let _ = fs::remove_dir_all(&extracted_dir);
@@ -2724,7 +2724,7 @@ impl GameLauncherService {
             return Err(error);
         }
 
-        // 3) 自检 + 4) 应用（与分卷路径共用同一套逻辑）
+        // 3) è‡ªæ£€ + 4) åº”ç”¨ï¼ˆä¸Žåˆ†å·è·¯å¾„å…±ç”¨åŒä¸€å¥—é€»è¾‘ï¼‰
         match Self::verify_archive_package_files(&extracted_dir) {
             Ok(0) => {}
             Ok(checked) => tracing::info!(
@@ -2741,7 +2741,7 @@ impl GameLauncherService {
         }
         self.apply_extracted_files(&extracted_dir, Path::new(install_path), &progress_callback)?;
 
-        // 5) 落状态（优先用包内 game_files）
+        // 5) è½çŠ¶æ€ï¼ˆä¼˜å…ˆç”¨åŒ…å†… game_filesï¼‰
         let installed_package = self.get_latest_package(channel, None).await?;
         let (manifest, manifest_sha256) = match Self::read_archive_manifest(&extracted_dir) {
             Some(pair) => pair,
@@ -2766,8 +2766,8 @@ impl GameLauncherService {
         Ok(installed_package.version)
     }
 
-    /// 解压**未加密**的整补丁 zip（`patch.url`）。与 `extract_encrypted_archive` 的区别只有
-    /// 一处：条目不需要密码，但仍然会拒绝差量条目，避免把 `_patch` 数据铺进游戏目录。
+    /// è§£åŽ‹**æœªåŠ å¯†**çš„æ•´è¡¥ä¸ zipï¼ˆ`patch.url`ï¼‰ã€‚ä¸Ž `extract_encrypted_archive` çš„åŒºåˆ«åªæœ‰
+    /// ä¸€å¤„ï¼šæ¡ç›®ä¸éœ€è¦å¯†ç ï¼Œä½†ä»ç„¶ä¼šæ‹’ç»å·®é‡æ¡ç›®ï¼Œé¿å…æŠŠ `_patch` æ•°æ®é“ºè¿›æ¸¸æˆç›®å½•ã€‚
     fn extract_plain_archive(
         archive_path: &Path,
         output_dir: &Path,
@@ -2781,8 +2781,8 @@ impl GameLauncherService {
         let mut total_bytes = 0u64;
         let mut delta_entries = Vec::new();
         for index in 0..file_count {
-            // zip 9：`name_for_index` 返回 `Option<ZipResult<Cow<str>>>`（双层）。
-            // 这里只做差量形态预检，失败时用空名跳过即可。
+            // zip 9ï¼š`name_for_index` è¿”å›ž `Option<ZipResult<Cow<str>>>`ï¼ˆåŒå±‚ï¼‰ã€‚
+            // è¿™é‡Œåªåšå·®é‡å½¢æ€é¢„æ£€ï¼Œå¤±è´¥æ—¶ç”¨ç©ºåè·³è¿‡å³å¯ã€‚
             let name = archive
                 .name_for_index(index)
                 .map(|r| r.unwrap_or_default())
@@ -2884,7 +2884,7 @@ impl GameLauncherService {
         Ok(())
     }
 
-    /// 下载分卷到指定暂存目录：已存在且 MD5 一致的跳过，能按"同名 + MD5"命中复用目录时直接搬过来。
+    /// ä¸‹è½½åˆ†å·åˆ°æŒ‡å®šæš‚å­˜ç›®å½•ï¼šå·²å­˜åœ¨ä¸” MD5 ä¸€è‡´çš„è·³è¿‡ï¼Œèƒ½æŒ‰"åŒå + MD5"å‘½ä¸­å¤ç”¨ç›®å½•æ—¶ç›´æŽ¥æ¬è¿‡æ¥ã€‚
     async fn download_parts_to_staging(
         &self,
         parts: &[PatchPart],
@@ -2950,7 +2950,7 @@ impl GameLauncherService {
                     return Err("Download cancelled".to_string());
                 }
 
-                // 1) 本暂存目录里已有且完整
+                // 1) æœ¬æš‚å­˜ç›®å½•é‡Œå·²æœ‰ä¸”å®Œæ•´
                 if Path::new(&dest_str).exists()
                     && hg_crypto::verify_md5(&dest_str, &part_md5).unwrap_or(false)
                 {
@@ -2960,7 +2960,7 @@ impl GameLauncherService {
                     return Ok(());
                 }
 
-                // 2) 复用预下载暂存里的同名分卷（内容寻址：同名 + MD5 一致）
+                // 2) å¤ç”¨é¢„ä¸‹è½½æš‚å­˜é‡Œçš„åŒååˆ†å·ï¼ˆå†…å®¹å¯»å€ï¼šåŒå + MD5 ä¸€è‡´ï¼‰
                 for dir in &reuse {
                     let candidate = dir.join(&file_name);
                     if candidate == Path::new(&dest_str) || !candidate.is_file() {
@@ -2989,7 +2989,7 @@ impl GameLauncherService {
                     }
                 }
 
-                // 3) 正常下载
+                // 3) æ­£å¸¸ä¸‹è½½
                 let result = download_single_file(
                     &client, &part_url, &dest_str, &part_md5, db, part_size, resume,
                 )
@@ -3032,13 +3032,13 @@ impl GameLauncherService {
         Ok(())
     }
 
-    /// 解压 WinZip AES 加密的分卷 zip（顺序拼接后解密），产物落到 `output_dir`。
+    /// è§£åŽ‹ WinZip AES åŠ å¯†çš„åˆ†å· zipï¼ˆé¡ºåºæ‹¼æŽ¥åŽè§£å¯†ï¼‰ï¼Œäº§ç‰©è½åˆ° `output_dir`ã€‚
     ///
-    /// 差量形态检测：官方补丁包有两种内容形态——"最终文件包"（解压即用）与"差量包"
-    /// （条目形如 `vfs_files/vfs_patch/diff_<a>_<b>/xxx_patch`，必须由 hpatch 结合本地 base
-    /// 文件打补丁，见 Patch.exe / `CPatchCotroller::DoPatch`）。本实现不包含 hpatch，
-    /// 因此一旦发现差量条目就返回 `ERR_DELTA_ARCHIVE` 前缀的错误，交由调用方回退到
-    /// "清单逐文件下载"路径，绝不把 `_patch` 当游戏文件铺进安装目录。
+    /// å·®é‡å½¢æ€æ£€æµ‹ï¼šå®˜æ–¹è¡¥ä¸åŒ…æœ‰ä¸¤ç§å†…å®¹å½¢æ€â€”â€”"æœ€ç»ˆæ–‡ä»¶åŒ…"ï¼ˆè§£åŽ‹å³ç”¨ï¼‰ä¸Ž"å·®é‡åŒ…"
+    /// ï¼ˆæ¡ç›®å½¢å¦‚ `vfs_files/vfs_patch/diff_<a>_<b>/xxx_patch`ï¼Œå¿…é¡»ç”± hpatch ç»“åˆæœ¬åœ° base
+    /// æ–‡ä»¶æ‰“è¡¥ä¸ï¼Œè§ Patch.exe / `CPatchCotroller::DoPatch`ï¼‰ã€‚æœ¬å®žçŽ°ä¸åŒ…å« hpatchï¼Œ
+    /// å› æ­¤ä¸€æ—¦å‘çŽ°å·®é‡æ¡ç›®å°±è¿”å›ž `ERR_DELTA_ARCHIVE` å‰ç¼€çš„é”™è¯¯ï¼Œäº¤ç”±è°ƒç”¨æ–¹å›žé€€åˆ°
+    /// "æ¸…å•é€æ–‡ä»¶ä¸‹è½½"è·¯å¾„ï¼Œç»ä¸æŠŠ `_patch` å½“æ¸¸æˆæ–‡ä»¶é“ºè¿›å®‰è£…ç›®å½•ã€‚
     fn extract_encrypted_archive(
         part_paths: &[PathBuf],
         cd_key: &str,
@@ -3052,12 +3052,12 @@ impl GameLauncherService {
             zip::ZipArchive::new(reader).map_err(|e| format!("Open archive: {}", e))?;
         let file_count = archive.len();
 
-        // 第一遍：统计解压总量 + 差量形态检测
+        // ç¬¬ä¸€éï¼šç»Ÿè®¡è§£åŽ‹æ€»é‡ + å·®é‡å½¢æ€æ£€æµ‹
         let mut total_bytes = 0u64;
         let mut delta_entries = Vec::new();
         for index in 0..file_count {
-            // zip 9：`name_for_index` 返回 `Option<ZipResult<Cow<str>>>`（双层）。
-            // 这里只做差量形态预检，失败时用空名跳过即可。
+            // zip 9ï¼š`name_for_index` è¿”å›ž `Option<ZipResult<Cow<str>>>`ï¼ˆåŒå±‚ï¼‰ã€‚
+            // è¿™é‡Œåªåšå·®é‡å½¢æ€é¢„æ£€ï¼Œå¤±è´¥æ—¶ç”¨ç©ºåè·³è¿‡å³å¯ã€‚
             let name = archive
                 .name_for_index(index)
                 .map(|r| r.unwrap_or_default())
@@ -3086,8 +3086,8 @@ impl GameLauncherService {
                 delta_entries.join(", ")
             ));
         }
-        // `total_size` 只是服务端的"预留空间估计"（实测 1.66×~2.5×），仅在没有实际条目时兜底，
-        // 避免进度条分母虚高（见逆向文档 §6.3）。
+        // `total_size` åªæ˜¯æœåŠ¡ç«¯çš„"é¢„ç•™ç©ºé—´ä¼°è®¡"ï¼ˆå®žæµ‹ 1.66Ã—~2.5Ã—ï¼‰ï¼Œä»…åœ¨æ²¡æœ‰å®žé™…æ¡ç›®æ—¶å…œåº•ï¼Œ
+        // é¿å…è¿›åº¦æ¡åˆ†æ¯è™šé«˜ï¼ˆè§é€†å‘æ–‡æ¡£ Â§6.3ï¼‰ã€‚
         if total_bytes == 0 {
             total_bytes = expected_bytes;
         }
@@ -3167,13 +3167,13 @@ impl GameLauncherService {
         Ok(())
     }
 
-    /// 把解压产物应用到游戏安装目录。
+    /// æŠŠè§£åŽ‹äº§ç‰©åº”ç”¨åˆ°æ¸¸æˆå®‰è£…ç›®å½•ã€‚
     ///
-    /// 与官方（Games.exe `CCopyGameFile`，RVA `0x00277c50` / `0x00278dc0`）对齐的三条规则：
-    /// 1. **包内控制文件不落盘**：`package_files` / `delete_files.txt` / `patch.json` 只用于驱动流程，
-    ///    实测官方安装目录里不存在它们（`game_files` 是正式文件，照常应用）；
-    /// 2. **按 `delete_files.txt` 删除旧文件**：官方会拼出 `<目录>\delete_files.txt` 并逐条删除；
-    /// 3. **原子替换**：先写 `<目标>.hgtmp`，校验长度后再 rename 覆盖，避免半写文件。
+    /// ä¸Žå®˜æ–¹ï¼ˆGames.exe `CCopyGameFile`ï¼ŒRVA `0x00277c50` / `0x00278dc0`ï¼‰å¯¹é½çš„ä¸‰æ¡è§„åˆ™ï¼š
+    /// 1. **åŒ…å†…æŽ§åˆ¶æ–‡ä»¶ä¸è½ç›˜**ï¼š`package_files` / `delete_files.txt` / `patch.json` åªç”¨äºŽé©±åŠ¨æµç¨‹ï¼Œ
+    ///    å®žæµ‹å®˜æ–¹å®‰è£…ç›®å½•é‡Œä¸å­˜åœ¨å®ƒä»¬ï¼ˆ`game_files` æ˜¯æ­£å¼æ–‡ä»¶ï¼Œç…§å¸¸åº”ç”¨ï¼‰ï¼›
+    /// 2. **æŒ‰ `delete_files.txt` åˆ é™¤æ—§æ–‡ä»¶**ï¼šå®˜æ–¹ä¼šæ‹¼å‡º `<ç›®å½•>\delete_files.txt` å¹¶é€æ¡åˆ é™¤ï¼›
+    /// 3. **åŽŸå­æ›¿æ¢**ï¼šå…ˆå†™ `<ç›®æ ‡>.hgtmp`ï¼Œæ ¡éªŒé•¿åº¦åŽå† rename è¦†ç›–ï¼Œé¿å…åŠå†™æ–‡ä»¶ã€‚
     fn apply_extracted_files(
         &self,
         extracted_dir: &Path,
@@ -3218,7 +3218,7 @@ impl GameLauncherService {
                 fs::create_dir_all(parent)
                     .map_err(|e| format!("Create install directory: {}", e))?;
             }
-            // 原子替换：先写临时文件，落盘后 rename 覆盖目标
+            // åŽŸå­æ›¿æ¢ï¼šå…ˆå†™ä¸´æ—¶æ–‡ä»¶ï¼Œè½ç›˜åŽ rename è¦†ç›–ç›®æ ‡
             let temp_path = PathBuf::from(format!("{}.hgtmp", destination.display()));
             let _ = fs::remove_file(&temp_path);
 
@@ -3278,7 +3278,7 @@ impl GameLauncherService {
         Ok(())
     }
 
-    /// 按包内 `delete_files.txt` 删除安装目录里的旧文件（官方 `CCopyGameFile` 的行为）
+    /// æŒ‰åŒ…å†… `delete_files.txt` åˆ é™¤å®‰è£…ç›®å½•é‡Œçš„æ—§æ–‡ä»¶ï¼ˆå®˜æ–¹ `CCopyGameFile` çš„è¡Œä¸ºï¼‰
     fn remove_deleted_files(&self, extracted_dir: &Path, install_dir: &Path) -> Result<(), String> {
         let list_path = extracted_dir.join(ARCHIVE_DELETE_LIST);
         if !list_path.is_file() {
@@ -3321,10 +3321,10 @@ impl GameLauncherService {
         Ok(())
     }
 
-    /// 读取包内自带的新版清单（`game_files`，固定 AES-256-CBC 加密的 NDJSON）。
+    /// è¯»å–åŒ…å†…è‡ªå¸¦çš„æ–°ç‰ˆæ¸…å•ï¼ˆ`game_files`ï¼Œå›ºå®š AES-256-CBC åŠ å¯†çš„ NDJSONï¼‰ã€‚
     ///
-    /// 官方补丁/预下载包都会带上它（与远端 `files/game_files` 内容一致）；解不开或解析失败时
-    /// 返回 `None`，由调用方回退到远端清单。
+    /// å®˜æ–¹è¡¥ä¸/é¢„ä¸‹è½½åŒ…éƒ½ä¼šå¸¦ä¸Šå®ƒï¼ˆä¸Žè¿œç«¯ `files/game_files` å†…å®¹ä¸€è‡´ï¼‰ï¼›è§£ä¸å¼€æˆ–è§£æžå¤±è´¥æ—¶
+    /// è¿”å›ž `None`ï¼Œç”±è°ƒç”¨æ–¹å›žé€€åˆ°è¿œç«¯æ¸…å•ã€‚
     fn read_archive_manifest(extracted_dir: &Path) -> Option<(Vec<ManifestFile>, String)> {
         let path = extracted_dir.join("game_files");
         if !path.is_file() {
@@ -3339,13 +3339,13 @@ impl GameLauncherService {
         }
     }
 
-    /// 用包内 `package_files` 校验解压产物。
+    /// ç”¨åŒ…å†… `package_files` æ ¡éªŒè§£åŽ‹äº§ç‰©ã€‚
     ///
-    /// 逆向依据：官方补丁/预下载包内同时带 `game_files`（新版清单）与 `package_files`
-    /// （**本包文件清单**，同样是"固定 AES-256-CBC 加密的 NDJSON"；实测本机阿米娅安装目录
-    /// 里那份 510,176 字节 / 3115 条，解密后即 `{"path","md5","size"}` 行）。
-    /// 这里只校验"解压目录里确实存在"的条目：不匹配说明包本身损坏，宁可不铺；
-    /// 不在包内的条目（属其它分卷）直接跳过，避免误报。
+    /// é€†å‘ä¾æ®ï¼šå®˜æ–¹è¡¥ä¸/é¢„ä¸‹è½½åŒ…å†…åŒæ—¶å¸¦ `game_files`ï¼ˆæ–°ç‰ˆæ¸…å•ï¼‰ä¸Ž `package_files`
+    /// ï¼ˆ**æœ¬åŒ…æ–‡ä»¶æ¸…å•**ï¼ŒåŒæ ·æ˜¯"å›ºå®š AES-256-CBC åŠ å¯†çš„ NDJSON"ï¼›å®žæµ‹æœ¬æœºé˜¿ç±³å¨…å®‰è£…ç›®å½•
+    /// é‡Œé‚£ä»½ 510,176 å­—èŠ‚ / 3115 æ¡ï¼Œè§£å¯†åŽå³ `{"path","md5","size"}` è¡Œï¼‰ã€‚
+    /// è¿™é‡Œåªæ ¡éªŒ"è§£åŽ‹ç›®å½•é‡Œç¡®å®žå­˜åœ¨"çš„æ¡ç›®ï¼šä¸åŒ¹é…è¯´æ˜ŽåŒ…æœ¬èº«æŸåï¼Œå®å¯ä¸é“ºï¼›
+    /// ä¸åœ¨åŒ…å†…çš„æ¡ç›®ï¼ˆå±žå…¶å®ƒåˆ†å·ï¼‰ç›´æŽ¥è·³è¿‡ï¼Œé¿å…è¯¯æŠ¥ã€‚
     fn verify_archive_package_files(extracted_dir: &Path) -> Result<usize, String> {
         let path = extracted_dir.join("package_files");
         if !path.is_file() {
@@ -3354,7 +3354,7 @@ impl GameLauncherService {
         let bytes = fs::read(&path).map_err(|e| format!("Read package_files: {}", e))?;
         let text = match hg_crypto::decrypt_bytes_to_string(&bytes) {
             Ok(text) => text,
-            // 少数形态可能是明文清单
+            // å°‘æ•°å½¢æ€å¯èƒ½æ˜¯æ˜Žæ–‡æ¸…å•
             Err(_) => {
                 fs::read_to_string(&path).map_err(|e| format!("Read package_files: {}", e))?
             }
@@ -3397,7 +3397,7 @@ impl GameLauncherService {
         Ok(checked)
     }
 
-    /// 从分卷 URL 推断本地文件名（去掉查询串）；文件名非法时回退为 part_###.zip
+    /// ä»Žåˆ†å· URL æŽ¨æ–­æœ¬åœ°æ–‡ä»¶åï¼ˆåŽ»æŽ‰æŸ¥è¯¢ä¸²ï¼‰ï¼›æ–‡ä»¶åéžæ³•æ—¶å›žé€€ä¸º part_###.zip
     fn preload_part_file_name(url: &str, index: usize) -> String {
         let path = url.split('?').next().unwrap_or("");
         let name = path.rsplit('/').next().unwrap_or("");
@@ -3408,9 +3408,9 @@ impl GameLauncherService {
         }
     }
 
-    /// 预下载暂存目录内的版本标记文件名（见模块级 `PRELOAD_VERSION_MARKER`）
+    /// é¢„ä¸‹è½½æš‚å­˜ç›®å½•å†…çš„ç‰ˆæœ¬æ ‡è®°æ–‡ä»¶åï¼ˆè§æ¨¡å—çº§ `PRELOAD_VERSION_MARKER`ï¼‰
 
-    /// 新建预下载暂存目录并写入目标版本标记
+    /// æ–°å»ºé¢„ä¸‹è½½æš‚å­˜ç›®å½•å¹¶å†™å…¥ç›®æ ‡ç‰ˆæœ¬æ ‡è®°
     fn create_preload_staging(install_path: &str, version: &str) -> Result<PathBuf, String> {
         let dir = format!("{}.staging.preload.{}", install_path, uuid::Uuid::new_v4());
         let path = PathBuf::from(&dir);
@@ -3420,13 +3420,13 @@ impl GameLauncherService {
         Ok(path)
     }
 
-    /// 读取预下载暂存目录记录的目标版本
+    /// è¯»å–é¢„ä¸‹è½½æš‚å­˜ç›®å½•è®°å½•çš„ç›®æ ‡ç‰ˆæœ¬
     fn preload_staging_version(dir: &str) -> Option<String> {
         let content = fs::read_to_string(Path::new(dir).join(PRELOAD_VERSION_MARKER)).ok()?;
         Some(content.trim().to_string())
     }
 
-    /// 获取预下载 staging 目录路径（最新的一个）
+    /// èŽ·å–é¢„ä¸‹è½½ staging ç›®å½•è·¯å¾„ï¼ˆæœ€æ–°çš„ä¸€ä¸ªï¼‰
     fn preload_staging_dir(&self, install_path: &str) -> Option<String> {
         self.preload_staging_dirs(install_path)
             .into_iter()
@@ -3434,7 +3434,7 @@ impl GameLauncherService {
             .map(|path| path.to_string_lossy().to_string())
     }
 
-    /// 列出全部预下载 staging 目录（可能残留多个版本，正式更新时都要作为复用来源）
+    /// åˆ—å‡ºå…¨éƒ¨é¢„ä¸‹è½½ staging ç›®å½•ï¼ˆå¯èƒ½æ®‹ç•™å¤šä¸ªç‰ˆæœ¬ï¼Œæ­£å¼æ›´æ–°æ—¶éƒ½è¦ä½œä¸ºå¤ç”¨æ¥æºï¼‰
     fn preload_staging_dirs(&self, install_path: &str) -> Vec<PathBuf> {
         let Some(parent) = Path::new(install_path).parent() else {
             return Vec::new();
@@ -3457,19 +3457,19 @@ impl GameLauncherService {
                 dirs.push((modified, entry.path()));
             }
         }
-        // 新到旧：优先复用最近一次预下载的产物
+        // æ–°åˆ°æ—§ï¼šä¼˜å…ˆå¤ç”¨æœ€è¿‘ä¸€æ¬¡é¢„ä¸‹è½½çš„äº§ç‰©
         dirs.sort_by(|a, b| b.0.cmp(&a.0));
         dirs.into_iter().map(|(_, path)| path).collect()
     }
 
-    /// 清理全部预下载 staging 目录
+    /// æ¸…ç†å…¨éƒ¨é¢„ä¸‹è½½ staging ç›®å½•
     fn cleanup_preload_staging(&self, install_path: &str) {
         for dir in self.preload_staging_dirs(install_path) {
             let _ = fs::remove_dir_all(dir);
         }
     }
 
-    /// 保存 payload 状态到文件
+    /// ä¿å­˜ payload çŠ¶æ€åˆ°æ–‡ä»¶
     fn save_payload_state(
         &self,
         channel: &GameChannel,
@@ -3501,7 +3501,7 @@ impl GameLauncherService {
         let json =
             serde_json::to_string_pretty(&state).map_err(|e| format!("JSON serialize: {}", e))?;
 
-        // 原子写入：先写临时文件，再重命名
+        // åŽŸå­å†™å…¥ï¼šå…ˆå†™ä¸´æ—¶æ–‡ä»¶ï¼Œå†é‡å‘½å
         let tmp_file = state_file.with_extension("json.tmp");
         fs::write(&tmp_file, &json).map_err(|e| format!("Write state: {}", e))?;
         fs::rename(&tmp_file, &state_file).map_err(|e| format!("Rename state: {}", e))?;
@@ -3509,7 +3509,7 @@ impl GameLauncherService {
         Ok(())
     }
 
-    /// 读取 payload 状态（同步版本，供内部使用）
+    /// è¯»å– payload çŠ¶æ€ï¼ˆåŒæ­¥ç‰ˆæœ¬ï¼Œä¾›å†…éƒ¨ä½¿ç”¨ï¼‰
     fn load_payload_state(&self, channel: &GameChannel) -> Option<PayloadState> {
         let state_dir = crate::utils::paths::app_data_dir().ok()?.join("game_state");
         let state_file = state_dir.join(format!("{}.json", channel.as_str()));
@@ -3517,12 +3517,12 @@ impl GameLauncherService {
         serde_json::from_str(&content).ok()
     }
 
-    /// 读取 payload 状态（异步版本，供外部使用）
+    /// è¯»å– payload çŠ¶æ€ï¼ˆå¼‚æ­¥ç‰ˆæœ¬ï¼Œä¾›å¤–éƒ¨ä½¿ç”¨ï¼‰
     pub async fn get_payload_state(&self, channel: &GameChannel) -> Option<PayloadState> {
         self.load_payload_state(channel)
     }
 
-    /// 保存预下载状态
+    /// ä¿å­˜é¢„ä¸‹è½½çŠ¶æ€
     fn save_preload_state(
         &self,
         channel: &GameChannel,
@@ -3564,7 +3564,7 @@ impl GameLauncherService {
 
     // ========== Banner / Announcement / Background ==========
 
-    /// 通用 batch_proxy 请求（web API）
+    /// é€šç”¨ batch_proxy è¯·æ±‚ï¼ˆweb APIï¼‰
     async fn batch_proxy_web(
         &self,
         channel: &GameChannel,
@@ -3639,13 +3639,13 @@ impl GameLauncherService {
         Ok(body)
     }
 
-    /// 获取 Banner 列表
+    /// èŽ·å– Banner åˆ—è¡¨
     pub async fn get_banners(&self, channel: &GameChannel) -> Result<Vec<BannerItem>, String> {
         let mut parts = self
             .fetch_notice_parts(channel, &["get_banner"])
             .await?;
 
-        // 该渠道没有 Banner 时用回落渠道（官服 / 国际服）的补上。
+        // è¯¥æ¸ é“æ²¡æœ‰ Banner æ—¶ç”¨å›žè½æ¸ é“ï¼ˆå®˜æœ / å›½é™…æœï¼‰çš„è¡¥ä¸Šã€‚
         if parts.banners.is_empty() {
             if let Some(fallback) = channel.notice_fallback_channel() {
                 if let Ok(fb) = self.fetch_notice_parts(&fallback, &["get_banner"]).await {
@@ -3657,7 +3657,7 @@ impl GameLauncherService {
         Ok(parts.banners)
     }
 
-    /// 获取公告列表
+    /// èŽ·å–å…¬å‘Šåˆ—è¡¨
     pub async fn get_announcements(
         &self,
         channel: &GameChannel,
@@ -3666,7 +3666,7 @@ impl GameLauncherService {
             .fetch_notice_parts(channel, &["get_announcement"])
             .await?;
 
-        // 该渠道没有公告时用回落渠道（官服 / 国际服）的补上。
+        // è¯¥æ¸ é“æ²¡æœ‰å…¬å‘Šæ—¶ç”¨å›žè½æ¸ é“ï¼ˆå®˜æœ / å›½é™…æœï¼‰çš„è¡¥ä¸Šã€‚
         if parts.announcements.is_empty() {
             if let Some(fallback) = channel.notice_fallback_channel() {
                 if let Ok(fb) = self.fetch_notice_parts(&fallback, &["get_announcement"]).await {
@@ -3678,7 +3678,7 @@ impl GameLauncherService {
         Ok(parts.announcements)
     }
 
-    /// 获取启动器公告内容（Banner + 公告合并返回）
+    /// èŽ·å–å¯åŠ¨å™¨å…¬å‘Šå†…å®¹ï¼ˆBanner + å…¬å‘Šåˆå¹¶è¿”å›žï¼‰
     async fn batch_proxy_web_raw(
         &self,
         channel: &GameChannel,
@@ -3707,10 +3707,10 @@ impl GameLauncherService {
         Ok(raw)
     }
 
-    /// 获取启动器公告内容（Banner + 公告 + 右侧栏）
+    /// èŽ·å–å¯åŠ¨å™¨å…¬å‘Šå†…å®¹ï¼ˆBanner + å…¬å‘Š + å³ä¾§æ ï¼‰
     ///
-    /// 三项内容各自独立回落：某渠道拿不到公告就用官服（国际服渠道用 Global）的，
-    /// 拿不到右侧栏同理——线上 B 服三项全空、官服三项齐全。
+    /// ä¸‰é¡¹å†…å®¹å„è‡ªç‹¬ç«‹å›žè½ï¼šæŸæ¸ é“æ‹¿ä¸åˆ°å…¬å‘Šå°±ç”¨å®˜æœï¼ˆå›½é™…æœæ¸ é“ç”¨ Globalï¼‰çš„ï¼Œ
+    /// æ‹¿ä¸åˆ°å³ä¾§æ åŒç†â€”â€”çº¿ä¸Š B æœä¸‰é¡¹å…¨ç©ºã€å®˜æœä¸‰é¡¹é½å…¨ã€‚
     pub async fn get_notice_content(
         &self,
         channel: &GameChannel,
@@ -3719,7 +3719,7 @@ impl GameLauncherService {
             .fetch_notice_parts(channel, &["get_banner", "get_announcement", "get_sidebar"])
             .await?;
 
-        // 该渠道缺哪一项，就用回落渠道补哪一项。
+        // è¯¥æ¸ é“ç¼ºå“ªä¸€é¡¹ï¼Œå°±ç”¨å›žè½æ¸ é“è¡¥å“ªä¸€é¡¹ã€‚
         let needs_fallback = parts.banners.is_empty()
             || parts.announcements.is_empty()
             || parts.sidebars.is_empty();
@@ -3769,15 +3769,15 @@ impl GameLauncherService {
         })
     }
 
-    /// 一次 `web/batch_proxy` 请求拉取指定的公告类内容。
+    /// ä¸€æ¬¡ `web/batch_proxy` è¯·æ±‚æ‹‰å–æŒ‡å®šçš„å…¬å‘Šç±»å†…å®¹ã€‚
     ///
-    /// `kinds` 取接口的完整 kind 名（`get_banner` / `get_announcement` / `get_sidebar`），
-    /// 请求体里的键是 `<kind>_req`（如 `get_banner_req`）。
+    /// `kinds` å–æŽ¥å£çš„å®Œæ•´ kind åï¼ˆ`get_banner` / `get_announcement` / `get_sidebar`ï¼‰ï¼Œ
+    /// è¯·æ±‚ä½“é‡Œçš„é”®æ˜¯ `<kind>_req`ï¼ˆå¦‚ `get_banner_req`ï¼‰ã€‚
     ///
-    /// 参数直接用渠道自己的 appcode/channel/sub_channel，**不做**任何预先替换：
-    /// 回落由调用方在拿到空结果后决定，避免"B 服"这种硬替换把官服内容原样顶掉
-    /// （官方 B 服本来就与官服同内容，行为一致；但明日方舟 B 服 appcode 相同、
-    /// channel 不同，硬替换会丢掉该渠道真正独有的数据）。
+    /// å‚æ•°ç›´æŽ¥ç”¨æ¸ é“è‡ªå·±çš„ appcode/channel/sub_channelï¼Œ**ä¸åš**ä»»ä½•é¢„å…ˆæ›¿æ¢ï¼š
+    /// å›žè½ç”±è°ƒç”¨æ–¹åœ¨æ‹¿åˆ°ç©ºç»“æžœåŽå†³å®šï¼Œé¿å…"B æœ"è¿™ç§ç¡¬æ›¿æ¢æŠŠå®˜æœå†…å®¹åŽŸæ ·é¡¶æŽ‰
+    /// ï¼ˆå®˜æ–¹ B æœæœ¬æ¥å°±ä¸Žå®˜æœåŒå†…å®¹ï¼Œè¡Œä¸ºä¸€è‡´ï¼›ä½†æ˜Žæ—¥æ–¹èˆŸ B æœ appcode ç›¸åŒã€
+    /// channel ä¸åŒï¼Œç¡¬æ›¿æ¢ä¼šä¸¢æŽ‰è¯¥æ¸ é“çœŸæ­£ç‹¬æœ‰çš„æ•°æ®ï¼‰ã€‚
     async fn fetch_notice_parts(
         &self,
         channel: &GameChannel,
@@ -3807,7 +3807,7 @@ impl GameLauncherService {
         Ok(Self::parse_notice_parts(&raw))
     }
 
-    /// 从 `batch_proxy` 的原始响应里解析出 Banner / 公告 / 右侧栏三项。
+    /// ä»Ž `batch_proxy` çš„åŽŸå§‹å“åº”é‡Œè§£æžå‡º Banner / å…¬å‘Š / å³ä¾§æ ä¸‰é¡¹ã€‚
     fn parse_notice_parts(raw: &serde_json::Value) -> NoticeParts {
         let mut parts = NoticeParts::default();
 
@@ -3923,11 +3923,11 @@ impl GameLauncherService {
         parts
     }
 
-    /// 解析 `get_sidebar_rsp`：把「条目自身」与「sidebar_labels[0]」两处链接合并成扁平列表。
+    /// è§£æž `get_sidebar_rsp`ï¼šæŠŠã€Œæ¡ç›®è‡ªèº«ã€ä¸Žã€Œsidebar_labels[0]ã€ä¸¤å¤„é“¾æŽ¥åˆå¹¶æˆæ‰å¹³åˆ—è¡¨ã€‚
     ///
-    /// 官方数据不一致：社媒条目把地址放在 `pic.url`（二维码）+ `jump_url`，
-    /// 而 `CS` 这类条目 `pic` 为 null、地址只在 `sidebar_labels[0].jump_url`。
-    /// 侧边栏解析失败不影响公告主流程，故整体失败时返回空列表。
+    /// å®˜æ–¹æ•°æ®ä¸ä¸€è‡´ï¼šç¤¾åª’æ¡ç›®æŠŠåœ°å€æ”¾åœ¨ `pic.url`ï¼ˆäºŒç»´ç ï¼‰+ `jump_url`ï¼Œ
+    /// è€Œ `CS` è¿™ç±»æ¡ç›® `pic` ä¸º nullã€åœ°å€åªåœ¨ `sidebar_labels[0].jump_url`ã€‚
+    /// ä¾§è¾¹æ è§£æžå¤±è´¥ä¸å½±å“å…¬å‘Šä¸»æµç¨‹ï¼Œæ•…æ•´ä½“å¤±è´¥æ—¶è¿”å›žç©ºåˆ—è¡¨ã€‚
     fn parse_sidebars(raw: &serde_json::Value) -> Vec<SidebarItem> {
         let mut sidebars = Vec::new();
 
@@ -3951,7 +3951,7 @@ impl GameLauncherService {
             for item in parsed.sidebars {
                 let label = item.sidebar_labels.first();
 
-                // 链接、二维码与文案都优先取条目自身，缺失时回退到第一条 label（CS 即属此类）
+                // é“¾æŽ¥ã€äºŒç»´ç ä¸Žæ–‡æ¡ˆéƒ½ä¼˜å…ˆå–æ¡ç›®è‡ªèº«ï¼Œç¼ºå¤±æ—¶å›žé€€åˆ°ç¬¬ä¸€æ¡ labelï¼ˆCS å³å±žæ­¤ç±»ï¼‰
                 let jump_url = if !item.jump_url.is_empty() {
                     item.jump_url.clone()
                 } else {
@@ -3984,7 +3984,7 @@ impl GameLauncherService {
         sidebars
     }
 
-    /// 获取启动器背景媒体（图片或视频）
+    /// èŽ·å–å¯åŠ¨å™¨èƒŒæ™¯åª’ä½“ï¼ˆå›¾ç‰‡æˆ–è§†é¢‘ï¼‰
     pub async fn get_background_image(
         &self,
         channel: &GameChannel,
@@ -4017,10 +4017,10 @@ impl GameLauncherService {
                     let alt = bg_data.video_url.clone().filter(|u| !u.is_empty());
                     let url_is_video = self.classify_media_type(&url) == "video";
 
-                    // 接口把图片和视频放在同一条响应里，两者都返回给前端，
-                    // 由前端根据用户设置选择展示图片还是视频
+                    // æŽ¥å£æŠŠå›¾ç‰‡å’Œè§†é¢‘æ”¾åœ¨åŒä¸€æ¡å“åº”é‡Œï¼Œä¸¤è€…éƒ½è¿”å›žç»™å‰ç«¯ï¼Œ
+                    // ç”±å‰ç«¯æ ¹æ®ç”¨æˆ·è®¾ç½®é€‰æ‹©å±•ç¤ºå›¾ç‰‡è¿˜æ˜¯è§†é¢‘
                     let (image_url, video_url) = if url_is_video {
-                        // url 本身就是视频，另一个字段若是图片则作为图片
+                        // url æœ¬èº«å°±æ˜¯è§†é¢‘ï¼Œå¦ä¸€ä¸ªå­—æ®µè‹¥æ˜¯å›¾ç‰‡åˆ™ä½œä¸ºå›¾ç‰‡
                         let image = alt
                             .clone()
                             .filter(|u| self.classify_media_type(u) != "video");
@@ -4046,7 +4046,7 @@ impl GameLauncherService {
         Ok(None)
     }
 
-    /// 判断 URL 的媒体类型
+    /// åˆ¤æ–­ URL çš„åª’ä½“ç±»åž‹
     fn classify_media_type(&self, url: &str) -> String {
         let lower = url.to_lowercase();
         if lower.ends_with(".mp4")
@@ -4061,7 +4061,7 @@ impl GameLauncherService {
         }
     }
 
-    /// 切换游戏渠道（5阶段流程）
+    /// åˆ‡æ¢æ¸¸æˆæ¸ é“ï¼ˆ5é˜¶æ®µæµç¨‹ï¼‰
     pub async fn switch_channel(
         &self,
         from_channel: &GameChannel,
@@ -4104,19 +4104,19 @@ impl GameLauncherService {
             let _ = app.emit("launcher://progress", &ActiveOperation::Switching(progress));
         };
 
-        // 失败/取消的**终态事件**：前端靠 `phase === "error"` 才会把按钮从「切换中」
-        // 复位（`localActiveOp` 只在收到终态或组件重挂时清空），只返回 `Err` 会让
-        // 界面永远卡在切换中。所有失败路径必须先走这里再 `return Err`。
-        // 进程预检（Phase 0）发生在 `set_active_operation` 之前，前端还没进切换态，
-        // 不需要发终态。
+        // å¤±è´¥/å–æ¶ˆçš„**ç»ˆæ€äº‹ä»¶**ï¼šå‰ç«¯é  `phase === "error"` æ‰ä¼šæŠŠæŒ‰é’®ä»Žã€Œåˆ‡æ¢ä¸­ã€
+        // å¤ä½ï¼ˆ`localActiveOp` åªåœ¨æ”¶åˆ°ç»ˆæ€æˆ–ç»„ä»¶é‡æŒ‚æ—¶æ¸…ç©ºï¼‰ï¼Œåªè¿”å›ž `Err` ä¼šè®©
+        // ç•Œé¢æ°¸è¿œå¡åœ¨åˆ‡æ¢ä¸­ã€‚æ‰€æœ‰å¤±è´¥è·¯å¾„å¿…é¡»å…ˆèµ°è¿™é‡Œå† `return Err`ã€‚
+        // è¿›ç¨‹é¢„æ£€ï¼ˆPhase 0ï¼‰å‘ç”Ÿåœ¨ `set_active_operation` ä¹‹å‰ï¼Œå‰ç«¯è¿˜æ²¡è¿›åˆ‡æ¢æ€ï¼Œ
+        // ä¸éœ€è¦å‘ç»ˆæ€ã€‚
         let emit_terminal = |phase: &str| {
             emit(phase, 0, 0, None, 0, 0);
         };
 
-        // ===== Phase 0: 游戏进程预检 =====
-        // 两个渠道的游戏进程同名（`Arknights.exe` / `Endfield.exe`），渠道参数取哪个
-        // 都一样。文件被游戏或其伴生组件（AntiCheatExpert、启动器 WebView 等）占用时
-        // Phase 4 的覆盖写入会拿到 os error 32，所以进任何阶段前先拦住。
+        // ===== Phase 0: æ¸¸æˆè¿›ç¨‹é¢„æ£€ =====
+        // ä¸¤ä¸ªæ¸ é“çš„æ¸¸æˆè¿›ç¨‹åŒåï¼ˆ`Arknights.exe` / `Endfield.exe`ï¼‰ï¼Œæ¸ é“å‚æ•°å–å“ªä¸ª
+        // éƒ½ä¸€æ ·ã€‚æ–‡ä»¶è¢«æ¸¸æˆæˆ–å…¶ä¼´ç”Ÿç»„ä»¶ï¼ˆAntiCheatExpertã€å¯åŠ¨å™¨ WebView ç­‰ï¼‰å ç”¨æ—¶
+        // Phase 4 çš„è¦†ç›–å†™å…¥ä¼šæ‹¿åˆ° os error 32ï¼Œæ‰€ä»¥è¿›ä»»ä½•é˜¶æ®µå‰å…ˆæ‹¦ä½ã€‚
         let running = crate::utils::process::exists_once(from_channel.process_name());
         if running {
             tracing::warn!(
@@ -4344,9 +4344,9 @@ impl GameLauncherService {
         let backup_dir = backup_root.join(from_channel.as_str());
         let mut backed_up_files: Vec<(PathBuf, PathBuf)> = Vec::new();
 
-        // 备份范围 = 将被删除的文件 + 将被覆盖且本地存在的 MD5 差异文件。
-        // 后者让反向切换能命中 Phase 2 的「Reusing backup」快速路径：
-        // 官↔B 来回切时，520 MB 的共有差异文件不再需要重新下载。
+        // å¤‡ä»½èŒƒå›´ = å°†è¢«åˆ é™¤çš„æ–‡ä»¶ + å°†è¢«è¦†ç›–ä¸”æœ¬åœ°å­˜åœ¨çš„ MD5 å·®å¼‚æ–‡ä»¶ã€‚
+        // åŽè€…è®©åå‘åˆ‡æ¢èƒ½å‘½ä¸­ Phase 2 çš„ã€ŒReusing backupã€å¿«é€Ÿè·¯å¾„ï¼š
+        // å®˜â†”B æ¥å›žåˆ‡æ—¶ï¼Œ520 MB çš„å…±æœ‰å·®å¼‚æ–‡ä»¶ä¸å†éœ€è¦é‡æ–°ä¸‹è½½ã€‚
         let mut backup_source: Vec<(&ManifestFile, bool)> = files_to_remove
             .iter()
             .map(|f| (f, false))
@@ -4369,8 +4369,8 @@ impl GameLauncherService {
                         fs::copy(backup, original).ok();
                     }
                 }
-                // 覆盖型备份的原文件仍在原地（Phase 4 才覆盖），无需恢复；
-                // 删除型备份由上面 backed_up_files 循环还原
+                // è¦†ç›–åž‹å¤‡ä»½çš„åŽŸæ–‡ä»¶ä»åœ¨åŽŸåœ°ï¼ˆPhase 4 æ‰è¦†ç›–ï¼‰ï¼Œæ— éœ€æ¢å¤ï¼›
+                // åˆ é™¤åž‹å¤‡ä»½ç”±ä¸Šé¢ backed_up_files å¾ªçŽ¯è¿˜åŽŸ
                 self.set_active_operation(None).await;
                 emit_terminal("error");
                 reset_switch_cancel();
@@ -4398,8 +4398,8 @@ impl GameLauncherService {
                     emit_terminal("error");
                     return Err(format!("Backup copy: {}", e));
                 }
-                // 覆盖型备份只留副本，不删原文件（原文件会在 Phase 4 被覆盖）；
-                // 删除型备份照旧移走原文件
+                // è¦†ç›–åž‹å¤‡ä»½åªç•™å‰¯æœ¬ï¼Œä¸åˆ åŽŸæ–‡ä»¶ï¼ˆåŽŸæ–‡ä»¶ä¼šåœ¨ Phase 4 è¢«è¦†ç›–ï¼‰ï¼›
+                // åˆ é™¤åž‹å¤‡ä»½ç…§æ—§ç§»èµ°åŽŸæ–‡ä»¶
                 if !will_overwrite {
                     if let Err(e) = fs::remove_file(&original) {
                         self.set_active_operation(None).await;
@@ -4455,9 +4455,9 @@ impl GameLauncherService {
             );
 
             if let Err(e) = fs::copy(&src, &dst) {
-                // 目标文件被占用（os error 32，游戏/杀软/伴生进程）或其它 IO 失败：
-                // 目录此刻停在半切换状态，必须整体回滚——已覆盖的文件从备份还原，
-                // 已删除的文件从备份放回，让目录回到 from_channel 的完整状态。
+                // ç›®æ ‡æ–‡ä»¶è¢«å ç”¨ï¼ˆos error 32ï¼Œæ¸¸æˆ/æ€è½¯/ä¼´ç”Ÿè¿›ç¨‹ï¼‰æˆ–å…¶å®ƒ IO å¤±è´¥ï¼š
+                // ç›®å½•æ­¤åˆ»åœåœ¨åŠåˆ‡æ¢çŠ¶æ€ï¼Œå¿…é¡»æ•´ä½“å›žæ»šâ€”â€”å·²è¦†ç›–çš„æ–‡ä»¶ä»Žå¤‡ä»½è¿˜åŽŸï¼Œ
+                // å·²åˆ é™¤çš„æ–‡ä»¶ä»Žå¤‡ä»½æ”¾å›žï¼Œè®©ç›®å½•å›žåˆ° from_channel çš„å®Œæ•´çŠ¶æ€ã€‚
                 tracing::error!(
                     "[switch] Apply failed for {} ({}), rolling back",
                     file.path,
@@ -4486,7 +4486,7 @@ impl GameLauncherService {
                 self.set_active_operation(None).await;
                 emit_terminal("error");
                 return Err(format!(
-                    "Move to game dir: {} — switched files were rolled back. Close the game and programs that may lock its files, then retry.",
+                    "Move to game dir: {} â€” switched files were rolled back. Close the game and programs that may lock its files, then retry.",
                     e
                 ));
             }
@@ -4514,18 +4514,18 @@ impl GameLauncherService {
     }
 }
 
-/// 原子地回退已累计的下载进度（避免并发任务下溢）。
-/// Rust 1.99 起 `fetch_update` 弃用，更名 `try_update`。
+/// åŽŸå­åœ°å›žé€€å·²ç´¯è®¡çš„ä¸‹è½½è¿›åº¦ï¼ˆé¿å…å¹¶å‘ä»»åŠ¡ä¸‹æº¢ï¼‰ã€‚
+/// Rust 1.99 èµ· `fetch_update` å¼ƒç”¨ï¼Œæ›´å `try_update`ã€‚
 fn subtract_download_progress(counter: &AtomicU64, bytes: u64) {
     let _ = counter.try_update(Ordering::Relaxed, Ordering::Relaxed, |value| {
         Some(value.saturating_sub(bytes))
     });
 }
 
-/// 单文件下载+验证（供并发下载使用）
-/// - 流式 MD5 校验，避免把大文件整体读入内存
-/// - 断点续传：`resume` 为真时保留 `.download` 分片并按 Range 继续
-/// - 最多重试 3 次，期间保留已写入的分片
+/// å•æ–‡ä»¶ä¸‹è½½+éªŒè¯ï¼ˆä¾›å¹¶å‘ä¸‹è½½ä½¿ç”¨ï¼‰
+/// - æµå¼ MD5 æ ¡éªŒï¼Œé¿å…æŠŠå¤§æ–‡ä»¶æ•´ä½“è¯»å…¥å†…å­˜
+/// - æ–­ç‚¹ç»­ä¼ ï¼š`resume` ä¸ºçœŸæ—¶ä¿ç•™ `.download` åˆ†ç‰‡å¹¶æŒ‰ Range ç»§ç»­
+/// - æœ€å¤šé‡è¯• 3 æ¬¡ï¼ŒæœŸé—´ä¿ç•™å·²å†™å…¥çš„åˆ†ç‰‡
 async fn download_single_file(
     client: &Client,
     url: &str,
@@ -4548,7 +4548,7 @@ async fn download_single_file(
     }
 
     if resume {
-        // 上次已完整下载但未及重命名：校验通过后直接改名，不再重新下载
+        // ä¸Šæ¬¡å·²å®Œæ•´ä¸‹è½½ä½†æœªåŠé‡å‘½åï¼šæ ¡éªŒé€šè¿‡åŽç›´æŽ¥æ”¹åï¼Œä¸å†é‡æ–°ä¸‹è½½
         let existing_len = fs::metadata(download_file).map(|m| m.len()).unwrap_or(0);
         if file_size > 0
             && existing_len == file_size
@@ -4559,7 +4559,7 @@ async fn download_single_file(
             fs::rename(&download_path, dest_path).map_err(|e| format!("Rename: {}", e))?;
             return Ok(());
         }
-        // 长度超过预期说明是旧数据的残留，直接丢弃
+        // é•¿åº¦è¶…è¿‡é¢„æœŸè¯´æ˜Žæ˜¯æ—§æ•°æ®çš„æ®‹ç•™ï¼Œç›´æŽ¥ä¸¢å¼ƒ
         if file_size > 0 && existing_len >= file_size {
             let _ = fs::remove_file(download_file);
         }
@@ -4567,7 +4567,7 @@ async fn download_single_file(
 
     let max_retries = 3u32;
     let mut last_error = String::new();
-    // 本次调用累计写入 dl_bytes 的字节数，重试前回退
+    // æœ¬æ¬¡è°ƒç”¨ç´¯è®¡å†™å…¥ dl_bytes çš„å­—èŠ‚æ•°ï¼Œé‡è¯•å‰å›žé€€
     let mut counted_bytes: u64 = 0;
 
     for attempt in 0..max_retries {
@@ -4638,7 +4638,7 @@ async fn download_single_file(
                         "[download] Server ignored Range for {}, restarting from 0",
                         dest_path
                     );
-                    // 服务端忽略 Range：丢弃旧前缀，避免进度重复累计
+                    // æœåŠ¡ç«¯å¿½ç•¥ Rangeï¼šä¸¢å¼ƒæ—§å‰ç¼€ï¼Œé¿å…è¿›åº¦é‡å¤ç´¯è®¡
                     subtract_download_progress(&dl_bytes, start_byte);
                     start_byte = 0;
                 }
@@ -4732,7 +4732,7 @@ async fn download_single_file(
                     dest_path
                 );
 
-                // 流式 MD5 校验，避免大文件占用大量内存
+                // æµå¼ MD5 æ ¡éªŒï¼Œé¿å…å¤§æ–‡ä»¶å ç”¨å¤§é‡å†…å­˜
                 let verified = expected_md5.is_empty()
                     || hg_crypto::verify_md5(&download_path, expected_md5).unwrap_or(false);
                 if !verified {
@@ -4772,7 +4772,7 @@ async fn download_single_file(
         let _ = fs::remove_file(&download_path);
     }
     tracing::error!(
-        "[download] FAILED after {} attempts: {} — {}",
+        "[download] FAILED after {} attempts: {} â€” {}",
         max_retries,
         dest_path,
         last_error
@@ -4788,7 +4788,7 @@ mod notice_fallback_tests {
     use super::*;
     use crate::models::game::GameChannel;
 
-    /// 回落渠道的映射关系（B 服 → 官服、GooglePlay → Global，主渠道不回落）。
+    /// å›žè½æ¸ é“çš„æ˜ å°„å…³ç³»ï¼ˆB æœ â†’ å®˜æœã€GooglePlay â†’ Globalï¼Œä¸»æ¸ é“ä¸å›žè½ï¼‰ã€‚
     #[test]
     fn fallback_channel_mapping() {
         assert_eq!(
@@ -4808,9 +4808,9 @@ mod notice_fallback_tests {
         assert_eq!(GameChannel::Arknights.notice_fallback_channel(), None);
     }
 
-    /// 真实接口联调：B 服公告三项全空，回落后应拿到官服内容。
+    /// çœŸå®žæŽ¥å£è”è°ƒï¼šB æœå…¬å‘Šä¸‰é¡¹å…¨ç©ºï¼Œå›žè½åŽåº”æ‹¿åˆ°å®˜æœå†…å®¹ã€‚
     ///
-    /// 这条测试打的是线上 `web/batch_proxy`，验证「B 服 → 官服」的回落真的生效。
+    /// è¿™æ¡æµ‹è¯•æ‰“çš„æ˜¯çº¿ä¸Š `web/batch_proxy`ï¼ŒéªŒè¯ã€ŒB æœ â†’ å®˜æœã€çš„å›žè½çœŸçš„ç”Ÿæ•ˆã€‚
     #[tokio::test]
     async fn bilibili_channel_falls_back_to_official() {
         let svc = GameLauncherService::new();
@@ -4827,30 +4827,30 @@ mod notice_fallback_tests {
 
         assert!(
             !official.announcements.is_empty(),
-            "官服公告不应为空，否则无法验证回落"
+            "å®˜æœå…¬å‘Šä¸åº”ä¸ºç©ºï¼Œå¦åˆ™æ— æ³•éªŒè¯å›žè½"
         );
         assert!(
             !official.sidebars.is_empty(),
-            "官服右侧栏不应为空，否则无法验证回落"
+            "å®˜æœå³ä¾§æ ä¸åº”ä¸ºç©ºï¼Œå¦åˆ™æ— æ³•éªŒè¯å›žè½"
         );
         assert_eq!(
             bili.announcements.len(),
             official.announcements.len(),
-            "B 服公告应回落到官服"
+            "B æœå…¬å‘Šåº”å›žè½åˆ°å®˜æœ"
         );
         assert_eq!(
             bili.sidebars.len(),
             official.sidebars.len(),
-            "B 服右侧栏应回落到官服"
+            "B æœå³ä¾§æ åº”å›žè½åˆ°å®˜æœ"
         );
         assert_eq!(
             bili.banners.len(),
             official.banners.len(),
-            "B 服 Banner 应回落到官服"
+            "B æœ Banner åº”å›žè½åˆ°å®˜æœ"
         );
     }
 
-    /// 真实接口联调：`get_banners` / `get_announcements` 单独走时也要能回落。
+    /// çœŸå®žæŽ¥å£è”è°ƒï¼š`get_banners` / `get_announcements` å•ç‹¬èµ°æ—¶ä¹Ÿè¦èƒ½å›žè½ã€‚
     #[tokio::test]
     async fn single_kind_endpoints_fall_back() {
         let svc = GameLauncherService::new();
@@ -4866,7 +4866,7 @@ mod notice_fallback_tests {
 
         assert!(
             !bili_banners.is_empty(),
-            "B 服 Banner 应回落到官服"
+            "B æœ Banner åº”å›žè½åˆ°å®˜æœ"
         );
         assert_eq!(bili_banners.len(), official_banners.len());
 
@@ -4879,7 +4879,7 @@ mod notice_fallback_tests {
             .await
             .expect("official announcements");
 
-        assert!(!bili_ann.is_empty(), "终末地 B 服公告应回落到官服");
+        assert!(!bili_ann.is_empty(), "ç»ˆæœ«åœ° B æœå…¬å‘Šåº”å›žè½åˆ°å®˜æœ");
         assert_eq!(bili_ann.len(), official_ann.len());
     }
 }

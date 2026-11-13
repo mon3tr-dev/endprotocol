@@ -39,6 +39,53 @@ pub fn create_client() -> Client {
     create_proxied_client(global_proxy_config().as_ref())
 }
 
+/// 创建一个裸的 `ClientBuilder`，已套上平台正确的 TLS 配置。
+///
+/// **Android**：reqwest 0.13 的 rustls 后端固定使用 `rustls-platform-verifier`，
+/// 该 crate 在 Android 上要求在 Android 侧注入 Kotlin 组件并显式初始化，否则第一次
+/// HTTPS 握手就会在 worker 线程 panic（实测 `Expect rustls-platform-verifier to be
+/// initialized`）。这里显式构造使用内置 Mozilla 根证书的 `rustls::ClientConfig`
+/// 交给 reqwest，完全绕开平台校验器。
+///
+/// **桌面**：返回原 builder（继续走 native-tls / rustls 默认链路）。
+pub fn client_builder() -> reqwest::ClientBuilder {
+    let builder = reqwest::Client::builder();
+
+    #[cfg(target_os = "android")]
+    let builder = {
+        crate::log_debug!("[http_client] android TLS: webpki-roots configured");
+        builder.use_preconfigured_tls(android_tls_config())
+    };
+
+    builder
+}
+
+/// Android 专用 TLS 配置：内置 Mozilla 根证书 + 默认加密 provider（aws-lc-rs）。
+#[cfg(target_os = "android")]
+fn android_tls_config() -> rustls::ClientConfig {
+    let mut roots = rustls::RootCertStore::empty();
+    roots.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
+
+    // 显式安装进程级默认 provider：reqwest 的 rustls feature 启用了 aws-lc-rs，
+    // 但这里先建 config，确保 provider 已就绪（重复安装会返回 Err，忽略即可）。
+    let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+
+    rustls::ClientConfig::builder()
+        .with_root_certificates(roots)
+        .with_no_client_auth()
+}
+
+/// 创建带平台默认 TLS 的客户端（不读全局代理配置的快捷方式）。
+///
+/// 供那些直接 `reqwest::Client::new()` 的地方替换使用，保证 Android 上不会踩
+/// rustls-platform-verifier 未初始化的崩溃。
+pub fn default_client() -> Client {
+    client_builder().build().unwrap_or_else(|error| {
+        crate::log_warn!("[http_client] default client build failed, falling back: {}", error);
+        Client::new()
+    })
+}
+
 /// 创建带指定代理配置的 HTTP 客户端。
 ///
 /// `proxy_config` 为 `None` 或未启用时，**显式禁用代理**（`ClientBuilder::no_proxy()`），
@@ -46,7 +93,7 @@ pub fn create_client() -> Client {
 /// `HTTPS_PROXY` / `ALL_PROXY` 等环境变量，导致后台运行的 v2ray 等第三方代理
 /// 仍然会被使用，即使 EndProtocol 内部代理开关已关闭。
 pub fn create_proxied_client(proxy_config: Option<&Value>) -> Client {
-    let mut builder = Client::builder().timeout(Duration::from_secs(30));
+    let mut builder = client_builder().timeout(Duration::from_secs(30));
 
     match proxy_config.and_then(proxy::from_config) {
         Some(proxy) => builder = builder.proxy(proxy),

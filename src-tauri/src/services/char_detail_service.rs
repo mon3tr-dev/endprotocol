@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+﻿use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use crate::models::char_detail::CharDetailData;
@@ -9,8 +9,8 @@ use crate::services::skland_service::SklandService;
 use crate::utils::{capture, AppError};
 use crate::{log_debug, log_error, log_info, log_warn};
 
-/// 懒加载本地化：登记 URL 对应的缓存类型；若图片已缓存在本地则替换为本地路径，
-/// 否则保留远程 URL（由前端按需下载）。
+/// æ‡’åŠ è½½æœ¬åœ°åŒ–ï¼šç™»è®° URL å¯¹åº”çš„ç¼“å­˜ç±»åž‹ï¼›è‹¥å›¾ç‰‡å·²ç¼“å­˜åœ¨æœ¬åœ°åˆ™æ›¿æ¢ä¸ºæœ¬åœ°è·¯å¾„ï¼Œ
+/// å¦åˆ™ä¿ç•™è¿œç¨‹ URLï¼ˆç”±å‰ç«¯æŒ‰éœ€ä¸‹è½½ï¼‰ã€‚
 fn localize_or_keep(url: &mut String, image_cache: &ImageCacheService, image_type: ImageType) {
     if url.is_empty() || url.starts_with("http://asset.localhost") {
         return;
@@ -21,7 +21,7 @@ fn localize_or_keep(url: &mut String, image_cache: &ImageCacheService, image_typ
     }
 }
 
-/// 用于预加载的角色信息
+/// ç”¨äºŽé¢„åŠ è½½çš„è§’è‰²ä¿¡æ¯
 pub struct PreloadRoleInfo {
     pub role_id: String,
     pub server_id: String,
@@ -45,7 +45,7 @@ impl CharDetailService {
         }
     }
 
-    /// 获取角色详情（带缓存）
+    /// èŽ·å–è§’è‰²è¯¦æƒ…ï¼ˆå¸¦ç¼“å­˜ï¼‰
     pub async fn get_with_cache(
         &self,
         role_id: &str,
@@ -83,7 +83,7 @@ impl CharDetailService {
         }
     }
 
-    /// 预加载所有角色详情
+    /// é¢„åŠ è½½æ‰€æœ‰è§’è‰²è¯¦æƒ…
     pub async fn preload_all(&self, role_infos: &[PreloadRoleInfo]) -> Result<(), AppError> {
         log_info!("Preloading all character details...");
 
@@ -125,7 +125,7 @@ impl CharDetailService {
         Ok(())
     }
 
-    /// 保留指定角色的详情缓存，清除其他所有
+    /// ä¿ç•™æŒ‡å®šè§’è‰²çš„è¯¦æƒ…ç¼“å­˜ï¼Œæ¸…é™¤å…¶ä»–æ‰€æœ‰
     pub fn retain_only(&self, role_id: Option<String>) {
         let mut cache = self.cache.lock().unwrap();
         let mut processed = self.processed_cache.lock().unwrap();
@@ -150,7 +150,7 @@ impl CharDetailService {
         );
     }
 
-    /// 移除指定角色的缓存
+    /// ç§»é™¤æŒ‡å®šè§’è‰²çš„ç¼“å­˜
     pub fn remove(&self, role_id: &str) {
         {
             let mut cache = self.cache.lock().unwrap();
@@ -163,9 +163,9 @@ impl CharDetailService {
         log_debug!("Released char detail cache for role: {}", role_id);
     }
 
-    /// 获取处理后的角色详情（包含图片本地缓存替换）
+    /// èŽ·å–å¤„ç†åŽçš„è§’è‰²è¯¦æƒ…ï¼ˆåŒ…å«å›¾ç‰‡æœ¬åœ°ç¼“å­˜æ›¿æ¢ï¼‰
     ///
-    /// 处理后的结果会被缓存到 processed_cache，后续调用跳过图片处理和序列化。
+    /// å¤„ç†åŽçš„ç»“æžœä¼šè¢«ç¼“å­˜åˆ° processed_cacheï¼ŒåŽç»­è°ƒç”¨è·³è¿‡å›¾ç‰‡å¤„ç†å’Œåºåˆ—åŒ–ã€‚
     pub async fn get_processed(
         &self,
         role_id: &str,
@@ -213,8 +213,8 @@ impl CharDetailService {
         Ok(json_value)
     }
 
-    /// 处理角色详情中的所有图片URL：
-    /// 已缓存的替换为本地路径，未缓存的保留远程URL由前端按需下载（懒加载）。
+    /// å¤„ç†è§’è‰²è¯¦æƒ…ä¸­çš„æ‰€æœ‰å›¾ç‰‡URLï¼š
+    /// å·²ç¼“å­˜çš„æ›¿æ¢ä¸ºæœ¬åœ°è·¯å¾„ï¼Œæœªç¼“å­˜çš„ä¿ç•™è¿œç¨‹URLç”±å‰ç«¯æŒ‰éœ€ä¸‹è½½ï¼ˆæ‡’åŠ è½½ï¼‰ã€‚
     async fn process_images(
         &self,
         detail: &mut CharDetailData,
@@ -333,7 +333,7 @@ impl CharDetailService {
                     ImageType::EquipIcon,
                 )
                 .await;
-                // Cache gem icon from weapon (保持现有目录解析机制)
+                // Cache gem icon from weapon (ä¿æŒçŽ°æœ‰ç›®å½•è§£æžæœºåˆ¶)
                 Self::cache_gem_icon(
                     &image_cache,
                     &self.skland_service,
@@ -490,7 +490,7 @@ impl CharDetailService {
             }
         }
 
-        // 2) No cache hit — fetch wiki catalog to find the correct gem icon
+        // 2) No cache hit â€” fetch wiki catalog to find the correct gem icon
         if gem_name.is_empty() || gem_rarity.is_empty() {
             log_warn!(
                 "Gem name or rarity missing for {}, cannot resolve via catalog",
@@ -617,7 +617,7 @@ impl CharDetailService {
 
         // 3) Download the matched cover and save with the original filename
         if !filename.is_empty() {
-            let client = reqwest::Client::new();
+            let client = crate::utils::http_client::default_client();
             let resp = match capture::send(
                 &client,
                 client
@@ -669,7 +669,7 @@ impl CharDetailService {
         }
     }
 
-    /// Cache domain settlement officer avatars (officerCharAvatar) - 懒加载
+    /// Cache domain settlement officer avatars (officerCharAvatar) - æ‡’åŠ è½½
     async fn cache_domain_avatars(
         image_cache: &ImageCacheService,
         domain: &mut Option<serde_json::Value>,
@@ -708,7 +708,7 @@ impl CharDetailService {
         }
     }
 
-    /// Cache achievement medal icons (initIcon, reforge2Icon, reforge3Icon, platedIcon) - 懒加载
+    /// Cache achievement medal icons (initIcon, reforge2Icon, reforge3Icon, platedIcon) - æ‡’åŠ è½½
     async fn cache_achieve_icons(
         image_cache: &ImageCacheService,
         achieve: &mut Option<serde_json::Value>,

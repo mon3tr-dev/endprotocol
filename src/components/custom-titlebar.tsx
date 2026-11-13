@@ -37,7 +37,7 @@ import {
   type LauncherGame,
 } from "@/stores/launcherGame";
 import logger from "@/utils/logger";
-import { isWindowsPlatform } from "@/utils/platform";
+import { isWindowsPlatform, isMobileApp } from "@/utils/platform";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useSwitchTransition } from "@/hooks/useSwitchTransition";
 
@@ -320,37 +320,41 @@ export const TitlebarControls = () => {
           document.body,
         )}
 
-      <div
-        className="flex items-center rounded-xl overflow-hidden lg-regular border border-separator/60"
-        data-tauri-drag-region="false"
-      >
-        <button
-          type="button"
-          onClick={handleMinimize}
-          aria-label="Minimize"
-          className="flex h-7 w-8 items-center justify-center rounded-l-xl text-muted [transition:transform_var(--lg-dur-press)_var(--lg-ease-spring),translate_var(--lg-dur-press)_var(--lg-ease-spring),scale_var(--lg-dur-press)_var(--lg-ease-spring),background-color_var(--lg-dur-fast)_var(--lg-ease-standard),color_var(--lg-dur-fast)_var(--lg-ease-standard)] lg-hoverable hover:text-foreground active:scale-95 cursor-pointer"
+      {/* 窗口控制按钮（最小化/最大化/关闭）仅桌面渲染：移动端（Android/iOS）
+          没有窗口化概念，由系统导航/最近任务管理应用生命周期。 */}
+      {!isMobileApp() && (
+        <div
+          className="flex items-center rounded-xl overflow-hidden lg-regular border border-separator/60"
+          data-tauri-drag-region="false"
         >
-          <MinimizeIcon size={14} />
-        </button>
+          <button
+            type="button"
+            onClick={handleMinimize}
+            aria-label="Minimize"
+            className="flex h-7 w-8 items-center justify-center rounded-l-xl text-muted [transition:transform_var(--lg-dur-press)_var(--lg-ease-spring),translate_var(--lg-dur-press)_var(--lg-ease-spring),scale_var(--lg-dur-press)_var(--lg-ease-spring),background-color_var(--lg-dur-fast)_var(--lg-ease-standard),color_var(--lg-dur-fast)_var(--lg-ease-standard)] lg-hoverable hover:text-foreground active:scale-95 cursor-pointer"
+          >
+            <MinimizeIcon size={14} />
+          </button>
 
-        <button
-          type="button"
-          onClick={handleMaximize}
-          aria-label={isMaximized ? "Restore" : "Maximize"}
-          className="flex h-7 w-8 items-center justify-center text-muted [transition:transform_var(--lg-dur-press)_var(--lg-ease-spring),translate_var(--lg-dur-press)_var(--lg-ease-spring),scale_var(--lg-dur-press)_var(--lg-ease-spring),background-color_var(--lg-dur-fast)_var(--lg-ease-standard),color_var(--lg-dur-fast)_var(--lg-ease-standard)] lg-hoverable hover:text-foreground active:scale-95 cursor-pointer"
-        >
-          {isMaximized ? <RestoreIcon size={14} /> : <MaximizeIcon size={14} />}
-        </button>
+          <button
+            type="button"
+            onClick={handleMaximize}
+            aria-label={isMaximized ? "Restore" : "Maximize"}
+            className="flex h-7 w-8 items-center justify-center text-muted [transition:transform_var(--lg-dur-press)_var(--lg-ease-spring),translate_var(--lg-dur-press)_var(--lg-ease-spring),scale_var(--lg-dur-press)_var(--lg-ease-spring),background-color_var(--lg-dur-fast)_var(--lg-ease-standard),color_var(--lg-dur-fast)_var(--lg-ease-standard)] lg-hoverable hover:text-foreground active:scale-95 cursor-pointer"
+          >
+            {isMaximized ? <RestoreIcon size={14} /> : <MaximizeIcon size={14} />}
+          </button>
 
-        <button
-          type="button"
-          onClick={handleClose}
-          aria-label="Close"
-          className="flex h-7 w-8 items-center justify-center rounded-r-xl text-muted [transition:transform_var(--lg-dur-press)_var(--lg-ease-spring),translate_var(--lg-dur-press)_var(--lg-ease-spring),scale_var(--lg-dur-press)_var(--lg-ease-spring),background-color_var(--lg-dur-fast)_var(--lg-ease-standard),color_var(--lg-dur-fast)_var(--lg-ease-standard)] hover:bg-danger/20 hover:text-danger-text active:scale-95 cursor-pointer"
-        >
-          <CloseIcon size={14} />
-        </button>
-      </div>
+          <button
+            type="button"
+            onClick={handleClose}
+            aria-label="Close"
+            className="flex h-7 w-8 items-center justify-center rounded-r-xl text-muted [transition:transform_var(--lg-dur-press)_var(--lg-ease-spring),translate_var(--lg-dur-press)_var(--lg-ease-spring),scale_var(--lg-dur-press)_var(--lg-ease-spring),background-color_var(--lg-dur-fast)_var(--lg-ease-standard),color_var(--lg-dur-fast)_var(--lg-ease-standard)] hover:bg-danger/20 hover:text-danger-text active:scale-95 cursor-pointer"
+          >
+            <CloseIcon size={14} />
+          </button>
+        </div>
+      )}
 
       <AppInfoDrawer isOpen={infoOpen} onClose={() => setInfoOpen(false)} />
       <CloseConfirmDialog

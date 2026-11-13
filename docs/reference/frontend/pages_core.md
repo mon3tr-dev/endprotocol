@@ -57,15 +57,16 @@
   - 497 行：`dashboard-background` 背景层；515 行：`CustomTitlebar`。
   - 渐变磨砂层：`.frost-main frost-with-sidebar` 全屏覆盖层（504-512 行，`--frost-sidebar-w` 按折叠状态写入 `288px`/`64px`），纵向遮罩对应标题栏、横向遮罩对应侧边栏，两者取并集形成连通的 L 形强区；**游戏模式不再铺磨砂层**（原先的 `.frost-main frost-titlebar-only` 已移除，标题栏直接露出背景视频）。放在背景层之上、veil 之下、内容层之下。
   - 519-529 行：桌面端侧边栏——外层 `div` 宽度在 `w-72` 与 `w-[64px]` 间以 `transition-[width] duration-300 ease-out` 平滑过渡（`overflow-hidden` 裁剪），向 `<Sidebar collapsed={sidebarCollapsed} onToggleCollapsed={toggleSidebarCollapsed} />` 传入折叠状态与切换回调。
-  - 531-557 行：移动端抽屉（`mobileOpen` 为真时渲染遮罩 + `Sidebar onNavigate={关闭}`）；抽屉内另挂 `.frost-main frost-drawer`（545-553 行，fixed 定位、仅横向遮罩）。
+  - 531-557 行：移动端抽屉（`mobileOpen` 为真时渲染遮罩 + `Sidebar onNavigate={关闭}`）；抽屉内另挂 `.frost-main frost-drawer`（545-553 行，fixed 定位、仅横向遮罩）。抽屉容器带 `padding-top: var(--safe-area-top)` 内联样式，让 Android/iOS 状态栏不压住抽屉内容。
   - 559-585 行：`<main>` 滚动容器，内部 `div` 带 `id="dashboard-main"`（562，仪表盘快照的截图基准：`tabSnapshotService` 以它的视口矩形计算截取区域）并以 `location.pathname` 为 key 强制路由切换时重挂载，其中 `<Suspense>` 包裹 `{children}`，懒加载页面 chunk 未就绪时以居中的 `GlassProgressCircle`（不定量 lg）作为兜底（布局外壳保持挂载）。
-  - 587-607 行：移动端右下角浮动菜单按钮（`lg:hidden`），点击 `setMobileOpen(true)`。
+  - 587-607 行：移动端右下角浮动菜单按钮（`lg:hidden`），点击 `setMobileOpen(true)`；bottom 用 `[bottom:calc(1.5rem+var(--safe-area-bottom))]` 让出 Android 手势条 / iOS Home 条。
 - 612-735 行：背景模式切换器实现——触发区常量（612-614）、选项表 `BG_MODE_OPTIONS`（616-635）、`GameBackgroundSwitch`（637-735）：固定定位在 `top-12`（标题栏下方）居中，隐藏态 `-translate-y-2 scale-95 opacity-0 pointer-events-none`，显示态复位（`transition-all duration-300 ease-out` 浮出动画）；胶囊容器内为滑动主色指示块 + 两个图标按钮（`h-8 w-9`，`MorphIcon size=16`），激活图标使用 `text-primary-foreground`。
 
 **备注**：
 - **invoke 命令**：本文件无直接 `invoke(...)`；间接经 `launcherService` 调用 `launcher_get_notice_content`（公告 + Banner + 右侧栏）与 `launcher_get_background_image`（背景）。
 - 路由：作为所有业务路由的外层包裹（`App.tsx` 中 `/`、`/settings`、`/account`、`/characters`、`/medals`、`/attendance`、`/gacha`、`/developer` 均包在 `DashboardLayout` 内）。
 - 平台限制：游戏启动器页面分支和公告/背景 IPC 仅在 Windows 启用；`launcherMode` store 在其他平台始终返回 data 模式。
+- 移动端（Android/iOS）：标题栏经 globals.css 的 `.titlebar-shell` 让出顶部安全区（高度 = 44px + `env(safe-area-inset-top)`，磨砂带 `--lg-frost-titlebar-h` 同步延伸），抽屉与右下角菜单按钮各让出对应 inset；仪表盘的 `DashboardFAB` 在 `<lg` 视口抬到菜单按钮上方（`bottom: calc(6rem + var(--safe-area-bottom))`，`lg:bottom-6`）避免两个 FAB 重叠。`index.html` 的 viewport 带 `viewport-fit=cover`（安全区 insets 生效的前提）。
 - 关键 window/事件语义：无自定义 window 事件；使用 store 订阅（`subscribeLauncherMode`/`subscribeLauncherBgMedia`/`subscribeGameBgMode`/`subscribeActiveGame`）；`GameBackgroundSwitch` 额外监听 window `mousemove` 实现顶部中央浮出与离场收起（右侧栏 `GameSidebarRail` 自己监听 `mousemove`，不在本文件）。
 - localStorage：渠道按游戏分区读写 `launcher_channel` / `launcher_channel_arknights`（经 `launcherService.readGameChannel` / `gameConfigKey`）；背景模式 `game_bg_mode` 由 `stores/launcherMode` 读写；当前游戏 `launcher_game` 由 `stores/launcherGame` 读写。
 - 配置键（configService）：读 `sidebar_rail_collapsed`；写 `sidebar_rail_collapsed`。

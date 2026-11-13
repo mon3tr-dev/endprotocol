@@ -123,7 +123,7 @@
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
 | `TitlebarBrand` | custom-titlebar.tsx:44 | 品牌区：应用图标 + 游戏标题 + 数据/游戏模式切换。props `game?: LauncherGame`（传了就钉死在那个游戏上，整页推移时旧页要显示旧游戏名；不传则跟随 store）。游戏名换游戏时经 `useSwitchTransition` 播一小段位移（只动 transform，不动 opacity——后者会让元素成为 backdrop root，毁掉自身与后代的玻璃） |
-| `TitlebarControls` | custom-titlebar.tsx:180 | 右侧区：通知铃铛（含未读角标）+ 消息浮层（`createPortal(document.body)`）+ 窗口三键 + `<AppInfoDrawer>` + `<CloseConfirmDialog>`。**只渲染一份** |
+| `TitlebarControls` | custom-titlebar.tsx:180 | 右侧区：通知铃铛（含未读角标）+ 消息浮层（`createPortal(document.body)`）+ 窗口三键（**仅桌面渲染，`isMobileApp()` 时隐藏**——Android/iOS 没有窗口化概念，应用生命周期由系统管理）+ `<AppInfoDrawer>` + `<CloseConfirmDialog>`。**只渲染一份** |
 | `CustomTitlebar` | custom-titlebar.tsx:366 | 组合两者。props `game?`（钉住游戏）、`brandOnly?`（只渲染品牌区）、`controlsOnly?`（只渲染右侧区）、`className?`（外层 class）。`controlsOnly` 时不渲染 pl-5 左内边距与拖拽伸展条：右侧区贴右只占自身宽度，否则整宽的 drag region 会盖住页面层品牌区（模式拨杆点不动） |
 | 局部状态 | — | `TitlebarBrand`：`viewMode`、`followedGame`、`gameSwitch`（`{seq, direction}`）；`TitlebarControls`：`isMaximized`、`infoOpen`、`unreadCount`、`hasUrgent`、`showCloseConfirm`、`closeAction`（默认 `"ask"`）、`trayAvailable`（默认 `true`，由 `isTrayAvailable()` 回填）、`newMessage`、`flyoutOpen`（默认 `true`）；refs：`seenMessageIds`（已展示过的消息 id Set，初始为启动时队列内全部 id）、`flyoutTimer` |
 | 消息订阅 effect | — | `subscribeMessages`：仅在队首是**从未展示过的新消息**（`seenMessageIds` 中不存在）时弹出浮层并记录其 id；由于用 Set 判断「新增」，删除队首消息露出旧消息不会重复弹浮层。非进度型消息（`progress === undefined \|\| progress < 0`）5 秒后自动隐藏；浮层只保存消息 **id**，每次 store 变更都按 id 从 `getMessages()` 回填最新对象（否则 `updateMessage` 写入的进度停留在入队时的旧快照上，浮层进度条不动）；若当前正在展示的消息已被从队列移除，则立即收起浮层；同时刷新 `unreadCount`、`hasUrgent` |

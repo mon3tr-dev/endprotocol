@@ -3,6 +3,8 @@
 > 逐文件精读源码生成。行号基于当前工作区版本，仅用于快速定位。
 > 覆盖范围：`src-tauri/src/commands/` 下 18 个命令文件（另有 `mod.rs` 共 19 个 `.rs`），当前参考表收录 **137 个不同命令名**；源码含 141 处命令注解（`capture_screen`、`finish_screen_pick`、`run_installer`、`save_tab_snapshot` 各有 `cfg` 门控的两个版本，按名去重后为 137）。注册入口见 `src-tauri/src/lib.rs` 的 `generate_handler!`。
 
+> **平台门控（Android/iOS）**：命令名集合在桌面与移动端**完全一致**（`generate_handler!` 不按平台裁剪），差异只在实现——桌面专属能力在移动端是返回明确错误的 stub，共 5 组：`launcher_browse_folder` / `pick_steam_icon` / `pick_steam_icon_source`（`rfd` 对话框）、`check_update_endpoint` / `install_update_endpoint`（updater 插件）、`capture_screen` / `finish_screen_pick`（GDI 取色）、`save_tab_snapshot`（PrintWindow 快照）、`minimize_window` / `toggle_maximize_window`（窗口化语义，移动端 no-op）。完整差异表见 [docs/development.md](../../development.md) §2.1。
+
 ## 命令速查表
 
 | 命令名 | 定义位置 | 参数 | 返回 | 内部调用 |
@@ -100,7 +102,7 @@
 | `launcher_get_notice_content` | commands/launcher.rs:395 | `service`、`channel` | `Result<LauncherNoticeContent, String>` | `GameLauncherService::get_notice_content`（Banner + 公告 + 右侧栏 `sidebars` 合并内容） |
 | `launcher_get_background_image` | commands/launcher.rs:406 | `service`、`channel` | `Result<Option<BackgroundMedia>, String>` | `GameLauncherService::get_background_image` |
 | `launcher_start_game` | commands/launcher.rs:461 | `config_service: State<Arc<StdMutex<ConfigService>>>`、`install_path: String`、`channel: String`、`dx11: Option<bool>`（省略时读配置 `launcher_dx11`，默认 false） | `Result<LauncherResult, String>` | `parse_channel`、`process::terminate_processes`（原生快照清理同名残留）、`official_launcher::launch_via_official_parent`（已提权时本进程直接伪造官方父进程；否则提权 helper）/ 回退 `direct_launch` → `shell_execute_game`；DX11 开启时给游戏参数追加 `-force-d3d11`；Steam 启动且应用未提权时在 `warning` 返回 `overlay_unavailable` |
-| `launcher_browse_folder` | commands/launcher.rs:658 | 无 | `Result<Option<String>, String>` | `rfd::FileDialog::pick_folder` |
+| `launcher_browse_folder` | commands/launcher.rs:658 | 无 | `Result<Option<String>, String>` | 桌面：`rfd::FileDialog::pick_folder`；**移动端按 `#[cfg(not(desktop))]` 返回「Folder selection is not available on this platform」**（`rfd` 只在桌面目标编译） |
 | `launcher_get_disk_space` | commands/launcher.rs:675 | `path: String` | `Result<DiskSpace, String>` | 调用 `powershell Get-PSDrive` 子进程解析 used/free |
 | `launcher_scan_install_dir` | commands/launcher.rs:734 | `service`、`channel`、`install_path` | `Result<FileScanResult, String>` | `GameLauncherService::scan_install_dir` |
 | `launcher_detect_channel` | commands/launcher.rs:770 | `install_path: String` | `Result<Option<String>, String>` | 按游戏分派：终末地用特征 DLL（hgsdk.dll / PCGameSDK.dll / gfsdk.dll 等），明日方舟读 `config.ini` 的 `channel`；纯本地不联网 |
@@ -119,8 +121,8 @@
 | `reset_api_health` | commands/diagnostics.rs:43 | 无 | `()` | `utils::api_health::reset` |
 | `get_tray_user_info` | commands/tray.rs:8 | `config_service: State<Arc<Mutex<ConfigService>>>` | `Result<TrayUserInfo, String>` | `ConfigService::get::<TrayUserInfo>("tray_user_info")` |
 | `steam_shortcut_defaults` | commands/startup.rs:324 | `config_service: State<Arc<Mutex<ConfigService>>>`、`game: Option<String>` | `Result<SteamShortcutDefaults, String>` | Steam 弹窗默认值：名字、从 `Endfield.exe` 提取的 `.ico`、DX11、上次勾选的两项 Overlay 选项、开始菜单 Steam 快捷方式数量、当前是否已提权 |
-| `pick_steam_icon` | commands/startup.rs:267 | 无 | `Result<Option<String>, String>` | `rfd` 选择 `ico`/`png`/`exe`，取消返回 `None` |
-| `pick_steam_icon_source` | commands/startup.rs:277 | 无 | `Result<Option<String>, String>` | `rfd` 选择用于提取图标的 exe，取消返回 `None` |
+| `pick_steam_icon` | commands/startup.rs:267 | 无 | `Result<Option<String>, String>` | 桌面：`rfd` 选择 `ico`/`png`/`exe`，取消返回 `None`；**移动端 stub（`cfg(not(desktop))`）返回"File selection is not available on this platform"** |
+| `pick_steam_icon_source` | commands/startup.rs:277 | 无 | `Result<Option<String>, String>` | 桌面：`rfd` 选择用于提取图标的 exe，取消返回 `None`；**移动端 stub 同上** |
 | `extract_steam_icon` | commands/startup.rs:289 | `exe_path: String` | `Result<String, String>` | `utils::game_icon::extract_icon` 重新组装 `RT_GROUP_ICON` 为 `.ico`，写出到应用数据目录并返回路径 |
 | `create_game_shortcut` | commands/startup.rs:405 | `config_service: State<Arc<Mutex<ConfigService>>>`、`dx11: Option<bool>`、`game: Option<String>` | `Result<Option<String>, String>` | 用户通过 `rfd` 选择 `.lnk` 路径；PowerShell COM 创建快捷方式，启动参数按开关包含 `--dx11`，返回路径；取消选择返回 `None` |
 | `add_steam_shortcut` | commands/startup.rs:480 | `config_service: State<Arc<Mutex<ConfigService>>>`、`options: SteamShortcutOptions`（含 `game`） | `Result<AddSteamShortcutResult, String>` | 允许 Steam 运行中写入：`utils::steam::add_shortcut` 按名字 upsert 当前账户 `userdata/<id>/config/shortcuts.vdf`；按勾选创建管理员 Steam 快捷方式（用户选路径）并提升开始菜单 Steam 快捷方式；返回 vdf 路径与新建/提升结果；非 Windows 返回 `Err` |
@@ -137,7 +139,7 @@
 | `cancel_download` | commands/updater.rs:181 | 无 | `()`（无返回） | 模块级 `DOWNLOAD_CANCELLED` AtomicBool 置 true，`install_update_endpoint` 下载循环中检查并取消 |
 | `reset_download_cancel` | commands/updater.rs:187 | 无 | `()`（无返回） | `DOWNLOAD_CANCELLED` 置 false，`install_update_endpoint` 启动前复位 |
 | `download_file` | commands/updater.rs:195 | `app: AppHandle`、`url: String`、`path: String` | `Result<u64, String>` | `capture::send_stream` 流式下载，每 256KB emit `download-progress` |
-| `check_update_endpoint` | commands/updater.rs:58 | `app: AppHandle`、`endpoint: String` | `Result<Option<UpdateEndpointInfo>, String>` | 限定镜像/GitHub 清单，使用 updater 检查本机平台与版本 |
+| `check_update_endpoint` | commands/updater.rs:58 | `app: AppHandle`、`endpoint: String` | `Result<Option<UpdateEndpointInfo>, String>` | 桌面：限定镜像/GitHub 清单，使用 updater 检查本机平台与版本；**移动端按 `#[cfg(not(desktop))]` 返回"Application updates are not available on this platform"**（updater 插件只在桌面编译）。`install_update_endpoint` 同此规则 |
 | `install_update_endpoint` | commands/updater.rs:73 | `app: AppHandle`、`endpoint: String` | `Result<(), String>` | 限定端点后流式下载到 temp 文件，下载循环中检查 `DOWNLOAD_CANCELLED` 取消标志并删除半成品，完成后用 `update.install()` 验签安装；emit `download-progress` |
 | `run_installer` | commands/updater.rs:260/280 | `app: AppHandle`、`path: String` | `Result<(), String>` | Windows：静默启动 NSIS 安装器并退出应用；非 Windows：返回不支持错误 |
 | `minimize_window` | commands/window.rs:33 | `app: AppHandle<R>` | `()`（无返回） | `app.get_window("main")` → `window.minimize()` |

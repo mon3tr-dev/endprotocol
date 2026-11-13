@@ -39,11 +39,15 @@ import {
 } from "@/utils/updateService";
 import { pushGlobalAlert } from "@/components/ui/global-alert";
 import { UpdateDialog } from "@/components/update-dialog";
-import { isWindowsPlatform } from "@/utils/platform";
+import { isWindowsPlatform, isMobileApp, isAndroidApp, isIosApp } from "@/utils/platform";
 
 export default function SettingsPage() {
   const { t, i18n } = useTranslation();
   const supportsLauncher = isWindowsPlatform();
+  // 窗口关闭行为 / 托盘展示角色：仅桌面（有系统托盘与窗口关闭按钮）可见。
+  const supportsTray = !isMobileApp();
+  // 自更新（检查 / 渠道 / 安装）：仅桌面有 updater 插件与安装包分发渠道。
+  const supportsUpdater = !isMobileApp();
   const [isLangDropdownOpen, setIsLangDropdownOpen] = useState(false);
   const langDropdownRef = useRef<HTMLDivElement>(null);
   const langBtnRef = useRef<HTMLButtonElement>(null);
@@ -345,6 +349,9 @@ export default function SettingsPage() {
   }, []);
 
   const platformInfo = (() => {
+    // Android 的 WebView UA 含 "Linux"，必须先判移动端，否则会误报成 Linux。
+    if (isAndroidApp()) return "Android";
+    if (isIosApp()) return "iOS";
     const ua = navigator.userAgent;
     if (ua.includes("Win")) return "Windows x64";
     if (ua.includes("Mac")) return "macOS";
@@ -617,6 +624,10 @@ export default function SettingsPage() {
                 </GlassSwitch>
               </div>
 
+              {/* Close Action + Tray User：窗口关闭语义 / 系统托盘仅桌面存在，
+                  移动端（Android/iOS）没有系统托盘与窗口关闭按钮，整体隐藏 */}
+              {supportsTray && (
+                <>
               <SettingsDivider />
 
               {/* Close Action */}
@@ -699,6 +710,8 @@ export default function SettingsPage() {
                   />
                 </div>
               </div>
+                </>
+              )}
             </div>
           )}
         </GlassCard>
@@ -946,6 +959,10 @@ export default function SettingsPage() {
               </div>
             </div>
 
+            {/* 更新渠道 / 来源 / 检查按钮：仅桌面（有 updater 与安装包分发渠道）。
+                移动端通过应用商店或 APK 分发，不走应用内自更新。 */}
+            {supportsUpdater && (
+              <>
             <SettingsDivider />
 
             {/* Update Channel */}
@@ -1093,6 +1110,8 @@ export default function SettingsPage() {
                 </button>
               </div>
             </div>
+              </>
+            )}
 
             <SettingsDivider />
 
@@ -1150,7 +1169,7 @@ export default function SettingsPage() {
             )}
 
             {/* Update Button */}
-            {remoteVersion.hasUpdate && (
+            {supportsUpdater && remoteVersion.hasUpdate && (
               <GlassButton
                 variant="primary"
                 fullWidth
@@ -1177,7 +1196,8 @@ export default function SettingsPage() {
               </GlassButton>
             )}
 
-            {/* Refresh Check Button */}
+            {/* Refresh Check Button（仅桌面） */}
+            {supportsUpdater && (
             <GlassButton
               variant="outline"
               fullWidth
@@ -1207,6 +1227,7 @@ export default function SettingsPage() {
                   ? "检查更新"
                   : "Check for Updates"}
             </GlassButton>
+            )}
 
             <SettingsDivider />
 
@@ -1629,11 +1650,13 @@ export default function SettingsPage() {
         </GlassAlertDialog.Backdrop>
       </GlassAlertDialog>
 
-      {/* Update Dialog */}
-      <UpdateDialog
-        isOpen={showUpdateDialog}
-        onOpenChange={setShowUpdateDialog}
-      />
+      {/* Update Dialog（仅桌面；移动端无自更新） */}
+      {supportsUpdater && (
+        <UpdateDialog
+          isOpen={showUpdateDialog}
+          onOpenChange={setShowUpdateDialog}
+        />
+      )}
     </div>
   );
 }

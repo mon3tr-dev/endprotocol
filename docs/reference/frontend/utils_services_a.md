@@ -503,9 +503,9 @@
 | --- | --- | --- |
 | `TrayUserInfo`（interface） | :18 | 与后端 `crate::tray::TrayUserInfo`（camelCase，字段均 `Option`）一一对应；`nickname`/`avatar` 允许 `null`；`accountLevel`（:23）= 游戏账号等级，`bpCurLevel`/`bpMaxLevel` = 通行证等级。`components/tray-panel.tsx` 复用该类型，不再各自声明 |
 | `TrayQueryResult`（私有 interface） | :39 | `query_role_data` 返回的是**「路径字符串 → 值」的扁平映射**，所以叶子路径写作 `"base.level"` 键（`result["base.level"]`），不是嵌套对象；`dungeon` 的数值是字符串，统一 `Number(...) \|\| 0` 兜底 |
-| `refreshTrayUserData(roleId)` | :53 | 查询 `char_detail` 的 `base.level`/`dungeon`/`bpSystem`/`dailyMission`/`weeklyMission` → `getAccounts()` 取昵称头像 → `invoke("update_tray_user_data")`。`accountLevel` 优先取 `base.level`，取不到回退账号列表缓存的 `level`。空 `roleId` 直接返回 `false`；异常仅 `logger.error` 后返回 `false`，不上抛 |
-| `setTrayUser(roleId)` | :108 | `invoke("set_tray_user")`（失败忽略）+ `refreshTrayUserData(roleId)`；设置页切换托盘账号用 |
-| `isTrayAvailable()` | :125 | `invoke<boolean>("tray_available")` 并缓存结果；查询失败按 `true` 处理（后端 `minimize_to_tray` 自身仍有无托盘兜底）。Linux 无 StatusNotifier 宿主时为 `false`，标题栏、内嵌浏览器与设置页据此禁用「最小化到托盘」 |
+| `refreshTrayUserData(roleId)` | :54 | **移动端（`isMobileApp()`）直接返回 `false` 不发起 IPC**。桌面：查询 `char_detail` 的 `base.level`/`dungeon`/`bpSystem`/`dailyMission`/`weeklyMission` → `getAccounts()` 取昵称头像 → `invoke("update_tray_user_data")`。`accountLevel` 优先取 `base.level`，取不到回退账号列表缓存的 `level`。空 `roleId` 直接返回 `false`；异常仅 `logger.error` 后返回 `false`，不上抛 |
+| `setTrayUser(roleId)` | :110 | **移动端直接返回**（无系统托盘）。桌面：`invoke("set_tray_user")`（失败忽略）+ `refreshTrayUserData(roleId)`；设置页切换托盘账号用 |
+| `isTrayAvailable()` | :130 | **移动端恒返回 `false`**（Android/iOS 无系统托盘）。桌面：`invoke<boolean>("tray_available")` 并缓存结果；查询失败按 `true` 处理（后端 `minimize_to_tray` 自身仍有无托盘兜底）。Linux 无 StatusNotifier 宿主时为 `false`，标题栏、内嵌浏览器与设置页据此禁用「最小化到托盘」 |
 
 **备注**：
 - 封装的 invoke 命令：`update_tray_user_data`、`set_tray_user`、`tray_available`；配置键：`tray_user_info`（写入侧），`tray_user_role_id`（由调用方读取后传入）。

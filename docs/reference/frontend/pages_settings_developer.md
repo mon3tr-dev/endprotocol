@@ -1,4 +1,4 @@
-﻿# 设置页与开发者页 — 文件功能参考
+# 设置页与开发者页 — 文件功能参考
 
 > 逐行精读源码生成。行号基于当前工作区版本，仅用于快速定位。
 
@@ -41,7 +41,7 @@
 ### 组件与函数清单
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
-| `SettingsPage`（default） | settings.tsx:43 | 页面根组件，返回 7 张卡片 + 3 个警告对话框 + `UpdateDialog` |
+| `SettingsPage`（default） | settings.tsx:43 | 页面根组件，返回 7 张卡片 + 3 个警告对话框 + `UpdateDialog`。**平台门控**：`supportsLauncher`（仅 Windows，`isWindowsPlatform()`）隐藏「游戏启动」卡；`supportsTray`（`!isMobileApp()`）隐藏「关闭窗口行为」与「托盘显示角色」两行（Android/iOS 无系统托盘与窗口关闭语义）；`supportsUpdater`（`!isMobileApp()`）隐藏「更新通道」「更新源」「更新到 vX」「检查更新」按钮与 `<UpdateDialog>`（版本四宫格保留，`fetchRemoteVersion` 走通用 `fetch_url` 在移动端仍可用） |
 | `languages` | settings.tsx:83-86 | 语言选项常量：`{key:"en",label:"English"}`、`{key:"zh",label:"简体中文"}` |
 | `refreshOnSwitch` 等偏好 state | settings.tsx:55-59 | `refreshOnSwitch`、`lazyLoadEnabled`、`wikiDetailPreload`、`closeAction`、`trayUserRoleId`（代理配置已不在本文件，见 `NetworkSettings`） |
 | `accounts` | settings.tsx:60-62 | 托盘角色下拉用的账号列表（id/nickname/avatar） |

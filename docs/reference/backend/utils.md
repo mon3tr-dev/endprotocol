@@ -67,19 +67,22 @@
 ---
 
 ## `src-tauri/src/utils/http_client.rs`
-**职责**：创建统一配置的 `reqwest::Client`（全局 30 秒超时），并维护一个全局代理配置缓存，使设置页保存的 `proxy_config` 对所有 HTTP 请求即时生效。
-**导出**：`pub fn create_client`、`pub fn create_proxied_client`、`pub fn set_global_proxy_config`、`pub fn global_proxy_config`。
-**主要依赖**：`reqwest`、`serde_json::Value`、`std::sync::RwLock`、`std::time::Duration`、`crate::utils::proxy`。
+**职责**：创建统一配置的 `reqwest::Client`（全局 30 秒超时），并维护一个全局代理配置缓存，使设置页保存的 `proxy_config` 对所有 HTTP 请求即时生效。**同时负责 Android 的 TLS 根证书策略**（见下）。
+**导出**：`pub fn client_builder`、`pub fn default_client`、`pub fn create_client`、`pub fn create_proxied_client`、`pub fn set_global_proxy_config`、`pub fn global_proxy_config`。
+**主要依赖**：`reqwest`、`serde_json::Value`、`std::sync::RwLock`、`std::time::Duration`、`crate::utils::proxy`；Android 目标额外依赖 `rustls` + `webpki-roots`（仅 `cfg(target_os = "android")`）。
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
 | `static PROXY_CONFIG: RwLock<Option<Value>>` | http_client.rs:9 | 全局代理配置缓存（进程级）；`None` 表示直连 |
 | `set_global_proxy_config(config)` | http_client.rs:12 | 写入缓存；由 `set_config("proxy_config")`、`set_proxy_config`、`remove_proxy_config`、`save_proxy_settings`、`clear_proxy_settings` 以及启动时的 `create_config_service()` 调用 |
 | `global_proxy_config()` | http_client.rs:19 | 读取缓存快照（`None` 表示未启用代理） |
-| `create_client() -> Client` | http_client.rs:24 | 等价于 `create_proxied_client(global_proxy_config().as_ref())`，即**默认跟随全局代理设置**，30 秒超时 |
-| `create_proxied_client(proxy_config) -> Client` | http_client.rs:29 | 按传入代理配置构建 client（`proxy::from_config` 生成 `reqwest::Proxy`）；**未启用时显式调用 `ClientBuilder::no_proxy()`**，禁止 reqwest 回退到读取 `HTTP_PROXY`/`HTTPS_PROXY`/`ALL_PROXY` 等环境变量（否则后台运行的 v2ray 等第三方代理仍会被使用，即使 EndProtocol 内部代理开关已关闭）；构建失败时 `log_warn!` 并回退 `Client::new()`，不再 panic |
+| `client_builder() -> reqwest::ClientBuilder` | http_client.rs:51 | **所有 HTTP 客户端的统一入口**。桌面返回裸 `Client::builder()`；**Android 上调用 `use_preconfigured_tls(android_tls_config())`**，改走内置 Mozilla 根证书，绕开 `rustls-platform-verifier` |
+| `android_tls_config()`（私有，仅 Android） | http_client.rs:61 | 用 `webpki_roots::TLS_SERVER_ROOTS` 构造 `rustls::RootCertStore`，并安装 `aws_lc_rs` 默认 provider，返回 `rustls::ClientConfig` |
+| `default_client() -> Client` | http_client.rs:76 | `client_builder().build()` 的便捷封装（不读全局代理）；构建失败 `log_warn!` 后回退 `Client::new()` |
+| `create_client() -> Client` | http_client.rs:92 | 等价于 `create_proxied_client(global_proxy_config().as_ref())`，即**默认跟随全局代理设置**，30 秒超时 |
+| `create_proxied_client(proxy_config) -> Client` | http_client.rs:101 | 基于 `client_builder()` 按传入代理配置构建 client（`proxy::from_config` 生成 `reqwest::Proxy`）；**未启用时显式调用 `ClientBuilder::no_proxy()`**，禁止 reqwest 回退到读取 `HTTP_PROXY`/`HTTPS_PROXY`/`ALL_PROXY` 等环境变量（否则后台运行的 v2ray 等第三方代理仍会被使用，即使 EndProtocol 内部代理开关已关闭）；构建失败时 `log_warn!` 并回退 `Client::new()`，不再 panic |
 
-**备注**：调用方约 15 处（services/skland_service.rs、services/account_service.rs、services/gacha_service.rs），自本版本起自动继承全局代理；`commands/image.rs` 与 `services/avatar_cache_service.rs` 的图片下载也已从裸 `reqwest::Client::new()` 改为 `create_client()`，因此同样走代理。**仍未走代理**的请求方：`commands/updater.rs`（自建 client）、`services/char_detail_service.rs`、`services/skland_service.rs` 的数美指纹请求、`services/game_launcher_service.rs`（自建带自定义配置的 client）——如需覆盖，改为 `http_client::create_client()` 即可。
+**备注**：调用方约 15 处（services/skland_service.rs、services/account_service.rs、services/gacha_service.rs），自动继承全局代理。**Android TLS 约束**：reqwest 0.13 的 rustls 后端固定依赖 `rustls-platform-verifier`，该 crate 在 Android 上需要注入 Kotlin 组件并显式初始化，否则首次 HTTPS 握手会在 tokio worker 里 panic（实测 `Expect rustls-platform-verifier to be initialized`）。因此**禁止**直接 `reqwest::Client::new()` / `Client::builder()`——`commands/updater.rs`、`services/char_detail_service.rs`、`services/skland_service.rs`、`services/game_launcher_service.rs`、`utils/proxy.rs` 已全部改为走 `client_builder()` / `default_client()` / `create_client()`。
 
 ---
 
@@ -137,7 +140,7 @@
 | `LogLevel::color_code` | logger.rs:86 | ANSI 颜色：Debug `\x1b[36m` 青、Info `\x1b[32m` 绿、Warn `\x1b[33m` 黄、Error `\x1b[31m` 红（私有） |
 | `struct LogEntry` | logger.rs:98 | 字段 `timestamp`(String) / `level`(LogLevel) / `module`(String) / `message`(String) / `source`(String，后端固定写 `"backend"`)；`Serialize` 供前端 |
 | `struct LoggerConfig` | logger.rs:107 | `log_to_console` / `log_to_file` / `log_level` / `log_dir: PathBuf` / `max_memory_entries` |
-| `impl Default for LoggerConfig` | logger.rs:111-123 | 默认：控制台开、文件开、**级别 Info**、`log_dir = paths::log_dir()`（失败回退 `current_dir()/logs`）、内存上限 5000 条 |
+| `impl Default for LoggerConfig` | logger.rs:111-127 | 默认：控制台开、文件开、**级别 Info**、`log_dir = paths::log_dir()`（失败依次回退 `current_dir()/logs`、`temp_dir()/endprotocol-logs`），内存上限 5000 条。**移动端相关**：Android 上 `paths::log_dir()` 在数据目录覆盖值注入前必然失败，因此原 `current_dir().unwrap()` 已改为无 panic 的逐级回退 |
 
 ### 控制台可用性（GUI 子系统保护）
 
@@ -261,7 +264,7 @@
 ---
 
 ## `src-tauri/src/utils/paths.rs`
-**职责**：集中定义应用数据目录与各业务文件/目录路径（95 行），统一基于 `dirs::data_local_dir()` + 应用目录名，返回 `Result<PathBuf, &'static str>`。
+**职责**：集中定义应用数据目录与各业务文件/目录路径（约 137 行），统一基于 `dirs::data_local_dir()` + 应用目录名（桌面）或 Tauri 路径解析器注入的覆盖值（移动端），返回 `Result<PathBuf, &'static str>`。
 **导出**：常量 `APP_DIR`（`const`，非 pub）、14 个 `pub fn`。
 **主要依赖**：`dirs`、`std::path::PathBuf`。
 
@@ -269,7 +272,9 @@
 
 | 符号 | 位置 | 返回路径（相对数据根目录） |
 | --- | --- | --- |
-| `app_data_dir()` | paths.rs:7 | `<data_local_dir>/cn.msk-network.endprotocol`；失败返回 `"Failed to get local app data directory"`。**平台差异**：Windows = `%LOCALAPPDATA%\cn.msk-network.endprotocol`（doc 注释 paths.rs:6，刻意用 Local 不用 Roaming，避免同步）；macOS = `~/Library/Application Support/cn.msk-network.endprotocol`；Linux = `~/.local/share/cn.msk-network.endprotocol`（`dirs::data_local_dir()` 语义）。调用方：config_service.rs:19、game_launcher_service.rs:1918/1952/1970 |
+| `DATA_DIR_OVERRIDE`（static） | paths.rs:9 | `OnceLock<PathBuf>` 移动端数据目录覆盖值。**Android/iOS 没有 `$HOME`，XDG 目录全部缺失，`dirs` 系列恒返回 `None`**；`lib.rs` setup 最早一步用 `app.path().app_data_dir()`（Android = `{filesDir}/cn.msk-network.endprotocol`）注入。桌面永远不设置，历史数据位置不变 |
+| `set_app_data_dir_override(dir)` | paths.rs:17 | 注入覆盖值（仅移动端由 lib.rs setup 调用；重复注入以首次为准） |
+| `app_data_dir()` | paths.rs:22 | 优先返回覆盖值；桌面回退 `<data_local_dir>/cn.msk-network.endprotocol`，失败返回 `"Failed to get local app data directory"`。**平台差异**：Windows = `%LOCALAPPDATA%\cn.msk-network.endprotocol`（doc 注释 paths.rs:6，刻意用 Local 不用 Roaming，避免同步）；macOS = `~/Library/Application Support/cn.msk-network.endprotocol`；Linux = `~/.local/share/cn.msk-network.endprotocol`（`dirs::data_local_dir()` 语义）；Android = `{filesDir}/cn.msk-network.endprotocol`（覆盖值）。调用方：config_service.rs:19、game_launcher_service.rs:1918/1952/1970 |
 | `image_cache_dir()` | paths.rs:14 | `<app_data_dir>/image_cache`。调用方：commands/image.rs:18、avatar_cache_service.rs:87 |
 | `backgrounds_dir()` | paths.rs:19 | `<app_data_dir>/backgrounds`。调用方：commands/image.rs:143、154、192 |
 | `wiki_detail_cache_dir()` | paths.rs:24 | `<app_data_dir>/wiki_detail_cache`。调用方：char_wiki_detail_service.rs:42 |
@@ -285,7 +290,7 @@
 | `gacha_avatar_map_file_path()` | paths.rs:92 | `<app_data_dir>/gacha_avatar_map.json`。调用方：gacha_service.rs:301 |
 | `arknights_cache_dir()` | paths.rs:102 | `<app_data_dir>/arknights`（**《明日方舟》数据缓存目录**：`player_info_{uid}.json` 与 `raw_*.json` 都在里面，目录内文件名由 `ArknightsService` 决定）。调用方：arknights_service.rs:63。**为什么不进 `app_config.json`**：单账号 `player/info` 实测几百 KB（B 服 242 名干员约 600 KB），塞进配置会让每次配置读写都搬运它 —— 与抽卡记录同一套做法 |
 
-**备注**：全部函数只拼接路径、**不创建目录**（创建由调用方 `create_dir_all` 完成）；除 `app_data_dir` 的底层查询失败外无其他错误来源，故错误类型是 `&'static str`。平台差异只体现在 `data_local_dir()` 根目录，子目录结构跨平台一致。
+**备注**：全部函数只拼接路径、**不创建目录**（创建由调用方 `create_dir_all` 完成）；除 `app_data_dir` 的底层查询失败外无其他错误来源，故错误类型是 `&'static str`。平台差异体现在根目录：桌面为 `data_local_dir()`，移动端为 Tauri 注入的覆盖值，子目录结构跨平台一致。**移动端注意**：`lib.rs` setup 之前的极早期调用（如 `run()` 里的 `init_logger`——移动端已推迟到 setup）会得到 `"Mobile app data directory is not initialized yet"` 错误。
 
 ---
 
@@ -590,7 +595,7 @@
 ## 本文件发现的异常
 
 1. **logger.rs 无日志轮转/清理**：仅按启动日期命名 `app-YYYY-MM-DD.log`，文件句柄常驻不跨天切换，旧日志永不删除；同时文件与内存缓冲不做级别过滤（Debug 全量落盘）。
-2. **`LoggerConfig::default()` 中 `current_dir().unwrap()`**（logger.rs:66）在 cwd 不可用时会 panic。
+2. ~~**`LoggerConfig::default()` 中 `current_dir().unwrap()`** 在 cwd 不可用时会 panic~~ **已修复**（Android 适配）：改为 `paths::log_dir()` → `current_dir()/logs` → `temp_dir()/endprotocol-logs` 的逐级回退，全程无 panic。
 3. **HTTP 客户端超时策略不统一**：`http_client::create_client`（30s）仅被 3 个 service 使用，多处仍直接 `reqwest::Client::new()`（无显式超时），game_launcher_service 另建自定义 client。
 4. **hg_crypto 的测试 `test_decrypt_roundtrip_key_iv` 只断言常量长度**（hg_crypto.rs:126-130），并未真正验证解密逻辑；AES key/IV 为明文硬编码（逆向常量）。
 5. **`read_entries` 为全文件顺序扫描**（capture.rs:256-267），大会话下分页读取开销 O(文件行数）；单行 JSON 解析失败会被静默丢弃，可能导致 `total` 与前端可见条目不一致。

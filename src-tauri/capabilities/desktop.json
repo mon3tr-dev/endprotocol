@@ -7,10 +7,12 @@
   ],
   "windows": [
     "main",
-    "tray-panel"
+    "tray-panel",
+    "devdeck"
   ],
   "permissions": [
     "updater:default",
+    "devdeck:default",
     "opener:allow-open-path",
     "process:allow-restart"
   ]

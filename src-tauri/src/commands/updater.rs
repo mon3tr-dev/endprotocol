@@ -1,8 +1,10 @@
-use std::fs;
+﻿use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::Emitter;
+// updater æ’ä»¶åªåœ¨æ¡Œé¢ç›®æ ‡ç¼–è¯‘ï¼ˆè§ Cargo.tomlï¼‰ï¼›ç§»åŠ¨ç«¯ç›¸å…³å‘½ä»¤è¿”å›žæ˜Žç¡®é”™è¯¯ã€‚
+#[cfg(desktop)]
 use tauri_plugin_updater::{Updater, UpdaterExt};
 
 use crate::utils::capture;
@@ -17,6 +19,8 @@ pub struct UpdateEndpointInfo {
     body: Option<String>,
 }
 
+/// åº”ç”¨è‡ªæ›´æ–°ï¼ˆä»…æ¡Œé¢ï¼‰ï¼šç§»åŠ¨ç«¯åˆ†å‘æ¸ é“ä¸èµ° updater æ’ä»¶ã€‚
+#[cfg(desktop)]
 fn updater_for_endpoint(app: &tauri::AppHandle, endpoint: &str) -> Result<Updater, String> {
     const MIRROR_STABLE: &str = "https://updates.msk-network.cn/stable/latest.json";
     const MIRROR_PREVIEW: &str = "https://updates.msk-network.cn/preview/latest.json";
@@ -54,6 +58,8 @@ fn updater_for_endpoint(app: &tauri::AppHandle, endpoint: &str) -> Result<Update
         .map_err(|error| error.to_string())
 }
 
+/// æ£€æŸ¥æŒ‡å®šæ›´æ–°æºæ˜¯å¦æœ‰æ–°ç‰ˆæœ¬ï¼ˆä»…æ¡Œé¢ï¼‰ã€‚
+#[cfg(desktop)]
 #[tauri::command]
 pub async fn check_update_endpoint(
     app: tauri::AppHandle,
@@ -64,9 +70,9 @@ pub async fn check_update_endpoint(
 
     Ok(update.map(|update| UpdateEndpointInfo {
         version: update.version.to_string(),
-        // `OffsetDateTime::to_string()` 产出 "2026-11-01 10:09:39.585 +00:00:00"（空格分隔、
-        // 全量偏移），JS 的 `new Date()` 解析不了，前端会显示 Invalid Date。
-        // 序列化为 RFC 3339（"...T...Z"），与 latest.json 的 pub_date 格式一致。
+        // `OffsetDateTime::to_string()` äº§å‡º "2026-11-01 10:09:39.585 +00:00:00"ï¼ˆç©ºæ ¼åˆ†éš”ã€
+        // å…¨é‡åç§»ï¼‰ï¼ŒJS çš„ `new Date()` è§£æžä¸äº†ï¼Œå‰ç«¯ä¼šæ˜¾ç¤º Invalid Dateã€‚
+        // åºåˆ—åŒ–ä¸º RFC 3339ï¼ˆ"...T...Z"ï¼‰ï¼Œä¸Ž latest.json çš„ pub_date æ ¼å¼ä¸€è‡´ã€‚
         date: update.date.map(|date| {
             date.format(&time::format_description::well_known::Rfc3339)
                 .unwrap_or_else(|_| date.to_string())
@@ -75,6 +81,8 @@ pub async fn check_update_endpoint(
     }))
 }
 
+/// ä¸‹è½½å¹¶å®‰è£…æŒ‡å®šæ›´æ–°æºçš„æ›´æ–°åŒ…ï¼ˆä»…æ¡Œé¢ï¼‰ã€‚
+#[cfg(desktop)]
 #[tauri::command]
 pub async fn install_update_endpoint(
     app: tauri::AppHandle,
@@ -96,7 +104,7 @@ pub async fn install_update_endpoint(
     let download_url = update.download_url.clone();
     let version = update.version.clone();
 
-    let client = reqwest::Client::new();
+    let client = crate::utils::http_client::default_client();
     let resp = capture::send_stream(&client, client.get(download_url.clone()))
         .await
         .map_err(|e| format!("Failed to start download from '{}': {}", download_url, e))?;
@@ -151,6 +159,26 @@ pub async fn install_update_endpoint(
         .map_err(|error| error.to_string())
 }
 
+/// ç§»åŠ¨ç«¯ stubï¼šè‡ªæ›´æ–°ä¸å¯ç”¨ï¼Œè¿”å›žæ˜Žç¡®é”™è¯¯ï¼ˆå‰ç«¯åœ¨ç§»åŠ¨ç«¯ä¸ä¼šå±•ç¤ºæ›´æ–°å…¥å£ï¼‰ã€‚
+#[cfg(not(desktop))]
+#[tauri::command]
+pub async fn check_update_endpoint(
+    _app: tauri::AppHandle,
+    _endpoint: String,
+) -> Result<Option<UpdateEndpointInfo>, String> {
+    Err("Application updates are not available on this platform".to_string())
+}
+
+/// ç§»åŠ¨ç«¯ stubï¼šè‡ªæ›´æ–°ä¸å¯ç”¨ï¼Œè¿”å›žæ˜Žç¡®é”™è¯¯ã€‚
+#[cfg(not(desktop))]
+#[tauri::command]
+pub async fn install_update_endpoint(
+    _app: tauri::AppHandle,
+    _endpoint: String,
+) -> Result<(), String> {
+    Err("Application updates are not available on this platform".to_string())
+}
+
 /// Write binary data to a file at the specified path.
 #[tauri::command]
 pub fn write_file(path: String, data: Vec<u8>) -> Result<(), String> {
@@ -171,7 +199,7 @@ pub fn get_temp_dir() -> Result<String, String> {
 /// Fetch a URL and return the response body as a string.
 #[tauri::command]
 pub async fn fetch_url(url: String) -> Result<String, String> {
-    let client = reqwest::Client::new();
+    let client = crate::utils::http_client::default_client();
     let resp = capture::send(&client, client.get(&url))
         .await
         .map_err(|e| format!("Failed to fetch '{}': {}", url, e))?;
@@ -206,7 +234,7 @@ pub async fn download_file(
     // Reset cancellation flag at start
     DOWNLOAD_CANCELLED.store(false, Ordering::SeqCst);
 
-    let client = reqwest::Client::new();
+    let client = crate::utils::http_client::default_client();
     let resp = capture::send_stream(&client, client.get(&url))
         .await
         .map_err(|e| format!("Failed to start download from '{}': {}", url, e))?;
