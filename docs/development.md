@@ -317,6 +317,8 @@ splash、DevTools 控制台没有任何输出，看起来像"窗口没有内容"
 5. **生成更新清单**：将桌面 updater 包与 minisign 签名汇总到 Release 的 `latest.json`
 6. **发布**：先创建草稿 Release，上传桌面与 Android 资产，再将其公开并标记是否为预发布
 
+Android job 使用 `android-actions/setup-android@v4` 并显式指定 `packages: 'platform-tools'`：v3 及更早版本的默认包列表包含已被 Google 下架的 `tools` 包，会让 `sdkmanager` 以退出码 1 失败（android-actions/setup-android#537），platform-tools、platforms、build-tools 与 NDK 均由后续步骤按需安装。
+
 Android job 需要配置以下 GitHub Actions Secrets：`ANDROID_KEY_BASE64`（发布 keystore 的单行 Base64）、`ANDROID_KEY_ALIAS`、`ANDROID_KEY_PASSWORD`（Tauri 模板将其用于 keystore 和 key 密码）。该密钥必须与已发布/已安装版本的签名证书一致；如果尚无 Android 发布签名，可生成一次并长期安全保存，不能每次构建更换。工作流在临时生成的 `src-tauri/gen/android/keystore.properties` 中引用 keystore，不要提交 keystore 或该 properties 文件。缺少任一 Secret 时 Android job 会失败，Release 不会发布。
 
 APK 以 `endprotocol-android-universal.apk` 上传到同一 tag Release；这与 Android 更新器查找通用 APK 的规则一致。稳定 tag 与预览 tag 使用同一构建流程，Release 的 prerelease 状态仍按版本号后缀判定。

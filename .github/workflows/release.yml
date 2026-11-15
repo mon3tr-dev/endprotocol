@@ -125,7 +125,11 @@ jobs:
           java-version: 21
 
       - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
+        with:
+          # Override the action default: Google delisted the deprecated `tools`
+          # package, so requesting it makes sdkmanager exit 1 (android-actions/setup-android#537).
+          packages: 'platform-tools'
 
       - name: Install Android SDK and NDK
         shell: bash
