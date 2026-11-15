@@ -55,6 +55,25 @@ export interface AndroidUpdate extends ManualUpdate {
   apkUrl: string;
 }
 
+/**
+ * Result of handing a downloaded APK to Android's package installer.
+ *
+ * `permissionRequired` means the app is not yet allowed to install unknown apps; the
+ * plugin has already opened the system settings screen for the user to grant it.
+ */
+export type AndroidInstallStatus = "opened" | "permissionRequired";
+
+export interface AndroidInstallResult {
+  status: AndroidInstallStatus;
+}
+
+/** Narrow an update to the Android manual-update shape (which always has an APK URL). */
+function isAndroidUpdate(
+  update: Update | ManualUpdate,
+): update is AndroidUpdate {
+  return "apkUrl" in update && typeof update.apkUrl === "string";
+}
+
 export interface UpdateCheckResult {
   available: boolean;
   update: UpdateInfo | null;
@@ -107,6 +126,11 @@ let channelSwitchDetected = false;
 let changelogCache: Map<string, ChangelogCacheEntry> = new Map();
 let status: UpdateStatus = "idle";
 let listeners: Array<() => void> = [];
+
+// Android: path of the APK downloaded during the current update attempt. Retained so a
+// user who had to grant "install unknown apps" can retry the install without
+// re-downloading the package.
+let lastAndroidApkPath: string | null = null;
 
 // The updater plugin installs manual channel updates from this manifest endpoint.
 let manualUpdaterEndpoint: string | null = null;
@@ -388,20 +412,39 @@ async function resolveAndroidRelease(): Promise<AndroidUpdate | null> {
     )
     .sort((a, b) => compareSemVer(b.version, a.version));
 
-  const newestStable = releases.find(
+  // Releases published before the Android pipeline existed (v0.1.6 and older)
+  // carry no APK. Picking one of those would resolve to "no update" and the UI
+  // would claim the app is up to date even though a newer installable build
+  // exists, so only consider releases that actually ship an APK.
+  const installable = releases
+    .map((item) => ({ ...item, apkUrl: getAndroidApkAsset(item.release) }))
+    .filter(
+      (item): item is { release: GitHubRelease; version: SemVer; apkUrl: string } =>
+        item.apkUrl !== null,
+    );
+
+  if (installable.length === 0) {
+    logger.info(
+      "No release with an Android APK asset was found",
+      "Updater",
+    );
+    return null;
+  }
+
+  const newestStable = installable.find(
     (item) => item.version.prerelease.length === 0,
   );
   const candidate = currentChannel === "preview"
     ? (newestStable && compareSemVer(newestStable.version, localParsed) > 0
       ? newestStable
-      : releases.find((item) => item.version.prerelease.length > 0))
+      : installable.find((item) => item.version.prerelease.length > 0))
     : newestStable;
 
   if (!candidate || compareSemVer(candidate.version, localParsed) <= 0) {
     return null;
   }
 
-  const apkUrl = getAndroidApkAsset(candidate.release);
+  const apkUrl = candidate.apkUrl;
   if (!apkUrl) {
     logger.info(
       `Release ${candidate.release.tag_name} has no supported Android APK asset`,
@@ -726,7 +769,7 @@ async function performUpdateCheck(): Promise<UpdateCheckResult> {
     newVersion: update.version,
     date: update.date,
     body: update.body,
-    apkUrl: "apkUrl" in update ? update.apkUrl : undefined,
+    apkUrl: isAndroidUpdate(update) ? update.apkUrl : undefined,
   };
 
   currentUpdate = update;
@@ -954,6 +997,7 @@ export async function downloadUpdate(): Promise<void> {
   isDownloading = true;
   downloadProgress = 0;
   downloadTotal = 0;
+  lastAndroidApkPath = null;
   addProgressMessage(
     i18n.t("messages.downloading"),
     i18n.t("messages.preparing"),
@@ -972,7 +1016,7 @@ export async function downloadUpdate(): Promise<void> {
     await invoke("reset_download_cancel");
 
     if (isAndroidApp()) {
-      if (!("apkUrl" in update)) {
+      if (!isAndroidUpdate(update)) {
         throw new Error("No Android APK is available for this update");
       }
 
@@ -994,13 +1038,29 @@ export async function downloadUpdate(): Promise<void> {
           emitChange();
         },
       );
+      let apkPath: string;
       try {
-        const path = await invoke<string>("download_android_apk", {
+        apkPath = await invoke<string>("download_android_apk", {
           url: update.apkUrl,
         });
-        await invoke("plugin:apk-installer|install_apk", { path });
       } finally {
         unlisten();
+      }
+      // Keep the downloaded APK so a denied "install unknown apps" permission can be
+      // retried without re-downloading the whole package.
+      lastAndroidApkPath = apkPath;
+      const installResult = await invoke<AndroidInstallResult>(
+        "plugin:apk-installer|install_apk",
+        { path: apkPath },
+      );
+      if (installResult.status === "permissionRequired") {
+        logger.info(
+          "Android package installer permission missing; settings opened",
+          "Updater",
+        );
+        removeProgressMessage();
+        pushGlobalAlert("warning", i18n.t("settings.update.android_permission_hint"));
+        return;
       }
       logger.info("Android package installer opened", "Updater");
       removeProgressMessage();
@@ -1096,6 +1156,42 @@ export function cancelDownload(): void {
   removeProgressMessage();
   emitChange();
   logger.info("Download cancelled by user", "Updater");
+}
+
+/** Whether an Android APK from a previous attempt is still on disk and installable. */
+export function hasPendingAndroidApk(): boolean {
+  return isAndroidApp() && lastAndroidApkPath !== null;
+}
+
+/**
+ * Re-open Android's package installer for an already downloaded APK.
+ *
+ * The usual reason this is needed: the first `install_apk` call found the app was not
+ * yet allowed to install unknown apps, so the plugin opened the settings screen. Once
+ * the user grants it, retrying must not download the APK again.
+ */
+export async function retryAndroidInstall(): Promise<boolean> {
+  if (!isAndroidApp() || !lastAndroidApkPath) return false;
+
+  try {
+    const result = await invoke<AndroidInstallResult>(
+      "plugin:apk-installer|install_apk",
+      { path: lastAndroidApkPath },
+    );
+    if (result.status === "permissionRequired") {
+      pushGlobalAlert(
+        "warning",
+        i18n.t("settings.update.android_permission_hint"),
+      );
+      return false;
+    }
+    logger.info("Android package installer reopened", "Updater");
+    return true;
+  } catch (error) {
+    logger.error("Failed to reopen the Android package installer: " + error, "Updater");
+    pushGlobalAlert("danger", "Update failed: " + String(error));
+    return false;
+  }
 }
 
 export function openUpdateDialog(): void {

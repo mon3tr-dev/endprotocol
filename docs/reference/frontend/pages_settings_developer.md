@@ -36,12 +36,12 @@
 | settings.tsx:1428-1460 | 开发者模式警告对话框（`GlassAlertDialog`） |
 | settings.tsx:1462-1528 | 测试版通道警告对话框（内容为内联中英双语） |
 | settings.tsx:1530-1601 | GitHub 源警告对话框（内容为内联中英双语） |
-| settings.tsx:1603-1607 | `<UpdateDialog>` 更新安装对话框 |
+| settings.tsx:1664-1671 | `<UpdateDialog>` 更新安装对话框（`supportsUpdateChecks` 门控，桌面与 Android 均挂载） |
 
 ### 组件与函数清单
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
-| `SettingsPage`（default） | settings.tsx:43 | 页面根组件，返回 7 张卡片 + 3 个警告对话框 + `UpdateDialog`。**平台门控**：`supportsLauncher`（仅 Windows）隐藏「游戏启动」卡；`supportsTray` 隐藏移动端托盘项；桌面显示更新通道/来源，Android 显示更新通道但不显示来源（仅检查 GitHub Release APK），iOS 隐藏更新入口；Android 下载后通过系统安装器要求用户确认 |
+| `SettingsPage`（default） | settings.tsx:43 | 页面根组件，返回 7 张卡片 + 3 个警告对话框 + `UpdateDialog`。**平台门控**：`supportsLauncher`（仅 Windows）隐藏「游戏启动」卡；`supportsTray` 隐藏移动端托盘项；桌面显示更新通道/来源，Android 显示更新通道但不显示来源（仅检查 GitHub Release APK），iOS 隐藏更新入口；Android 下载后通过系统安装器要求用户确认，`UpdateDialog` 在 Android 上同样挂载（`supportsUpdateChecks`） |
 | `languages` | settings.tsx:83-86 | 语言选项常量：`{key:"en",label:"English"}`、`{key:"zh",label:"简体中文"}` |
 | `refreshOnSwitch` 等偏好 state | settings.tsx:55-59 | `refreshOnSwitch`、`lazyLoadEnabled`、`wikiDetailPreload`、`closeAction`、`trayUserRoleId`（代理配置已不在本文件，见 `NetworkSettings`） |
 | `accounts` | settings.tsx:60-62 | 托盘角色下拉用的账号列表（id/nickname/avatar） |

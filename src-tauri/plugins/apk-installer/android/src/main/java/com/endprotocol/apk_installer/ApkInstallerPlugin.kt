@@ -26,11 +26,12 @@ class ApkInstallerPlugin(private val activity: Activity) : Plugin(activity) {
         try {
             val args = invoke.parseArgs(InstallApkArgs::class.java)
             val apk = File(args.path).canonicalFile
+            // `app_cache_dir()` on Android resolves to `getCacheDir()/<identifier>`, so the
+            // APK lives in the app's private cache. Accept anything below that cache root
+            // instead of pinning the exact subdirectory layout.
             val cacheDirectory = activity.cacheDir.canonicalFile
 
             if (!apk.path.startsWith(cacheDirectory.path + File.separator) ||
-                apk.name != "endprotocol-update.apk" ||
-                apk.parentFile?.name != "updates" ||
                 !apk.isFile || !apk.extension.equals("apk", ignoreCase = true)
             ) {
                 invoke.reject("The APK path is invalid.")
@@ -45,7 +46,10 @@ class ApkInstallerPlugin(private val activity: Activity) : Plugin(activity) {
                     Uri.parse("package:${activity.packageName}")
                 )
                 activity.startActivity(settingsIntent)
-                invoke.reject("Allow EndProtocol to install unknown apps, then retry.")
+                // Report as a normal result rather than an error: the caller keeps the
+                // downloaded APK and retries installation once permission is granted,
+                // instead of paying for the download again.
+                invoke.resolve(JSObject().put("status", STATUS_PERMISSION_REQUIRED))
                 return
             }
 
@@ -60,9 +64,14 @@ class ApkInstallerPlugin(private val activity: Activity) : Plugin(activity) {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
             activity.startActivity(installIntent)
-            invoke.resolve(JSObject())
+            invoke.resolve(JSObject().put("status", STATUS_OPENED))
         } catch (error: Exception) {
             invoke.reject(error.message ?: "Failed to open the Android package installer.")
         }
+    }
+
+    private companion object {
+        const val STATUS_OPENED = "opened"
+        const val STATUS_PERMISSION_REQUIRED = "permissionRequired"
     }
 }

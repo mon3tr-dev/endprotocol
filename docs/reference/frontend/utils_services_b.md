@@ -5,7 +5,7 @@
 ## `src/utils/updateService.ts`
 **职责**：应用内更新服务。桌面端封装 Tauri updater 与 GitHub/镜像版本检查及验签安装；Android 按稳定/预览频道检查 GitHub Release APK，下载后交给系统安装器由用户确认；iOS 不支持更新。服务也负责更新日志缓存、订阅状态与消息中心通知。
 
-**导出**：类型 `UpdateChannel`、`UpdateSource`、`UpdateStatus`、`ChangelogStatus`、`UpdateErrorCode`、`UpdateInfo`、`ManualUpdate`、`AndroidUpdate`、`UpdateCheckResult`、`RemoteVersionState`；函数 `getChannel`、`getSource`、`setChannel`、`initializeChannel`、`setSource`、`checkForUpdate`、`getCurrentUpdate`、`getCurrentUpdateInfo`、`getStatus`、`getIsDownloading`、`getDownloadProgress`、`getDownloadTotal`、`downloadUpdate`、`cancelDownload`、`openUpdateDialog`、`subscribeUpdateState`、`subscribeDownloadProgress`、`getRemoteVersion`、`subscribeRemoteVersion`、`fetchRemoteVersion`、`addUpdateMessage`、`checkAndNotify`、`addProgressMessage`、`updateProgressMessage`、`removeProgressMessage`。
+**导出**：类型 `UpdateChannel`、`UpdateSource`、`UpdateStatus`、`ChangelogStatus`、`UpdateErrorCode`、`UpdateInfo`、`ManualUpdate`、`AndroidUpdate`、`UpdateCheckResult`、`RemoteVersionState`；函数 `getChannel`、`getSource`、`setChannel`、`initializeChannel`、`setSource`、`checkForUpdate`、`getCurrentUpdate`、`getCurrentUpdateInfo`、`getStatus`、`getIsDownloading`、`getDownloadProgress`、`getDownloadTotal`、`downloadUpdate`、`cancelDownload`、`hasPendingAndroidApk`、`retryAndroidInstall`、`openUpdateDialog`、`subscribeUpdateState`、`subscribeDownloadProgress`、`getRemoteVersion`、`subscribeRemoteVersion`、`fetchRemoteVersion`、`addUpdateMessage`、`checkAndNotify`、`addProgressMessage`、`updateProgressMessage`、`removeProgressMessage`。
 
 **主要依赖**：`@tauri-apps/plugin-updater`（桌面 `check`/`Update`）、`@tauri-apps/api/core`（`invoke`）、`@tauri-apps/api/event`（`listen`）、`@tauri-apps/api/app`（动态 `getVersion`）、`@tauri-apps/plugin-process`（动态 `relaunch`）、`./platform`、`@/i18n`、`./messageStore`、`@/components/ui/global-alert`、`./configService`、`./logger`、Android 本地 APK installer 插件（`plugin:apk-installer|install_apk`）。
 
@@ -22,7 +22,7 @@
 | `ManualUpdate` | updateService.ts:47 | 桌面预览/频道切换候选 |
 | `AndroidUpdate` | updateService.ts:54 | Android Release 更新，继承版本信息并携带 APK URL |
 | `UpdateCheckResult` | updateService.ts:58 | 接口：检查结果（`available/update/changelog/changelogStatus/status/errorCode?/errorMessage?`） |
-| `getAndroidApkAsset` / `resolveAndroidRelease` | updateService.ts:340 / 366 | 选通用 APK（无通用包时只接受单个 APK），按通道解析高于当前版本的 GitHub Release |
+| `getAndroidApkAsset` / `resolveAndroidRelease` | updateService.ts:364 / 390 | 选通用 APK（无通用包时只接受单个 APK），按通道解析高于当前版本的 GitHub Release。**先剔除没有任何 APK 的 Release**（v0.1.6 及更早版本发布于 Android 流水线之前），否则会选中一个无 APK 的最新版本并误报「已是最新」 |
 | `getChannel` | updateService.ts:762 | 同步返回当前 `currentChannel`，无 IPC |
 | `getSource` | updateService.ts:766 | 同步返回当前 `currentSource`，无 IPC |
 | `setChannel` | updateService.ts:770 | 持久化频道、清空缓存与状态，再检查更新并刷新消息中心 |
@@ -35,12 +35,14 @@
 | `getIsDownloading` | updateService.ts:933 | 返回下载中标记 |
 | `getDownloadProgress` | updateService.ts:937 | 返回已下载字节数 |
 | `getDownloadTotal` | updateService.ts:941 | 返回总字节数 |
-| `downloadUpdate` | updateService.ts:945 | Android 调用 `download_android_apk` 后调用 APK installer，交由系统界面由用户确认；桌面按原 Tauri updater 流程安装。进度经消息中心展示，异常发出 danger 提醒 |
-| `cancelDownload` | updateService.ts:1084 | 中止当前下载、调用 `cancel_download` 停止后端下载，复位进度并移除进度消息 |
-| `openUpdateDialog` | updateService.ts:1101 | 派发 `window` 自定义事件 `openUpdateDialog` |
+| `downloadUpdate` | updateService.ts:988 | Android 调用 `download_android_apk` 后调用 APK installer，交由系统界面由用户确认；返回 `permissionRequired` 时保留已下载 APK 并提示授权。桌面按原 Tauri updater 流程安装。进度经消息中心展示，异常发出 danger 提醒 |
+| `cancelDownload` | updateService.ts:1144 | 中止当前下载、调用 `cancel_download` 停止后端下载，复位进度并移除进度消息 |
+| `hasPendingAndroidApk` | updateService.ts:1162 | Android 且上一次尝试已下载 APK 时为 true（供对话框切换成「重新安装」） |
+| `retryAndroidInstall` | updateService.ts:1173 | 用缓存的 `lastAndroidApkPath` 重新调用 `plugin:apk-installer|install_apk`，免去重新下载 119MB APK |
+| `openUpdateDialog` | updateService.ts:1197 | 派发 `window` 自定义事件 `openUpdateDialog` |
 | `subscribeUpdateState` | updateService.ts:1114 | 注册状态监听，返回退订函数 |
 | `subscribeDownloadProgress` | updateService.ts:1121 | 与 `subscribeUpdateState` 共用监听器 |
-| `RemoteVersionState` | updateService.ts:1129 | 遗留接口：远程版本状态（`version/date/body/checked/loading/error/hasUpdate`） |
+| `RemoteVersionState` | updateService.ts:1144 | 遗留接口：远程版本状态（`version/date/body/checked/loading/error/hasUpdate`） |
 | `getRemoteVersion` | updateService.ts:1156 | 返回模块内 `remoteState` 快照 |
 | `subscribeRemoteVersion` | updateService.ts:1160 | 注册 `remoteListeners`，返回退订函数 |
 | `fetchRemoteVersion` | updateService.ts:1167 | 防重入拉取：`checkForUpdate()` 后写入 `remoteState` 并广播；失败置 `error=true` |

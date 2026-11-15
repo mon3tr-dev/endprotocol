@@ -10,6 +10,8 @@ import {
   getChannel,
   getCurrentUpdateInfo,
   getIsDownloading,
+  hasPendingAndroidApk,
+  retryAndroidInstall,
   type UpdateCheckResult,
   type ChangelogStatus,
   type UpdateChannel,
@@ -99,6 +101,22 @@ export function UpdateDialog({ isOpen, onOpenChange }: UpdateDialogProps) {
     cancelDownload();
     onOpenChange(false);
   }, [onOpenChange]);
+
+  // Android: when an earlier attempt downloaded the APK but the app was not yet
+  // allowed to install unknown apps, offer a cheap retry instead of re-downloading.
+  const canRetryInstall = isAndroidApp() && hasPendingAndroidApk();
+
+  const handleRetryInstall = useCallback(async () => {
+    if (isDownloading) return;
+    setIsDownloading(true);
+    try {
+      if (await retryAndroidInstall()) {
+        onOpenChange(false);
+      }
+    } finally {
+      setIsDownloading(false);
+    }
+  }, [isDownloading, onOpenChange]);
 
   const renderChangelog = () => {
     if (changelogStatus === "loading") {
@@ -336,14 +354,20 @@ export function UpdateDialog({ isOpen, onOpenChange }: UpdateDialogProps) {
                   <GlassButton variant="tertiary" onPress={handleClose}>
                     {t("settings.update.later")}
                   </GlassButton>
-                  <GlassButton
-                    variant="primary"
-                    onPress={handleDownload}
-                    isLoading={isChecking}
-                    isDisabled={!result?.update || isChecking}
-                  >
-                    {t("settings.update.download_update")}
-                  </GlassButton>
+                  {canRetryInstall ? (
+                    <GlassButton variant="primary" onPress={handleRetryInstall}>
+                      {t("settings.update.android_install_retry")}
+                    </GlassButton>
+                  ) : (
+                    <GlassButton
+                      variant="primary"
+                      onPress={handleDownload}
+                      isLoading={isChecking}
+                      isDisabled={!result?.update || isChecking}
+                    >
+                      {t("settings.update.download_update")}
+                    </GlassButton>
+                  )}
                 </>
               )}
             </GlassModal.Footer>

@@ -1661,8 +1661,8 @@ export default function SettingsPage() {
         </GlassAlertDialog.Backdrop>
       </GlassAlertDialog>
 
-      {/* Update Dialog（仅桌面；移动端无自更新） */}
-      {supportsUpdater && (
+      {/* Update Dialog（桌面走 Tauri updater，Android 下载 APK 交给系统安装器） */}
+      {supportsUpdateChecks && (
         <UpdateDialog
           isOpen={showUpdateDialog}
           onOpenChange={setShowUpdateDialog}

@@ -509,7 +509,10 @@
       "open_source_credits": "Open Source Credits",
       "special_thanks": "Special Thanks",
       "xel_launcher_desc": "Provided the launcher implementation approach",
-      "better_endfield_desc": "Provided the approach for bypassing the official launcher"
+      "better_endfield_desc": "Provided the approach for bypassing the official launcher",
+      "android_permission_hint": "Allow EndProtocol to install unknown apps, then come back and tap Install Again — no need to download again.",
+      "android_install_retry": "Install Again",
+      "android_install_ready": "Package downloaded"
     },
     "account": {
       "title": "Account Management",

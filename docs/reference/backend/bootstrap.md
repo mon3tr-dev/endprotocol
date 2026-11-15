@@ -313,14 +313,17 @@
 | 文件 | 说明 |
 | --- | --- |
 | `Cargo.toml` / `build.rs` | Rust 插件 crate 与 Tauri 权限元数据生成 |
-| `src/lib.rs` | 注册 `plugin:apk-installer|install_apk`；仅 Android 调用 Kotlin 插件，其他平台明确返回不支持 |
+| `src/lib.rs` | 注册 `plugin:apk-installer|install_apk`；仅 Android 调用 Kotlin 插件，其他平台明确返回不支持。返回 `InstallApkOutcome`（`opened` / `permissionRequired`），把 Kotlin 侧的结果原样转给前端 |
 | `permissions/default.toml` | 声明 `apk-installer:default`，由 Android capability 授权 |
-| `android/src/main/java/com/endprotocol/apk_installer/ApkInstallerPlugin.kt` | 校验 APK 必须是 app cache 下 `updates/endprotocol-update.apk`；缺少未知来源安装权限时打开系统设置并报错，授权后通过 `FileProvider` 启动 Android 包安装器 |
+| `android/src/main/java/com/endprotocol/apk_installer/ApkInstallerPlugin.kt` | 校验 APK 位于应用私有 cache 下且扩展名为 `.apk`（不锁定具体子目录，`app_cache_dir()` 在 Android 上解析为 `getCacheDir()/<identifier>`）；缺少未知来源安装权限时打开系统设置并返回 `permissionRequired`，已授权则通过 `FileProvider` 启动 Android 包安装器并返回 `opened` |
 | `android/src/main/java/com/endprotocol/apk_installer/ApkFileProvider.kt` | 插件专属 FileProvider 子类；manifest merger 以 `android:name` 为合并键，避免与 app 模板的基类 `androidx.core.content.FileProvider` 冲突 |
 | `android/src/main/AndroidManifest.xml` | 声明 `REQUEST_INSTALL_PACKAGES` 与非导出 `ApkFileProvider`（authority `${applicationId}.apkprovider`） |
 | `android/src/main/res/xml/apk_provider_paths.xml` | FileProvider 仅映射应用私有 cache |
 
-**接口**：`install_apk(path)` 接收缓存 APK 路径；安装是否成功由 Android 安装器与用户确认流程决定，插件只负责打开安装界面。
+**接口**：`install_apk(path)` 接收缓存 APK 路径，返回 `{ status: "opened" | "permissionRequired" }`。
+
+- `opened`：已拉起 Android 包安装器，安装是否成功由系统界面与用户确认决定。
+- `permissionRequired`：应用尚无「安装未知应用」权限，插件已打开系统设置页；**APK 仍保留在缓存中**，前端可用 `retryAndroidInstall()` 重新安装，无需重新下载。
 
 ---
 
