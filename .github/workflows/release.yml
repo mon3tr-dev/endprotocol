@@ -192,12 +192,21 @@ jobs:
           const path = 'src-tauri/gen/android/app/build.gradle.kts';
           let source = fs.readFileSync(path, 'utf8');
 
+          // AGP 9 script compilation resolves `java` to the project's java
+          // extension, so a fully-qualified java.util.Properties reference fails
+          // with "Unresolved reference 'util'". Use the simple name and make
+          // sure the import is present (the Tauri template already has it).
+          if (!/^import java\.util\.Properties$/m.test(source)) {
+            source = `import java.util.Properties\n${source}`;
+          }
+
           const signingConfig = `
               signingConfigs {
                   create("release") {
                       val keystorePropertiesFile = rootProject.file("keystore.properties")
-                      val keystoreProperties = java.util.Properties()
-                      keystorePropertiesFile.inputStream().use { keystoreProperties.load(it) }
+                      val keystoreProperties = Properties().apply {
+                          keystorePropertiesFile.inputStream().use { load(it) }
+                      }
                       keyAlias = keystoreProperties["keyAlias"] as String
                       keyPassword = keystoreProperties["password"] as String
                       storeFile = file(keystoreProperties["storeFile"] as String)
