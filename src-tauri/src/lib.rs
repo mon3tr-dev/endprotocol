@@ -774,7 +774,7 @@ pub(crate) fn create_main_window<R: Runtime>(
 
     #[cfg(desktop)]
     {
-        let webview_window =
+        let mut window_builder =
             WebviewWindowBuilder::new(app, "main", app_webview_url(app, "index.html")?)
                 .title("endprotocol")
                 .inner_size(1200.0, 700.0)
@@ -787,9 +787,19 @@ pub(crate) fn create_main_window<R: Runtime>(
                         .effect(tauri::window::Effect::Acrylic)
                         .color(tauri::window::Color(18, 18, 20, 30))
                         .build(),
-                )
-                .build()
-                .map_err(|error| error.to_string())?;
+                );
+
+        // 窗口图标必须显式挂上：`bundle.icon` 只把图标编进 exe 的 RT_GROUP_ICON
+        // 资源，那决定的是 Explorer 里的文件图标；而**任务栏、Alt+Tab、窗口左上角**
+        // （无边框时由 DWM 绘制的缩略图）读的是窗口自己的 WM_SETICON。
+        // 不调用 `.icon()` 时 Tauri 不会自动填，窗口图标就是空白的那一项。
+        // 这里复用 Tauri 从 `bundle.icon` 解析出的 `default_window_icon`
+        // （托盘用的也是它），保证三处图标同源。
+        if let Some(icon) = app.default_window_icon() {
+            window_builder = window_builder.icon(icon.clone()).map_err(|error| error.to_string())?;
+        }
+
+        let webview_window = window_builder.build().map_err(|error| error.to_string())?;
 
         if let Some(config) = app.try_state::<Arc<StdMutex<ConfigService>>>() {
             let config = config.inner().clone();
