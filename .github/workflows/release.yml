@@ -99,9 +99,174 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+  build-android:
+    name: Build Android universal APK
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK and NDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;27.2.12479018"
+          echo "NDK_HOME=${ANDROID_HOME}/ndk/27.2.12479018" >> "${GITHUB_ENV}"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Update version from tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          node -e "
+            const fs = require('fs');
+            const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+            pkg.version = '${VERSION}';
+            fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+            const confPath = 'src-tauri/tauri.conf.json';
+            const conf = JSON.parse(fs.readFileSync(confPath, 'utf8'));
+            conf.version = '${VERSION}';
+            fs.writeFileSync(confPath, JSON.stringify(conf, null, 2) + '\n');
+          "
+
+      - name: Setup Rust Android targets
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android, armv7-linux-androideabi, i686-linux-android, x86_64-linux-android
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            src-tauri -> target
+
+      - name: Initialize Android project
+        run: pnpm tauri android init --ci
+
+      - name: Configure Android release signing
+        shell: bash
+        env:
+          ANDROID_KEY_BASE64: ${{ secrets.ANDROID_KEY_BASE64 }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${ANDROID_KEY_BASE64}" || -z "${ANDROID_KEY_ALIAS}" || -z "${ANDROID_KEY_PASSWORD}" ]]; then
+            echo "::error::Configure ANDROID_KEY_BASE64, ANDROID_KEY_ALIAS and ANDROID_KEY_PASSWORD GitHub Actions secrets before publishing Android releases."
+            exit 1
+          fi
+
+          KEYSTORE_PATH="${RUNNER_TEMP}/endprotocol-release.jks"
+          printf '%s' "${ANDROID_KEY_BASE64}" | base64 --decode > "${KEYSTORE_PATH}"
+
+          node <<'NODE'
+          const fs = require('node:fs');
+          const path = 'src-tauri/gen/android/app/build.gradle.kts';
+          let source = fs.readFileSync(path, 'utf8');
+
+          const signingConfig = `
+              signingConfigs {
+                  create("release") {
+                      val keystorePropertiesFile = rootProject.file("keystore.properties")
+                      val keystoreProperties = java.util.Properties()
+                      keystorePropertiesFile.inputStream().use { keystoreProperties.load(it) }
+                      keyAlias = keystoreProperties["keyAlias"] as String
+                      keyPassword = keystoreProperties["password"] as String
+                      storeFile = file(keystoreProperties["storeFile"] as String)
+                      storePassword = keystoreProperties["password"] as String
+                  }
+              }
+          `;
+          const signingAssignment = '            signingConfig = signingConfigs.getByName("release")\n';
+
+          if (!source.includes('signingConfigs.create("release")') &&
+              !source.includes('create("release")')) {
+            if (!/^\s*buildTypes\s*\{/m.test(source)) {
+              throw new Error(`Could not find buildTypes block in ${path}`);
+            }
+            source = source.replace(/^\s*buildTypes\s*\{/m, `${signingConfig}\n            buildTypes {`);
+          }
+
+          const releaseBlock = /getByName\("release"\)\s*\{/;
+          if (!releaseBlock.test(source)) {
+            throw new Error(`Could not find release build type in ${path}`);
+          }
+          source = source.replace(releaseBlock, (match) =>
+            `${match}\n${signingAssignment}`,
+          );
+          fs.writeFileSync(path, source);
+          NODE
+
+          {
+            printf 'keyAlias=%s\n' "${ANDROID_KEY_ALIAS}"
+            printf 'password=%s\n' "${ANDROID_KEY_PASSWORD}"
+            printf 'storeFile=%s\n' "${KEYSTORE_PATH}"
+          } > src-tauri/gen/android/keystore.properties
+
+      - name: Build signed universal APK
+        run: pnpm tauri android build --ci --apk --target aarch64 armv7 i686 x86_64
+
+      - name: Prepare release APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t APK_FILES < <(find src-tauri/gen/android/app/build/outputs/apk -type f -path '*/release/*.apk' ! -path '*/androidTest/*')
+          if [[ "${#APK_FILES[@]}" -ne 1 ]]; then
+            printf 'Expected exactly one universal release APK, found %s:\n' "${#APK_FILES[@]}"
+            printf '%s\n' "${APK_FILES[@]}"
+            exit 1
+          fi
+          cp "${APK_FILES[0]}" endprotocol-android-universal.apk
+
+      - name: Verify signed universal APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="endprotocol-android-universal.apk"
+          "${ANDROID_HOME}/build-tools/36.0.0/apksigner" verify --verbose "${APK}"
+          for ABI in arm64-v8a armeabi-v7a x86 x86_64; do
+            if ! unzip -Z1 "${APK}" | grep -q "^lib/${ABI}/"; then
+              echo "::error::Universal APK is missing native libraries for ${ABI}."
+              exit 1
+            fi
+          done
+
+      - name: Upload Android APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-universal-apk
+          path: endprotocol-android-universal.apk
+          if-no-files-found: error
+          retention-days: 1
+
   release:
-    name: Build and Release Windows x64
+    name: Build and Publish Release
     runs-on: windows-latest
+    needs: build-android
 
     steps:
       # ==========================================================
@@ -459,6 +624,12 @@ jobs:
           uploadUpdaterJson: false
           args: ${{ steps.tauri_sync.outputs.args || '--target x86_64-pc-windows-msvc' }} --bundles nsis
 
+      - name: Download Android APK artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: android-universal-apk
+          path: android-release
+
       - name: Download platform bundles
         uses: actions/download-artifact@v4
         continue-on-error: true
@@ -573,6 +744,15 @@ jobs:
             throw new Error(`Failed to upload platform bundles and updater manifest (gh exit ${upload.status})`);
           }
           MANIFEST_EOF
+
+      - name: Upload Android APK to Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${GITHUB_REF_NAME}" \
+            android-release/endprotocol-android-universal.apk \
+            --clobber
 
       # ==========================================================
       # Upload CHANGELOG.md as release asset

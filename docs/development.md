@@ -122,7 +122,7 @@ $env:NDK_HOME="$env:ANDROID_HOME\ndk\30.0.16248370"
 | 主窗口 | `lib.rs:create_full_windows` 动态创建（含托盘面板） | `tauri.android.conf.json` 的 `app.windows` 静态创建 |
 | 启动器（游戏下载/启动/切服） | 可用 | **禁用**：`stores/launcherMode.ts` 在非 Windows 强制 data 模式，游戏页 UI 不渲染 |
 | 托盘 / 托盘面板 | 可用 | 无系统托盘：`tray::setup_tray` no-op，`is_tray_available()` 恒 false，设置页隐藏相关项 |
-| 自更新 | updater 插件 | 无：后端命令返回明确错误，设置页隐藏更新 UI |
+| 自更新 | updater 插件 | Android 按稳定/预览通道检查 GitHub Release APK；下载到应用私有缓存后打开系统安装器，由用户确认安装。iOS 不支持 |
 | 应用数据目录 | `%LOCALAPPDATA%\cn.msk-network.endprotocol`（`dirs`） | `{getDataDir()}`（Tauri 路径解析器 → `utils::paths` 覆盖值，setup 最早注入；实测落在 `/data/user/0/<pkg>/`） |
 | 日志初始化时机 | `run()` 早期 | setup 注入数据目录之后（目录在此之前不可写） |
 | 机密存储 | OS 凭据库（Windows Credential Manager 等） | Android Keystore（keyring 4.2）；不可用时自动降级 AES-GCM 文件（`secrets.enc`） |
@@ -313,9 +313,13 @@ splash、DevTools 控制台没有任何输出，看起来像"窗口没有内容"
 1. **同步版本号**：去掉标签的 `v` 前缀，写入 `package.json` 与 `src-tauri/tauri.conf.json`
 2. **判定通道**：版本号带后缀 → `preview`，否则 `stable`；并查找同通道的上一个标签
 3. **生成更新日志**：按 Conventional Commits 分类，写入 `CHANGELOG.md`
-4. **并行构建**：Node 24 + pnpm 10 + Rust stable，Windows 与 Linux 作为独立 job 并行构建——Windows x64 出 NSIS 安装包，Linux x64（ubuntu-22.04，保证 glibc 兼容）出 AppImage，均含签名 updater 包
-5. **生成更新清单**：将各平台的 updater 包与 minisign 签名汇总到 Release 的 `latest.json`
-6. **发布**：先创建草稿 Release，再将其公开并标记是否为预发布
+4. **构建**：Linux x64（ubuntu-22.04）与 Android 签名 universal APK 并行构建；Android 完成后 Windows x64 构建 NSIS 并发布草稿
+5. **生成更新清单**：将桌面 updater 包与 minisign 签名汇总到 Release 的 `latest.json`
+6. **发布**：先创建草稿 Release，上传桌面与 Android 资产，再将其公开并标记是否为预发布
+
+Android job 需要配置以下 GitHub Actions Secrets：`ANDROID_KEY_BASE64`（发布 keystore 的单行 Base64）、`ANDROID_KEY_ALIAS`、`ANDROID_KEY_PASSWORD`（Tauri 模板将其用于 keystore 和 key 密码）。该密钥必须与已发布/已安装版本的签名证书一致；如果尚无 Android 发布签名，可生成一次并长期安全保存，不能每次构建更换。工作流在临时生成的 `src-tauri/gen/android/keystore.properties` 中引用 keystore，不要提交 keystore 或该 properties 文件。缺少任一 Secret 时 Android job 会失败，Release 不会发布。
+
+APK 以 `endprotocol-android-universal.apk` 上传到同一 tag Release；这与 Android 更新器查找通用 APK 的规则一致。稳定 tag 与预览 tag 使用同一构建流程，Release 的 prerelease 状态仍按版本号后缀判定。
 
 需配置的 Secrets：`TAURI_SIGNING_PRIVATE_KEY` 与 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`（`GITHUB_TOKEN` 由 Actions 自动提供）。
 

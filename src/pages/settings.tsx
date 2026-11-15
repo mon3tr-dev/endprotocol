@@ -46,8 +46,9 @@ export default function SettingsPage() {
   const supportsLauncher = isWindowsPlatform();
   // 窗口关闭行为 / 托盘展示角色：仅桌面（有系统托盘与窗口关闭按钮）可见。
   const supportsTray = !isMobileApp();
-  // 自更新（检查 / 渠道 / 安装）：仅桌面有 updater 插件与安装包分发渠道。
+  // 桌面使用 Tauri updater；Android 下载 APK 并交给系统安装器确认。
   const supportsUpdater = !isMobileApp();
+  const supportsUpdateChecks = supportsUpdater || isAndroidApp();
   const [isLangDropdownOpen, setIsLangDropdownOpen] = useState(false);
   const langDropdownRef = useRef<HTMLDivElement>(null);
   const langBtnRef = useRef<HTMLButtonElement>(null);
@@ -959,9 +960,8 @@ export default function SettingsPage() {
               </div>
             </div>
 
-            {/* 更新渠道 / 来源 / 检查按钮：仅桌面（有 updater 与安装包分发渠道）。
-                移动端通过应用商店或 APK 分发，不走应用内自更新。 */}
-            {supportsUpdater && (
+            {/* Android APK updates come from GitHub Releases; source selection is desktop-only. */}
+            {supportsUpdateChecks && (
               <>
             <SettingsDivider />
 
@@ -1037,9 +1037,10 @@ export default function SettingsPage() {
               </div>
             </div>
 
-            <SettingsDivider />
+            {supportsUpdater && <SettingsDivider />}
 
             {/* Update Source */}
+            {supportsUpdater && (
             <div>
               <p className="text-sm font-medium text-foreground mb-2">
                 {t("settings.update_source.title")}
@@ -1110,6 +1111,7 @@ export default function SettingsPage() {
                 </button>
               </div>
             </div>
+            )}
               </>
             )}
 
@@ -1169,7 +1171,7 @@ export default function SettingsPage() {
             )}
 
             {/* Update Button */}
-            {supportsUpdater && remoteVersion.hasUpdate && (
+            {supportsUpdateChecks && remoteVersion.hasUpdate && (
               <GlassButton
                 variant="primary"
                 fullWidth

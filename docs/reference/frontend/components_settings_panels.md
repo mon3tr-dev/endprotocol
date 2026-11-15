@@ -277,14 +277,14 @@
 - 面板尺寸须与 `src-tauri/src/lib.rs::create_full_windows` 的 `inner_size(288, 376)` 保持一致；`tray.rs` 的 `PANEL_WIDTH`/`PANEL_HEIGHT` 仅作为取不到真实窗口尺寸时的定位回退。
 
 ## `src/components/update-dialog.tsx`
-**职责**：应用更新对话框——打开时检查更新（或恢复进行中的下载状态），展示当前/最新版本、更新渠道、发布日期与 Markdown 风格更新日志，并提供下载按钮与进度提示。
+**职责**：应用更新对话框——打开时检查更新（或恢复进行中的下载状态），展示当前/最新版本、更新渠道、发布日期与 Markdown 风格更新日志，并提供下载按钮与进度提示。Android 下载完成后调用系统安装器，用户需在系统界面手动确认。
 **导出**：`UpdateDialog`（`UpdateDialogProps` 接口定义于同文件 17-20 行但未加 `export`，仅在文件内可见）。
 **主要依赖**：`react`、`react-i18next`、`@/components/ui/button`（`GlassButton`）、`@/components/ui/modal`（`GlassModalCompound`）、`@/components/ui/skeleton`（`GlassSkeleton`）、`@/utils/updateService`（`checkForUpdate`、`downloadUpdate`、`getChannel`、`getCurrentUpdateInfo`、`getIsDownloading`、`UpdateCheckResult`、`ChangelogStatus`、`UpdateChannel`）。
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
 | `UpdateDialogProps`（interface） | 17-20 | `isOpen: boolean`、`onOpenChange: (open: boolean) => void` |
-| `UpdateDialog`（export） | 22-340 | 对话框主体 |
+| `UpdateDialog`（export） | 22-350 | 对话框主体 |
 
 **内部结构**：
 - 25-31 行：`result`、`isChecking`、`isDownloading`、`changelogStatus`、`changelog`、`channel`（默认 `"stable"`）状态。
@@ -293,10 +293,10 @@
 - 92-94 行：`handleClose`。
 - 96-175 行：`renderChangelog`——`loading` 显示骨架屏（97-106）、`failed`/`unavailable` 显示警告条（108-131）、`success` 按行渲染 `#`/`##`/`- ` 层级（133-172）。
 - 177-247 行：`renderVersionInfo`——检查中显示骨架（178-201）；有更新时展示当前版本、最新版本、渠道、发布日期四格（205-246）。
-- 249-339 行：`GlassModal` 结构——Backdrop（254）、Header（257-292，含下载图标、标题、版本箭头/骨架）、Body（294-312，版本信息 + 下载中旋转提示 299-308 + 日志）、Footer（314-334，下载中显示「停止下载」按钮（danger），否则「稍后」+「下载更新」）。
+- 249-350 行：`GlassModal` 结构——Android 可用更新且尚未下载时提示系统安装器将打开、需手动确认（317-321）；Footer 下载中显示「停止下载」按钮，否则「稍后」+「下载更新」。
 - 250-253 行：`onOpenChange` 直接透传（下载中点「停止下载」会先停止下载再关闭；仅关闭对话框不中断已发起的下载任务）。
 
-**备注**：本文件不直接 `invoke`/`listen`/`emit`，也不直接读写配置键——所有 Tauri 交互（含更新检查/下载/渠道）封装在 `@/utils/updateService`。window 事件：无。涉及的 `localStorage`/事件均由该 service 内部管理。i18n 键：`settings.update.update_available/checking/current_version/latest_version/channel/release_date/changelog_failed/downloading/downloading_install/later/download_update/stop_download`、`settings.update_channel.stable/preview`。
+**备注**：本文件不直接 `invoke`/`listen`/`emit`，也不直接读写配置键——所有 Tauri 交互（含更新检查/下载/渠道）封装在 `@/utils/updateService`。window 事件：无。涉及的 `localStorage`/事件均由该 service 内部管理。i18n 键：`settings.update.update_available/checking/current_version/latest_version/channel/release_date/changelog_failed/downloading/downloading_install/later/download_update/stop_download/android_install_hint`、`settings.update_channel.stable/preview`。
 
 ## `src/components/system-resource-settings.tsx`
 **职责**：全局设置页「系统资源卡片」分区，配置新增系统资源卡片/卡片组时的默认值。

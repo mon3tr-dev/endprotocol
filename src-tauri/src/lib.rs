@@ -137,7 +137,8 @@ pub fn run() {
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_fs::init());
+        .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_apk_installer::init());
 
     // 桌面专属插件：单实例转发 + 自更新（两者的依赖都只在桌面目标编译）。
     #[cfg(desktop)]
@@ -273,6 +274,7 @@ pub fn run() {
             commands::updater::get_temp_dir,
             commands::updater::fetch_url,
             commands::updater::download_file,
+            commands::updater::download_android_apk,
             commands::updater::run_installer,
             commands::updater::check_update_endpoint,
             commands::updater::install_update_endpoint,

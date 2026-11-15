@@ -1,0 +1,9 @@
+[[permission]]
+identifier = "allow-install-apk"
+description = "Allows opening an APK with the Android package installer."
+commands.allow = ["install_apk"]
+
+[[set]]
+identifier = "default"
+description = "Default permissions for the APK installer plugin."
+permissions = ["allow-install-apk"]

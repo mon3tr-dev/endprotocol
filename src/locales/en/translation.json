@@ -495,6 +495,7 @@
       "channel": "Channel",
       "release_date": "Release Date",
       "download_update": "Download Update",
+      "android_install_hint": "After downloading, the system installer will open. Confirm the installation manually. You may first need to allow this app to install unknown apps.",
       "stop_download": "Stop Download",
       "up_to_date": "Up to date",
       "update_available": "Update Available",

@@ -14,6 +14,7 @@ import {
   type ChangelogStatus,
   type UpdateChannel,
 } from "@/utils/updateService";
+import { isAndroidApp } from "@/utils/platform";
 
 interface UpdateDialogProps {
   isOpen: boolean;
@@ -311,6 +312,12 @@ export function UpdateDialog({ isOpen, onOpenChange }: UpdateDialogProps) {
                     {t("settings.update.downloading_install")}
                   </span>
                 </div>
+              )}
+
+              {isAndroidApp() && result?.update && !isDownloading && (
+                <p className="text-xs text-muted">
+                  {t("settings.update.android_install_hint")}
+                </p>
               )}
 
               {/* Changelog */}

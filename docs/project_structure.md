@@ -87,6 +87,7 @@ EndProtocol/
 │   ├── capabilities/  tauri.conf.json  tauri.android.conf.json  Cargo.toml
 │   │                              #   tauri.android.conf.json = Android 平台覆盖配置
 │   │                              #   （静态声明 main 窗口；移动端不支持运行时建窗）
+│   ├── plugins/apk-installer/      # Android APK 安装交接插件（系统安装器 + 用户手动确认）
 │   └── gen/                       # Tauri 自动生成（勿手改）
 ├── dist/  target/  node_modules/  # 构建产物与依赖（勿读）
 └── .github/workflows/release.yml  # 发布流水线

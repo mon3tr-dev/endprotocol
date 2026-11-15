@@ -6,7 +6,7 @@ import { addMessage, updateMessage, removeMessage, removeMessagesByTag, type App
 import { pushGlobalAlert } from "@/components/ui/global-alert";
 import { getConfig, setConfig } from "./configService";
 import logger from "./logger";
-import { isWindowsPlatform, isMobileApp } from "./platform";
+import { isAndroidApp, isWindowsPlatform, isMobileApp } from "./platform";
 
 // ============================================================================
 // Types
@@ -41,6 +41,7 @@ export interface UpdateInfo {
   newVersion: string;
   date?: string;
   body?: string;
+  apkUrl?: string;
 }
 
 export interface ManualUpdate {
@@ -48,6 +49,10 @@ export interface ManualUpdate {
   version: string;
   date?: string;
   body?: string;
+}
+
+export interface AndroidUpdate extends ManualUpdate {
+  apkUrl: string;
 }
 
 export interface UpdateCheckResult {
@@ -89,7 +94,7 @@ const CHANGELOG_CACHE_KEY_PREFIX = "changelog_cache_";
 // State
 // ============================================================================
 
-let currentUpdate: Update | ManualUpdate | null = null;
+let currentUpdate: Update | ManualUpdate | AndroidUpdate | null = null;
 let currentUpdateInfo: UpdateInfo | null = null;
 let isDownloading = false;
 let downloadProgress = 0;
@@ -298,6 +303,10 @@ async function resolveRelease(): Promise<Update | ManualUpdate | null> {
   const channel = currentChannel;
   logger.info(`Resolving ${channel} release (source: ${currentSource})...`, "Updater");
 
+  if (isAndroidApp()) {
+    return await resolveAndroidRelease();
+  }
+
   // Preview channel: bypass Tauri plugin, fetch preview endpoint directly.
   // The plugin tries endpoints in order and returns the first newer version,
   // so on preview channel it always returns the stable update (listed first),
@@ -326,6 +335,88 @@ async function resolveRelease(): Promise<Update | ManualUpdate | null> {
   }
 
   return update;
+}
+
+function getAndroidApkAsset(release: GitHubRelease): string | null {
+  const apkAssets = release.assets.filter((asset) =>
+    asset.name.toLowerCase().endsWith(".apk"),
+  );
+  const selected = apkAssets.find((asset) =>
+    /universal|all-abi/i.test(asset.name),
+  ) ?? (apkAssets.length === 1 ? apkAssets[0] : undefined);
+
+  if (!selected) return null;
+
+  try {
+    const url = new URL(selected.browser_download_url);
+    if (
+      url.protocol === "https:" &&
+      url.hostname === "github.com" &&
+      url.pathname.startsWith(`/${REPO_OWNER}/${REPO_NAME}/releases/download/`) &&
+      url.pathname.toLowerCase().endsWith(".apk")
+    ) {
+      return url.toString();
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+async function resolveAndroidRelease(): Promise<AndroidUpdate | null> {
+  currentUpdate = null;
+  currentUpdateInfo = null;
+  manualUpdaterEndpoint = null;
+
+  const { getVersion } = await import("@tauri-apps/api/app");
+  const localVersion = await getVersion();
+  const localParsed = parseSemVer(localVersion);
+  if (!localParsed) return null;
+
+  const releases = (await fetchGitHubReleases())
+    .filter((release) => !release.draft && release.tag_name.startsWith("v"))
+    .map((release) => ({
+      release,
+      version: parseSemVer(stripVPrefix(release.tag_name)),
+    }))
+    .filter(
+      (item): item is { release: GitHubRelease; version: SemVer } =>
+        item.version !== null &&
+        (currentChannel === "preview"
+          ? true
+          : item.version.prerelease.length === 0),
+    )
+    .sort((a, b) => compareSemVer(b.version, a.version));
+
+  const newestStable = releases.find(
+    (item) => item.version.prerelease.length === 0,
+  );
+  const candidate = currentChannel === "preview"
+    ? (newestStable && compareSemVer(newestStable.version, localParsed) > 0
+      ? newestStable
+      : releases.find((item) => item.version.prerelease.length > 0))
+    : newestStable;
+
+  if (!candidate || compareSemVer(candidate.version, localParsed) <= 0) {
+    return null;
+  }
+
+  const apkUrl = getAndroidApkAsset(candidate.release);
+  if (!apkUrl) {
+    logger.info(
+      `Release ${candidate.release.tag_name} has no supported Android APK asset`,
+      "Updater",
+    );
+    return null;
+  }
+
+  return {
+    currentVersion: localVersion,
+    version: stripVPrefix(candidate.release.tag_name),
+    date: candidate.release.published_at,
+    body: candidate.release.body,
+    apkUrl,
+  };
 }
 
 async function resolvePreviewRelease(): Promise<Update | ManualUpdate | null> {
@@ -635,6 +726,7 @@ async function performUpdateCheck(): Promise<UpdateCheckResult> {
     newVersion: update.version,
     date: update.date,
     body: update.body,
+    apkUrl: "apkUrl" in update ? update.apkUrl : undefined,
   };
 
   currentUpdate = update;
@@ -805,9 +897,8 @@ export async function setSource(source: UpdateSource): Promise<void> {
 }
 
 export async function checkForUpdate(): Promise<UpdateCheckResult> {
-  // 移动端（Android/iOS）没有 updater 插件与自更新渠道：直接返回「不可用」，
-  // 不发起任何 IPC。检查/下载/安装入口在设置页与更新弹窗中一并隐藏。
-  if (isMobileApp()) {
+  // iOS doesn't support in-app package installation; Android uses signed APK assets.
+  if (isMobileApp() && !isAndroidApp()) {
     return {
       available: false,
       update: null,
@@ -827,7 +918,7 @@ export async function checkForUpdate(): Promise<UpdateCheckResult> {
   return result;
 }
 
-export function getCurrentUpdate(): Update | ManualUpdate | null {
+export function getCurrentUpdate(): Update | ManualUpdate | AndroidUpdate | null {
   return currentUpdate;
 }
 
@@ -880,7 +971,40 @@ export async function downloadUpdate(): Promise<void> {
     // does not block this one.
     await invoke("reset_download_cancel");
 
-    if (updaterEndpoint) {
+    if (isAndroidApp()) {
+      if (!("apkUrl" in update)) {
+        throw new Error("No Android APK is available for this update");
+      }
+
+      logger.info("Downloading Android APK update...", "Updater");
+      const unlisten = await listen<{ downloaded: number; total: number }>(
+        "download-progress",
+        (event) => {
+          downloadProgress = event.payload.downloaded;
+          downloadTotal = event.payload.total;
+          updateProgressMessage(
+            i18n.t("messages.downloading"),
+            downloadTotal > 0
+              ? `${downloadProgress} / ${downloadTotal} bytes`
+              : undefined,
+            downloadTotal > 0
+              ? (downloadProgress / downloadTotal) * 100
+              : undefined,
+          );
+          emitChange();
+        },
+      );
+      try {
+        const path = await invoke<string>("download_android_apk", {
+          url: update.apkUrl,
+        });
+        await invoke("plugin:apk-installer|install_apk", { path });
+      } finally {
+        unlisten();
+      }
+      logger.info("Android package installer opened", "Updater");
+      removeProgressMessage();
+    } else if (updaterEndpoint) {
       logger.info("Starting channel update via Tauri updater...", "Updater");
       const unlisten = await listen<{ downloaded: number; total: number }>(
         "download-progress",

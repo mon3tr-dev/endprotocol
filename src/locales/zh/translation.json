@@ -495,6 +495,7 @@
       "channel": "通道",
       "release_date": "发布日期",
       "download_update": "下载更新",
+      "android_install_hint": "下载完成后将打开系统安装界面，请手动确认安装。首次安装可能需要先允许本应用安装未知应用。",
       "stop_download": "停止下载",
       "up_to_date": "已是最新",
       "update_available": "有新版本",

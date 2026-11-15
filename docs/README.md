@@ -55,7 +55,7 @@
 | 游戏界面整页推移（切游戏时旧页往一个方向退出、新页从另一方向进入，两页同场各带自己的数据） | `src/layouts/dashboard.tsx`、`src/components/game-page.tsx`、`src/components/custom-titlebar.tsx`、`src/components/game-action-panel.tsx`、`src/stores/launcherGame.ts` | [pages_core.md](reference/frontend/pages_core.md)、[components_dialogs.md](reference/frontend/components_dialogs.md)、[entry_and_app.md](reference/frontend/entry_and_app.md) |
 | 启动游戏 / 免启动器启动 / 为什么要 UAC / Steam Overlay 注入链 | `src-tauri/src/commands/launcher.rs`（`launcher_start_game`）、`src-tauri/src/utils/official_launcher.rs` | [commands.md](reference/backend/commands.md)、[utils.md](reference/backend/utils.md) |
 | 静默启动、单实例转发、游戏快捷方式与命令行、Steam 第三方游戏注入（名字/图标/DX11/Overlay 管理员快捷方式）、DX11 启动（`--dx11` / `-force-d3d11`） | `src-tauri/src/lib.rs`、`src-tauri/src/commands/startup.rs`、`src-tauri/src/utils/steam.rs`、`src-tauri/src/utils/game_icon.rs`、`src/components/game-launch-settings.tsx` | [bootstrap.md](reference/backend/bootstrap.md)、[commands.md](reference/backend/commands.md)、[utils.md](reference/backend/utils.md)、[components_settings_panels.md](reference/frontend/components_settings_panels.md) |
-| 应用自更新 | `src/utils/updateService.ts`、`commands/updater.rs` | [utils_services_b.md](reference/frontend/utils_services_b.md)、[commands.md](reference/backend/commands.md) |
+| 应用自更新（桌面 updater；Android Release APK 下载并手动安装） | `src/utils/updateService.ts`、`commands/updater.rs`、`plugins/apk-installer/` | [utils_services_b.md](reference/frontend/utils_services_b.md)、[commands.md](reference/backend/commands.md)、[bootstrap.md](reference/backend/bootstrap.md) |
 | 外观设置（主题/背景/取色） | `src/components/appearance-settings.tsx` | [components_settings_panels.md](reference/frontend/components_settings_panels.md) |
 | 设置页 / 开发者页 | `src/pages/settings.tsx`、`src/pages/developer.tsx` | [pages_settings_developer.md](reference/frontend/pages_settings_developer.md) |
 | 托盘与托盘面板 | `src-tauri/src/tray.rs`、`src/utils/trayService.ts`（数据组装）、`src/components/tray-panel.tsx`、`src/tray-panel.tsx` | [bootstrap.md](reference/backend/bootstrap.md)、[components_settings_panels.md](reference/frontend/components_settings_panels.md)、[entry_and_app.md](reference/frontend/entry_and_app.md)、[utils_services_a.md](reference/frontend/utils_services_a.md) |
@@ -72,7 +72,7 @@
 
 | 需求 | 位置 | 详细参考 |
 | --- | --- | --- |
-| **IPC 命令在哪定义 / 前端谁调用** | 生成的对照表 | [ipc_index.md](reference/ipc_index.md)（145 个命令全表） |
+| **IPC 命令在哪定义 / 前端谁调用** | 生成的对照表 | [ipc_index.md](reference/ipc_index.md)（147 个命令全表） |
 | 新增/修改一个 Tauri 命令 | `src-tauri/src/commands/`、`src-tauri/src/lib.rs` | [commands.md](reference/backend/commands.md)、[bootstrap.md](reference/backend/bootstrap.md)、[backend_development.md](backend_development.md) |
 | 错误类型与转换 | `src-tauri/src/utils/error.rs` | [utils.md](reference/backend/utils.md) |
 | 加密与签名（RSA/AES/DES/HMAC） | `src-tauri/src/utils/hg_crypto.rs`、`services/skland_service.rs` | [utils.md](reference/backend/utils.md)、[services_skland.md](reference/backend/services_skland.md) |
@@ -158,7 +158,7 @@
 | `prom-assets/` | 宣传物料图片（`promotional-cover.html`、`promotional-demo.html` 使用） |
 | `tray-panel.html` | 托盘面板的独立 HTML 入口（对应 `src/tray-panel.tsx`） |
 | `index.html` | 主窗口 HTML 入口 |
-| `.github/workflows/release.yml` | 发布流水线（Windows / Linux 安装包与 updater 签名清单） |
+| `.github/workflows/release.yml` | 发布流水线（Windows / Linux 安装包、Android universal APK 与 updater 签名清单） |
 | `dist/`、`target/`、`node_modules/` | 构建产物与依赖，**不要阅读** |
 | `src-tauri/gen/schemas/` | Tauri 自动生成的权限 schema，**不要手改** |
 

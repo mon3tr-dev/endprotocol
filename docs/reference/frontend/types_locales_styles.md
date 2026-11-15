@@ -163,7 +163,7 @@
 | `settings.developer.*` | 开发者模式开关与确认警告 | :139 |
 | `settings.update_channel.*` | 更新通道（stable/preview） | :148 |
 | `settings.update_source.*` | 更新源（github/mirror） | :156 |
-| `settings.update.*` | 应用更新流程文案：检查/下载/安装、版本信息、许可证(AGPL-3.0)、开源致谢 | :164 |
+| `settings.update.*` | 应用更新流程文案：检查/下载/安装、版本信息；Android APK 下载后提示用户在系统安装器中手动确认；许可证(AGPL-3.0)、开源致谢 | :164 |
 | `settings.account.*` | 账户管理：森空岛账户/游戏角色绑定、登出（含设备认证）、密码/验证码/扫码登录全流程 | :194 |
 | `settings.notifications.*` | 通知设置（email/push） | :289 |
 | `settings.cache.*` | 智能缓存：模式、条目/大小上限、缓存资源列表状态 | :294 |

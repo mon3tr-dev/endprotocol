@@ -1,7 +1,7 @@
 # Tauri 命令层（IPC 入口）— 文件功能参考
 
 > 逐文件精读源码生成。行号基于当前工作区版本，仅用于快速定位。
-> 覆盖范围：`src-tauri/src/commands/` 下 18 个命令文件（另有 `mod.rs` 共 19 个 `.rs`），当前参考表收录 **137 个不同命令名**；源码含 141 处命令注解（`capture_screen`、`finish_screen_pick`、`run_installer`、`save_tab_snapshot` 各有 `cfg` 门控的两个版本，按名去重后为 137）。注册入口见 `src-tauri/src/lib.rs` 的 `generate_handler!`。
+> 覆盖范围：`src-tauri/src/commands/` 下 18 个命令文件（另有 `mod.rs` 共 19 个 `.rs`），当前参考表收录 **138 个不同命令名**；源码含 143 处命令注解（`capture_screen`、`finish_screen_pick`、`download_android_apk`、`run_installer`、`save_tab_snapshot` 各有 `cfg` 门控的两个版本，按名去重后为 138）。另有 APK 安装插件命令，见 [`apk-installer` 插件](bootstrap.md#src-tauri-plugins-apk-installer)。注册入口见 `src-tauri/src/lib.rs` 的 `generate_handler!`。
 
 > **平台门控（Android/iOS）**：命令名集合在桌面与移动端**完全一致**（`generate_handler!` 不按平台裁剪），差异只在实现——桌面专属能力在移动端是返回明确错误的 stub，共 5 组：`launcher_browse_folder` / `pick_steam_icon` / `pick_steam_icon_source`（`rfd` 对话框）、`check_update_endpoint` / `install_update_endpoint`（updater 插件）、`capture_screen` / `finish_screen_pick`（GDI 取色）、`save_tab_snapshot`（PrintWindow 快照）、`minimize_window` / `toggle_maximize_window`（窗口化语义，移动端 no-op）。完整差异表见 [docs/development.md](../../development.md) §2.1。
 
@@ -139,6 +139,7 @@
 | `cancel_download` | commands/updater.rs:181 | 无 | `()`（无返回） | 模块级 `DOWNLOAD_CANCELLED` AtomicBool 置 true，`install_update_endpoint` 下载循环中检查并取消 |
 | `reset_download_cancel` | commands/updater.rs:187 | 无 | `()`（无返回） | `DOWNLOAD_CANCELLED` 置 false，`install_update_endpoint` 启动前复位 |
 | `download_file` | commands/updater.rs:195 | `app: AppHandle`、`url: String`、`path: String` | `Result<u64, String>` | `capture::send_stream` 流式下载，每 256KB emit `download-progress` |
+| `download_android_apk` | commands/updater.rs:295 | `app: AppHandle`、`url: String` | `Result<String, String>` | Android：仅接受本仓库 GitHub Release 的 HTTPS APK，下载到应用私有缓存并支持取消；桌面/iOS 返回不支持错误 |
 | `check_update_endpoint` | commands/updater.rs:58 | `app: AppHandle`、`endpoint: String` | `Result<Option<UpdateEndpointInfo>, String>` | 桌面：限定镜像/GitHub 清单，使用 updater 检查本机平台与版本；**移动端按 `#[cfg(not(desktop))]` 返回"Application updates are not available on this platform"**（updater 插件只在桌面编译）。`install_update_endpoint` 同此规则 |
 | `install_update_endpoint` | commands/updater.rs:73 | `app: AppHandle`、`endpoint: String` | `Result<(), String>` | 限定端点后流式下载到 temp 文件，下载循环中检查 `DOWNLOAD_CANCELLED` 取消标志并删除半成品，完成后用 `update.install()` 验签安装；emit `download-progress` |
 | `run_installer` | commands/updater.rs:260/280 | `app: AppHandle`、`path: String` | `Result<(), String>` | Windows：静默启动 NSIS 安装器并退出应用；非 Windows：返回不支持错误 |
@@ -919,7 +920,7 @@
 ---
 
 ## `src-tauri/src/commands/updater.rs`
-**职责**：应用自更新所需的通用原语（下载/写文件/装包，含 9 个命令）。Tauri updater 插件按本机平台检查、验签、安装；预览/频道切换使用受限的镜像/GitHub 清单端点。另含模块级静态 `DOWNLOAD_CANCELLED: AtomicBool` 作为下载取消开关。
+**职责**：应用自更新所需的通用原语（下载/写文件/装包，含 10 个命令）。Tauri updater 插件按本机平台检查、验签、安装；Android 单独检查 GitHub Release APK 并由系统安装器确认。另含模块级静态 `DOWNLOAD_CANCELLED: AtomicBool` 作为下载取消开关。
 
 ### `write_file`
 - 位置：updater.rs:150（同步）；参数：`path: String`、`data: Vec<u8>`；返回：`Result<(), String>`；逻辑：`fs::create_dir_all(parent)` 后 `fs::write`，**任意路径皆可写**。
@@ -941,6 +942,13 @@
 - 参数：`app: AppHandle`、`url: String`、`path: String`
 - 返回：`Result<u64, String>`（写入的总字节数）
 - 逻辑：开始时重置取消标志 → `capture::send_stream` 取流 → 建父目录与目标文件 → 逐 chunk 写盘，每累计 ≥256KB（或下完）`app.emit("download-progress", {downloaded, total})`；检测到取消标志则删除文件并返回 `Err("Download cancelled")`；结束 `flush` 并返回字节数。
+- 事件：`download-progress`
+
+### `download_android_apk`
+- 位置：updater.rs:295（Android async；其他目标为 stub）
+- 参数：`app: AppHandle`、`url: String`
+- 返回：`Result<String, String>`（已下载 APK 的私有缓存路径）
+- 逻辑：只接受 `https://github.com/mon3tr-dev/endprotocol/releases/download/.../*.apk`；流式下载到 app cache 的 `updates` 目录，支持 `cancel_download`，下载失败删除 `.part` 文件。
 - 事件：`download-progress`
 
 ### `check_update_endpoint`
@@ -1038,7 +1046,7 @@
 
 ## 汇总
 
-- 命令总数：**137**（account 24、launcher 28、capture 7、gacha 7、tray 8、updater 9、image 6、config 8、proxy 6、window 6、card_config 3、attendance 2、color_picker 2、logs 2、system_resource 1、browser 5、diagnostics 6、startup 7；`mod.rs` 0。源码 141 处注解，`capture_screen`/`finish_screen_pick`/`run_installer`/`save_tab_snapshot` 各含一对 `cfg` 门控版本，按名去重计）。
+- 命令总数：**138**（account 24、launcher 28、capture 7、gacha 7、tray 8、updater 10、image 6、config 8、proxy 6、window 6、card_config 3、attendance 2、color_picker 2、logs 2、system_resource 1、browser 5、diagnostics 6、startup 7；`mod.rs` 0。源码 143 处注解，`capture_screen`/`finish_screen_pick`/`download_android_apk`/`run_installer`/`save_tab_snapshot` 各含一对 `cfg` 门控版本，按名去重计；`install_apk` 由独立 Tauri 插件注册）。
 - 事件 emit：`launcher-progress`（launcher.rs）、`download-progress`（updater.rs）。
 - 关键配置键：`account_token_*`（含 `cred`/`token`/`hytoken`/`device_token`/`roles[]`/`user_info`；`roles[]` 内含 `bindingUid` 与 `u8Authorized`）、`selected_account_id`、`card_settings.{card_id}`、`tray_user_info`、`proxy_config`（代理设置，写入后同步刷新全局代理缓存），以及前端侧的 `system_resource_defaults` / `todo_lists` / `todo_defaults`（经 config 命令读写）；相关本地文件：`gacha_avatar_map.json`、`total.json`、`backgrounds/bg.webp`。
 - 主要状态（managed state）：`Arc<std::sync::Mutex<ConfigService>>`（config/tray/proxy 直接用）、`Arc<tokio::sync::Mutex<AccountService>>`（account/attendance/card_config/gacha）、`Arc<GachaService>`、`Arc<GameLauncherService>`（无外层锁，长任务由内部 `write_gate` 串行）、`Arc<std::sync::Mutex<SystemResourceService>>`（见 `lib.rs` 的 `setup`）。

@@ -1,6 +1,6 @@
 # IPC 命令索引（前端 invoke ↔ 后端定义）
 
-> 由脚本扫描 `#[tauri::command]` 与前端 `invoke('...')` 自动生成。共 146 个后端命令，其中 129 个在前端有直接调用；16 个未见前端调用。行号基于当前工作区版本。
+> 由脚本扫描 `#[tauri::command]` 与前端 `invoke('...')` 自动生成。共 147 个后端命令，其中 130 个在前端有直接调用；16 个未见前端调用。行号基于当前工作区版本。
 >
 > 注：`browser_go_back` / `browser_go_forward` / `browser_reload` / `browser_navigate` / `browser_current_url` 经 `src/utils/browserViewService.ts` 的私有 `run(command, args)` 动态调用（`invoke(command, …)`，命令名不是字面量），脚本的字面量正则扫不到，已人工补录。
 >
@@ -47,6 +47,7 @@
 | `do_batch_attendance` | [src-tauri/src/commands/arknights.rs:118](backend/commands.md) | [src/utils/attendanceService.ts](../../src/utils/attendanceService.ts)（`performBatchAttendance` ← `attendance-batch-modal.tsx`） |
 | `do_attendance` | [src-tauri/src/commands/attendance.rs:182](backend/commands.md) | [src/utils/attendanceService.ts](../../src/utils/attendanceService.ts)（经 `performAttendanceSignIn` / `signInWithFeedback`） |
 | `download_file` | [src-tauri/src/commands/updater.rs:200](backend/commands.md) | — |
+| `download_android_apk` | [src-tauri/src/commands/updater.rs:295](backend/commands.md) | [src/utils/updateService.ts](../../src/utils/updateService.ts) |
 | `download_image` | [src-tauri/src/commands/image.rs:38](backend/commands.md) | [src/components/cards/character-list/char-select-modal.tsx](../../src/components/cards/character-list/char-select-modal.tsx)<br>[src/utils/imageCacheManager.ts](../../src/utils/imageCacheManager.ts) |
 | `export_diagnostics` | [src-tauri/src/commands/diagnostics.rs:14](backend/commands.md) | [src/utils/diagnostics.ts](../../src/utils/diagnostics.ts) |
 | `extract_steam_icon` | [src-tauri/src/commands/startup.rs:396](backend/commands.md) | [src/utils/launcherService.ts](../../src/utils/launcherService.ts) |

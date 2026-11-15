@@ -1175,6 +1175,7 @@ dependencies = [
  "sysinfo 0.40.1",
  "tauri",
  "tauri-build",
+ "tauri-plugin-apk-installer",
  "tauri-plugin-devdeck",
  "tauri-plugin-fs",
  "tauri-plugin-opener",
@@ -4844,6 +4845,16 @@ dependencies = [
  "serde_json",
  "tauri-utils",
  "walkdir",
+]
+
+[[package]]
+name = "tauri-plugin-apk-installer"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-plugin",
 ]
 
 [[package]]

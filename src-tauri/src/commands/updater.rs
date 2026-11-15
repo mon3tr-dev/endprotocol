@@ -3,6 +3,8 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::Emitter;
+#[cfg(target_os = "android")]
+use tauri::Manager;
 // updater æ’ä»¶åªåœ¨æ¡Œé¢ç›®æ ‡ç¼–è¯‘ï¼ˆè§ Cargo.tomlï¼‰ï¼›ç§»åŠ¨ç«¯ç›¸å…³å‘½ä»¤è¿”å›žæ˜Žç¡®é”™è¯¯ã€‚
 #[cfg(desktop)]
 use tauri_plugin_updater::{Updater, UpdaterExt};
@@ -285,6 +287,111 @@ pub async fn download_file(
     file.flush()
         .map_err(|e| format!("Failed to flush file: {}", e))?;
     Ok(downloaded)
+}
+
+/// Download a GitHub Release APK into app-private cache for Android's package installer.
+#[cfg(target_os = "android")]
+#[tauri::command]
+pub async fn download_android_apk(app: tauri::AppHandle, url: String) -> Result<String, String> {
+    let parsed_url = reqwest::Url::parse(&url)
+        .map_err(|error| format!("Invalid APK download URL: {error}"))?;
+    if parsed_url.scheme() != "https"
+        || parsed_url.host_str() != Some("github.com")
+        || !parsed_url
+            .path()
+            .starts_with("/mon3tr-dev/endprotocol/releases/download/")
+        || !parsed_url.path().to_ascii_lowercase().ends_with(".apk")
+    {
+        return Err("Unsupported APK download URL".to_string());
+    }
+
+    let update_dir = app
+        .path()
+        .app_cache_dir()
+        .map_err(|error| format!("Failed to resolve app cache directory: {error}"))?
+        .join("updates");
+    fs::create_dir_all(&update_dir)
+        .map_err(|error| format!("Failed to create APK cache directory: {error}"))?;
+
+    let partial_path = update_dir.join("endprotocol-update.apk.part");
+    let apk_path = update_dir.join("endprotocol-update.apk");
+    let _ = fs::remove_file(&partial_path);
+
+    let client = crate::utils::http_client::default_client();
+    let response = capture::send_stream(&client, client.get(&url))
+        .await
+        .map_err(|error| format!("Failed to start APK download: {error}"))?;
+    if !response.status().is_success() {
+        return Err(format!("APK download failed with HTTP {}", response.status()));
+    }
+
+    let total = response.content_length().unwrap_or(0);
+    let download_result: Result<u64, String> = async {
+        let mut file = fs::File::create(&partial_path)
+            .map_err(|error| format!("Failed to create APK file: {error}"))?;
+        let mut stream = response.bytes_stream();
+        use futures_util::StreamExt;
+        let mut downloaded = 0u64;
+        let mut last_emit = 0u64;
+
+        while let Some(chunk) = stream.next().await {
+            if DOWNLOAD_CANCELLED.load(Ordering::SeqCst) {
+                return Err("Download cancelled".to_string());
+            }
+
+            let chunk = chunk.map_err(|error| format!("APK download stream error: {error}"))?;
+            file.write_all(&chunk)
+                .map_err(|error| format!("Failed to write APK: {error}"))?;
+            downloaded += chunk.len() as u64;
+
+            if downloaded - last_emit >= 256 * 1024 {
+                let _ = app.emit(
+                    "download-progress",
+                    serde_json::json!({ "downloaded": downloaded, "total": total }),
+                );
+                last_emit = downloaded;
+            }
+        }
+
+        if DOWNLOAD_CANCELLED.load(Ordering::SeqCst) {
+            return Err("Download cancelled".to_string());
+        }
+        if downloaded == 0 {
+            return Err("The downloaded APK is empty".to_string());
+        }
+
+        file.flush()
+            .map_err(|error| format!("Failed to flush APK file: {error}"))?;
+        drop(file);
+        let _ = app.emit(
+            "download-progress",
+            serde_json::json!({ "downloaded": downloaded, "total": total }),
+        );
+        Ok(downloaded)
+    }
+    .await;
+
+    if let Err(error) = download_result {
+        let _ = fs::remove_file(&partial_path);
+        return Err(error);
+    }
+
+    let _ = fs::remove_file(&apk_path);
+    if let Err(error) = fs::rename(&partial_path, &apk_path) {
+        let _ = fs::remove_file(&partial_path);
+        return Err(format!("Failed to finalize APK download: {error}"));
+    }
+
+    Ok(apk_path.to_string_lossy().into_owned())
+}
+
+#[cfg(not(target_os = "android"))]
+#[tauri::command]
+pub async fn download_android_apk(
+    _app: tauri::AppHandle,
+    _url: String,
+) -> Result<String, String> {
+    Err("APK updates are only available on Android".to_string())
 }
 
 /// Spawn an installer file silently (NSIS /S flag) and exit the app.

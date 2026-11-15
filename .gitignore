@@ -1,4 +1,4 @@
-# Logs
+﻿# Logs
 logs
 *.log
 npm-debug.log*
@@ -48,3 +48,5 @@ src-tauri/gen/
 pnpm-workspace.yaml
 
 .dsh/
+
+endprotocol-release.jks
