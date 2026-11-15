@@ -314,7 +314,7 @@ splash、DevTools 控制台没有任何输出，看起来像"窗口没有内容"
 2. **判定通道**：版本号带后缀 → `preview`，否则 `stable`；并查找同通道的上一个标签
 3. **生成更新日志**：按 Conventional Commits 分类，写入 `CHANGELOG.md`
 4. **构建**：Linux x64（ubuntu-22.04）与 Android 签名 universal APK 并行构建；Android 完成后 Windows x64 构建 NSIS 并发布草稿
-5. **生成更新清单**：将桌面 updater 包与 minisign 签名汇总到 Release 的 `latest.json`
+5. **生成更新清单**：将桌面 updater 包与 minisign 签名汇总到 Release 的 `latest.json`；Android universal APK 以顶层 `android` 字段（url + assetName）附带，不进 `platforms`（APK 无 minisign 签名，混入会破坏桌面端 manifest 解析）
 6. **发布**：先创建草稿 Release，上传桌面与 Android 资产，再将其公开并标记是否为预发布
 
 Android job 使用 `android-actions/setup-android@v4` 并显式指定 `packages: 'platform-tools'`：v3 及更早版本的默认包列表包含已被 Google 下架的 `tools` 包，会让 `sdkmanager` 以退出码 1 失败（android-actions/setup-android#537），platform-tools、platforms、build-tools 与 NDK 均由后续步骤按需安装。
