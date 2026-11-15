@@ -171,6 +171,33 @@ jobs:
       - name: Initialize Android project
         run: pnpm tauri android init --ci
 
+      # `android init` scaffolds `gen/android` from the CLI template, which ships
+      # its own placeholder launcher artwork (the blue/yellow mark) and no
+      # adaptive-icon descriptor at all. Nothing else copies the project icons in,
+      # so without this step the released APK keeps the template icon. The tracked
+      # set under `src-tauri/icons/android/` is the one that has been scaled into
+      # the 66dp adaptive safe zone, so install it verbatim instead of regenerating
+      # it from `icon.png` (which would push the glyph back past the mask).
+      - name: Install project launcher icons
+        shell: bash
+        run: |
+          set -euo pipefail
+          RES="src-tauri/gen/android/app/src/main/res"
+          if [[ ! -d "${RES}" ]]; then
+            echo "::error::${RES} is missing; 'tauri android init' did not scaffold the project."
+            exit 1
+          fi
+          # Drop the template's launcher artwork (density PNGs, the adaptive-icon
+          # descriptor, and the vector drawables it referenced) so nothing from the
+          # scaffold can win resource resolution, then install ours verbatim.
+          rm -rf "${RES}"/mipmap-* \
+                 "${RES}"/values/ic_launcher_background.xml \
+                 "${RES}"/drawable/ic_launcher_background.xml \
+                 "${RES}"/drawable-v24/ic_launcher_foreground.xml
+          cp -R src-tauri/icons/android/. "${RES}"/
+          test -f "${RES}/mipmap-anydpi-v26/ic_launcher.xml"
+          test -f "${RES}/values/ic_launcher_background.xml"
+
       - name: Configure Android release signing
         shell: bash
         env:
@@ -264,6 +291,44 @@ jobs:
           for ABI in arm64-v8a armeabi-v7a x86 x86_64; do
             if ! unzip -Z1 "${APK}" | grep -q "^lib/${ABI}/"; then
               echo "::error::Universal APK is missing native libraries for ${ABI}."
+              exit 1
+            fi
+          done
+
+      # `tauri android init` scaffolds `gen/android` with the CLI's placeholder
+      # launcher artwork, and for a long time the release kept it because nothing
+      # copied the project icons in. Assert the packaged icon is really ours: the
+      # adaptive-icon descriptor has to be the resolved application icon, and every
+      # density has to ship a foreground layer. `aapt2` obfuscates resource file
+      # names, so match on type/qualifier rather than on the generated file name.
+      - name: Verify launcher icon comes from the project assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="endprotocol-android-universal.apk"
+          AAPT2="${ANDROID_HOME}/build-tools/36.0.0/aapt2"
+
+          BADGING="$("${AAPT2}" dump badging "${APK}")"
+          printf '%s\n' "${BADGING}"
+          # The resolved application icon must be the adaptive-icon XML. A template
+          # placeholder shows up here as a bare `res/xx.png`.
+          if ! printf '%s\n' "${BADGING}" | grep -q "application-icon-640:'res/[^']*\.xml'"; then
+            echo "::error::The APK launcher icon is not an adaptive icon (the tauri android init template placeholder is being packaged instead of src-tauri/icons/android)."
+            exit 1
+          fi
+
+          RESOURCES="$("${AAPT2}" dump resources "${APK}")"
+          if ! printf '%s\n' "${RESOURCES}" | grep -q 'mipmap/ic_launcher[[:space:]]*$'; then
+            echo "::error::mipmap/ic_launcher is missing from the APK resources."
+            exit 1
+          fi
+          if ! printf '%s\n' "${RESOURCES}" | grep -q '(anydpi-v26).*type=XML'; then
+            echo "::error::mipmap/ic_launcher has no anydpi-v26 adaptive-icon descriptor."
+            exit 1
+          fi
+          for DENSITY in mdpi hdpi xhdpi xxhdpi xxxhdpi; do
+            if ! printf '%s\n' "${RESOURCES}" | grep -q "(${DENSITY}).*type=PNG"; then
+              echo "::error::mipmap/ic_launcher_foreground has no ${DENSITY} layer."
               exit 1
             fi
           done

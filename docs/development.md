@@ -68,6 +68,35 @@ pnpm tauri android build          # debug APK
 pnpm tauri android build --apk    # release APK（签名需在 gen/android 配置签名信息）
 ```
 
+#### 启动图标：`android init` 生成的是模板占位图，必须覆盖
+
+`pnpm tauri android init` 会用 CLI 内置模板填充 `gen/android/app/src/main/res/`，
+其中 `mipmap-*/ic_launcher*.png` 是 Tauri 的占位图形（蓝黄相扣的「8」），而且
+**模板里没有 `mipmap-anydpi-v26/ic_launcher.xml`**——也就是说生成出来的工程连自适应
+图标都没有。仓库里的 `src-tauri/icons/android/` 才是本项目的启动图标，但它不会被
+自动复制进去。
+
+因此 `init`（或重新 `init`）之后、打包之前，必须把仓库图标覆盖进生成工程：
+
+```bash
+RES=src-tauri/gen/android/app/src/main/res
+rm -rf "$RES"/mipmap-* \
+       "$RES"/values/ic_launcher_background.xml \
+       "$RES"/drawable/ic_launcher_background.xml \
+       "$RES"/drawable-v24/ic_launcher_foreground.xml
+cp -R src-tauri/icons/android/. "$RES"/
+```
+
+CI（`.github/workflows/release.yml` 的 *Install project launcher icons*）执行同样的步骤，
+并在打包后用 `aapt2 dump badging` 断言 `application-icon-640` 指向
+`res/mipmap-anydpi-v26/ic_launcher.xml`，防止再次发出带模板图标的 APK。
+
+> **不要**用 `pnpm tauri icon` 重新生成 Android 图标：它会把画布直接铺满 108dp 的
+> 前景层，而自适应图标只保证中央 66dp 可见，链条图形的四角会被启动器裁掉。
+> `src-tauri/icons/android/mipmap-*/ic_launcher_foreground.png` 已按 66dp 安全区缩放过，
+> 需要从 `src-tauri/icons/icon.png` 重做时运行 `node scripts/regen-android-launcher-foreground.mjs`
+> （脚本会实测图形半径并反解缩放比例，输出会逐档报告是否落在安全区内）。
+
 #### 必须用 `pnpm tauri`，不要用 `cargo tauri`
 
 `src-tauri/gen/android/buildSrc/.../BuildTask.kt` 由 Gradle 调用 `node tauri android android-studio-script`，

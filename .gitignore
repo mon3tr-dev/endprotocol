@@ -1,4 +1,4 @@
-﻿# Logs
+# Logs
 logs
 *.log
 npm-debug.log*
@@ -39,6 +39,10 @@ target/
 # Tauri 生成目录（ACL schema、`tauri android init` 生成的 gen/android 工程等）。
 # 需要把 Android 签名配置纳入版本管理时，再单独 `!src-tauri/gen/android` 放行。
 src-tauri/gen/
+
+# 本地 Gradle 编译本地 Tauri 插件时产生的构建目录（gen/android 未生成时尤其会出现）。
+src-tauri/plugins/*/android/build/
+src-tauri/plugins/*/android/.gradle/
 
 .VSCodeCounter/
 

@@ -158,7 +158,7 @@
 | `prom-assets/` | 宣传物料图片（`promotional-cover.html`、`promotional-demo.html` 使用） |
 | `tray-panel.html` | 托盘面板的独立 HTML 入口（对应 `src/tray-panel.tsx`） |
 | `index.html` | 主窗口 HTML 入口 |
-| `.github/workflows/release.yml` | 发布流水线（Windows / Linux 安装包、Android universal APK 与 updater 签名清单） |
+| `.github/workflows/release.yml` | 发布流水线（Windows / Linux 安装包、Android universal APK 与 updater 签名清单；Android 打包前会用 `src-tauri/icons/android/` 覆盖 `tauri android init` 的模板启动图标，并在打包后断言自适应图标确实生效） |
 | `dist/`、`target/`、`node_modules/` | 构建产物与依赖，**不要阅读** |
 | `src-tauri/gen/schemas/` | Tauri 自动生成的权限 schema，**不要手改** |
 

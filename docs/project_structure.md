@@ -88,7 +88,12 @@ EndProtocol/
 │   │                              #   tauri.android.conf.json = Android 平台覆盖配置
 │   │                              #   （静态声明 main 窗口；移动端不支持运行时建窗）
 │   ├── plugins/apk-installer/      # Android APK 安装交接插件（系统安装器 + 用户手动确认）
+│   ├── icons/android/              # Android 启动图标（自适应图标，前景层已缩放进 66dp 安全区）
+│   │                              #   `tauri android init` 生成的是 CLI 模板占位图，
+│   │                              #   打包前须用本目录覆盖 gen/android/.../res/（见 development.md §2.1）
 │   └── gen/                       # Tauri 自动生成（勿手改）
+├── scripts/                       # 维护脚本（regen-android-launcher-foreground.mjs：
+│                                  #   从 icons/icon.png 重做 Adaptive Icon 前景层）
 ├── dist/  target/  node_modules/  # 构建产物与依赖（勿读）
 └── .github/workflows/release.yml  # 发布流水线
 ```
