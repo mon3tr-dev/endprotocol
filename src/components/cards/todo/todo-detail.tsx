@@ -521,7 +521,7 @@ function TodoItemRow({
             {item.due && (
               <span
                 className={`text-[10px] px-1.5 py-0.5 rounded-full ${
-                  overdue ? "bg-danger/10 text-danger-text" : "lg-inset text-muted"
+                  overdue ? "bg-danger/10 text-danger-text" : "lg-tag"
                 }`}
               >
                 {formatDueDate(item.due, locale)}

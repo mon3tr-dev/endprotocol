@@ -272,7 +272,17 @@
   --lg-interactive: color-mix(in oklab, #000000 9%, transparent);
   --lg-interactive-strong: color-mix(in oklab, #000000 16%, transparent);
   --lg-hairline: color-mix(in oklab, var(--separator) 60%, transparent);
-  --lg-inset-alpha: 55%; /* 内容层内部的次级填充块（代码块、分组底、徽章底） */
+  --lg-inset-alpha: 55%; /* 内容层内部的次级填充块（代码块、分组底） */
+
+  /* 小标签/徽章底：**不能复用 --lg-inset-alpha**。
+   * 浅色主题下 55% 的 foreground 会把白卡压成一块深灰（实测 rgb(86,86,86)），
+   * 而标签文字又是 text-muted 深灰 —— 实测对比度仅 1.25:1，几乎读不出来。
+   * 标签是小面积次级信息，底要轻、字要够深，故单独给一个低得多的透明度。 */
+  --lg-tag-alpha: 10%;
+  /* 标签文字：浅色下 --muted 配这块轻底实测 6.6:1，够用且保持次级观感；
+   * 深色下 --muted（oklch 0.7）压在提亮后的标签底上只有 3.8:1，必须用更亮的
+   * foreground 才过 4.5:1 门槛（见 .dark 里的覆盖）。 */
+  --lg-tag-fg: var(--muted);
 
   /* ---- ⑤ 主题色染色 + 各变体最终填充色 ----
    * 玻璃底色 = tint × 密度，再掺入 --lg-accent-mix 的主题色，
@@ -300,6 +310,14 @@
   );
   --lg-fill-clear: rgb(var(--lg-tint) / var(--lg-alpha-clear));
   --lg-fill-media: rgb(var(--lg-media-tint) / var(--lg-media-alpha));
+  /* 移动端抽屉：压在页面内容**之上**的浮层，只模糊不够 —— 必须近实底，
+   * 否则下面的卡片文字会透上来（见 .frost-drawer 的注释）。
+   * 取 material 的密度再抬一档，观感仍是玻璃但读得出字。 */
+  --lg-fill-drawer: color-mix(
+    in oklab,
+    var(--primary) var(--lg-accent-mix),
+    rgb(var(--lg-tint) / calc(var(--lg-alpha-material) + 14%))
+  );
 
   /* ---- 动效令牌：全应用唯一时长/缓动/位移尺度 ----
    * 分档原则：颜色反馈要「跟手」，位移要「从容」。二者刻意分开——
@@ -399,7 +417,14 @@
     0 1px 2px rgba(0, 0, 0, 0.45), 0 8px 24px rgba(0, 0, 0, 0.38);
   --lg-shadow-float:
     0 2px 6px rgba(0, 0, 0, 0.5), 0 16px 48px rgba(0, 0, 0, 0.45);
-  --lg-inset-alpha: 40%;
+  /* 深色下 foreground 是近白，40% 混出来是一块很重的灰板（分段控件的轨道
+   * 观感像实心灰条，选中的拇指是近黑，反差过猛）。深色只需轻微提亮，
+   * 与 --lg-interactive 同量级即可。 */
+  --lg-inset-alpha: 14%;
+  /* 深色下 foreground 是近白，标签底只需轻微提亮即可读出边界 */
+  --lg-tag-alpha: 16%;
+  /* 深色标签底被提亮后，--muted 只有 3.8:1，改用近白的 foreground（约 9:1） */
+  --lg-tag-fg: var(--foreground);
   --lg-alpha-material-sub: 52%;
   --lg-alpha-material-row: 40%;
   --lg-interactive-soft: color-mix(in oklab, #ffffff 6%, transparent);
@@ -508,15 +533,16 @@
   content: "";
   position: absolute;
   inset: 0;
+  /* 前缀顺序有讲究，别调换：Lightning CSS（Vite 8 / Tailwind 4 的压缩器）
+   * 把 `-webkit-backdrop-filter` 与 `backdrop-filter` 视为同一属性，**后者胜出**。
+   * 原先 -webkit- 写在后面，压缩后 unprefixed 那份被整个丢掉，只剩
+   * `-webkit-backdrop-filter`；而 Android WebView（Chromium 134）**不认前缀写法**
+   * （实测 CSS.supports("-webkit-backdrop-filter") === false），于是
+   * `backdrop-filter` 计算值退化为 none —— 标题栏与侧边栏/抽屉的磨砂整体消失，
+   * 抽屉背后透出页面内容（Android 上“侧边栏背景透明”的根因）。
+   * 这里只保留 unprefixed，前缀交给下方 @supports 兜底老 WebKit（Safari < 18）。 */
   backdrop-filter: blur(var(--lg-frost-blur-delta));
-  -webkit-backdrop-filter: blur(var(--lg-frost-blur-delta));
   /* 纵向：标题栏本体满强度，向下线性衰减到 0（终点 = 用户设定的背景模糊） */
-  -webkit-mask-image: linear-gradient(
-    to bottom,
-    #000 0,
-    #000 var(--lg-frost-titlebar-h),
-    transparent calc(var(--lg-frost-titlebar-h) + var(--lg-frost-fade))
-  );
   mask-image: linear-gradient(
     to bottom,
     #000 0,
@@ -526,19 +552,6 @@
 } /* 侧边栏：横向衰减（第二层遮罩，与纵向遮罩取并集 → 连通的 L 形强区）。
  * --frost-sidebar-w 由布局层按展开/折叠宽度写入（288px / 64px）。 */
 .frost-with-sidebar::before {
-  -webkit-mask-image:
-    linear-gradient(
-      to bottom,
-      #000 0,
-      #000 var(--lg-frost-titlebar-h),
-      transparent calc(var(--lg-frost-titlebar-h) + var(--lg-frost-fade))
-    ),
-    linear-gradient(
-      to right,
-      #000 0,
-      #000 var(--frost-sidebar-w),
-      transparent calc(var(--frost-sidebar-w) + var(--lg-frost-fade))
-    );
   mask-image:
     linear-gradient(
       to bottom,
@@ -554,27 +567,99 @@
     );
 }
 /* 移动端抽屉：fixed 全高容器，只需要侧边栏的横向遮罩。
- * 遮罩写在自己的 ::before 上，覆盖掉 .frost-main 的纵向遮罩。 */
+ *
+ * ⚠️ 抽屉必须自带**不透明材质底**，不能只靠磨砂：
+ * 桌面侧边栏是 flex 里的兄弟节点，它右邻的才是内容层，磨砂采样的
+ * 是壁纸本身；而抽屉是 `fixed z-50` **压在页面内容之上**，
+ * 同样的「只模糊不铺底」会去采样下面的卡片/文字 —— 观感就是
+ * 背景透明、下面的内容糊成一片透上来（Android 上最初报告的
+ * “展开的侧边栏背景是透明的”）。
+ * 所以这里在磨砂之上再铺一层接近实底的材质（与内容层同源），
+ * 既保留玻璃质感，又让抽屉自成一块不透明面板。
+ *
+ * ⚠️⚠️ 抽屉**不加 mask**，宽度就等于面板宽度 —— 两条都是 Android 上的
+ * 实测结论，不要「优化」回去：
+ *
+ * 1. **mask 与 backdrop-filter 不能同元素**。Android WebView（Chromium 134）
+ *    上，同一个元素同时写 `backdrop-filter` 与 `mask-image` 时，mask 会**静默
+ *    失效且不报警**（最小复现：一个元素只写这两条属性，渐隐完全消失）。
+ *    之前的写法把 blur 放 ::before、mask 也放 ::before，正好踩中 —— 于是抽屉
+ *    的横向渐隐没生效，磨砂变成一块**硬边矩形**，向右多盖出 --lg-frost-fade
+ *    （28px）直逼内容区，这就是“抽屉右边缘样式不对”的根因。
+ * 2. 抽屉是**压在最上层**的浮层，本来也不需要渐隐：渐隐是为了让桌面上
+ *    「覆盖层 → 内容」的过渡不出现硬边，而抽屉自带实底材质 + 右侧描边，
+ *    边缘本该是一条清晰的线。硬加渐隐反而会在边缘糊出一条灰带。
+ *
+ * 因此：blur 下沉到 ::before（与 .frost-main 同位置），材质与描边由面板自身
+ * 提供，宽度严格等于 --frost-sidebar-w。
+ *
+ * ⚠️⚠️⚠️ `z-index: -1` 也不能删 —— 这决定了抽屉里的文字会不会被这块材质**盖住**：
+ * 抽屉容器本身是 `fixed z-50`（自成层叠上下文），里面的 `.frost-drawer` 从
+ * `.frost-main` 继承 `z-index: 0` 而**是定位元素**；HTML 里它又排在 `<Sidebar>`
+ * 之前。定位元素的绘制层高于「非定位内容」：导航项因为外面套了 `relative group`
+ * （拖拽把手需要）而带定位、能压过磨砂正常显示，**标签页那一段没有定位祖先**，
+ * 于是整段文字连同分隔线一起被近实底材质盖住 —— 表现正是「三个 tab 看不见，
+ * 但点击照常生效」（点击命中的是元素本身，与绘制无关）。
+ * 给成 -1 让它退到同一层叠上下文的最底层，材质照旧铺底、文字必然在上。
+ */
 .frost-drawer {
   position: fixed;
   top: 0;
   bottom: 0;
   left: 0;
-  width: calc(var(--frost-sidebar-w) + var(--lg-frost-fade));
+  z-index: -1;
+  width: var(--frost-sidebar-w);
 }
 .frost-drawer::before {
-  -webkit-mask-image: linear-gradient(
-    to right,
-    #000 0,
-    #000 var(--frost-sidebar-w),
-    transparent 100%
-  );
-  mask-image: linear-gradient(
-    to right,
-    #000 0,
-    #000 var(--frost-sidebar-w),
-    transparent 100%
-  );
+  /* 抽屉不是 `.frost-main` 那层全屏覆盖层，必须显式撤掉它的**纵向** titlebar 遮罩：
+   * 那条渐变只在前 44px 保持满强度，直接套到抽屉上会让面板从标题栏高度往下
+   * 逐渐透明，等于又把内容透出来。这里既不需要渐隐（见上），也就不写任何 mask；
+   * 顺带绕开「mask 与 backdrop-filter 同元素时 mask 静默失效」的 Android bug。 */
+  mask-image: none;
+  background: var(--lg-noise), var(--lg-fill-drawer);
+  background-size:
+    120px 120px,
+    auto;
+}
+
+/* ---- 旧 WebKit 前缀兜底 ----
+ * 只把前缀写法喂给「不认 unprefixed」的老浏览器，必须包在 @supports not 里：
+ * 无条件书写 `-webkit-*` 会被 Lightning CSS 当作同一属性的旧值丢弃 unprefixed
+ * 那份（见 .frost-main::before 的注释），那正是 Android 上磨砂整体消失的根因。 */
+@supports not (mask-image: linear-gradient(to right, #000, transparent)) {
+  .frost-main::before {
+    -webkit-mask-image: linear-gradient(
+      to bottom,
+      #000 0,
+      #000 var(--lg-frost-titlebar-h),
+      transparent calc(var(--lg-frost-titlebar-h) + var(--lg-frost-fade))
+    );
+  }
+  .frost-with-sidebar::before {
+    -webkit-mask-image:
+      linear-gradient(
+        to bottom,
+        #000 0,
+        #000 var(--lg-frost-titlebar-h),
+        transparent calc(var(--lg-frost-titlebar-h) + var(--lg-frost-fade))
+      ),
+      linear-gradient(
+        to right,
+        #000 0,
+        #000 var(--frost-sidebar-w),
+        transparent calc(var(--frost-sidebar-w) + var(--lg-frost-fade))
+      );
+  }
+  /* 抽屉不写 mask（见 .frost-drawer 注释），老 WebKit 兜底同样不写：
+   * 否则这条兜底会让抽屉在 Safari < 18 上重新长出那条横向渐隐。 */
+}
+@supports not (backdrop-filter: blur(1px)) {
+  /* 抽屉的 blur 同样要兜底；注意只写前缀，绝不与 unprefixed 并存
+   * （Lightning CSS 会把两者当同一属性，前缀那份写在后就会顶掉前面）。 */
+  .frost-main::before,
+  .frost-drawer::before {
+    -webkit-backdrop-filter: blur(var(--lg-frost-blur-delta));
+  }
 }
 
 /* ---- 功能层：控件底与小面积玻璃 ---- */
@@ -740,8 +825,8 @@ html[data-window-effects="fallback"]
       color-mix(in oklch, var(--surface) 71%, transparent)
     ),
     color-mix(in oklch, var(--background) 28%, transparent);
+  /* 只写 unprefixed：与其它磨砂规则保持一致（详见 .frost-main::before 的前缀注释） */
   backdrop-filter: none;
-  -webkit-backdrop-filter: none;
   box-shadow: none;
 }
 .dark .lg-native {
@@ -861,6 +946,21 @@ html[data-window="tray-panel"] body {
       var(--foreground) var(--lg-inset-alpha),
       transparent
     );
+  }
+
+  /* 小标签 / 徽章底（卡片标签、分类角标等）。
+   *
+   * 与 .lg-inset 同一套「随主题反转」的思路（浅色压暗、深色提亮），
+   * 但透明度低得多 —— 见 --lg-tag-alpha 的说明：直接复用 .lg-inset 会得到
+   * 深灰底 + 深灰字，实测对比度 1.25:1（浅色主题），标签等于看不见。
+   * 文字仍走 --muted，在两种主题下与这块轻底都有 6:1 以上的对比度。 */
+  .lg-tag {
+    background-color: color-mix(
+      in oklab,
+      var(--foreground) var(--lg-tag-alpha),
+      transparent
+    );
+    color: var(--lg-tag-fg);
   }
 
   /* 深色媒体上的玻璃浮层（游戏模式：操作按钮、公告条、二维码浮层、内嵌浏览器工具栏）

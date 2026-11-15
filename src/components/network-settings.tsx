@@ -641,7 +641,7 @@ export function NetworkSettings() {
                         ? "bg-success/10 text-success-text"
                         : notice.tone === "danger"
                           ? "bg-danger/10 text-danger-text"
-                          : "lg-inset text-muted"
+                          : "lg-tag"
                     }`}
                   >
                     {notice.tone === "success" && <CheckIcon size={14} />}

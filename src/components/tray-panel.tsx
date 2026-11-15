@@ -275,7 +275,7 @@ export function TrayPanel() {
           </span>
         </div>
         {hasUser && accountLevel > 0 && (
-          <span className="shrink-0 rounded-full lg-inset px-1.5 py-0.5 text-[9px] font-medium text-muted">
+          <span className="shrink-0 rounded-full lg-tag px-1.5 py-0.5 text-[9px] font-medium">
             {t("tray.level")} {accountLevel}
           </span>
         )}
@@ -348,7 +348,7 @@ export function TrayPanel() {
         </>
       ) : (
         <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 px-6 text-center">
-          <span className="flex h-10 w-10 items-center justify-center rounded-full lg-inset text-muted">
+          <span className="flex h-10 w-10 items-center justify-center rounded-full lg-tag">
             <MorphIcon icon={CircleUserRound} size={20} />
           </span>
           <p className="text-[11px] font-medium text-foreground">

@@ -216,9 +216,12 @@ export function AddCardModal({
                       {card.tags && card.tags.length > 0 && (
                         <div className="flex flex-wrap gap-1 mt-1.5">
                           {card.tags.map((tag) => (
+                            // `lg-tag` 而非 `lg-inset`：后者在浅色主题是 55% 的
+                            // 前景色，会压出一块深灰底，配上 text-muted 深灰字
+                            // 实测只有 1.25:1，标签几乎看不见（见 globals.css）。
                             <span
                               key={tag.id}
-                              className="px-1.5 py-0.5 text-[10px] rounded lg-inset text-muted"
+                              className="px-1.5 py-0.5 text-[10px] rounded lg-tag"
                             >
                               {getTagLabel(tag)}
                             </span>
