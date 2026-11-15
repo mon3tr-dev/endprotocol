@@ -361,14 +361,95 @@ async function resolveRelease(): Promise<Update | ManualUpdate | null> {
   return update;
 }
 
-function getAndroidApkAsset(release: GitHubRelease): string | null {
+// ============================================================================
+// Android APK Selection
+// ============================================================================
+
+/** Android ABI of the running app, reported by the backend (`get_android_abi`). */
+let androidAbi: string | null = null;
+
+/**
+ * Resolve the ABI of the installed APK once.
+ *
+ * Releases are split per ABI (`endprotocol-android-<arch>-release.apk`), so the
+ * update check must not just take "an APK" from the release: picking the wrong
+ * split means downloading ~30 MB for a foreign architecture and then failing to
+ * install. Any failure leaves `androidAbi` null, which makes selection fall back
+ * to the old "whatever single APK exists" behaviour.
+ */
+async function resolveAndroidAbi(): Promise<string | null> {
+  if (androidAbi !== null) return androidAbi;
+  try {
+    androidAbi = await invoke<string | null>("get_android_abi");
+  } catch (error) {
+    logger.warn("Failed to resolve the Android ABI: " + error, "Updater");
+    androidAbi = null;
+  }
+  return androidAbi;
+}
+
+/** Map an `endprotocol-android-<part>-release.apk` asset name to its ABI. */
+const ANDROID_APK_ARCHES: Record<string, string> = {
+  arm64: "arm64-v8a",
+  x86_64: "x86_64",
+  armeabi: "armeabi-v7a",
+  armv7: "armeabi-v7a",
+  x86: "x86",
+  universal: "universal",
+};
+
+/** `endprotocol-android-<arch>-release.apk` → arch token, or null if not a split. */
+function androidApkArch(name: string): string | null {
+  const match = /android-([a-z0-9_]+?)(?:-release)?\.apk$/i.exec(name);
+  return match ? match[1].toLowerCase() : null;
+}
+
+/**
+ * Pick the APK in `names` that belongs on `abi`, or null when none does.
+ *
+ * Correctness matters more than finding *an* APK: installing a foreign-ABI split
+ * fails, so a release that ships splits without one for this device must yield
+ * "no update" rather than fall back to another architecture. Only releases
+ * without any split at all (a single universal APK, i.e. `v0.1.7-pre3` and
+ * earlier) may use that universal asset.
+ */
+function selectAndroidApkName(
+  names: string[],
+  abi: string | null,
+): string | null {
+  const splitArchs = names
+    .map((name) => androidApkArch(name))
+    .filter((arch): arch is string => arch !== null && arch !== "universal");
+
+  if (splitArchs.length > 0) {
+    if (!abi) return null;
+    return (
+      names.find((name) => {
+        const arch = androidApkArch(name);
+        return arch !== null && ANDROID_APK_ARCHES[arch] === abi;
+      }) ?? null
+    );
+  }
+
+  // No per-ABI splits: a universal APK runs on every ABI.
+  return names.find((name) => /universal|all-abi/i.test(name)) ?? null;
+}
+
+function getAndroidApkAsset(
+  release: GitHubRelease,
+  abi: string | null,
+): string | null {
   const apkAssets = release.assets.filter((asset) =>
     asset.name.toLowerCase().endsWith(".apk"),
   );
-  const selected = apkAssets.find((asset) =>
-    /universal|all-abi/i.test(asset.name),
-  ) ?? (apkAssets.length === 1 ? apkAssets[0] : undefined);
+  if (apkAssets.length === 0) return null;
 
+  const chosen = selectAndroidApkName(
+    apkAssets.map((asset) => asset.name),
+    abi,
+  );
+  if (!chosen) return null;
+  const selected = apkAssets.find((asset) => asset.name === chosen);
   if (!selected) return null;
 
   try {
@@ -387,6 +468,142 @@ function getAndroidApkAsset(release: GitHubRelease): string | null {
   return null;
 }
 
+/**
+ * Rewrite a GitHub Release APK URL onto the mirror, when the mirror source is
+ * selected.
+ *
+ * The mirror serves the same release assets under
+ * `<base>/<channel>/<tag>/<asset>`, which is exactly what its `latest.json`
+ * references for desktop builds — Android was the only platform still pinned to
+ * GitHub. Returns the URL untouched when the asset is not a release download of
+ * this repository or the source is GitHub.
+ */
+function mirrorAndroidApkUrl(githubUrl: string, tag: string): string {
+  if (currentSource !== "mirror") return githubUrl;
+  try {
+    const url = new URL(githubUrl);
+    const prefix = `/${REPO_OWNER}/${REPO_NAME}/releases/download/${encodeURIComponent(tag)}/`;
+    if (!url.pathname.startsWith(prefix)) return githubUrl;
+    const asset = decodeURIComponent(url.pathname.slice(prefix.length));
+    if (!asset.toLowerCase().endsWith(".apk")) return githubUrl;
+    return `${MIRROR_BASE}/${currentChannel}/${encodeURIComponent(tag)}/${encodeURIComponent(asset)}`;
+  } catch {
+    return githubUrl;
+  }
+}
+
+/** Shape of the `android` entry in a release `latest.json` (see release.yml). */
+interface AndroidManifestEntry {
+  url: string;
+  assetName?: string;
+}
+
+interface AndroidManifest extends AndroidManifestEntry {
+  apks?: Record<string, AndroidManifestEntry>;
+}
+
+interface ReleaseManifest {
+  version?: string;
+  pub_date?: string;
+  notes?: string;
+  android?: AndroidManifest;
+}
+
+/**
+ * Pick the manifest entry matching `abi`, falling back to the legacy single APK.
+ *
+ * The mirror's manifest is regenerated by a Worker that may not preserve the
+ * nested `apks` map, so the top-level `url` cannot be trusted blindly: on a
+ * per-ABI release it points at the arm64 split, which would install-fail on an
+ * x86_64 device. Fall back to it only when it is a universal asset.
+ */
+function pickAndroidManifestEntry(
+  android: AndroidManifest | undefined,
+  abi: string | null,
+): string | null {
+  if (!android) return null;
+
+  const candidates: string[] = [];
+  if (abi && android.apks?.[abi]?.url) candidates.push(android.apks[abi].url);
+
+  // Names available via `assetName` on the top-level entry and the `apks` map.
+  const named = new Map<string, string>();
+  for (const entry of [android, ...Object.values(android.apks ?? {})]) {
+    if (entry.assetName && entry.url) named.set(entry.assetName, entry.url);
+  }
+  if (named.size > 0) {
+    const chosen = selectAndroidApkName([...named.keys()], abi);
+    if (chosen && named.has(chosen)) candidates.push(named.get(chosen)!);
+  }
+
+  // Legacy manifests carry a bare `url` with no ABIs at all.
+  if (android.url && named.size === 0) candidates.push(android.url);
+
+  return candidates[0] ?? null;
+}
+
+/**
+ * Resolve an Android update from the mirror manifest.
+ *
+ * Only the channel manifest is fetched (no GitHub API round-trip), which is the
+ * point of selecting the mirror: GitHub API and `objects.githubusercontent.com`
+ * are regularly unreachable exactly where the mirror is needed. Returns null on
+ * any failure so the caller can fall back to the GitHub path.
+ */
+async function resolveAndroidReleaseFromMirror(
+  localParsed: SemVer,
+  localVersion: string,
+): Promise<AndroidUpdate | null> {
+  const abi = await resolveAndroidAbi();
+  const endpoint = `${MIRROR_BASE}/${currentChannel}/latest.json`;
+
+  let manifest: ReleaseManifest;
+  try {
+    const text = await invoke<string>("fetch_url", { url: endpoint });
+    manifest = JSON.parse(text);
+  } catch (error) {
+    logger.warn(`Mirror manifest unavailable (${endpoint}): ${error}`, "Updater");
+    return null;
+  }
+
+  const remoteParsed = manifest.version ? parseSemVer(manifest.version) : null;
+  if (!remoteParsed) {
+    logger.warn("Mirror manifest carries no parseable version", "Updater");
+    return null;
+  }
+  if (currentChannel === "stable" && remoteParsed.prerelease.length > 0) {
+    return null;
+  }
+  if (compareSemVer(remoteParsed, localParsed) <= 0) {
+    logger.info(
+      `No mirror Android update: ${localVersion} >= ${manifest.version}`,
+      "Updater",
+    );
+    return null;
+  }
+
+  const apkUrl = pickAndroidManifestEntry(manifest.android, abi);
+  if (!apkUrl) {
+    // A manifest without an `android` entry predates Android releases; fall
+    // back to GitHub so an installable build is still found.
+    logger.info("Mirror manifest has no Android APK entry", "Updater");
+    return null;
+  }
+
+  logger.info(
+    `Mirror Android update available: ${localVersion} → ${manifest.version} (ABI ${abi ?? "unknown"})`,
+    "Updater",
+  );
+
+  return {
+    currentVersion: localVersion,
+    version: stripVPrefix(manifest.version),
+    date: manifest.pub_date,
+    body: manifest.notes,
+    apkUrl,
+  };
+}
+
 async function resolveAndroidRelease(): Promise<AndroidUpdate | null> {
   currentUpdate = null;
   currentUpdateInfo = null;
@@ -396,6 +613,14 @@ async function resolveAndroidRelease(): Promise<AndroidUpdate | null> {
   const localVersion = await getVersion();
   const localParsed = parseSemVer(localVersion);
   if (!localParsed) return null;
+
+  if (currentSource === "mirror") {
+    const mirrored = await resolveAndroidReleaseFromMirror(localParsed, localVersion);
+    if (mirrored) return mirrored;
+    logger.info("Falling back to GitHub Releases for the Android update", "Updater");
+  }
+
+  const abi = await resolveAndroidAbi();
 
   const releases = (await fetchGitHubReleases())
     .filter((release) => !release.draft && release.tag_name.startsWith("v"))
@@ -415,9 +640,12 @@ async function resolveAndroidRelease(): Promise<AndroidUpdate | null> {
   // Releases published before the Android pipeline existed (v0.1.6 and older)
   // carry no APK. Picking one of those would resolve to "no update" and the UI
   // would claim the app is up to date even though a newer installable build
-  // exists, so only consider releases that actually ship an APK.
+  // exists, so only consider releases that actually ship an APK for this ABI.
   const installable = releases
-    .map((item) => ({ ...item, apkUrl: getAndroidApkAsset(item.release) }))
+    .map((item) => ({
+      ...item,
+      apkUrl: getAndroidApkAsset(item.release, abi),
+    }))
     .filter(
       (item): item is { release: GitHubRelease; version: SemVer; apkUrl: string } =>
         item.apkUrl !== null,
@@ -453,12 +681,19 @@ async function resolveAndroidRelease(): Promise<AndroidUpdate | null> {
     return null;
   }
 
+  const tag = candidate.release.tag_name;
+  const downloadUrl = mirrorAndroidApkUrl(apkUrl, tag);
+  logger.info(
+    `Resolved Android APK for ${tag} (ABI ${abi ?? "unknown"}, source ${currentSource}): ${downloadUrl}`,
+    "Updater",
+  );
+
   return {
     currentVersion: localVersion,
-    version: stripVPrefix(candidate.release.tag_name),
+    version: stripVPrefix(tag),
     date: candidate.release.published_at,
     body: candidate.release.body,
-    apkUrl,
+    apkUrl: downloadUrl,
   };
 }
 

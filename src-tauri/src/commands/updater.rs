@@ -289,19 +289,66 @@ pub async fn download_file(
     Ok(downloaded)
 }
 
-/// Download a GitHub Release APK into app-private cache for Android's package installer.
+/// ABI of the running Android package, as the Android ABI name (`arm64-v8a`, …).
+///
+/// Android releases ship one APK per ABI, so the update check has to know which
+/// split was installed. `std::env::consts::ARCH` is the triple the binary was
+/// compiled for, which is exactly the ABI of the installed APK, and it needs no
+/// JNI/`Build` bridge. Returns `None` off Android so the single command name can
+/// stay registered on every platform.
+#[tauri::command]
+pub fn get_android_abi() -> Option<String> {
+    #[cfg(target_os = "android")]
+    {
+        return Some(
+            match std::env::consts::ARCH {
+                "aarch64" => "arm64-v8a",
+                "arm" => "armeabi-v7a",
+                "x86" => "x86",
+                "x86_64" => "x86_64",
+                other => other,
+            }
+            .to_string(),
+        );
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        None
+    }
+}
+
+/// Whether `url` points at an APK this app is willing to hand to the installer.
+///
+/// Two origins are accepted: this repository's GitHub Release downloads, and the
+/// mirror (`updates.msk-network.cn`) that fronts those same release assets. The
+/// mirror was previously rejected here, which is why Android could not install
+/// an update fetched from it.
+#[cfg(target_os = "android")]
+fn is_allowed_apk_url(url: &reqwest::Url) -> bool {
+    if url.scheme() != "https" {
+        return false;
+    }
+    let path = url.path();
+    if !path.to_ascii_lowercase().ends_with(".apk") {
+        return false;
+    }
+
+    match url.host_str() {
+        Some("github.com") => path.starts_with("/mon3tr-dev/endprotocol/releases/download/"),
+        Some("updates.msk-network.cn") => {
+            path.starts_with("/stable/") || path.starts_with("/preview/")
+        }
+        _ => false,
+    }
+}
+
+/// Download a GitHub Release (or mirror) APK into app-private cache for Android's package installer.
 #[cfg(target_os = "android")]
 #[tauri::command]
 pub async fn download_android_apk(app: tauri::AppHandle, url: String) -> Result<String, String> {
     let parsed_url = reqwest::Url::parse(&url)
         .map_err(|error| format!("Invalid APK download URL: {error}"))?;
-    if parsed_url.scheme() != "https"
-        || parsed_url.host_str() != Some("github.com")
-        || !parsed_url
-            .path()
-            .starts_with("/mon3tr-dev/endprotocol/releases/download/")
-        || !parsed_url.path().to_ascii_lowercase().ends_with(".apk")
-    {
+    if !is_allowed_apk_url(&parsed_url) {
         return Err("Unsupported APK download URL".to_string());
     }
 

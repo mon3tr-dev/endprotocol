@@ -72,7 +72,7 @@
 
 | 需求 | 位置 | 详细参考 |
 | --- | --- | --- |
-| **IPC 命令在哪定义 / 前端谁调用** | 生成的对照表 | [ipc_index.md](reference/ipc_index.md)（147 个命令全表） |
+| **IPC 命令在哪定义 / 前端谁调用** | 生成的对照表 | [ipc_index.md](reference/ipc_index.md)（148 个命令全表） |
 | 新增/修改一个 Tauri 命令 | `src-tauri/src/commands/`、`src-tauri/src/lib.rs` | [commands.md](reference/backend/commands.md)、[bootstrap.md](reference/backend/bootstrap.md)、[backend_development.md](backend_development.md) |
 | 错误类型与转换 | `src-tauri/src/utils/error.rs` | [utils.md](reference/backend/utils.md) |
 | 加密与签名（RSA/AES/DES/HMAC） | `src-tauri/src/utils/hg_crypto.rs`、`services/skland_service.rs` | [utils.md](reference/backend/utils.md)、[services_skland.md](reference/backend/services_skland.md) |
@@ -158,7 +158,7 @@
 | `prom-assets/` | 宣传物料图片（`promotional-cover.html`、`promotional-demo.html` 使用） |
 | `tray-panel.html` | 托盘面板的独立 HTML 入口（对应 `src/tray-panel.tsx`） |
 | `index.html` | 主窗口 HTML 入口 |
-| `.github/workflows/release.yml` | 发布流水线（Windows / Linux 安装包、Android universal APK 与 updater 签名清单；Android 打包前会用 `src-tauri/icons/android/` 覆盖 `tauri android init` 的模板启动图标，并在打包后断言自适应图标确实生效） |
+| `.github/workflows/release.yml` | 发布流水线（Windows / Linux 安装包、Android 按 ABI 拆分的 release APK 与 updater 签名清单；Android 打包前会用 `src-tauri/icons/android/` 覆盖 `tauri android init` 的模板启动图标，打包后断言自适应图标确实生效、每个 APK 只含自己的 ABI 且体积在预算内） |
 | `dist/`、`target/`、`node_modules/` | 构建产物与依赖，**不要阅读** |
 | `src-tauri/gen/schemas/` | Tauri 自动生成的权限 schema，**不要手改** |
 

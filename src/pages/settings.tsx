@@ -960,7 +960,7 @@ export default function SettingsPage() {
               </div>
             </div>
 
-            {/* Android APK updates come from GitHub Releases; source selection is desktop-only. */}
+            {/* Android APK updates also honour the mirror/GitHub source choice. */}
             {supportsUpdateChecks && (
               <>
             <SettingsDivider />
@@ -1037,10 +1037,10 @@ export default function SettingsPage() {
               </div>
             </div>
 
-            {supportsUpdater && <SettingsDivider />}
+            {supportsUpdateChecks && <SettingsDivider />}
 
-            {/* Update Source */}
-            {supportsUpdater && (
+            {/* Update Source（桌面与 Android 都可用：两端都能从镜像源取更新） */}
+            {supportsUpdateChecks && (
             <div>
               <p className="text-sm font-medium text-foreground mb-2">
                 {t("settings.update_source.title")}

@@ -1,6 +1,6 @@
 # IPC 命令索引（前端 invoke ↔ 后端定义）
 
-> 由脚本扫描 `#[tauri::command]` 与前端 `invoke('...')` 自动生成。共 147 个后端命令，其中 130 个在前端有直接调用；16 个未见前端调用。行号基于当前工作区版本。
+> 由脚本扫描 `#[tauri::command]` 与前端 `invoke('...')` 自动生成。共 148 个后端命令，其中 131 个在前端有直接调用；17 个未见前端调用。行号基于当前工作区版本。
 >
 > 注：`browser_go_back` / `browser_go_forward` / `browser_reload` / `browser_navigate` / `browser_current_url` 经 `src/utils/browserViewService.ts` 的私有 `run(command, args)` 动态调用（`invoke(command, …)`，命令名不是字面量），脚本的字面量正则扫不到，已人工补录。
 >
@@ -26,7 +26,7 @@
 | `browser_go_forward` | [src-tauri/src/commands/browser.rs:48](backend/commands.md) | [src/utils/browserViewService.ts](../../src/utils/browserViewService.ts) |
 | `browser_navigate` | [src-tauri/src/commands/browser.rs:77](backend/commands.md) | [src/utils/browserViewService.ts](../../src/utils/browserViewService.ts) |
 | `browser_reload` | [src-tauri/src/commands/browser.rs:63](backend/commands.md) | [src/utils/browserViewService.ts](../../src/utils/browserViewService.ts) |
-| `cancel_download` | [src-tauri/src/commands/updater.rs:186](backend/commands.md) | [src/utils/updateService.ts](../../src/utils/updateService.ts) |
+| `cancel_download` | [src-tauri/src/commands/updater.rs:217](backend/commands.md) | [src/utils/updateService.ts](../../src/utils/updateService.ts) |
 | `capture_delete_session` | [src-tauri/src/commands/capture.rs:32](backend/commands.md) | [src/pages/developer.tsx](../../src/pages/developer.tsx) |
 | `capture_dir` | [src-tauri/src/commands/capture.rs:37](backend/commands.md) | [src/pages/developer.tsx](../../src/pages/developer.tsx) |
 | `capture_list_sessions` | [src-tauri/src/commands/capture.rs:18](backend/commands.md) | [src/pages/developer.tsx](../../src/pages/developer.tsx) |
@@ -46,17 +46,18 @@
 | `do_arknights_attendance` | [src-tauri/src/commands/arknights.rs:81](backend/commands.md) | [src/utils/attendanceService.ts](../../src/utils/attendanceService.ts)（经 `performAttendanceSignIn` / `signInWithFeedback`） |
 | `do_batch_attendance` | [src-tauri/src/commands/arknights.rs:118](backend/commands.md) | [src/utils/attendanceService.ts](../../src/utils/attendanceService.ts)（`performBatchAttendance` ← `attendance-batch-modal.tsx`） |
 | `do_attendance` | [src-tauri/src/commands/attendance.rs:182](backend/commands.md) | [src/utils/attendanceService.ts](../../src/utils/attendanceService.ts)（经 `performAttendanceSignIn` / `signInWithFeedback`） |
-| `download_file` | [src-tauri/src/commands/updater.rs:200](backend/commands.md) | — |
-| `download_android_apk` | [src-tauri/src/commands/updater.rs:295](backend/commands.md) | [src/utils/updateService.ts](../../src/utils/updateService.ts) |
+| `download_file` | [src-tauri/src/commands/updater.rs:231](backend/commands.md) | — |
+| `download_android_apk` | [src-tauri/src/commands/updater.rs:348](backend/commands.md) | [src/utils/updateService.ts](../../src/utils/updateService.ts) |
 | `download_image` | [src-tauri/src/commands/image.rs:38](backend/commands.md) | [src/components/cards/character-list/char-select-modal.tsx](../../src/components/cards/character-list/char-select-modal.tsx)<br>[src/utils/imageCacheManager.ts](../../src/utils/imageCacheManager.ts) |
 | `export_diagnostics` | [src-tauri/src/commands/diagnostics.rs:14](backend/commands.md) | [src/utils/diagnostics.ts](../../src/utils/diagnostics.ts) |
 | `extract_steam_icon` | [src-tauri/src/commands/startup.rs:396](backend/commands.md) | [src/utils/launcherService.ts](../../src/utils/launcherService.ts) |
-| `fetch_url` | [src-tauri/src/commands/updater.rs:172](backend/commands.md) | [src/utils/updateService.ts](../../src/utils/updateService.ts) |
+| `fetch_url` | [src-tauri/src/commands/updater.rs:203](backend/commands.md) | [src/utils/updateService.ts](../../src/utils/updateService.ts) |
 | `finish_screen_pick` | [src-tauri/src/commands/color_picker.rs:169](backend/commands.md) | [src/components/screen-color-picker.tsx](../../src/components/screen-color-picker.tsx) |
 | `gen_scan_login` | [src-tauri/src/commands/account.rs:228](backend/commands.md) | [src/utils/accountService.ts](../../src/utils/accountService.ts) |
 | `get_accounts` | [src-tauri/src/commands/account.rs:16](backend/commands.md) | [src/utils/accountService.ts](../../src/utils/accountService.ts) |
 | `get_all_configs` | [src-tauri/src/commands/config.rs:83](backend/commands.md) | [src/utils/configService.ts](../../src/utils/configService.ts) |
 | `get_api_health` | [src-tauri/src/commands/diagnostics.rs:36](backend/commands.md) | [src/pages/account.tsx](../../src/pages/account.tsx)<br>[src/utils/crashReporting.ts](../../src/utils/crashReporting.ts) |
+| `get_android_abi` | [src-tauri/src/commands/updater.rs:300](backend/commands.md) | [src/utils/updateService.ts](../../src/utils/updateService.ts) |
 | `get_arknights_attendance` | [src-tauri/src/commands/arknights.rs:61](backend/commands.md) | [src/utils/attendanceService.ts](../../src/utils/attendanceService.ts)（`fetchAttendanceRaw` / `fetchAttendanceStates`） |
 | `get_arknights_cultivate` | [src-tauri/src/commands/arknights.rs:39](backend/commands.md) | — |
 | `get_arknights_gacha_categories` | [src-tauri/src/commands/gacha.rs:396](backend/commands.md) | [src/pages/gacha-records.tsx](../../src/pages/gacha-records.tsx) |
@@ -130,10 +131,10 @@
 | `remove_config` | [src-tauri/src/commands/config.rs:74](backend/commands.md) | [src/utils/configService.ts](../../src/utils/configService.ts)<br>[src/utils/launcherService.ts](../../src/utils/launcherService.ts) |
 | `remove_proxy_config` | [src-tauri/src/commands/config.rs:38](backend/commands.md) | — |
 | `reset_api_health` | [src-tauri/src/commands/diagnostics.rs:42](backend/commands.md) | [src/components/crash-report-host.tsx](../../src/components/crash-report-host.tsx)<br>[src/pages/account.tsx](../../src/pages/account.tsx) |
-| `reset_download_cancel` | [src-tauri/src/commands/updater.rs:192](backend/commands.md) | [src/utils/updateService.ts](../../src/utils/updateService.ts) |
+| `reset_download_cancel` | [src-tauri/src/commands/updater.rs:223](backend/commands.md) | [src/utils/updateService.ts](../../src/utils/updateService.ts) |
 | `resolve_gacha_avatar_map` | [src-tauri/src/commands/gacha.rs:565](backend/commands.md) | [src/components/gacha-pity-chart.tsx](../../src/components/gacha-pity-chart.tsx) |
 | `revoke_role_u8token` | [src-tauri/src/commands/account.rs:352](backend/commands.md) | [src/utils/accountService.ts](../../src/utils/accountService.ts) |
-| `run_installer` | [src-tauri/src/commands/updater.rs:285](backend/commands.md) | — |
+| `run_installer` | [src-tauri/src/commands/updater.rs:448](backend/commands.md) | — |
 | `save_background_image` | [src-tauri/src/commands/image.rs:164](backend/commands.md) | [src/components/appearance-settings.tsx](../../src/components/appearance-settings.tsx) |
 | `save_card_settings` | [src-tauri/src/commands/card_config.rs:26](backend/commands.md) | [src/utils/cardConfigService.ts](../../src/utils/cardConfigService.ts) |
 | `save_proxy_settings` | [src-tauri/src/commands/proxy.rs:71](backend/commands.md) | [src/utils/proxyService.ts](../../src/utils/proxyService.ts) |

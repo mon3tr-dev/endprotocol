@@ -100,7 +100,7 @@ jobs:
           retention-days: 1
 
   build-android:
-    name: Build Android universal APK
+    name: Build Android release APKs
     runs-on: ubuntu-22.04
 
     steps:
@@ -157,10 +157,16 @@ jobs:
             fs.writeFileSync(confPath, JSON.stringify(conf, null, 2) + '\n');
           "
 
+      # Only the two ABIs that ship as separate APKs. Dropping armv7/i686 removes
+      # 32-bit support from the Android release; keeping them would mean four
+      # splits, and the 32-bit ones are what forced the old universal bundle to
+      # carry ~52 MB of extra native libraries. Re-add armv7-linux-androideabi /
+      # i686-linux-android here and to the `--target` list below if 32-bit
+      # devices have to be supported again.
       - name: Setup Rust Android targets
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: aarch64-linux-android, armv7-linux-androideabi, i686-linux-android, x86_64-linux-android
+          targets: aarch64-linux-android, x86_64-linux-android
 
       - name: Rust cache
         uses: swatinem/rust-cache@v2
@@ -267,33 +273,94 @@ jobs:
             printf 'storeFile=%s\n' "${KEYSTORE_PATH}"
           } > src-tauri/gen/android/keystore.properties
 
-      - name: Build signed universal APK
-        run: pnpm tauri android build --ci --apk --target aarch64 armv7 i686 x86_64
+      # `--split-per-abi` maps to the CLI's own `assemble<Arch>Release` Gradle
+      # task per target, i.e. one APK per ABI instead of one APK carrying every
+      # `jniLibs/<abi>/*.so`. `--apk` without `--debug` builds the release build
+      # type, which is where the R8 / resource-shrinking rules apply.
+      #
+      # `CARGO_PROFILE_RELEASE_STRIP` is what makes the APKs small: a release
+      # `libendprotocol_lib.so` otherwise keeps `.symtab` and `.debug_line`, and
+      # that is essentially the whole APK — arm64 ships a ~100 MB `.so`
+      # unstripped vs ~18 MB with symbols stripped. AGP's own strip step does not
+      # remove them here, so strip at link time instead, i.e. before AGP merges
+      # the `jniLibs`. Desktop builds are unaffected because the variable is
+      # scoped to this step.
+      - name: Build signed per-ABI release APKs
+        env:
+          CARGO_PROFILE_RELEASE_STRIP: symbols
+        run: pnpm tauri android build --ci --apk --split-per-abi --target aarch64 x86_64
 
-      - name: Prepare release APK
+      - name: Prepare release APKs
         shell: bash
         run: |
           set -euo pipefail
-          mapfile -t APK_FILES < <(find src-tauri/gen/android/app/build/outputs/apk -type f -path '*/release/*.apk' ! -path '*/androidTest/*')
-          if [[ "${#APK_FILES[@]}" -ne 1 ]]; then
-            printf 'Expected exactly one universal release APK, found %s:\n' "${#APK_FILES[@]}"
-            printf '%s\n' "${APK_FILES[@]}"
-            exit 1
-          fi
-          cp "${APK_FILES[0]}" endprotocol-android-universal.apk
-
-      - name: Verify signed universal APK
-        shell: bash
-        run: |
-          set -euo pipefail
-          APK="endprotocol-android-universal.apk"
-          "${ANDROID_HOME}/build-tools/36.0.0/apksigner" verify --verbose "${APK}"
-          for ABI in arm64-v8a armeabi-v7a x86 x86_64; do
-            if ! unzip -Z1 "${APK}" | grep -q "^lib/${ABI}/"; then
-              echo "::error::Universal APK is missing native libraries for ${ABI}."
+          mkdir -p android-release
+          # One flavor directory per target (`arm64`, `x86_64`); the universal
+          # flavor is not built because `--split-per-abi` was passed.
+          for ARCH in arm64 x86_64; do
+            SRC="src-tauri/gen/android/app/build/outputs/apk/${ARCH}/release/app-${ARCH}-release.apk"
+            if [[ ! -f "${SRC}" ]]; then
+              # An unsigned build only produces the `-unsigned` suffix; the
+              # signing config injected above should prevent that.
+              echo "::error::Missing ${SRC}; the per-ABI release APK was not signed and packaged."
+              ls -R src-tauri/gen/android/app/build/outputs/apk || true
               exit 1
             fi
+            cp "${SRC}" "android-release/endprotocol-android-${ARCH}-release.apk"
           done
+          ls -l android-release
+
+      - name: Verify signed per-ABI release APKs
+        shell: bash
+        run: |
+          set -euo pipefail
+          for PAIR in arm64:arm64-v8a x86_64:x86_64; do
+            ARCH="${PAIR%%:*}"
+            ABI="${PAIR##*:}"
+            APK="android-release/endprotocol-android-${ARCH}-release.apk"
+            "${ANDROID_HOME}/build-tools/36.0.0/apksigner" verify --verbose "${APK}"
+
+            # Exactly the expected ABI and nothing else: a stray second
+            # `lib/<abi>` directory means the split silently regressed to a
+            # universal APK and the size win is gone.
+            mapfile -t PACKED_ABIS < <(unzip -Z1 "${APK}" | sed -n 's#^lib/\([^/]*\)/.*#\1#p' | sort -u)
+            if [[ "${#PACKED_ABIS[@]}" -ne 1 || "${PACKED_ABIS[0]}" != "${ABI}" ]]; then
+              echo "::error::${APK} must contain exactly lib/${ABI}/, found: ${PACKED_ABIS[*]:-<none>}."
+              exit 1
+            fi
+
+            # Guard the size win: the unstripped arm64 `.so` alone is ~100 MB,
+            # so anything past 40 MB means `CARGO_PROFILE_RELEASE_STRIP`
+            # stopped taking effect and the symbols are back in the APK.
+            SIZE=$(stat -c%s "${APK}")
+            LIMIT=$((40 * 1024 * 1024))
+            if (( SIZE > LIMIT )); then
+              echo "::error::${APK} is ${SIZE} bytes, over the 40 MB budget; the native library looks unstripped."
+              exit 1
+            fi
+            printf '%s: %s bytes, ABI %s\n' "${APK}" "${SIZE}" "${PACKED_ABIS[0]}"
+          done
+
+      # Assert the packaged build really is the release build type with
+      # optimization on — a debug build would be both larger and debuggable.
+      # `isMinifyEnabled = false` only exists in the scaffolded debug block, so a
+      # `classes.dex` R8 never touched (no `mapping.txt`) means the release
+      # build type lost its `optimization { enable = true }`.
+      - name: Verify release build type and size optimization
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="android-release/endprotocol-android-arm64-release.apk"
+          if [[ ! -f "src-tauri/gen/android/app/build/outputs/mapping/arm64Release/mapping.txt" ]]; then
+            echo "::error::No R8 mapping.txt for arm64Release; the release build type is not running with optimization enabled."
+            exit 1
+          fi
+          BADGING="$("${ANDROID_HOME}/build-tools/36.0.0/aapt2" dump badging "${APK}")"
+          if printf '%s\n' "${BADGING}" | grep -q '^application-debuggable'; then
+            echo "::error::${APK} is built from the debug build type (application-debuggable is set)."
+            exit 1
+          fi
+          echo "Release build type confirmed; R8 mapping present."
 
       # `tauri android init` scaffolds `gen/android` with the CLI's placeholder
       # launcher artwork, and for a long time the release kept it because nothing
@@ -301,11 +368,13 @@ jobs:
       # adaptive-icon descriptor has to be the resolved application icon, and every
       # density has to ship a foreground layer. `aapt2` obfuscates resource file
       # names, so match on type/qualifier rather than on the generated file name.
+      # Resource packaging is ABI-independent, so checking the arm64 APK covers
+      # both.
       - name: Verify launcher icon comes from the project assets
         shell: bash
         run: |
           set -euo pipefail
-          APK="endprotocol-android-universal.apk"
+          APK="android-release/endprotocol-android-arm64-release.apk"
           AAPT2="${ANDROID_HOME}/build-tools/36.0.0/aapt2"
 
           BADGING="$("${AAPT2}" dump badging "${APK}")"
@@ -333,11 +402,11 @@ jobs:
             fi
           done
 
-      - name: Upload Android APK artifact
+      - name: Upload Android APK artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: android-universal-apk
-          path: endprotocol-android-universal.apk
+          name: android-apks
+          path: android-release/*.apk
           if-no-files-found: error
           retention-days: 1
 
@@ -705,7 +774,7 @@ jobs:
       - name: Download Android APK artifact
         uses: actions/download-artifact@v4
         with:
-          name: android-universal-apk
+          name: android-apks
           path: android-release
 
       - name: Download platform bundles
@@ -805,22 +874,38 @@ jobs:
             signature: windowsUpdater.signature,
           };
 
-          // Android: the universal APK is not a Tauri updater target (no
-          // minisign .sig), so it must NOT go into `platforms` — every entry
-          // there is deserialized as { url, signature } and a signature-less
-          // android key would break desktop updater parsing. Expose it as a
-          // dedicated top-level `android` field instead: serde ignores unknown
-          // top-level fields, so desktop stays unaffected. The APK itself
-          // never needs re-signing; it is verified by its APK signature.
-          const androidApkName = 'endprotocol-android-universal.apk';
+          // Android: the APKs are not Tauri updater targets (no minisign .sig),
+          // so they must NOT go into `platforms` — every entry there is
+          // deserialized as { url, signature } and a signature-less android key
+          // would break desktop updater parsing. Expose them as a dedicated
+          // top-level `android` field instead: serde ignores unknown top-level
+          // fields, so desktop stays unaffected. The APKs never need
+          // re-signing; they are verified by their APK signature.
+          //
+          // Releases are split per ABI, so the manifest lists each split by ABI
+          // and keeps `url`/`assetName` pointing at the arm64 APK, which is what
+          // the vast majority of devices install. Older clients read only
+          // `url`, so keeping it populated preserves their update path.
+          const androidApks = {
+            'arm64-v8a': 'endprotocol-android-arm64-release.apk',
+            x86_64: 'endprotocol-android-x86_64-release.apk',
+          };
+          const androidAssets = {};
+          for (const [abi, assetName] of Object.entries(androidApks)) {
+            if (fs.existsSync(path.join('android-release', assetName))) {
+              androidAssets[abi] = {
+                url: `https://github.com/${repository}/releases/download/${tag}/${encodeURIComponent(assetName)}`,
+                assetName,
+              };
+            } else {
+              console.log(`::warning title=Android APK missing::android-release/${assetName} not found, so latest.json carries no ${abi} entry.`);
+            }
+          }
+
           let manifestAndroid = null;
-          if (fs.existsSync(path.join('android-release', androidApkName))) {
-            manifestAndroid = {
-              url: `https://github.com/${repository}/releases/download/${tag}/${encodeURIComponent(androidApkName)}`,
-              assetName: androidApkName,
-            };
-          } else {
-            console.log('::warning title=Android APK missing::android-release/' + androidApkName + ' not found, so latest.json carries no android entry.');
+          if (Object.keys(androidAssets).length > 0) {
+            const primary = androidAssets['arm64-v8a'] ?? Object.values(androidAssets)[0];
+            manifestAndroid = { ...primary, apks: androidAssets };
           }
 
           const manifest = {
@@ -842,14 +927,19 @@ jobs:
           }
           MANIFEST_EOF
 
-      - name: Upload Android APK to Release
+      - name: Upload Android APKs to Release
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release upload "${GITHUB_REF_NAME}" \
-            android-release/endprotocol-android-universal.apk \
-            --clobber
+          set -euo pipefail
+          shopt -s nullglob
+          APKS=(android-release/*.apk)
+          if [[ "${#APKS[@]}" -eq 0 ]]; then
+            echo "::error::No Android APK was downloaded from the build job."
+            exit 1
+          fi
+          gh release upload "${GITHUB_REF_NAME}" "${APKS[@]}" --clobber
 
       # ==========================================================
       # Upload CHANGELOG.md as release asset

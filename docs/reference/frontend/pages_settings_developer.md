@@ -32,7 +32,7 @@
 | settings.tsx:763-784 | 系统资源默认值卡 `#settings-system-resource`（委托 `SystemResourceSettings`，settings.tsx:783） |
 | settings.tsx:786-807 | To-Do 默认值卡 `#settings-todo`（委托 `TodoSettings`，settings.tsx:806） |
 | settings.tsx:809-863 | 开发者模式卡 `#settings-developer`：骨架屏 814 起，开关 851-858 |
-| settings.tsx:865-1425 | 更新与关于卡 `#settings-about`：应用头像/更新状态徽标；更新通道；更新源；版本四宫格；发布日期；「更新到 vX」；「检查更新」；identifier；License；开源致谢列表（20 项）；特别鸣谢列表（2 项：Xel-Launcher / Better-Endfield）；GitHub/License 链接 |
+| settings.tsx:865-1425 | 更新与关于卡 `#settings-about`：应用头像/更新状态徽标；更新通道（`supportsUpdateChecks` 964 起）；更新源（1042-1114，`supportsUpdateChecks` 门控，桌面与 Android 均显示）；版本四宫格；发布日期；「更新到 vX」；「检查更新」；identifier；License；开源致谢列表（20 项）；特别鸣谢列表（2 项：Xel-Launcher / Better-Endfield）；GitHub/License 链接 |
 | settings.tsx:1428-1460 | 开发者模式警告对话框（`GlassAlertDialog`） |
 | settings.tsx:1462-1528 | 测试版通道警告对话框（内容为内联中英双语） |
 | settings.tsx:1530-1601 | GitHub 源警告对话框（内容为内联中英双语） |
@@ -41,7 +41,7 @@
 ### 组件与函数清单
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
-| `SettingsPage`（default） | settings.tsx:43 | 页面根组件，返回 7 张卡片 + 3 个警告对话框 + `UpdateDialog`。**平台门控**：`supportsLauncher`（仅 Windows）隐藏「游戏启动」卡；`supportsTray` 隐藏移动端托盘项；桌面显示更新通道/来源，Android 显示更新通道但不显示来源（仅检查 GitHub Release APK），iOS 隐藏更新入口；Android 下载后通过系统安装器要求用户确认，`UpdateDialog` 在 Android 上同样挂载（`supportsUpdateChecks`） |
+| `SettingsPage`（default） | settings.tsx:43 | 页面根组件，返回 7 张卡片 + 3 个警告对话框 + `UpdateDialog`。**平台门控**：`supportsLauncher`（仅 Windows）隐藏「游戏启动」卡；`supportsTray` 隐藏移动端托盘项；`supportsUpdater` 为 `!isMobileApp()`（Tauri updater 装包能力，仅桌面），`supportsUpdateChecks` 为 `supportsUpdater || isAndroidApp()`；更新通道与**更新源**都按 `supportsUpdateChecks` 显示——Android 也能选 GitHub / 镜像源（下载 APK 后通过系统安装器要求用户确认），只有 iOS 隐藏更新入口；`UpdateDialog` 同样按 `supportsUpdateChecks` 挂载 |
 | `languages` | settings.tsx:83-86 | 语言选项常量：`{key:"en",label:"English"}`、`{key:"zh",label:"简体中文"}` |
 | `refreshOnSwitch` 等偏好 state | settings.tsx:55-59 | `refreshOnSwitch`、`lazyLoadEnabled`、`wikiDetailPreload`、`closeAction`、`trayUserRoleId`（代理配置已不在本文件，见 `NetworkSettings`） |
 | `accounts` | settings.tsx:60-62 | 托盘角色下拉用的账号列表（id/nickname/avatar） |

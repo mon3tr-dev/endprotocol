@@ -1,9 +1,9 @@
-# 前端服务与工具（B 组：更新/解析/图片/日志）— 文件功能参考
+﻿# 前端服务与工具（B 组：更新/解析/图片/日志）— 文件功能参考
 
 > 逐文件精读源码生成。行号基于当前工作区版本，仅用于快速定位。
 
 ## `src/utils/updateService.ts`
-**职责**：应用内更新服务。桌面端封装 Tauri updater 与 GitHub/镜像版本检查及验签安装；Android 按稳定/预览频道检查 GitHub Release APK，下载后交给系统安装器由用户确认；iOS 不支持更新。服务也负责更新日志缓存、订阅状态与消息中心通知。
+**职责**：应用内更新服务。桌面端封装 Tauri updater 与 GitHub/镜像版本检查及验签安装；Android 支持**两种更新源**——GitHub 源走 GitHub API 列 Release，镜像源直接读 `https://updates.msk-network.cn/<channel>/latest.json` 的 `android` 字段，两者都按本机 ABI 挑选对应的拆分 APK，下载后交给系统安装器由用户确认；iOS 不支持更新。服务也负责更新日志缓存、订阅状态与消息中心通知。
 
 **导出**：类型 `UpdateChannel`、`UpdateSource`、`UpdateStatus`、`ChangelogStatus`、`UpdateErrorCode`、`UpdateInfo`、`ManualUpdate`、`AndroidUpdate`、`UpdateCheckResult`、`RemoteVersionState`；函数 `getChannel`、`getSource`、`setChannel`、`initializeChannel`、`setSource`、`checkForUpdate`、`getCurrentUpdate`、`getCurrentUpdateInfo`、`getStatus`、`getIsDownloading`、`getDownloadProgress`、`getDownloadTotal`、`downloadUpdate`、`cancelDownload`、`hasPendingAndroidApk`、`retryAndroidInstall`、`openUpdateDialog`、`subscribeUpdateState`、`subscribeDownloadProgress`、`getRemoteVersion`、`subscribeRemoteVersion`、`fetchRemoteVersion`、`addUpdateMessage`、`checkAndNotify`、`addProgressMessage`、`updateProgressMessage`、`removeProgressMessage`。
 
@@ -22,35 +22,43 @@
 | `ManualUpdate` | updateService.ts:47 | 桌面预览/频道切换候选 |
 | `AndroidUpdate` | updateService.ts:54 | Android Release 更新，继承版本信息并携带 APK URL |
 | `UpdateCheckResult` | updateService.ts:58 | 接口：检查结果（`available/update/changelog/changelogStatus/status/errorCode?/errorMessage?`） |
-| `getAndroidApkAsset` / `resolveAndroidRelease` | updateService.ts:364 / 390 | 选通用 APK（无通用包时只接受单个 APK），按通道解析高于当前版本的 GitHub Release。**先剔除没有任何 APK 的 Release**（v0.1.6 及更早版本发布于 Android 流水线之前），否则会选中一个无 APK 的最新版本并误报「已是最新」 |
-| `getChannel` | updateService.ts:762 | 同步返回当前 `currentChannel`，无 IPC |
-| `getSource` | updateService.ts:766 | 同步返回当前 `currentSource`，无 IPC |
-| `setChannel` | updateService.ts:770 | 持久化频道、清空缓存与状态，再检查更新并刷新消息中心 |
-| `initializeChannel` | updateService.ts:831 | 启动时恢复频道与更新源配置，非法值回退默认（stable/github） |
-| `setSource` | updateService.ts:849 | 持久化更新源、清缓存，再检查更新并刷新消息 |
-| `checkForUpdate` | updateService.ts:899 | Android 检查 GitHub Release APK；iOS 返回不支持；桌面检查验签更新。统一写入状态并广播 |
-| `getCurrentUpdate` | updateService.ts:921 | 返回缓存的 `Update`、`ManualUpdate` 或 `AndroidUpdate` |
-| `getCurrentUpdateInfo` | updateService.ts:925 | 返回最近一次的 `UpdateInfo` |
-| `getStatus` | updateService.ts:929 | 返回 `UpdateStatus` |
-| `getIsDownloading` | updateService.ts:933 | 返回下载中标记 |
-| `getDownloadProgress` | updateService.ts:937 | 返回已下载字节数 |
-| `getDownloadTotal` | updateService.ts:941 | 返回总字节数 |
-| `downloadUpdate` | updateService.ts:988 | Android 调用 `download_android_apk` 后调用 APK installer，交由系统界面由用户确认；返回 `permissionRequired` 时保留已下载 APK 并提示授权。桌面按原 Tauri updater 流程安装。进度经消息中心展示，异常发出 danger 提醒 |
-| `cancelDownload` | updateService.ts:1144 | 中止当前下载、调用 `cancel_download` 停止后端下载，复位进度并移除进度消息 |
-| `hasPendingAndroidApk` | updateService.ts:1162 | Android 且上一次尝试已下载 APK 时为 true（供对话框切换成「重新安装」） |
-| `retryAndroidInstall` | updateService.ts:1173 | 用缓存的 `lastAndroidApkPath` 重新调用 `plugin:apk-installer|install_apk`，免去重新下载 119MB APK |
-| `openUpdateDialog` | updateService.ts:1197 | 派发 `window` 自定义事件 `openUpdateDialog` |
-| `subscribeUpdateState` | updateService.ts:1114 | 注册状态监听，返回退订函数 |
-| `subscribeDownloadProgress` | updateService.ts:1121 | 与 `subscribeUpdateState` 共用监听器 |
-| `RemoteVersionState` | updateService.ts:1144 | 遗留接口：远程版本状态（`version/date/body/checked/loading/error/hasUpdate`） |
-| `getRemoteVersion` | updateService.ts:1156 | 返回模块内 `remoteState` 快照 |
-| `subscribeRemoteVersion` | updateService.ts:1160 | 注册 `remoteListeners`，返回退订函数 |
-| `fetchRemoteVersion` | updateService.ts:1167 | 防重入拉取：`checkForUpdate()` 后写入 `remoteState` 并广播；失败置 `error=true` |
-| `addUpdateMessage` | updateService.ts:1205 | 向 messageStore 添加更新通知，动作派发 `openUpdateDialog` 事件 |
-| `checkAndNotify` | updateService.ts:1232 | `initializeChannel()` + `checkForUpdate()`，有更新则 `addUpdateMessage` |
-| `addProgressMessage` | updateService.ts:1242 | 创建带进度的 info 消息，以 `progressMessageId` 防重复 |
-| `updateProgressMessage` | updateService.ts:1256 | 按 `progressMessageId` 更新消息 |
-| `removeProgressMessage` | updateService.ts:1263 | 移除进度消息并清空 `progressMessageId` |
+| `resolveAndroidAbi` | updateService.ts:380 | 经 `get_android_abi` 取本机 ABI（`arm64-v8a`/`x86_64`/…），结果缓存在 `androidAbi`；失败时返回 null，选择逻辑退回「只有一个 APK 就用它」 |
+| `ANDROID_APK_ARCHES` | updateService.ts:392 | 资产名里的 arch 片段 → Android ABI 映射（`arm64`→`arm64-v8a`、`arm64v8a` 等），用于把 `endprotocol-android-<arch>-release.apk` 对应到本机 |
+| `androidApkArch` | updateService.ts:402 | 从资产名提取 arch 片段（`endprotocol-android-<arch>-release.apk` → `<arch>`），非拆分包返回 null |
+| `selectAndroidApkName` | updateService.ts:416 | 按 ABI 选资产名：有拆分包时**必须**命中本机 ABI，否则返回 null（装错架构的包会安装失败）；只有全是 universal 的旧版本才放行 universal |
+| `getAndroidApkAsset` | updateService.ts:438 | 按本机 ABI 选资产（正则锚定文件名末尾，避免 `x86` 命中 `x86_64`）；没有匹配时回退 universal / 单个 APK，兼容 `v0.1.7-pre3` 及更早版本 |
+| `mirrorAndroidApkUrl` | updateService.ts:481 | 更新源为 mirror 时把 `github.com/…/releases/download/<tag>/<asset>` 改写成 `<MIRROR_BASE>/<channel>/<tag>/<asset>`；非本仓库 release 资产原样返回 |
+| `pickAndroidManifestEntry` | updateService.ts:520 | 从镜像清单的 `android` 字段按 ABI 取 `apks[abi].url`，取不到时回退顶层 `url`（旧清单只有顶层字段） |
+| `resolveAndroidReleaseFromMirror` | updateService.ts:553 | 只读镜像 `<channel>/latest.json`（不访问 GitHub API），比较版本后按 ABI 取 APK；清单无 `android` 字段或失败时返回 null，调用方回退 GitHub |
+| `resolveAndroidRelease` | updateService.ts:607 | Android 更新解析总入口：mirror 源先走镜像，失败/无条目时回退 GitHub API 路径；**先剔除没有本机 ABI APK 的 Release**（v0.1.6 及更早版本发布于 Android 流水线之前），否则会选中一个无 APK 的最新版本并误报「已是最新」 |
+| `getChannel` | updateService.ts:1040 | 同步返回当前 `currentChannel`，无 IPC |
+| `getSource` | updateService.ts:1044 | 同步返回当前 `currentSource`，无 IPC |
+| `setChannel` | updateService.ts:1048 | 持久化频道、清空缓存与状态，再检查更新并刷新消息中心 |
+| `initializeChannel` | updateService.ts:1109 | 启动时恢复频道与更新源配置，非法值回退默认（stable/github） |
+| `setSource` | updateService.ts:1127 | 持久化更新源、清缓存，再检查更新并刷新消息 |
+| `checkForUpdate` | updateService.ts:1177 | Android 按所选更新源检查拆分 APK；iOS 返回不支持；桌面检查验签更新。统一写入状态并广播 |
+| `getCurrentUpdate` | updateService.ts:1199 | 返回缓存的 `Update`、`ManualUpdate` 或 `AndroidUpdate` |
+| `getCurrentUpdateInfo` | updateService.ts:1203 | 返回最近一次的 `UpdateInfo` |
+| `getStatus` | updateService.ts:1207 | 返回 `UpdateStatus` |
+| `getIsDownloading` | updateService.ts:1211 | 返回下载中标记 |
+| `getDownloadProgress` | updateService.ts:1215 | 返回已下载字节数 |
+| `getDownloadTotal` | updateService.ts:1219 | 返回总字节数 |
+| `downloadUpdate` | updateService.ts:1223 | Android 调用 `download_android_apk` 后调用 APK installer，交由系统界面由用户确认；返回 `permissionRequired` 时保留已下载 APK 并提示授权。桌面按原 Tauri updater 流程安装。进度经消息中心展示，异常发出 danger 提醒 |
+| `cancelDownload` | updateService.ts:1379 | 中止当前下载、调用 `cancel_download` 停止后端下载，复位进度并移除进度消息 |
+| `hasPendingAndroidApk` | updateService.ts:1397 | Android 且上一次尝试已下载 APK 时为 true（供对话框切换成「重新安装」） |
+| `retryAndroidInstall` | updateService.ts:1408 | 用缓存的 `lastAndroidApkPath` 重新调用 `plugin:apk-installer|install_apk`，免去重新下载整个 APK |
+| `openUpdateDialog` | updateService.ts:1432 | 派发 `window` 自定义事件 `openUpdateDialog` |
+| `subscribeUpdateState` | updateService.ts:1445 | 注册状态监听，返回退订函数 |
+| `subscribeDownloadProgress` | updateService.ts:1452 | 与 `subscribeUpdateState` 共用监听器 |
+| `RemoteVersionState` | updateService.ts:1460 | 遗留接口：远程版本状态（`version/date/body/checked/loading/error/hasUpdate`） |
+| `getRemoteVersion` | updateService.ts:1487 | 返回模块内 `remoteState` 快照 |
+| `subscribeRemoteVersion` | updateService.ts:1491 | 注册 `remoteListeners`，返回退订函数 |
+| `fetchRemoteVersion` | updateService.ts:1498 | 防重入拉取：`checkForUpdate()` 后写入 `remoteState` 并广播；失败置 `error=true` |
+| `addUpdateMessage` | updateService.ts:1536 | 向 messageStore 添加更新通知，动作派发 `openUpdateDialog` 事件 |
+| `checkAndNotify` | updateService.ts:1563 | `initializeChannel()` + `checkForUpdate()`，有更新则 `addUpdateMessage` |
+| `addProgressMessage` | updateService.ts:1573 | 创建带进度的 info 消息，以 `progressMessageId` 防重复 |
+| `updateProgressMessage` | updateService.ts:1587 | 按 `progressMessageId` 更新消息 |
+| `removeProgressMessage` | updateService.ts:1594 | 移除进度消息并清空 `progressMessageId` |
 
 ### 内部结构（行号区间）
 
@@ -61,16 +69,16 @@
 | 115–185 | SemVer 解析/比较与版本频道辅助函数 |
 | 186–229 | GitHub Release 列表与预览 release endpoint 解析 |
 | 230–298 | changelog 缓存、频道切换判定与镜像 changelog URL |
-| 299–623 | 更新解析，包括 Android GitHub Release APK 解析与桌面 Tauri updater |
-| 624–758 | changelog 获取与 `performUpdateCheck` 结果组装 |
-| 759–1105 | 公共 API：频道/来源设置、检查、跨平台下载安装/取消、对话框事件 |
-| 1106–1204 | 订阅系统与遗留 `remoteState` API |
-| 1205–1265 | 消息中心集成（更新提示与下载进度消息） |
+| 299–707 | 更新解析：Android ABI 解析与 APK 选择（`selectAndroidApkName`）、镜像清单解析、GitHub Release 路径，以及桌面 Tauri updater |
+| 708–1039 | 桌面/预览 changelog 获取与 `performUpdateCheck` 结果组装 |
+| 1040–1439 | 公共 API：频道/来源设置、检查、跨平台下载安装/取消、对话框事件 |
+| 1440–1535 | 订阅系统与遗留 `remoteState` API |
+| 1536–1601 | 消息中心集成（更新提示与下载进度消息） |
 
 **备注**：
-- **Tauri invoke 命令**：Android 使用 `download_android_apk` 下载缓存 APK，并调用 `plugin:apk-installer|install_apk` 打开系统安装器；桌面继续使用 `fetch_url`、`check_update_endpoint`、`install_update_endpoint`；另经 `configService` 使用 `get_config`/`set_config`。
-- **事件监听**：`listen("download-progress", …)`（:864）；自定义 window 事件 `openUpdateDialog`、`remoteVersionChanged`。
-- **网络端点**：Android 使用 GitHub API Release 列表与 APK release 下载；桌面使用镜像稳定/预览清单、`latest.json` 与 release changelog。
+- **Tauri invoke 命令**：Android 使用 `get_android_abi`（取本机 ABI）与 `download_android_apk`（下载缓存 APK，支持 GitHub 与镜像两种来源），并调用 `plugin:apk-installer|install_apk` 打开系统安装器；桌面继续使用 `fetch_url`、`check_update_endpoint`、`install_update_endpoint`；另经 `configService` 使用 `get_config`/`set_config`。
+- **事件监听**：`listen("download-progress", …)`（:1259）；自定义 window 事件 `openUpdateDialog`、`remoteVersionChanged`。
+- **网络端点**：Android 在 mirror 源下只访问 `<MIRROR_BASE>/<channel>/latest.json` 与其 APK；github 源下访问 GitHub API Release 列表与 release APK 下载。桌面使用镜像稳定/预览清单、`latest.json` 与 release changelog。
 - **缓存**：changelog 为模块内 `Map`，key = `changelog_cache_{channel}_{version}`，TTL 30000ms。
 - **日志写入**：全部经 `./logger` 默认实例，模块标签传在第二个实参位置（见异常项）。
 - **平台限定**：预览下载平台 key 硬编码 `windows-x86_64`（:363）。

@@ -275,6 +275,7 @@ pub fn run() {
             commands::updater::fetch_url,
             commands::updater::download_file,
             commands::updater::download_android_apk,
+            commands::updater::get_android_abi,
             commands::updater::run_installer,
             commands::updater::check_update_endpoint,
             commands::updater::install_update_endpoint,

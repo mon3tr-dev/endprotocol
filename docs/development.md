@@ -66,6 +66,11 @@ pnpm tauri android dev
 # 构建
 pnpm tauri android build          # debug APK
 pnpm tauri android build --apk    # release APK（签名需在 gen/android 配置签名信息）
+
+# 发布用的按 ABI 拆分 release 包（与 CI 一致，见 §7.1）
+# CARGO_PROFILE_RELEASE_STRIP=symbols 必须带上，否则原生库带着调试符号（arm64 ~100 MB）
+CARGO_PROFILE_RELEASE_STRIP=symbols \
+  pnpm tauri android build --ci --apk --split-per-abi --target aarch64 x86_64
 ```
 
 #### 启动图标：`android init` 生成的是模板占位图，必须覆盖
@@ -151,7 +156,7 @@ $env:NDK_HOME="$env:ANDROID_HOME\ndk\30.0.16248370"
 | 主窗口 | `lib.rs:create_full_windows` 动态创建（含托盘面板） | `tauri.android.conf.json` 的 `app.windows` 静态创建 |
 | 启动器（游戏下载/启动/切服） | 可用 | **禁用**：`stores/launcherMode.ts` 在非 Windows 强制 data 模式，游戏页 UI 不渲染 |
 | 托盘 / 托盘面板 | 可用 | 无系统托盘：`tray::setup_tray` no-op，`is_tray_available()` 恒 false，设置页隐藏相关项 |
-| 自更新 | updater 插件 | Android 按稳定/预览通道检查 GitHub Release APK；下载到应用私有缓存后打开系统安装器，由用户确认安装。iOS 不支持 |
+| 自更新 | updater 插件 | Android 按稳定/预览通道检查 GitHub Release **或镜像清单**的拆分 APK（按本机 ABI 选择，`get_android_abi`）；下载到应用私有缓存后打开系统安装器，由用户确认安装。iOS 不支持 |
 | 应用数据目录 | `%LOCALAPPDATA%\cn.msk-network.endprotocol`（`dirs`） | `{getDataDir()}`（Tauri 路径解析器 → `utils::paths` 覆盖值，setup 最早注入；实测落在 `/data/user/0/<pkg>/`） |
 | 日志初始化时机 | `run()` 早期 | setup 注入数据目录之后（目录在此之前不可写） |
 | 机密存储 | OS 凭据库（Windows Credential Manager 等） | Android Keystore（keyring 4.2）；不可用时自动降级 AES-GCM 文件（`secrets.enc`） |
@@ -342,17 +347,45 @@ splash、DevTools 控制台没有任何输出，看起来像"窗口没有内容"
 1. **同步版本号**：去掉标签的 `v` 前缀，写入 `package.json` 与 `src-tauri/tauri.conf.json`
 2. **判定通道**：版本号带后缀 → `preview`，否则 `stable`；并查找同通道的上一个标签
 3. **生成更新日志**：按 Conventional Commits 分类，写入 `CHANGELOG.md`
-4. **构建**：Linux x64（ubuntu-22.04）与 Android 签名 universal APK 并行构建；Android 完成后 Windows x64 构建 NSIS 并发布草稿
-5. **生成更新清单**：将桌面 updater 包与 minisign 签名汇总到 Release 的 `latest.json`；Android universal APK 以顶层 `android` 字段（url + assetName）附带，不进 `platforms`（APK 无 minisign 签名，混入会破坏桌面端 manifest 解析）
+4. **构建**：Linux x64（ubuntu-22.04）与 Android 签名 release APK（按 ABI 拆分）并行构建；Android 完成后 Windows x64 构建 NSIS 并发布草稿
+5. **生成更新清单**：将桌面 updater 包与 minisign 签名汇总到 Release 的 `latest.json`；Android APK 同理不进 `platforms`（APK 无 minisign 签名，混入会破坏桌面端 manifest 解析），改为顶层 `android` 字段携带各 ABI 条目，见下方 §7.1
 6. **发布**：先创建草稿 Release，上传桌面与 Android 资产，再将其公开并标记是否为预发布
 
 Android job 使用 `android-actions/setup-android@v4` 并显式指定 `packages: 'platform-tools'`：v3 及更早版本的默认包列表包含已被 Google 下架的 `tools` 包，会让 `sdkmanager` 以退出码 1 失败（android-actions/setup-android#537），platform-tools、platforms、build-tools 与 NDK 均由后续步骤按需安装。
 
 Android job 需要配置以下 GitHub Actions Secrets：`ANDROID_KEY_BASE64`（发布 keystore 的单行 Base64）、`ANDROID_KEY_ALIAS`、`ANDROID_KEY_PASSWORD`（Tauri 模板将其用于 keystore 和 key 密码）。该密钥必须与已发布/已安装版本的签名证书一致；如果尚无 Android 发布签名，可生成一次并长期安全保存，不能每次构建更换。工作流在临时生成的 `src-tauri/gen/android/keystore.properties` 中引用 keystore，不要提交 keystore 或该 properties 文件。缺少任一 Secret 时 Android job 会失败，Release 不会发布。
 
-APK 以 `endprotocol-android-universal.apk` 上传到同一 tag Release；这与 Android 更新器查找通用 APK 的规则一致。稳定 tag 与预览 tag 使用同一构建流程，Release 的 prerelease 状态仍按版本号后缀判定。
-
 需配置的 Secrets：`TAURI_SIGNING_PRIVATE_KEY` 与 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`（`GITHUB_TOKEN` 由 Actions 自动提供）。
+
+### 7.1 Android 打包：按 ABI 拆分 + release 体积优化
+
+构建命令是 `pnpm tauri android build --ci --apk --split-per-abi --target aarch64 x86_64`：
+
+- **不打 debug 包**：`--apk` 不带 `--debug` 就是 Gradle 的 `release` build type（未签名时会产出 `*-release-unsigned.apk`，签名配置注入后应为 `app-<arch>-release.apk`；「Prepare release APKs」步骤会断言签名后的文件名存在）。
+- **按 ABI 拆分**：`--split-per-abi` 让 CLI 走 `assemble<Arch>Release` 任务，产物落在 `app/build/outputs/apk/<arch>/release/`。只构建 `aarch64` 与 `x86_64` 两个目标——`armeabi-v7a` / `x86` 已不再单独分发，universal 包从 ~114 MB 降到单 ABI 的 ~30 MB。
+- **体积优化**：`build.gradle.kts` 的 release 块保留 AGP 的 `optimization { enable = true }`（R8 + 资源压缩）。真正的大头是原生库符号：release 的 `libendprotocol_lib.so` 带着 `.symtab` / `.debug_line`，arm64 未 strip 时是 ~100 MB（APK 里几乎只剩这一个 `.so`），strip 后 ~18 MB。构建步骤因此设置 `CARGO_PROFILE_RELEASE_STRIP=symbols`，在链接期就去掉符号；该变量只作用于这一步，桌面构建不受影响。实测 arm64 单 ABI 包从 ~114 MB（universal）降到 ~19 MB。
+- **构建期断言**（任一不满足即失败）：`apksigner verify` 通过；每个 APK 的 `lib/` 下**只能**有它自己的 ABI（出现第二个 ABI 说明悄悄退化成了 universal 包）；单包不超过 40 MB（超过说明符号又被塞回去了）。启动图标断言只在 arm64 包上做一次，因为它与 ABI 无关。
+
+### 7.2 `latest.json` 的 Android 字段
+
+各 ABI 的 APK 以 `endprotocol-android-<arch>-release.apk` 上传到同一 tag Release。清单里：
+
+```json
+"android": {
+  "url": "https://github.com/…/endprotocol-android-arm64-release.apk",
+  "assetName": "endprotocol-android-arm64-release.apk",
+  "apks": {
+    "arm64-v8a": { "url": "…", "assetName": "…" },
+    "x86_64": { "url": "…", "assetName": "…" }
+  }
+}
+```
+
+顶层 `url` / `assetName` 指向 arm64 包，保留给只读这两个字段的旧客户端；`apks` 是按 ABI 的新结构。Android 客户端调用后端 `get_android_abi` 取本机 ABI，再据此挑 `apks[abi]`，取不到时回退顶层 `url`（兼容 `v0.1.7-pre3` 及更早的 universal 包）。
+
+Android 的更新检查**同时支持两种更新源**：GitHub 源走 GitHub API 列 Release 再挑本机 ABI 的资产；镜像源直接读 `https://updates.msk-network.cn/<channel>/latest.json` 的 `android` 字段，不再访问 GitHub API。镜像 URL 形如 `<base>/<channel>/<tag>/<asset>`，与桌面端镜像布局一致。`download_android_apk` 的白名单同时接受 `github.com/mon3tr-dev/endprotocol/releases/download/` 与 `updates.msk-network.cn/{stable,preview}/` 两个来源。
+
+稳定 tag 与预览 tag 使用同一构建流程，Release 的 prerelease 状态仍按版本号后缀判定。
 
 ---
 
