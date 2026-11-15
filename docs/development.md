@@ -12,7 +12,7 @@
 - **pnpm** 10（包管理器，仓库使用 `pnpm-lock.yaml`；`package-lock.json` 已废弃，请勿用它安装）
 - **Rust** 最新稳定版
 - **Windows** 构建环境（当前发布目标为 `x86_64-pc-windows-msvc`）
-- **Android 构建（可选）**：Android Studio / Android SDK + NDK + JDK 17，`rustup target add aarch64-linux-android`；详见 §2.1
+- **Android 构建（可选）**：Android Studio / Android SDK + NDK + JDK 21，`rustup target add aarch64-linux-android x86_64-linux-android`；详见 §2.1
 
 > **锁文件规则**：仓库根 `Cargo.toml` 是 cargo workspace 根（`members = ["src-tauri"]`），因此**根目录的 `Cargo.lock` 才是有效锁文件**；`src-tauri/Cargo.lock` 已被移除，不要在子目录重新生成（会与 workspace 锁文件打架、并让构建解析到不同版本的 `tauri` crate）。
 
@@ -51,10 +51,11 @@ pnpm tauri build
 Android 适配已就绪（代码级），构建 APK 需要 Android 工具链：
 
 ```bash
-# 一次性：JDK 17 + Android Studio（SDK / NDK / platform-tools），并设置环境变量
+# 一次性：JDK 21（AGP 9 的 daemon 要求见下方“JDK 版本”）
 #   ANDROID_HOME=%LOCALAPPDATA%\Android\Sdk
 #   NDK_HOME=%ANDROID_HOME%\ndk\<version>
 rustup target add aarch64-linux-android
+rustup target add x86_64-linux-android   # 模拟器几乎都是 x86_64，不装则模拟器跑不起来
 
 # 生成 Android 工程（gen/android 目前不在仓库中，由该命令首次生成；已存在则跳过）
 pnpm tauri android init
@@ -65,6 +66,53 @@ pnpm tauri android dev
 # 构建
 pnpm tauri android build          # debug APK
 pnpm tauri android build --apk    # release APK（签名需在 gen/android 配置签名信息）
+```
+
+#### 必须用 `pnpm tauri`，不要用 `cargo tauri`
+
+`src-tauri/gen/android/buildSrc/.../BuildTask.kt` 由 Gradle 调用 `node tauri android android-studio-script`，
+最终解析到**仓库 `node_modules` 里的 `@tauri-apps/cli`**，而不是 PATH 上的 `cargo-tauri`。
+两者版本不一致时会以极误导的方式失败：
+
+```
+Execution failed for task ':app:rustBuildX86_64Debug' (registered by plugin 'rust').
+> A problem occurred starting process 'command 'node.bat''
+```
+
+`node.bat` 只是 `BuildTask` 依次尝试 `node`/`node.exe`/`node.cmd`/`node.bat` 的**最后一个**兜底，
+真实错误被吞掉了。手动复现才能看到原因（在 `src-tauri/` 下执行）：
+
+```
+failed to read gen/android/.tauri/cli-options-server.json;
+the `tauri android dev` or `tauri android build` command must be running
+```
+
+该文件由 CLI 2.12+ 的 `android dev` 在构建期间写出，`cargo tauri` 2.11 不写它。
+所以**始终用 `pnpm tauri android dev`**（与 `package.json` 的 `~2.12.1` 对齐）。
+
+Gradle 侧执行的 `node tauri` 以 `src-tauri/` 为工作目录，Node 会把第一个非选项参数当作
+**脚本路径**（按 `.js/.cjs/.mjs` 探测），而不是从 `NODE_PATH` 找包。仓库里的
+`src-tauri/tauri.js` 就是为此存在的垫片：它用动态 `import()` 把调用转发到
+`node_modules/@tauri-apps/cli/tauri.js`。**不要删除**——缺少它时即使主命令用的是
+`pnpm tauri`，Gradle 也会报上面那个 `node.bat` 失败。
+
+#### JDK 版本
+
+`gen/android/gradle/gradle-daemon-jvm.properties` 里 `toolchainVersion=25`，
+Gradle 会强制用 JDK 25 起 daemon，本机没有就往 GitHub 下载（国内常连不上）：
+
+```
+Unable to download toolchain matching the requirements ({languageVersion=25 ...})
+Caused by: Connect to github.com:443 failed: Connection timed out
+```
+
+本机已有 JDK 21 时，把该文件改成 `toolchainVersion=21` 即可（`gen/android` 是生成目录、不入库，
+改动只影响本地）。注意这是 **daemon 的 JDK**，与 `JAVA_HOME` 不是同一件事——只设 `JAVA_HOME` 不会生效。
+
+```powershell
+$env:JAVA_HOME="C:\Program Files\Android\openjdk\jdk-21.0.8"
+$env:ANDROID_HOME="$env:LOCALAPPDATA\Android\Sdk"
+$env:NDK_HOME="$env:ANDROID_HOME\ndk\30.0.16248370"
 ```
 
 **Android 与桌面的行为差异（适配要点）**：
