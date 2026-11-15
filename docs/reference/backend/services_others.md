@@ -76,7 +76,7 @@
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
 | `ConfigService::new` | config_service.rs:41 | 创建 `app_data_dir()` 并 `create_dir_all`；`config_path = paths::config_file_path()`；构造 `SecretStore::new()`；转 `new_with_paths`。 |
-| `ConfigService::new_with_paths` | config_service.rs:64 | 指定路径与机密后端构造服务；读配置文件 → `migrate_if_needed()` → `load_secrets_into_cache()`。 |
+| `ConfigService::new_with_paths` | config_service.rs:64 | 指定路径与机密后端构造服务；读配置文件 → `migrate_if_needed()` → `load_secrets_into_cache()`。**读文件时 JSON 解析失败不会退化为空配置**：坏文件另存为 `app_config.corrupt-<unix秒>`、随即删除主文件（避免 `save()` 的滚动备份把坏内容盖到 `.json.bak`），再用 `.json.bak` 恢复，最后才退回空表并记 ERROR。 |
 | `ConfigService::get` | config_service.rs:95 | 锁 cache 后 `serde_json::from_value` 反序列化为 `T`，失败或不存在返回 `None`。内存命中，无磁盘读取。 |
 | `ConfigService::set` | config_service.rs:107 | 先 `write_secret_fields()` 把机密子字段写入凭据库，再插入 cache 并 `save()` 写盘。 |
 | `ConfigService::remove` | config_service.rs:122 | 若键含机密字段，先 `secrets.remove_key()` 清凭据库；再删 cache；成功才 `save()`。 |

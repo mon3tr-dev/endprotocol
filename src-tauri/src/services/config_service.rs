@@ -73,9 +73,69 @@ impl ConfigService {
         }
 
         // 加载现有配置
+        //
+        // ⚠️ 解析失败绝不能当成「没有配置」：
+        // `unwrap_or_default()` 会返回空表，紧接着 `migrate_if_needed()` 里的
+        // `save()` 就把**几乎是空的**文件盖回磁盘 —— 用户的账号、标签页、卡片
+        // 布局、外观设置全部永久丢失，日志里只留下一条无关的 schema 迁移记录。
+        // 这正是「重新部署后数据全部丢失」的根因：只要文件在写入过程中被截断
+        // （进程被系统杀掉、磁盘写满、Android 冷启动打断 rename 之前的 write），
+        // 下次启动就会自毁式清空。
+        //
+        // 现在的策略：先把坏文件另存为 `.corrupt-<时间戳>` 留证，再尝试用
+        // `.json.bak` 备份恢复；两者都不行才退回空配置，并且**明确告警**。
         let raw: HashMap<String, Value> = if config_path.exists() {
             let content = fs::read_to_string(&config_path)?;
-            serde_json::from_str(&content).unwrap_or_default()
+            match serde_json::from_str::<HashMap<String, Value>>(&content) {
+                Ok(parsed) => parsed,
+                Err(error) => {
+                    let stamp = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map(|d| d.as_secs())
+                        .unwrap_or(0);
+                    let corrupt_path = config_path.with_extension(format!("corrupt-{stamp}"));
+                    crate::log_error!(
+                        "[config] app_config.json is not valid JSON ({error}); keeping a copy at {:?}",
+                        corrupt_path
+                    );
+                    if let Err(copy_error) = fs::copy(&config_path, &corrupt_path) {
+                        crate::log_error!("[config] failed to preserve corrupt config: {copy_error}");
+                    }
+
+                    // 坏文件已经留证，立刻把主文件删掉。
+                    //
+                    // 必须删，不能留着等 save() 覆盖：`save()` 在 rename 之前会把
+                    // 「当前主文件」滚动复制到 `.json.bak`，而当前主文件正是这份坏
+                    // 内容 —— 留着它就会把刚刚用来恢复的**好备份覆盖成坏备份**，
+                    // 下一次启动就真的没得救了。删掉之后 `save()` 看到主文件不存在，
+                    // 跳过这次拷贝，.bak 里的好内容得以保留。
+                    if let Err(remove_error) = fs::remove_file(&config_path) {
+                        crate::log_error!("[config] failed to drop corrupt config: {remove_error}");
+                    }
+
+                    // 尝试从滚动备份恢复（save() 每次落盘前都会写一份 .json.bak）
+                    let backup_path = config_path.with_extension("json.bak");
+                    let recovered = fs::read_to_string(&backup_path)
+                        .ok()
+                        .and_then(|text| serde_json::from_str::<HashMap<String, Value>>(&text).ok());
+                    match recovered {
+                        Some(values) => {
+                            crate::log_warn!(
+                                "[config] recovered config from backup {:?} ({} keys)",
+                                backup_path,
+                                values.len()
+                            );
+                            values
+                        }
+                        None => {
+                            crate::log_error!(
+                                "[config] no usable backup; starting from an empty config"
+                            );
+                            HashMap::new()
+                        }
+                    }
+                }
+            }
         } else {
             HashMap::new()
         };
@@ -372,10 +432,48 @@ impl ConfigService {
             serde_json::to_string_pretty(&plain)?
         };
 
-        // 原子写：先写 .tmp 再 rename，避免写一半崩溃导致配置全丢
-        let tmp_path = self.config_path.with_extension("json.tmp");
-        fs::write(&tmp_path, content)?;
-        fs::rename(&tmp_path, &self.config_path)?;
+        // 原子写：写一个**本次独有**的临时文件、fsync、再 rename 覆盖。
+        //
+        // 两个要点，都是踩过的坑：
+        // 1. **临时文件名必须唯一**。`save()` 只锁 `cache` 到生成字符串为止，
+        //    真正落盘时锁已经放开，所以两次并发写会同时往同一个 `app_config.json.tmp`
+        //    里写 —— 两个 `write_all` 交错，rename 上去的就是拼接出来的坏 JSON。
+        //    用进程 id + 单调计数器给每个临时文件独立名字，rename 之间才互不干扰。
+        // 2. **rename 之前要 `sync_all()`**。`fs::write` 只把数据交给内核，进程在
+        //    内核刷盘前被杀（Android 冷启动打断很常见）时，rename 过的文件可能
+        //    只落了一半，下次启动读到损坏 JSON。上面已有解析兜底，但这里更该
+        //    从根源上不产生损坏。
+        static SAVE_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let seq = SAVE_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let tmp_path = self
+            .config_path
+            .with_extension(format!("json.tmp.{}.{seq}", std::process::id()));
+        {
+            use std::io::Write as _;
+            let mut file = fs::File::create(&tmp_path)?;
+            file.write_all(content.as_bytes())?;
+            file.sync_all()?;
+        }
+
+        // 覆盖之前，先把**当前这份完好的内容**复制成 `app_config.json.bak`。
+        //
+        // 这是损坏恢复的最后一道保险：解析兜底那一段会优先读 .bak，
+        // 但 .bak 原先只在 schema 迁移时写过一次、迁移成功后还会被删掉，
+        // 于是日常使用中根本没有备份可退。这里每次落盘前滚动一份，
+        // 保证「下一次写坏」永远有一份上一版内容能救回来。
+        // 先 copy 再 rename，所以要备份的是**旧文件**；老文件不存在时跳过。
+        if self.config_path.exists() {
+            let backup_path = self.config_path.with_extension("json.bak");
+            if let Err(error) = fs::copy(&self.config_path, &backup_path) {
+                crate::log_warn!("[config] failed to roll backup {backup_path:?}: {error}");
+            }
+        }
+
+        if let Err(error) = fs::rename(&tmp_path, &self.config_path) {
+            // rename 失败时别把垃圾临时文件留在数据目录里
+            let _ = fs::remove_file(&tmp_path);
+            return Err(error.into());
+        }
         Ok(())
     }
 }
@@ -579,6 +677,124 @@ mod tests {
 
         let raw = fs::read_to_string(&config_path).expect("read");
         assert!(!raw.contains("IDEM_SECRET"));
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// 回归：`app_config.json` 被截断/写坏时**不能**静默清空。
+    ///
+    /// 这是「重新部署后数据全丢」的根因 —— 旧实现在解析失败时
+    /// `unwrap_or_default()` 退化成空表，随后迁移流程立刻把空文件写回磁盘。
+    #[test]
+    fn corrupt_config_is_preserved_and_recovered_from_backup() {
+        let dir = std::env::temp_dir().join(format!("ep_cfg_corrupt_{}", std::process::id()));
+        let _ = fs::create_dir_all(&dir);
+        let config_path = dir.join("app_config.json");
+
+        // 一份可用的迁移备份（migrate_to_v2 在改动前会留下它）
+        let backup = json!({
+            "schema_version": SCHEMA_VERSION,
+            "app.language": "zh",
+            "dashboard_tabs": [{"id": "t1", "name": "日常"}],
+        });
+        fs::write(
+            dir.join("app_config.json.bak"),
+            serde_json::to_string_pretty(&backup).unwrap(),
+        )
+        .expect("write backup");
+
+        // 被截断的主配置（模拟写入途中进程被杀）
+        fs::write(&config_path, "{\"schema_version\":2,\"app.language\":\"zh\"").expect("write corrupt");
+
+        let svc = ConfigService::new_with_paths(config_path.clone(), SecretStore::in_memory())
+            .expect("open with corrupt config");
+
+        // 1. 数据从备份恢复，没有丢
+        assert_eq!(
+            svc.get::<String>("app.language").as_deref(),
+            Some("zh"),
+            "language should be recovered from backup"
+        );
+        assert!(
+            svc.get::<Vec<Value>>("dashboard_tabs")
+                .map(|tabs| !tabs.is_empty())
+                .unwrap_or(false),
+            "dashboard tabs should be recovered from backup"
+        );
+
+        // 2. 坏文件被留证，没有直接被覆盖掉
+        let preserved: Vec<_> = fs::read_dir(&dir)
+            .expect("read dir")
+            .filter_map(|e| e.ok())
+            .map(|e| e.file_name().to_string_lossy().to_string())
+            .filter(|name| name.contains("corrupt-"))
+            .collect();
+        assert!(
+            !preserved.is_empty(),
+            "corrupt config should be preserved for inspection, found: {preserved:?}"
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// 回归：没有任何备份可恢复时，也不能把坏文件当成空配置直接盖掉。
+    #[test]
+    fn corrupt_config_without_backup_is_still_preserved() {
+        let dir = std::env::temp_dir().join(format!("ep_cfg_corrupt2_{}", std::process::id()));
+        let _ = fs::create_dir_all(&dir);
+        let config_path = dir.join("app_config.json");
+        fs::write(&config_path, "not json at all").expect("write corrupt");
+
+        let _svc = ConfigService::new_with_paths(config_path.clone(), SecretStore::in_memory())
+            .expect("open with corrupt config");
+
+        let preserved: Vec<_> = fs::read_dir(&dir)
+            .expect("read dir")
+            .filter_map(|e| e.ok())
+            .map(|e| e.file_name().to_string_lossy().to_string())
+            .filter(|name| name.contains("corrupt-"))
+            .collect();
+        assert!(
+            !preserved.is_empty(),
+            "corrupt config should be preserved even with no backup, found: {preserved:?}"
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// 回归：从备份恢复之后，`.json.bak` 不能被损坏内容回滚覆盖。
+    ///
+    /// 恢复会把坏文件删掉；如果没删，`save()` 落盘前的「滚动备份」就会把
+    /// 这份坏内容复制到 `.bak` 上，把刚救过命的好备份毁掉。
+    #[test]
+    fn good_backup_survives_recovery_cycle() {
+        let dir = std::env::temp_dir().join(format!("ep_cfg_roll_{}", std::process::id()));
+        let _ = fs::create_dir_all(&dir);
+        let config_path = dir.join("app_config.json");
+        let backup_path = dir.join("app_config.json.bak");
+
+        let good = json!({
+            "schema_version": SCHEMA_VERSION,
+            "app.language": "zh",
+            "dashboard_tabs": [{"id": "t1", "name": "日常"}],
+        });
+        fs::write(&backup_path, serde_json::to_string_pretty(&good).unwrap()).expect("write bak");
+        fs::write(&config_path, "{\"broken\"").expect("write corrupt");
+
+        let svc = ConfigService::new_with_paths(config_path.clone(), SecretStore::in_memory())
+            .expect("open");
+
+        // 打开过程中发生了一次恢复 + 落盘；备份必须仍是好内容
+        let backup_text = fs::read_to_string(&backup_path).expect("read bak");
+        let backup_json: Value = serde_json::from_str(&backup_text)
+            .expect("backup must remain valid JSON after recovery");
+        assert_eq!(
+            backup_json["app.language"], json!("zh"),
+            "good backup must not be overwritten by the corrupt file"
+        );
+
+        // 恢复出来的数据也还在
+        assert_eq!(svc.get::<String>("app.language").as_deref(), Some("zh"));
 
         let _ = fs::remove_dir_all(&dir);
     }
