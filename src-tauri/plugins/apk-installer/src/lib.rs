@@ -62,6 +62,10 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
 fn init_android<R: Runtime, C: serde::de::DeserializeOwned>(
     api: PluginApi<R, C>,
 ) -> tauri::Result<ApkInstaller<R>> {
-    api.register_android_plugin("com.endprotocol.apk_installer", "ApkInstallerPlugin")
-        .map(ApkInstaller)
+    // register_android_plugin returns PluginInvokeError; `?` converts it via
+    // tauri::Error::PluginInvoke. A bare .map() would leak the foreign error type
+    // and fail to compile against the declared tauri::Result.
+    let handle =
+        api.register_android_plugin("com.endprotocol.apk_installer", "ApkInstallerPlugin")?;
+    Ok(ApkInstaller(handle))
 }
