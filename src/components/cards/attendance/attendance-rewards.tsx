@@ -89,7 +89,13 @@ export function AttendanceRewards({
         <p className="text-xs text-muted font-medium mb-2.5">
           {t("card:attendance_monthly_rewards")}
         </p>
-        <div className="grid grid-cols-7 gap-1">
+        {/*
+         * 7 列是「一周七天」的语义，只有在放得下时才成立：
+         * 手机竖屏内容区约 380px，7 等分后每格仅 ~45px，奖励名被 truncate
+         * 压成一个字（实机上就是「中…」「武…」）。窄屏先降到 4 列，
+         * 名称允许两行；sm 以上恢复 7 列。
+         */}
+        <div className="grid grid-cols-4 sm:grid-cols-7 gap-1">
           {attendanceData.calendar.map((entry, idx) => {
             const reward = infoOf(entry);
             // 今日/明日格子高亮，方便一眼看到「现在在哪一格」
@@ -98,7 +104,7 @@ export function AttendanceRewards({
             return (
               <div
                 key={idx}
-                className={`flex flex-col items-center gap-1.5 p-2.5 rounded-lg border ${
+                className={`flex flex-col items-center gap-1.5 p-2 rounded-lg border ${
                   entry.done
                     ? "border-default-200 bg-default-50 opacity-45"
                     : isToday
@@ -114,7 +120,7 @@ export function AttendanceRewards({
                 {renderRewardIcon(entry)}
                 {reward && (
                   <>
-                    <span className="text-[11px] text-muted truncate w-full text-center">
+                    <span className="text-[11px] text-muted w-full text-center leading-tight line-clamp-2 break-words">
                       {reward.name}
                     </span>
                     <span className="text-[11px] font-medium">x{countOf(entry)}</span>

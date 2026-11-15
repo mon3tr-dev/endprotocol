@@ -28,6 +28,10 @@ function GlassSwitch({
       disabled={off}
       className={cn(
         "group inline-flex items-center gap-2 select-none cursor-pointer",
+        // Touch target: the track is only 24px tall, which is small for a finger.
+        // Negative-margin vertical padding grows the hit area to ~40px without
+        // changing the track's visual size or its layout footprint.
+        "py-2 -my-2",
         // 惯性：整行的按压缩放与滑块共用同一条弹性曲线（spring 带轻微过冲）
         "[transition:transform_var(--lg-dur-press)_var(--lg-ease-spring),translate_var(--lg-dur-press)_var(--lg-ease-spring),scale_var(--lg-dur-press)_var(--lg-ease-spring)]",
         "hover:scale-105 active:scale-95",

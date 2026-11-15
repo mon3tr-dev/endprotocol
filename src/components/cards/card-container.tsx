@@ -24,6 +24,14 @@ import { CardContextMenu, type ContextMenuItem } from "./card-context-menu";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 
 // Grid configuration
+//
+// 网格列的基准宽度（px）。布局坐标、拖拽吸附、卡片尺寸全部以它为单位，
+// 与视口无关 —— 卡片的位置是持久化的，不能随窗口宽度漂移。
+//
+// 窄屏缩放：容器装不下 4 列（400px）时，整个网格按同一比例缩小
+// （见 `CardContainer` 里的 `gridScale`）。坐标仍按 100 记，只是渲染时乘上
+// 这个系数，所以「手机上排成几列」与桌面完全一致，不会因为窗口窄了
+// 就把卡片挤成一条、或让最后一张卡探出右边缘。
 const GRID_SIZE = 100; // Each grid cell is 100x100 pixels
 
 // Generate SVG grid pattern with dashed lines (uses default token)
@@ -61,14 +69,19 @@ function FreeDragCard({
   onLongPress,
   onExitEditMode,
   highlightCardId,
+  gridScale = 1,
 }: FreeDragCardProps & {
   isDragging?: boolean;
   showGridCoords?: boolean;
   onLongPress?: () => void;
   onExitEditMode?: () => void;
   highlightCardId?: string | null;
+  /** 窄屏缩放系数：网格坐标仍是 100px 一格，渲染时统一乘以它 */
+  gridScale?: number;
 }) {
   const { t } = useTranslation();
+  /** 当前缩放下的格子边长 */
+  const cell = GRID_SIZE * gridScale;
 
   const draggable = useDraggable({
     id: card.id,
@@ -345,16 +358,19 @@ function FreeDragCard({
   };
 
   // Calculate position from grid coordinates (offset by 1px for card gap)
-  const x = (card.x ?? 0) * GRID_SIZE + 1;
-  const y = (card.y ?? 0) * GRID_SIZE + 1;
+  const x = (card.x ?? 0) * cell + 1;
+  const y = (card.y ?? 0) * cell + 1;
 
-  // Apply transform if dragging
+  // Apply transform if dragging.
+  //
+  // 拖拽位移来自 dnd-kit 的像素值，是**已经乘过缩放**的实际位移，
+  // 不能再乘 cell —— 直接相加即可。
   const style: React.CSSProperties = {
     position: "absolute",
     left: x,
     top: y,
-    width: (card.w ?? 3) * GRID_SIZE - 2,
-    height: (card.h ?? 2) * GRID_SIZE - 2, // Default 3x2
+    width: (card.w ?? 3) * cell - 2,
+    height: (card.h ?? 2) * cell - 2, // Default 3x2
     transform: transform
       ? `translate(${transform.x}px, ${transform.y}px)`
       : undefined,
@@ -545,6 +561,39 @@ export function CardContainer({
   const [hasCollision, setHasCollision] = useState(false);
   const sortedCardsRef = useRef<CardConfig[]>(sortedCards);
 
+  // ========== 窄屏缩放 ==========
+  //
+  // 卡片的坐标与尺寸都以 100px 的格子记（见 GRID_SIZE），布局是绝对定位、
+  // 宽度写死的。容器一旦窄于 `GRID_COLS * 100`，最后一张卡就会探出右边缘：
+  // 在 411px 宽的手机上，一行的 4 列 = 398px 而内容区只有 379px，
+  // 于是整页横向溢出 4px（卡片贴着右边缘、还能横向拖动）。
+  //
+  // 修法不是改坐标（那是持久化的用户布局），而是整体缩放渲染：
+  // 按 `containerWidth / (GRID_COLS * 100)` 求一个 ≤ 1 的系数，
+  // 格子边长、卡片尺寸、拖拽吸附全部乘以它。桌面宽屏系数恒为 1，行为不变。
+  const GRID_COLS = 4;
+  const gridAreaRef = useRef<HTMLDivElement>(null);
+  const [gridScale, setGridScale] = useState(1);
+
+  useEffect(() => {
+    const el = gridAreaRef.current;
+    if (!el) return;
+    const measure = () => {
+      const width = el.clientWidth;
+      if (width <= 0) return;
+      // 留 1px 余量，避免亚像素舍入造成的新溢出
+      const scale = Math.min(1, (width - 1) / (GRID_COLS * GRID_SIZE));
+      setGridScale((prev) => (Math.abs(prev - scale) < 0.001 ? prev : scale));
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  /** 当前缩放下的格子边长 */
+  const cell = GRID_SIZE * gridScale;
+
   useEffect(() => {
     sortedCardsRef.current = sortedCards;
   }, [sortedCards]);
@@ -608,14 +657,14 @@ export function CardContainer({
 
     let maxY = 0;
     for (const card of sortedCards) {
-      const cardBottom = ((card.y ?? 0) + (card.h ?? 2)) * GRID_SIZE;
+      const cardBottom = ((card.y ?? 0) + (card.h ?? 2)) * cell;
       maxY = Math.max(maxY, cardBottom);
     }
 
     // Add padding and extra height during drag
-    const basePadding = 100;
+    const basePadding = 100 * gridScale;
     return maxY + basePadding + extraHeight;
-  }, [sortedCards, extraHeight]);
+  }, [sortedCards, extraHeight, cell, gridScale]);
 
   // Configure sensors
   const sensors = useSensors(
@@ -627,9 +676,16 @@ export function CardContainer({
   );
 
   // Snap to grid helper
-  const snapToGrid = useCallback((value: number) => {
-    return Math.round(value / GRID_SIZE) * GRID_SIZE;
-  }, []);
+  //
+  // 拖拽位移是像素值；除以 `cell`（当前缩放下的格子边长）再取整，
+  // 得到的才是**网格坐标**。若仍除以固定的 GRID_SIZE，窄屏（缩放 < 1）下
+  // 拖动一格会被算成不足一格、吸附不上去。
+  const snapToGrid = useCallback(
+    (value: number) => {
+      return Math.round(value / cell) * cell;
+    },
+    [cell],
+  );
 
   // Handle drag start
   const handleDragStart = (event: DragStartEvent) => {
@@ -724,8 +780,8 @@ export function CardContainer({
       const currentGridY = card.y ?? 0;
 
       // Calculate the offset in grid units
-      const offsetX = Math.round(event.delta.x / GRID_SIZE);
-      const offsetY = Math.round(event.delta.y / GRID_SIZE);
+      const offsetX = Math.round(event.delta.x / cell);
+      const offsetY = Math.round(event.delta.y / cell);
 
       // Calculate the new grid position
       const newGridX = Math.max(0, currentGridX + offsetX);
@@ -819,16 +875,16 @@ export function CardContainer({
     const card = sortedCards.find((c) => c.id === active.id);
     if (!card) return;
 
-    // Calculate new position
-    const currentX = (card.x ?? 0) * GRID_SIZE;
-    const currentY = (card.y ?? 0) * GRID_SIZE;
+    // Calculate new position（全部换算成当前缩放下的像素）
+    const currentX = (card.x ?? 0) * cell;
+    const currentY = (card.y ?? 0) * cell;
 
     const newX = snapToGrid(currentX + delta.x);
     const newY = snapToGrid(currentY + delta.y);
 
     // Convert back to grid coordinates
-    const gridX = Math.max(0, newX / GRID_SIZE);
-    const gridY = Math.max(0, newY / GRID_SIZE);
+    const gridX = Math.max(0, Math.round(newX / cell));
+    const gridY = Math.max(0, Math.round(newY / cell));
 
     const cardW = card.w ?? 3;
     const cardH = card.h ?? 2;
@@ -928,11 +984,12 @@ export function CardContainer({
       onDragEnd={handleDragEnd}
     >
       <div
+        ref={gridAreaRef}
         className="relative w-full"
         style={{
           backgroundImage:
             isEditMode || isDragging ? generateGridSVG(isDragging) : "none",
-          backgroundSize: `${GRID_SIZE}px ${GRID_SIZE}px`,
+          backgroundSize: `${cell}px ${cell}px`,
         }}
       >
         {/* Highlight Grid Cell - Fill the entire grid area */}
@@ -944,10 +1001,10 @@ export function CardContainer({
                 : "bg-primary/30 border-primary shadow-[0_0_30px_hsl(var(--heroui-primary)/0.6),inset_0_0_40px_hsl(var(--heroui-primary)/0.2)]"
             }`}
             style={{
-              left: highlightGrid.x * GRID_SIZE + 1,
-              top: highlightGrid.y * GRID_SIZE + 1,
-              width: highlightGrid.w * GRID_SIZE - 2,
-              height: highlightGrid.h * GRID_SIZE - 2,
+              left: highlightGrid.x * cell + 1,
+              top: highlightGrid.y * cell + 1,
+              width: highlightGrid.w * cell - 2,
+              height: highlightGrid.h * cell - 2,
             }}
             data-testid="highlight-grid"
           >
@@ -965,12 +1022,12 @@ export function CardContainer({
         {/* Grid Coordinate Labels */}
         {(isEditMode || isDragging) && (
           <div className="absolute inset-0 pointer-events-none">
-            {Array.from({ length: Math.ceil(containerHeight / GRID_SIZE) }).map(
+            {Array.from({ length: Math.ceil(containerHeight / cell) }).map(
               (_, rowIndex) => (
                 <div
                   key={`row-${rowIndex}`}
                   className="absolute left-2 text-xs text-muted/50 font-mono"
-                  style={{ top: rowIndex * GRID_SIZE + 4 }}
+                  style={{ top: rowIndex * cell + 4 }}
                 >
                   {rowIndex}
                 </div>
@@ -980,7 +1037,7 @@ export function CardContainer({
               <div
                 key={`col-${colIndex}`}
                 className="absolute top-2 text-xs text-muted/50 font-mono"
-                style={{ left: colIndex * GRID_SIZE + 4 }}
+                style={{ left: colIndex * cell + 4 }}
               >
                 {colIndex}
               </div>
@@ -1005,6 +1062,7 @@ export function CardContainer({
               isDragging={activeId === card.id}
               showGridCoords={isDragging && activeId === card.id}
               highlightCardId={highlightCardId}
+              gridScale={gridScale}
               onLongPress={() => {
                 onEnterEditMode?.();
                 setDraggedViaLongPress(true);
@@ -1023,8 +1081,8 @@ export function CardContainer({
               // 拖拽幽灵同样套壳：与画布上卡片一致的底色/圆角/阴影
               className="dashboard-card-shell opacity-80 scale-105 rotate-2"
               style={{
-                width: (activeCard.w ?? 3) * GRID_SIZE - 2,
-                height: (activeCard.h ?? 2) * GRID_SIZE - 2,
+                width: (activeCard.w ?? 3) * cell - 2,
+                height: (activeCard.h ?? 2) * cell - 2,
               }}
             >
               {(() => {

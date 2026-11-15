@@ -131,7 +131,7 @@
 | L849–L855 | `GachaStatCharts` 图表渲染（星级分布/六星间隔/六星累计） |
 | L857–L864 | `GachaPityChart` 保底柱状图渲染 |
 | L866–L1034 | 记录表格卡片：标题与条数、筛选栏、空态、表格、分页 |
-| L1042–L1109 | 分类切换条（`categories` 渲染）：`sticky` 悬浮于内容区底部；指示器宽度按 `categories.length` 计算 |
+| L1042–L1109 | 分类切换条（`categories` 渲染）：`sticky` 悬浮于内容区底部；指示器宽度按 `categories.length` 计算。⚠️ 移动端 `bottom` 必须让开右下角菜单按钮（见下） |
 | L1111–L1178 | 同步进度 `CustomModal`（错误/进行中/完成三态） |
 | L1179–L1181 | `pctText` 百分比格式化 |
 | L1183–L1190 | `RARITY_COLORS` 稀有度配色表 |
@@ -203,6 +203,11 @@
 - **同步逻辑位置**：`handleSync`；进度事件监听；进度 Modal（错误态/进行中/完成态）；`tabLabel` 用于进度文案。
 - **事件**：Tauri event `gacha-sync-progress`（两游戏共用）；`window` `accountChanged`。
 - **筛选栏宽度约束**：稀有度分段控件（`RARITY_OPTIONS`，记录表格筛选栏内，行尾为 NEW / 赠送十连按钮）整条带 `shrink-0`，四个按钮 `flex-1 min-w-10 whitespace-nowrap`。它是该行里唯一能被压到比文字还窄的元素（卡池 `GlassSelect` 自带 `shrink-0`、搜索框有 `min-w-44` 下限），一旦被压缩，「全部」会折成两行溢出胶囊，看起来像排版坏掉；窗口更窄时由该行的 `flex-wrap` 换行承接，不要去掉这几个类。
+- ⚠️ **底部分类胶囊必须让开右下角菜单按钮（移动端）**：胶囊是 `sticky bottom-4`，与 `layouts/dashboard.tsx` 的移动端菜单按钮（`fixed right-6 bottom-[1.5rem+safe]`、52px 见方、z-30）在 411×914 视口下会**重叠 52×44px** —— 菜单按钮把胶囊右端整个盖住，胶囊上的分类项点不到（实测 Android 模拟器：胶囊 x16–387 / y829–882，菜单按钮 x335–387 / y838–890）。
+  - **现行解法（移动端）**：胶囊**停在菜单按钮左边** —— `w-auto`（不再 `w-full`）+ `mr-[4.25rem]`（68px，正好让开 52px 按钮 + 16px 间隙），`bottom` 保持 `bottom-4` 不抬高（抬高的做法会让胶囊浮在图表中间，位置不对）。让出的宽度用 `flex-1 min-w-0` **均分给每个分类项**（5 项各 58px，文字不截断）。
+  - **切换动画与桌面端完全一致**：滑动指示器**始终渲染**（不再 `hidden lg:block`），各项等分宽度（`flex-1 min-w-0`），选中态由**指示器**承担（玻璃胶囊 + 靛蓝描边，`translateX(下标 * 100%)` 滑过去，`0.42s`），按钮本身只改文字色（`text-primary-text`）——早先窄屏曾让按钮自己换底 `bg-primary` 且指示器隐藏，两套并存，已统一。
+  - **`lg` 及以上**：`lg:w-full lg:max-w-2xl lg:mr-0` 恢复居中满宽（各项同样等分，指示器对齐不受影响）；底部同样保持 `bottom-4`。
+  - **改动前先在设备上量一遍**（Android 模拟器 + `adb forward` 把 WebView 的 devtools socket 转到本机，用 CDP 的 `Runtime.evaluate` 读 `getBoundingClientRect()` 与 `elementsFromPoint()` 即可复核）；`components/ui/back-to-top.tsx` 是同一问题的另一处（它改为抬高到菜单按钮上方，因为那里没有横向空间可让）。
 - 备注异常：
   1. `stats` useMemo 依赖数组为 `[active, category, isWeapon]`，内部使用了每渲染重建的 `isCharDraw` 闭包，未显式列入依赖（当前因 `category` 已覆盖而结果正确，但属易碎写法）。
   2. `handleSync` 的 `finally` 捕获的是触发同步时的 `roleId`，若同步期间本地切换角色会重载旧角色数据（实际同步中角色菜单被禁用，风险极低）。

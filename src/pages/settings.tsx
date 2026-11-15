@@ -1361,12 +1361,18 @@ export default function SettingsPage() {
                     desc: "URL/file opener",
                   },
                 ].map((lib) => (
+                  // 窄屏（Android 手机）下这里是全页最容易崩的一行：
+                  // 链接是 `shrink-0` + 长 URL 不换行，实测宽达 326.8px，比整行
+                  // (321.9px) 还宽 —— flex 于是把左侧名称容器压成 **0 宽**，
+                  // 名称与链接叠在同一处（截图里「Tauri Plugin」被 URL 盖住）。
+                  // 修法：链接改成可收缩 + 省略号，名称保持 nowrap 单行，
+                  // 中间留 12px 间隙。名称优先，URL 让位（完整地址点开就是）。
                   <div
                     key={lib.name}
-                    className="flex items-center justify-between py-1"
+                    className="flex items-center gap-3 py-1"
                   >
-                    <div className="flex items-center gap-2 min-w-0">
-                      <span className="text-xs font-medium text-foreground">
+                    <div className="flex items-center gap-2 min-w-0 shrink-0">
+                      <span className="text-xs font-medium text-foreground whitespace-nowrap">
                         {lib.name}
                       </span>
                       <span className="text-[10px] text-muted/50 hidden sm:inline">
@@ -1377,7 +1383,8 @@ export default function SettingsPage() {
                       href={lib.url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-[11px] text-primary-text hover:text-primary-text hover:underline shrink-0"
+                      title={lib.url}
+                      className="flex-1 min-w-0 text-right text-[11px] text-primary-text hover:text-primary-text hover:underline truncate"
                     >
                       {lib.url.replace(/^https?:\/\//, "").replace(/\/$/, "")}
                     </a>
@@ -1407,15 +1414,17 @@ export default function SettingsPage() {
                   },
                 ].map((proj) => (
                   <div key={proj.name} className="py-1">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-medium text-foreground">
+                    {/* 同上：URL 必须可收缩 + 省略，否则窄屏会把名称压成 0 宽 */}
+                    <div className="flex items-center gap-3">
+                      <span className="text-xs font-medium text-foreground whitespace-nowrap shrink-0">
                         {proj.name}
                       </span>
                       <a
                         href={proj.url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-[11px] text-primary-text hover:text-primary-text hover:underline shrink-0"
+                        title={proj.url}
+                        className="flex-1 min-w-0 text-right text-[11px] text-primary-text hover:text-primary-text hover:underline truncate"
                       >
                         {proj.url
                           .replace(/^https?:\/\//, "")

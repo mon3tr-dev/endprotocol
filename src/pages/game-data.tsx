@@ -573,12 +573,18 @@ export default function GameDataPage() {
                         ongoingText={t("gamedata_page.state_ongoing")}
                       />
                     );
+                    /* 窄屏（< sm）一律**纵向堆叠**：封面（若有）当横幅铺满整行宽度，
+                     * 状态块通栏跟在下面。桌面端的「封面占 1/3 + 状态占 46%」在手机上
+                     * 会把这一行压扁：封面 1/3 宽只有约 126px，按 1002:180 原比例算出来
+                     * 高只有 22.6px，整行连同状态一起塌成 44.5px 的细缝（Android 上
+                     * 「章节封面样式不对、每张卡太小」的根因）。实测改后行高 112px，
+                     * 封面 377×67.7。见 docs/reference/frontend/pages_core.md 的章节行说明。 */
                     if (!row.cover) {
                       /* 无封面的活动：不渲染占位封面，紧凑行 + 内联进度 */
                       return (
                         <div
                           key={`${row.group}-${row.actId}`}
-                          className="w-full rounded-lg overflow-hidden border border-separator/60 bg-default-100/60 select-none flex items-center gap-3 px-3 py-2.5"
+                          className="w-full rounded-lg overflow-hidden border border-separator/60 bg-default-100/60 select-none flex flex-col gap-2 px-3 py-2.5 sm:flex-row sm:items-center sm:gap-3"
                           title={row.name}
                         >
                           <div className="flex items-center gap-2 min-w-0 flex-1">
@@ -591,7 +597,7 @@ export default function GameDataPage() {
                               {row.name}
                             </span>
                           </div>
-                          <div className="w-[46%] flex flex-col justify-center gap-1.5 shrink-0">
+                          <div className="w-full flex flex-col justify-center gap-1.5 shrink-0 sm:w-[46%]">
                             {status}
                           </div>
                         </div>
@@ -600,22 +606,25 @@ export default function GameDataPage() {
                     return (
                       <div
                         key={`${row.group}-${row.actId}`}
-                        className="relative w-full flex items-center overflow-hidden rounded-lg border border-separator/60 bg-default-100/60 select-none"
+                        className="relative w-full flex flex-col overflow-hidden rounded-lg border border-separator/60 bg-default-100/60 select-none sm:flex-row sm:items-center"
                         title={row.name}
                       >
-                        {/* 封面按原比例整幅显示，宽度缩小到行的 1/3 */}
+                        {/* 封面按原比例整幅显示：窄屏铺满整行宽度当横幅
+                         *   （1002:180 → 379px 内容区得 377×67.7），sm 以上才收窄到行的 1/3。
+                         *   封面本身就是带标题的活动横幅，铺满后标题随图放大到可读尺寸，
+                         *   故窄屏不再额外叠一行活动名（名字仍在 title 与 alt 上）。 */}
                         <RemoteThumb
                           src={row.cover}
                           alt={row.name}
-                          className="w-1/3 aspect-[1002/180] shrink-0"
+                          className="w-full aspect-[1002/180] shrink-0 sm:w-1/3"
                         />
                         {row.isReplica && (
                           <span className="absolute left-2 top-2 px-1.5 py-0.5 rounded-md text-[9px] font-medium text-white/90 bg-black/50">
                             {t("gamedata_page.replica_badge")}
                           </span>
                         )}
-                        {/* 右侧状态（内联，与无封面行一致） */}
-                        <div className="ml-auto w-[46%] flex flex-col justify-center gap-1.5 px-3 py-2 shrink-0">
+                        {/* 状态（内联，与无封面行一致）：窄屏通栏，sm 以上右侧 46% */}
+                        <div className="w-full flex flex-col justify-center gap-1.5 px-3 py-2 shrink-0 sm:ml-auto sm:w-[46%]">
                           {status}
                         </div>
                       </div>

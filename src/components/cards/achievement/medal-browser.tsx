@@ -163,8 +163,14 @@ export function MedalBrowser({
 
   return (
     <>
-      <div className="flex gap-2 h-full overflow-hidden p-0.5">
-        <div className="w-44 shrink-0 flex flex-col px-2 rounded-xl border border-separator/70 lg-material overflow-x-hidden">
+      {/*
+       * 两栏只在宽屏成立：左栏分类固定 176px（w-44），右栏是勋章列表。
+       * 手机竖屏只有 ~380px 可用，两栏并排后右栏只剩 ~200px，勋章名被压成
+       * 竖排单字、时间戳挤成三行（实机截图里就是这样）。这里在 <lg 改成
+       * 纵向堆叠：分类栏变成顶部横向滚动的胶囊条，列表独占整宽。
+       */}
+      <div className="flex flex-col lg:flex-row gap-2 h-full overflow-hidden p-0.5">
+        <div className="w-full lg:w-44 lg:shrink-0 flex flex-col px-2 py-1 lg:py-0 rounded-xl border border-separator/70 lg-material overflow-x-hidden">
           <div className="relative mb-2 shrink-0">
             <div className="relative p-1.5">
               <input
@@ -209,12 +215,13 @@ export function MedalBrowser({
               </div>
             )}
           </div>
-          <div className="flex-1 overflow-y-auto space-y-1 px-1">
+          {/* 窄屏：横向滚动的一排分类；宽屏：竖向列表 */}
+          <div className="flex gap-1 overflow-x-auto pb-1 lg:pb-0 lg:flex-1 lg:flex-col lg:overflow-y-auto lg:overflow-x-hidden lg:space-y-1 lg:gap-0 lg:px-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {categories.map((cat) => (
               <button
                 key={cat.key}
                 type="button"
-                className={`w-full text-left px-4 py-2 rounded-lg text-sm transition-all duration-200 ${
+                className={`shrink-0 whitespace-nowrap lg:w-full lg:whitespace-normal text-left px-3 lg:px-4 py-2 lg:py-2 rounded-lg text-xs lg:text-sm transition-all duration-200 ${
                   activeCategory === cat.key
                     ? "lg-control border border-separator text-foreground font-medium hover:scale-[1.02] active:scale-[0.98]"
                     : "text-foreground lg-hoverable-soft border border-transparent hover:scale-[1.02] active:scale-[0.98]"
@@ -227,7 +234,7 @@ export function MedalBrowser({
           </div>
         </div>
 
-        <div className="flex-1 flex flex-col min-w-0">
+        <div className="flex-1 flex flex-col min-w-0 min-h-0">
           <div className="flex items-center gap-2 mb-3 shrink-0 flex-wrap border border-separator/50 rounded-lg p-2 lg-material">
             <span className="text-xs text-muted mr-1">
               {t("card:ach_level")}:

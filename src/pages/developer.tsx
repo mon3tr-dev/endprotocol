@@ -686,7 +686,7 @@ export default function DeveloperPage() {
 
         {/* 网络请求录制 */}
         <GlassCard id="developer-capture" className="p-6 border border-separator/90 overflow-hidden">
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 mb-4">
             <h2 className="text-lg font-semibold flex items-center gap-2">
               <span
                 className={`w-1 h-5 rounded-full ${
@@ -698,7 +698,7 @@ export default function DeveloperPage() {
                 className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${
                   captureStatus?.recording
                     ? "bg-danger/10 text-danger-text"
-                    : "lg-inset text-muted"
+                    : "lg-tag"
                 }`}
               >
                 {captureStatus?.recording
@@ -710,7 +710,7 @@ export default function DeveloperPage() {
                     : "Idle"}
               </span>
             </h2>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               {!captureStatus?.recording ? (
                 <GlassButton
                   variant="primary"
@@ -1055,12 +1055,12 @@ export default function DeveloperPage() {
 
         {/* Log Viewer */}
         <GlassCard id="developer-logs" className="p-6 border border-separator/90 overflow-hidden">
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 mb-4">
             <h2 className="text-lg font-semibold flex items-center gap-2">
               <span className="w-1 h-5 bg-secondary rounded-full" />
               {t("settings.logs.title")}
             </h2>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <GlassButton
                 variant="outline"
                 size="sm"
@@ -1172,7 +1172,7 @@ export default function DeveloperPage() {
                   return (
                     <div
                       key={`${entry.timestamp}-${idx}`}
-                      className={`flex items-start gap-1.5 px-2 py-1 rounded transition-colors ${
+                      className={`flex flex-wrap items-start gap-x-1.5 gap-y-0.5 px-2 py-1 rounded transition-colors ${
                         entry.source === "backend"
                           ? "hover:bg-secondary/5"
                           : "hover:bg-success/5"
@@ -1191,11 +1191,11 @@ export default function DeveloperPage() {
                       >
                         {entry.source === "backend" ? "Backend" : "Frontend"}
                       </span>
-                      <span className="shrink-0 leading-5 text-muted/50 font-normal max-w-[100px] truncate">
+                      <span className="shrink leading-5 text-muted/50 font-normal max-w-[7.5rem] truncate">
                         {entry.module}
                       </span>
                       <span
-                        className={`leading-5 break-all flex-1 min-w-0 font-normal ${LEVEL_TEXT[entry.level]}`}
+                        className={`leading-5 break-all basis-full min-w-0 font-normal ${LEVEL_TEXT[entry.level]}`}
                         title={entry.message.length > MAX_MESSAGE_LENGTH ? entry.message : undefined}
                       >
                         {truncateMessage(entry.message)}

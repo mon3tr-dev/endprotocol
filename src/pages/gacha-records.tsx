@@ -601,7 +601,13 @@ export default function GachaRecordsPage() {
   }
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6 pb-28">
+    /* pb：为吸底分类胶囊留出空间。原来固定 pb-28，但胶囊是 `sticky bottom-4`，
+     * 滚动时始终浮在内容上方，手机上还要再让开手势条（safe-area-bottom）与
+     * 右下角 FAB，否则最后一屏最后一行会被盖住。 */
+    <div
+      className="max-w-6xl mx-auto space-y-6"
+      style={{ paddingBottom: "calc(9rem + var(--safe-area-bottom))" }}
+    >
       {/* 页面标题 + 右上角操作（角色切换 / 同步） */}
       <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="min-w-0">
@@ -963,8 +969,35 @@ export default function GachaRecordsPage() {
         </>
       )}
 
-      {/* 分类选择（悬浮于内容区底部的多项 switch）：指示器滑过去，不再逐项换底 */}
-      <div className="sticky bottom-4 z-40 mx-auto w-full max-w-2xl rounded-full p-1.5 flex lg-control border border-separator/70 shadow-lg">
+      {/*
+       * 分类选择（悬浮于内容区底部的多项 switch）：指示器滑过去，不再逐项换底。
+       *
+       * 这个胶囊是 `sticky`（吸底悬浮），窄屏上有三点必须收敛：
+       *  1) 它整条压在内容之上，手机上没有留白就会盖住最后一行表格；
+       *     用 `--safe-area-bottom` + 底部留白把它抬到手势条之上。
+       *  2) ⚠️ 它与右下角的**移动端菜单按钮**同处一个角：
+       *     菜单按钮是 `fixed right-6 bottom-[1.5rem+safe]`（52px 见方，z-30），
+       *     胶囊若也占满整行宽度，两者会**重叠 52×44px**，菜单按钮把胶囊右端
+       *     整个盖住，分类项点不到。
+       *     → 移动端让胶囊**停在菜单按钮左边**：右边距 4.25rem（68px，正好让开
+       *     菜单按钮的 52px + 16px 间隙），宽度由 `w-full` 改为自适应撑满剩余空间。
+       *  3) 空出来的宽度要**分给每个分类项**（`flex-1` 等分），而不是让文字
+       *     按内容宽度挤在左边 —— 否则「全部角色」三项之外大片留白、右侧空荡。
+       *     实测 411px 视口：胶囊 x16–319（303px 宽），各项等分、文字不截断。
+       *
+       * 切换动画（滑动指示器）在**移动端与桌面端完全一致**：
+       * 指示器始终渲染，各项等分宽度（`flex-1`），指示器宽度 = 每项宽度，
+       * 靠 `translateX(下标 * 100%)` 滑过去；选中态由**指示器**承担，
+       * 按钮本身只改文字色 —— 与桌面端同一套实现，没有第二套。
+       * （早先窄屏曾让按钮自己换底 `bg-primary` + 指示器 `hidden lg:block`，
+       *  两套并存；现已统一为指示器方案。）
+       *
+       * `lg` 及以上桌面没有菜单按钮，恢复原来的 `w-full max-w-2xl` 居中 +
+       * `bottom-4`。
+       */}
+      <div className="sticky z-40 mx-auto rounded-full p-1.5 flex lg-control border border-separator/70 shadow-lg overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden bottom-4 w-auto max-w-none mr-[4.25rem] lg:mr-0 lg:w-full lg:max-w-2xl">
+        {/* 滑动指示器：始终渲染（移动端与桌面同一套动画）。
+         * 宽度 = 胶囊内容宽 / 项数 —— 各项等分（`flex-1`）时正好落在对应项上。 */}
         <span
           aria-hidden
           className="pointer-events-none absolute top-1.5 bottom-1.5 left-1.5 rounded-full lg-control border border-primary/50 [transition:transform_var(--lg-dur-slow)_var(--lg-ease-glide)]"
@@ -985,9 +1018,14 @@ export default function GachaRecordsPage() {
                 setPage(1);
               }}
               className={clsx(
-                "relative z-10 flex-1 h-10 rounded-full text-sm lg:text-base font-semibold transition-all duration-200",
-                "flex items-center justify-center",
-                "active:scale-[0.98]",
+                "relative z-10 h-10 rounded-full text-xs sm:text-sm lg:text-base font-semibold transition-all duration-200",
+                "flex items-center justify-center whitespace-nowrap active:scale-[0.98]",
+                // **各项等分宽度**（`flex-1` + `min-w-0`）：滑动指示器的宽度是
+                // 「胶囊内容宽 / 项数」，只有各项等宽时指示器才对得齐
+                // （移动端也要能滑，所以这里不分断点）。
+                // 文字用 `whitespace-nowrap` 保证不折行。
+                "flex-1 min-w-0 px-1 lg:px-0",
+                // 选中态由**指示器**承担（与桌面端同一套），按钮本身只改文字色。
                 isActive
                   ? "text-primary-text"
                   : "text-foreground/70 hover:text-foreground lg-hoverable",

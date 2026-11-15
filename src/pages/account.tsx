@@ -209,7 +209,17 @@ function GameRoleRow({  role,
   const showU8Actions = isBound && Boolean(onAuthorizeU8 || onRevokeU8);
 
   return (
-    <div className="lg-material-row flex min-w-0 items-center gap-3 rounded-lg border border-separator/60 p-2.5">
+    /*
+     * 行内布局（窄屏关键）：
+     * 右侧按钮区是 `shrink-0`，在 Android 窄屏（卡片内可用宽度约 338px）下
+     * 「授权抽卡 + 设为当前 + 解绑」三个按钮实测宽 263px，会把昵称列**压成 0 宽**
+     * —— 名字整条消失（两个按钮时也只剩 25px，显示成「S…」）。
+     * 修法：① 整行允许换行（`flex-wrap`），空间不够时按钮区整体落到第二行；
+     * ② 给昵称列 `min-w-[7rem]`（本注释原先就写着这个意图，但代码里一直没写），
+     * 保证它永远至少 112px，名字读得出来。按钮区自身的 `flex-wrap`
+     * 继续负责把多个按钮在第二行里排布。
+     */
+    <div className="lg-material-row flex min-w-0 flex-wrap items-center gap-3 rounded-lg border border-separator/60 p-2.5">
       <div className="h-10 w-10 shrink-0 overflow-hidden rounded-md border border-separator/50 bg-content2/30">
         {role.avatarUrl ? (
           <Img
@@ -223,7 +233,7 @@ function GameRoleRow({  role,
           </div>
         )}
       </div>
-      <div className="min-w-0 flex-1">
+      <div className="min-w-[7rem] flex-1">
         <p className="truncate text-sm font-medium text-foreground">
           {role.nickname}
         </p>
@@ -236,10 +246,10 @@ function GameRoleRow({  role,
         </div>
       </div>
       {/*
-        按钮区：窄容器下允许换行，并给昵称留一个最小宽度（`min-w-[7rem]`），
-        否则「授权抽卡 + 设为当前 + 解绑」会把名字压成一两个字。
+        按钮区：窄容器下允许换行，与上面的 `min-w-[7rem]` 配合 ——
+        外层 `flex-wrap` 会把整块推到第二行，块内的 `flex-wrap` 再排布按钮。
       */}
-      <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+      <div className="flex flex-wrap items-center justify-end gap-2">
         {/*
           「抽卡」只占一个按钮：未授权时是实心「授权抽卡」，已授权时变成带勾的
           描边按钮（再点即取消）。原先「已授权抽卡」徽标 +「取消授权」按钮 +
@@ -4023,15 +4033,24 @@ export default function AccountPage() {
                 {t("settings.account.select_login_method")}
               </p>
 
-              <div className="grid grid-cols-3 gap-4">
+              {/*
+                * 窄屏必须走**纵向列表**，不能用三列卡片：
+                * 三列在 411px（Pixel 7 实测）下每张只有 99.2px，扣掉 p-6 的左右
+                * 各 24px，文字区仅剩 47px —— 「验证码登录」5 个汉字直接折成 2 行；
+                * 390px 时折 3 行、320px 时折 4~5 行（文字区只剩 17px），
+                * 观感就是逐个字竖着排。
+                * 改成 `grid-cols-1 sm:grid-cols-3`：手机上每行一个、图标在左，
+                * 文案永远单行；≥sm（平板/桌面）保持原来的三列卡片。
+                */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
                 {/* 密码登录 */}
                 <button
                   onClick={() => setLoginMethod("phone")}
-                  className="lg-material flex flex-col items-center gap-3 p-6 rounded-xl border-2 border-separator hover:border-primary hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-all cursor-pointer group"
+                  className="lg-material flex flex-row sm:flex-col items-center justify-start sm:justify-center gap-4 sm:gap-3 p-4 sm:p-6 rounded-xl border-2 border-separator hover:border-primary hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-all cursor-pointer group"
                 >
-                  <div className="w-16 h-16 rounded-full bg-primary-100 dark:bg-primary-900 flex items-center justify-center group-hover:scale-110 transition-transform">
+                  <div className="w-11 h-11 sm:w-16 sm:h-16 shrink-0 rounded-full bg-primary-100 dark:bg-primary-900 flex items-center justify-center group-hover:scale-110 transition-transform">
                     <svg
-                      className="w-8 h-8 text-primary-text"
+                      className="w-6 h-6 sm:w-8 sm:h-8 text-primary-text"
                       fill="none"
                       stroke="currentColor"
                       viewBox="0 0 24 24"
@@ -4044,7 +4063,7 @@ export default function AccountPage() {
                       />
                     </svg>
                   </div>
-                  <span className="text-sm font-medium text-foreground">
+                  <span className="text-sm font-medium text-foreground whitespace-nowrap">
                     {t("settings.account.phone_login")}
                   </span>
                 </button>
@@ -4052,11 +4071,11 @@ export default function AccountPage() {
                 {/* 验证码登录 */}
                 <button
                   onClick={() => setLoginMethod("sms")}
-                  className="lg-material flex flex-col items-center gap-3 p-6 rounded-xl border-2 border-separator hover:border-primary hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-all cursor-pointer group"
+                  className="lg-material flex flex-row sm:flex-col items-center justify-start sm:justify-center gap-4 sm:gap-3 p-4 sm:p-6 rounded-xl border-2 border-separator hover:border-primary hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-all cursor-pointer group"
                 >
-                  <div className="w-16 h-16 rounded-full bg-primary-100 dark:bg-primary-900 flex items-center justify-center group-hover:scale-110 transition-transform">
+                  <div className="w-11 h-11 sm:w-16 sm:h-16 shrink-0 rounded-full bg-primary-100 dark:bg-primary-900 flex items-center justify-center group-hover:scale-110 transition-transform">
                     <svg
-                      className="w-8 h-8 text-primary-text"
+                      className="w-6 h-6 sm:w-8 sm:h-8 text-primary-text"
                       fill="none"
                       stroke="currentColor"
                       viewBox="0 0 24 24"
@@ -4069,7 +4088,7 @@ export default function AccountPage() {
                       />
                     </svg>
                   </div>
-                  <span className="text-sm font-medium text-foreground">
+                  <span className="text-sm font-medium text-foreground whitespace-nowrap">
                     {t("settings.account.sms_login")}
                   </span>
                 </button>
@@ -4077,11 +4096,11 @@ export default function AccountPage() {
                 {/* 扫码登录 */}
                 <button
                   onClick={() => setLoginMethod("qrcode")}
-                  className="lg-material flex flex-col items-center gap-3 p-6 rounded-xl border-2 border-separator hover:border-primary hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-all cursor-pointer group"
+                  className="lg-material flex flex-row sm:flex-col items-center justify-start sm:justify-center gap-4 sm:gap-3 p-4 sm:p-6 rounded-xl border-2 border-separator hover:border-primary hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-all cursor-pointer group"
                 >
-                  <div className="w-16 h-16 rounded-full bg-primary-100 dark:bg-primary-900 flex items-center justify-center group-hover:scale-110 transition-transform">
+                  <div className="w-11 h-11 sm:w-16 sm:h-16 shrink-0 rounded-full bg-primary-100 dark:bg-primary-900 flex items-center justify-center group-hover:scale-110 transition-transform">
                     <svg
-                      className="w-8 h-8 text-primary-text"
+                      className="w-6 h-6 sm:w-8 sm:h-8 text-primary-text"
                       fill="none"
                       stroke="currentColor"
                       viewBox="0 0 24 24"
@@ -4094,7 +4113,7 @@ export default function AccountPage() {
                       />
                     </svg>
                   </div>
-                  <span className="text-sm font-medium text-foreground">
+                  <span className="text-sm font-medium text-foreground whitespace-nowrap">
                     {t("settings.account.scan_login")}
                   </span>
                 </button>

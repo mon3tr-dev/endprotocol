@@ -154,12 +154,13 @@
 | 区间 | 结构 / 职责 |
 | --- | --- |
 | 1-24 | import 声明 |
-| 26-42 | 网格常量与背景：`GRID_SIZE = 100`（:27）；`generateGridSVG(isDragging)` 生成虚线网格 data-URI（拖拽时透明度 0.3，否则 0.15，:30-42） |
+| 26-42 | 网格常量与背景：`GRID_SIZE = 100`（:35，网格**坐标/基准**单位，与视口无关）；`generateGridSVG(isDragging)` 生成虚线网格 data-URI（拖拽时透明度 0.3，否则 0.15） |
 | 43 | `export const CONTAINER_HEIGHT = 2000`（容器可用高度，被 `src/pages/account.tsx:16` 引用） |
 | 45-51 | `FreeDragCardProps`（接口，未导出）：`card`/`roleId`/`isEditMode`/`onRemoveCard`/`onUpdatePosition` |
-| 53-445 | `FreeDragCard()`（私有组件）：单张可拖拽卡片外壳，见下方细分行 |
+| 53-445 | `FreeDragCard()`（私有组件）：单张可拖拽卡片外壳，见下方细分行。**窄屏缩放**：额外接收 `gridScale`（默认 1），内部用 `cell = GRID_SIZE * gridScale` 计算 `left/top/width/height`；布局坐标仍按 100 记，渲染时统一乘系数 |
 | 447-456 | `CardContainerProps`（接口，未导出）：`roleId`、`tabId?`、`cards: CardConfig[]`、`onRemoveCard`、`isEditMode?`、`onEnterEditMode?`、`onExitEditMode?`、`highlightCardId?` |
 | 458-957 | `CardContainer()`（导出组件）：容器主体，见下方细分行 |
+| `gridScale` 测量 | `CardContainer` 内用 `ResizeObserver` 观察网格容器宽度，求 `min(1, (w-1)/(4*100))`。**为什么**：卡片是绝对定位且宽度写死为 `w*100`，411px 宽的手机内容区只有 379px，4 列 = 398px 会探出右边缘（整页横向溢出 4px）。缩放而非改坐标，是因为坐标是持久化的用户布局；桌面宽屏系数恒为 1，行为不变。拖拽吸附同样除以 `cell`，否则缩放下拖一格吸附不上 |
 
 ### `FreeDragCard` 细分（53-445）
 

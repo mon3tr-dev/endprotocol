@@ -59,14 +59,14 @@
   - 519-529 行：桌面端侧边栏——外层 `div` 宽度在 `w-72` 与 `w-[64px]` 间以 `transition-[width] duration-300 ease-out` 平滑过渡（`overflow-hidden` 裁剪），向 `<Sidebar collapsed={sidebarCollapsed} onToggleCollapsed={toggleSidebarCollapsed} />` 传入折叠状态与切换回调。
   - 531-557 行：移动端抽屉（`mobileOpen` 为真时渲染遮罩 + `Sidebar onNavigate={关闭}`）；抽屉内另挂 `.frost-main frost-drawer`（545-553 行，fixed 定位、仅横向遮罩）。抽屉容器带 `padding-top: var(--safe-area-top)` 内联样式，让 Android/iOS 状态栏不压住抽屉内容。
   - 559-585 行：`<main>` 滚动容器，内部 `div` 带 `id="dashboard-main"`（562，仪表盘快照的截图基准：`tabSnapshotService` 以它的视口矩形计算截取区域）并以 `location.pathname` 为 key 强制路由切换时重挂载，其中 `<Suspense>` 包裹 `{children}`，懒加载页面 chunk 未就绪时以居中的 `GlassProgressCircle`（不定量 lg）作为兜底（布局外壳保持挂载）。
-  - 587-607 行：移动端右下角浮动菜单按钮（`lg:hidden`），点击 `setMobileOpen(true)`；bottom 用 `[bottom:calc(1.5rem+var(--safe-area-bottom))]` 让出 Android 手势条 / iOS Home 条。
+  - 587-607 行：移动端右下角浮动菜单按钮（`lg:hidden`），点击 `setMobileOpen(true)`；bottom 用 `[bottom:calc(1.5rem+var(--safe-area-bottom))]` 让出 Android 手势条 / iOS Home 条。⚠️ 这个按钮占据右下角 **52×52px**（411×914 视口下 x335–387 / y838–890，z-30），**页面内所有右下角悬浮控件都必须让开它**，否则会被盖住点不到（详见 `pages_game_data.md` 抽卡页分类胶囊与 `ui_components.md` 的 `BackToTopFab` 两条记录）。
 - 612-735 行：背景模式切换器实现——触发区常量（612-614）、选项表 `BG_MODE_OPTIONS`（616-635）、`GameBackgroundSwitch`（637-735）：固定定位在 `top-12`（标题栏下方）居中，隐藏态 `-translate-y-2 scale-95 opacity-0 pointer-events-none`，显示态复位（`transition-all duration-300 ease-out` 浮出动画）；胶囊容器内为滑动主色指示块 + 两个图标按钮（`h-8 w-9`，`MorphIcon size=16`），激活图标使用 `text-primary-foreground`。
 
 **备注**：
 - **invoke 命令**：本文件无直接 `invoke(...)`；间接经 `launcherService` 调用 `launcher_get_notice_content`（公告 + Banner + 右侧栏）与 `launcher_get_background_image`（背景）。
 - 路由：作为所有业务路由的外层包裹（`App.tsx` 中 `/`、`/settings`、`/account`、`/characters`、`/medals`、`/attendance`、`/gacha`、`/developer` 均包在 `DashboardLayout` 内）。
 - 平台限制：游戏启动器页面分支和公告/背景 IPC 仅在 Windows 启用；`launcherMode` store 在其他平台始终返回 data 模式。
-- 移动端（Android/iOS）：标题栏经 globals.css 的 `.titlebar-shell` 让出顶部安全区（高度 = 44px + `env(safe-area-inset-top)`，磨砂带 `--lg-frost-titlebar-h` 同步延伸），抽屉与右下角菜单按钮各让出对应 inset；仪表盘的 `DashboardFAB` 在 `<lg` 视口抬到菜单按钮上方（`bottom: calc(6rem + var(--safe-area-bottom))`，`lg:bottom-6`）避免两个 FAB 重叠。`index.html` 的 viewport 带 `viewport-fit=cover`（安全区 insets 生效的前提）。
+- 移动端（Android/iOS）：标题栏经 globals.css 的 `.titlebar-shell` 让出顶部安全区（高度 = 44px + `env(safe-area-inset-top)`，磨砂带 `--lg-frost-titlebar-h` 同步延伸），抽屉与右下角菜单按钮各让出对应 inset；仪表盘的 `DashboardFAB` 在 `<lg` 视口抬到菜单按钮上方（`bottom: calc(6rem + var(--safe-area-bottom))`，`lg:bottom-6`）避免两个 FAB 重叠。**同理，抽卡页底部分类胶囊与 `BackToTopFab`（`bottom-[calc(6rem+safe)] lg:bottom-6`）也必须让开菜单按钮** —— 前者选择**横向让位**（停在菜单按钮左边，各项均分剩余宽度），后者选择**纵向让位**（抬到按钮上方），因为它没有横向空间可让。`index.html` 的 viewport 带 `viewport-fit=cover`（安全区 insets 生效的前提）。
 - 关键 window/事件语义：无自定义 window 事件；使用 store 订阅（`subscribeLauncherMode`/`subscribeLauncherBgMedia`/`subscribeGameBgMode`/`subscribeActiveGame`）；`GameBackgroundSwitch` 额外监听 window `mousemove` 实现顶部中央浮出与离场收起（右侧栏 `GameSidebarRail` 自己监听 `mousemove`，不在本文件）。
 - localStorage：渠道按游戏分区读写 `launcher_channel` / `launcher_channel_arknights`（经 `launcherService.readGameChannel` / `gameConfigKey`）；背景模式 `game_bg_mode` 由 `stores/launcherMode` 读写；当前游戏 `launcher_game` 由 `stores/launcherGame` 读写。
 - 配置键（configService）：读 `sidebar_rail_collapsed`；写 `sidebar_rail_collapsed`。
@@ -294,29 +294,29 @@
 - ⚠️ 设施接口是「对象或数组」混用（control/meeting 为对象），后端 `one_or_many` 已收敛成 `Vec`，前端按数组渲染即可。
 
 ## `src/pages/game-data.tsx`
-**职责**：游戏数据独立页面（**仅明日方舟**；**页面专属，没有对应卡片**）。页头（`CardIcon "chart"`）之后**全部区块均为 `CollapsibleCard` 可折叠卡片**（点击标题行折叠/展开，带 `grid-rows` 高度动画；折叠状态持久化在配置 `gamedata_page_folded`）：主线进度（`status.mainStageProgress` + `stageInfoMap[key].code/name`，B 服实测为空 → 占位文案）→ **章节进度按类别拆成 4 张独立卡片**（`activity[]` 按 `activityInfoMap[].type` 分组：别传 `SIDESTORY` / 故事集 `MINISTORY` / 插曲 `BRANCHLINE` / 其他活动（空串），组内按开始时间倒序，标题行右侧显示行数徽标，空分组不出卡；**章节行**：有封面时封面按原比例整幅渲染、宽度缩到行的 1/3（`w-1/3 aspect-[1002/180]`，实测统一 1002×180 不裁切），复刻徽标压在封面左上，右侧 46% 宽内联放状态（☑ 已完成 / 进行中）+ `cleared/total` + 进度条（`ChapterStatus`，语义 token 色）；**无封面的活动（约 43%，插曲全部无封面）不渲染占位封面，降级为紧凑行**——复刻徽标 + 名称一行，右侧同宽 46% 内联状态/计数/进度条）→ 剿灭作战（**据点行**：`h-16` 卡片，`campaignInfoMap[].picUrl` 作为整行背景（1002×180 横幅，右侧 `mask-image` 8%→72% 渐隐以免压住文字），左侧据点名 + **阵营徽标**（`campaignInfoMap[cid].campaignZoneId` → `campaignZoneInfoMap[zoneId].name`，如哥伦比亚/谢拉格/维多利亚/汐斯塔/炎国；缺表时不显示徽标），右侧「最高剿灭数 N」）→ 集成战略（**图片行**：固定行高 `h-14`；缩略图 `absolute inset-y-0 left-0 h-full w-auto` **绝对定位铺在行左缘、不占布局**（保持 1002:180 原比例不裁剪、上下无缝隙），右端 `mask-image` 在 15%→58% 处渐隐到卡片背景；文字块 `pl-[33%]` **精确落在行左侧 1/3 处、压在图片渐隐区上**；**行内字段对齐官方「集成战略」页：投资系统 = `bank.current`、收藏品 = `relicCnt`**，右上角为主题奖章 `medal.current/total`，按 `rogueInfoMap.sort` **降序**排序（= 官方顺序，最新主题在最上，如 `sort=6` 的「沉沦者的黑流树海」排第一；升序会把顺序整个颠倒）。⚠️ `bpLevel`（通票等级）不在官方该页展示；`clearTime` 实测是 `0/2/6` 这类小整数**而非时间戳**，曾按日期格式化成「01-01 08:00 首通」，现已不再渲染）与保全派驻（Stationary Security Service，同款图片行 + 名/subName + 最好成绩关卡数）双列，两者 `picUrl` 为空时**不渲染缩略图**（文字块也不加左内边距）→ 生息演算（Reclamation Algorithm，`sandbox[]`：基建等级/修复裂隙/最长天数/支线完成数）与**引航者试炼（Trials for Navigator）**双列 —— 试炼行与集成战略同款图片行：缩略图绝对定位铺左 + 期数文案 `gamedata_page.bossrush_season`（第 N 期 / Season N）与黄色 `#NN` 期数徽标（从 `actNbossrush` 解析，期数倒序）一起压在左侧 1/3 处、不出图右，右侧 played/难度或「暂无记录」。
+**职责**：游戏数据独立页面（**仅明日方舟**；**页面专属，没有对应卡片**）。页头（`CardIcon "chart"`）之后**全部区块均为 `CollapsibleCard` 可折叠卡片**（点击标题行折叠/展开，带 `grid-rows` 高度动画；折叠状态持久化在配置 `gamedata_page_folded`）：主线进度（`status.mainStageProgress` + `stageInfoMap[key].code/name`，B 服实测为空 → 占位文案）→ **章节进度按类别拆成 4 张独立卡片**（`activity[]` 按 `activityInfoMap[].type` 分组：别传 `SIDESTORY` / 故事集 `MINISTORY` / 插曲 `BRANCHLINE` / 其他活动（空串），组内按开始时间倒序，标题行右侧显示行数徽标，空分组不出卡；**章节行**：有封面时封面按原比例整幅渲染 —— **`sm` 以上**宽度缩到行的 1/3（`w-full aspect-[1002/180] sm:w-1/3`，实测统一 1002×180 不裁切），**窄屏（< sm）封面铺满整行宽度当横幅**（行改 `flex-col`：封面 → 状态块纵向堆叠，状态块 `w-full` 通栏；封面本身即带标题的活动横幅，铺满后标题放大到可读尺寸，故窄屏不再额外渲染活动名，名字只留在 `title`/`alt`），复刻徽标压在封面左上，`sm` 以上右侧 46% 宽内联放状态（☑ 已完成 / 进行中）+ `cleared/total` + 进度条（`ChapterStatus`，语义 token 色）；**无封面的活动（约 43%，插曲全部无封面）不渲染占位封面，降级为紧凑行**——复刻徽标 + 名称一行，右侧同宽 46% 内联状态/计数/进度条（窄屏同样 `flex-col` 堆叠、状态通栏））→ 剿灭作战（**据点行**：`h-16` 卡片，`campaignInfoMap[].picUrl` 作为整行背景（1002×180 横幅，右侧 `mask-image` 8%→72% 渐隐以免压住文字），左侧据点名 + **阵营徽标**（`campaignInfoMap[cid].campaignZoneId` → `campaignZoneInfoMap[zoneId].name`，如哥伦比亚/谢拉格/维多利亚/汐斯塔/炎国；缺表时不显示徽标），右侧「最高剿灭数 N」）→ 集成战略（**图片行**：固定行高 `h-14`；缩略图 `absolute inset-y-0 left-0 h-full w-auto` **绝对定位铺在行左缘、不占布局**（保持 1002:180 原比例不裁剪、上下无缝隙），右端 `mask-image` 在 15%→58% 处渐隐到卡片背景；文字块 `pl-[33%]` **精确落在行左侧 1/3 处、压在图片渐隐区上**；**行内字段对齐官方「集成战略」页：投资系统 = `bank.current`、收藏品 = `relicCnt`**，右上角为主题奖章 `medal.current/total`，按 `rogueInfoMap.sort` **降序**排序（= 官方顺序，最新主题在最上，如 `sort=6` 的「沉沦者的黑流树海」排第一；升序会把顺序整个颠倒）。⚠️ `bpLevel`（通票等级）不在官方该页展示；`clearTime` 实测是 `0/2/6` 这类小整数**而非时间戳**，曾按日期格式化成「01-01 08:00 首通」，现已不再渲染）与保全派驻（Stationary Security Service，同款图片行 + 名/subName + 最好成绩关卡数）双列，两者 `picUrl` 为空时**不渲染缩略图**（文字块也不加左内边距）→ 生息演算（Reclamation Algorithm，`sandbox[]`：基建等级/修复裂隙/最长天数/支线完成数）与**引航者试炼（Trials for Navigator）**双列 —— 试炼行与集成战略同款图片行：缩略图绝对定位铺左 + 期数文案 `gamedata_page.bossrush_season`（第 N 期 / Season N）与黄色 `#NN` 期数徽标（从 `actNbossrush` 解析，期数倒序）一起压在左侧 1/3 处、不出图右，右侧 played/难度或「暂无记录」。
 
 **导出**：`export default function GameDataPage`；文件内 `PageHeader`、`ChapterRow`（章节聚合行）、`ChapterStatus`（章节行右侧状态块）、`CollapsibleCard`（可折叠区块卡）、`chapterGroupOf(type)`、`parseBossRushNum(id)`、`bossRushBadgeLabel(num)`、`CHAPTER_GROUP_ORDER` / `CHAPTER_GROUP_TITLE_KEY`。
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
-| `ROLE_CONFIG_KEY` | game-data.tsx:33 | `"gamedata_page_role_id"` |
-| `FOLD_CONFIG_KEY` | game-data.tsx:36 | `"gamedata_page_folded"`，各区块折叠状态（`Record<sectionKey, boolean>`）的持久化键 |
-| `chapterGroupOf(type)` | game-data.tsx:42 | `SIDESTORY→sidestory`、`MINISTORY→ministory`、`BRANCHLINE→branchline`、其余（含空串）→`other` |
-| `parseBossRushNum(id)` | game-data.tsx:63 | `act6bossrush → 6`，正则不匹配返回 `null`（名称回退原始 id） |
-| `bossRushBadgeLabel(num)` | game-data.tsx:69 | `6 → "#06"`（两位补零） |
-| `ChapterStatus` | game-data.tsx:88 | 章节行右侧状态 + 进度块（内联语义 token 色，有封面行与无封面紧凑行共用） |
-| `CollapsibleCard` | game-data.tsx:166 | 可折叠区块卡：标题行（标题 + 可选徽标 + 折叠箭头）点击切换（`aria-expanded`）；**展开/收起带动画**——内容区用 `grid-template-rows: 0fr ↔ 1fr` + `opacity` + 内层 `-translate-y-1`，`duration-300 ease-out`（沿用 `pages/account.tsx` 的方案，无需测量高度）；折叠后内容保留在 DOM，用 `aria-hidden` + `inert` 屏蔽交互与可访问性树 |
-| `IMAGE_ROW_CLASS` | game-data.tsx:73 | 图片行容器：`relative h-14` 固定行高 + `overflow-hidden`，供缩略图绝对定位填满、无上下缝隙 |
-| `IMAGE_THUMB_CLASS` | game-data.tsx:77 | 行内横幅缩略图：`absolute inset-y-0 left-0 h-full w-auto max-w-none`（不占布局、保持 1002:180 原比例不裁剪），右端 `mask-image` 15%→58% 渐隐到背景 |
-| `IMAGE_TEXT_CLASS` | game-data.tsx:81 | 图片行文字块（`relative z-10`）；有图时由调用方追加 `pl-[33%]` 压在行左侧 1/3 处 |
-| `rogueRecords` | game-data.tsx:391 | 集成战略各主题进度，按 `rogueInfoMap.sort` **降序**（官方顺序）；`bank`（投资系统）与 `relicCnt`（解锁道具）是页面实际展示字段 |
+| `ROLE_CONFIG_KEY` | game-data.tsx:36 | `"gamedata_page_role_id"` |
+| `FOLD_CONFIG_KEY` | game-data.tsx:39 | `"gamedata_page_folded"`，各区块折叠状态（`Record<sectionKey, boolean>`）的持久化键 |
+| `chapterGroupOf(type)` | game-data.tsx:50 | `SIDESTORY→sidestory`、`MINISTORY→ministory`、`BRANCHLINE→branchline`、其余（含空串）→`other` |
+| `parseBossRushNum(id)` | game-data.tsx:71 | `act6bossrush → 6`，正则不匹配返回 `null`（名称回退原始 id） |
+| `bossRushBadgeLabel(num)` | game-data.tsx:77 | `6 → "#06"`（两位补零） |
+| `ChapterStatus` | game-data.tsx:108 | 章节行右侧状态 + 进度块（内联语义 token 色，有封面行与无封面紧凑行共用） |
+| `CollapsibleCard` | game-data.tsx:171 | 可折叠区块卡：标题行（标题 + 可选徽标 + 折叠箭头）点击切换（`aria-expanded`）；**展开/收起带动画**——内容区用 `grid-template-rows: 0fr ↔ 1fr` + `opacity` + 内层 `-translate-y-1`，`duration-300 ease-out`（沿用 `pages/account.tsx` 的方案，无需测量高度）；折叠后内容保留在 DOM，用 `aria-hidden` + `inert` 屏蔽交互与可访问性树 |
+| `IMAGE_ROW_CLASS` | game-data.tsx:82 | 图片行容器：`relative h-14` 固定行高 + `overflow-hidden`，供缩略图绝对定位填满、无上下缝隙 |
+| `IMAGE_THUMB_CLASS` | game-data.tsx:87 | 行内横幅缩略图：`absolute inset-y-0 left-0 h-full w-auto max-w-none`（不占布局、保持 1002:180 原比例不裁剪），右端 `mask-image` 15%→58% 渐隐到背景 |
+| `IMAGE_TEXT_CLASS` | game-data.tsx:91 | 图片行文字块（`relative z-10`）；有图时由调用方追加 `pl-[33%]` 压在行左侧 1/3 处 |
+| `rogueRecords` | game-data.tsx:397 | 集成战略各主题进度，按 `rogueInfoMap.sort` **降序**（官方顺序）；`bank`（投资系统）与 `relicCnt`（解锁道具）是页面实际展示字段 |
 | `campaigns` | — | 剿灭据点：`campaign.records` + `campaignInfoMap`（名/封面）+ `campaignZoneInfoMap[campaignZoneId].name`（阵营），`maxKills` |
 | `towerRecords` | — | 保全派驻训练场；直接沿用接口 `tower.records` 原始顺序（实测已与官方一致：7/9/10 号 → 阿尔斯特 → 塔山） |
 | `mainStage` | — | `mainStageProgress` → `stageInfoMap`；code 与 id 可能差 1，**以 code 展示** |
-| `ChapterRow.cover` | — | 章节封面 = `activityInfoMap[actId].picUrl`；**实测统一 1002×180（5.57:1）**，有值时行内用 `w-1/3 aspect-[1002/180]` 按原比例整幅渲染（宽度为行的 1/3，不裁切；`RemoteThumb` 加载失败回退首字母占位）；**空时不渲染封面**（紧凑行） |
+| `ChapterRow.cover` | — | 章节封面 = `activityInfoMap[actId].picUrl`；**实测统一 1002×180（5.57:1）**，有值时按原比例整幅渲染、不裁切（`RemoteThumb` 加载失败回退首字母占位）：**窄屏（< sm）`w-full aspect-[1002/180]` 铺满整行当横幅**（379px 内容区 → 封面 377×67.7，行高 112px），**`sm` 以上收窄到 `sm:w-1/3`**（900px 宽 → 封面 299.3×53.8，行高 55.8px，与改动前的桌面观感完全一致）；**空时不渲染封面**（紧凑行） |
 | `chapterGroups` | — | 章节聚合（活动名缺失回退 actId）；分区**不下发名称**，故不做分区拆行 |
-| `bossRushList` | game-data.tsx:360 | `bossRush` 附加解析出的期数 `num`，按期数倒序（`#06` 在前，对齐官方排序） |
+| `bossRushList` | game-data.tsx:428 | `bossRush` 附加解析出的期数 `num`，按期数倒序（`#06` 在前，对齐官方排序） |
 
 **备注**：
 - 路由 `/game-data`（NavKey `"gamedata"`，键与路由段不同：`NAV_ROUTES.gamedata = "/game-data"`）；侧栏 `ChartIcon`。
@@ -325,6 +325,7 @@
 - 折叠状态经 `ConfigService` 持久化：`gamedata_page_folded`（`Record<sectionKey, boolean>`；章节卡 key 为 `chapters_<group>`，其余为 `main`/`campaign`/`rogue`/`tower`/`sandbox`/`bossrush`；首次进入读取一次、变更即写回）。
 - i18n：`sidebar.gamedata`、`gamedata_page.*`（chapter_type_*/state_*/max_kills/medal_progress/bank_invest=投资系统/relics=解锁道具/bossrush_name/not_played=暂无记录 等；`bp_level`、`cleared_at`、`not_cleared` 已不再被本页使用）。
 - ⚠️ 77 个活动条目几乎都是 `0/total`（未复刻/未开放），页面靠分组 + 时间倒序让「最近有进度」的排前；这是数据源特性，不是 bug。
+- ⚠️ **章节行的窄屏堆叠不能「优化」回单行**：封面按 1002:180 原比例，宽度一旦只给 1/3，高度就锁死在 `宽 ÷ 5.57`。Android 内容区 379px 时 1/3 宽只有 126px → 封面高 **22.6px**，整行连同状态一起被压成 **44.5px** 的细缝（用户报的「封面样式不对、每张卡太小」）。窄屏改成 `flex-col` + 封面 `w-full` 后，封面 377×67.7、行高 **112px**；`sm:w-1/3` 的桌面行为必须保持原样（实测 55.8px，与改动前逐像素一致）。
 
 ## `src/pages/todo.tsx`
 **职责**：To-Do 独立页面。左侧为列表管理（搜索、新建、拖拽排序、分组、复制、删除、设置），右侧为当前列表的完整编辑器（`TodoDetail`，与卡片/弹窗共用）；支持模板新建与 Markdown/JSON 导入导出；以 URL 查询参数 `?list=<id>` 记录当前列表。

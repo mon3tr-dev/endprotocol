@@ -717,7 +717,7 @@ export function AppearanceSettings() {
             <button
               key={opt.value}
               onClick={() => handleModeChange(opt.value)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-200 cursor-pointer ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 min-h-9 rounded-lg text-sm font-medium transition-all duration-200 cursor-pointer ${
                 themeMode === opt.value
                   ? "bg-background text-foreground shadow-sm"
                   : "text-muted hover:text-foreground lg-hoverable"

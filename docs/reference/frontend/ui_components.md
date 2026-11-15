@@ -73,7 +73,9 @@
 | --- | --- | --- |
 | `BackToTopFab` | back-to-top.tsx:11 | props：`getContainer`（返回滚动容器的函数）、`className`。滚动超过 20% 显示（back-to-top.tsx:32）；点击平滑回顶（back-to-top.tsx:61） |
 
-**备注**：用 `requestAnimationFrame` 轮询等待容器挂载（back-to-top.tsx:34-44）；固定定位 `bottom-6 right-6 z-[10003]`；文件头注释写"超过 50% 显示"，实际代码是 `p > 20`，以代码为准。
+**备注**：用 `requestAnimationFrame` 轮询等待容器挂载（back-to-top.tsx:34-44）；固定定位 `right-6 z-[10003]`；文件头注释写"超过 50% 显示"，实际代码是 `p > 20`，以代码为准。
+
+⚠️ **移动端（`<lg`）的 bottom 必须让开右下角菜单按钮**：`bottom-6 right-6` 的 48px 悬浮球与 `layouts/dashboard.tsx` 的移动端菜单按钮（`fixed right-6 bottom-[1.5rem+safe]`、52px 见方、z-30）**完全重合**，而本组件 `z-[10003]` 更高，会把菜单按钮整个盖住 —— 移动端点右下角变成"点了没反应"，且菜单永远打不开。现行写法为 `bottom-[calc(6rem+var(--safe-area-bottom))] lg:bottom-6`（`<lg` 抬到菜单按钮上方留 20px 间隙，`lg` 及以上桌面没有菜单按钮，恢复 `bottom-6`）。`DashboardFAB`（`components/dashboard-fab.tsx`）是同一问题的既有解法，两者取值保持一致。
 
 ## `src/components/ui/badge.tsx`
 **职责**：胶囊形标签（Chip/Badge），三维度变体：填充样式 x 尺寸 x 语义色。
@@ -550,6 +552,8 @@ character-list / domain-info / spaceship / attendance-settings-modal）都复用
 **备注**：两套 API 选一即可——`GlassSwitch`（分体，需显式组合 Control/Thumb）或 `Switch`（一体，零子件可用）；`GlassSwitch` 不传 children 时回落到本项目的 `Thumb`（此前是 Radix 原生 `Thumb`，无样式也无过渡，即「库里的组件没动画」）。轨道底色走 `--lg-dur-base`(260ms) + `--lg-ease-standard`，滑块位移走 `--lg-dur-press`(340ms) + `--lg-ease-spring`（带惯性过冲，滑到位而非瞬移）。选中态不闪烁的另一个前提在 globals.css：`.lg-control::before` 的填充必须用 `background-color` 过渡——原先的 `background: none` 简写不可过渡，会在铺上 `bg-primary` 的同一帧整块消失。
 
 **页面里自制的分段控件（同一套动效约定）**：区域信息切换（domain.tsx）、抽卡记录的分类选择与稀有度筛选（gacha-records.tsx）、仪表盘背景模式（layouts/dashboard.tsx）、标题栏「数据/游戏」（`.titlebar-mode-toggle`）都不是 Radix Switch，而是等宽分格 + 一个绝对定位的**滑动指示器**：指示器宽度 `calc((100% - 两侧内边距) / 项数)`、`transform: translateX(选中下标 * 100%)`、过渡 `transform var(--lg-dur-slow) var(--lg-ease-inertia)`。选中态由指示器承担，按钮本身只负责文字色——**不要再让每个按钮各自换底**（那是瞬间换底，不是惯性滑动），也不要在撑满宽度的按钮上加 `hover:scale-*`（必然溢出父容器圆角）。
+
+⚠️ **指示器方案不分断点**：窄屏也用同一套滑动指示器，不要另起一套「按钮自己换底 + 指示器 `hidden lg:block`」。因为指示器宽度是「胶囊内容宽 ÷ 项数」，**各项必须等宽**（`flex-1 min-w-0`）指示器才对得齐——这一条与「按内容宽度排布」互斥，选了后者指示器就会错位。窄屏的唯一区别是胶囊自身的宽度与右边距（见 `pages_game_data.md` 抽卡页分类胶囊）。实测 411px 视口：3 项各 96.5px、指示器宽 96.5px、落在激活项上、`transition 0.42s`；桌面 1400px：3 项各 219.5px、指示器同宽——两端行为完全一致。
 
 **⚠️ 指示器/拨杆的两条硬约束**：
 

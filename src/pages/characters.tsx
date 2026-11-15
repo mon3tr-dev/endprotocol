@@ -507,88 +507,98 @@ export default function CharactersPage() {
         </GlassCard>
       ) : (
         <>
-          <div className="flex flex-nowrap items-center gap-1.5 lg-material p-2 rounded-xl border border-separator/90">
-            <FloatSelect
-              label={t("filters.profession")}
-              value={filters.profession}
-              options={[
-                { value: "all", label: t("filters.all_professions") },
-                ...uniqueProfessions.map((v) => ({ value: v, label: v })),
-              ]}
-              onChange={(v) => setFilter("profession", v)}
-            />
-            <FloatSelect
-              label={t("filters.rarity")}
-              value={filters.rarity}
-              options={[
-                { value: "all", label: t("filters.all_rarities") },
-                ...uniqueRarities.map((v) => ({
-                  value: v,
-                  label: `${v}★`,
-                  tone: rarityTone(v),
-                })),
-              ]}
-              onChange={(v) => setFilter("rarity", v)}
-            />
-            <FloatSelect
-              label={t("filters.property")}
-              value={filters.property}
-              options={[
-                { value: "all", label: t("filters.all_properties") },
-                ...uniqueProperties.map((v) => ({ value: v, label: v })),
-              ]}
-              onChange={(v) => setFilter("property", v)}
-            />
-            <FloatSelect
-              label={t("filters.weapon")}
-              value={filters.weapon}
-              options={[
-                { value: "all", label: t("filters.all_weapons") },
-                ...uniqueWeapons.map((v) => ({ value: v, label: v })),
-              ]}
-              onChange={(v) => setFilter("weapon", v)}
-            />
-            <FloatSelect
-              label={t("filters.mainAttr")}
-              value={filters.mainAttr}
-              options={[
-                { value: "all", label: t("filters.all_mainAttrs") },
-                ...uniqueMainAttrs.map((v) => ({ value: v, label: v })),
-              ]}
-              onChange={(v) => setFilter("mainAttr", v)}
-            />
-            <FloatSelect
-              label={t("filters.subAttr")}
-              value={filters.subAttr}
-              options={[
-                { value: "all", label: t("filters.all_subAttrs") },
-                ...uniqueSubAttrs.map((v) => ({ value: v, label: v })),
-              ]}
-              onChange={(v) => setFilter("subAttr", v)}
-            />
-
-            <GlassButton
-              size="sm"
-              variant="outline"
-              isIconOnly
-              className="rounded-full!"
-              aria-label={t("common.clear")}
-              onPress={resetFilters}
-            >
-              <svg
-                className="w-4 h-4"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+          {/*
+           * 筛选条在窄屏上**横向滚动**，而不是把整页撑宽。
+           * 六个下拉的固有宽度加起来约 900px，此前用 `flex-nowrap` 直接铺开，
+           * 于是容器的 scrollWidth 变成 927px（内容区只有 403px），整个
+           * `main` 都能左右拖动、卡片被挤到屏幕外。这里给外层加滚动容器，
+           * 内层 `w-max` + nowrap —— 手机上一指横滑即可看完全部筛选项。
+           */}
+          <div className="lg-material rounded-xl border border-separator/90 overflow-hidden">
+            <div className="overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              <div className="flex flex-nowrap items-center gap-1.5 p-2 w-max min-w-full">
+                <FloatSelect
+                  label={t("filters.profession")}
+                  value={filters.profession}
+                  options={[
+                    { value: "all", label: t("filters.all_professions") },
+                    ...uniqueProfessions.map((v) => ({ value: v, label: v })),
+                  ]}
+                  onChange={(v) => setFilter("profession", v)}
                 />
-              </svg>
-            </GlassButton>
+                <FloatSelect
+                  label={t("filters.rarity")}
+                  value={filters.rarity}
+                  options={[
+                    { value: "all", label: t("filters.all_rarities") },
+                    ...uniqueRarities.map((v) => ({
+                      value: v,
+                      label: `${v}★`,
+                      tone: rarityTone(v),
+                    })),
+                  ]}
+                  onChange={(v) => setFilter("rarity", v)}
+                />
+                <FloatSelect
+                  label={t("filters.property")}
+                  value={filters.property}
+                  options={[
+                    { value: "all", label: t("filters.all_properties") },
+                    ...uniqueProperties.map((v) => ({ value: v, label: v })),
+                  ]}
+                  onChange={(v) => setFilter("property", v)}
+                />
+                <FloatSelect
+                  label={t("filters.weapon")}
+                  value={filters.weapon}
+                  options={[
+                    { value: "all", label: t("filters.all_weapons") },
+                    ...uniqueWeapons.map((v) => ({ value: v, label: v })),
+                  ]}
+                  onChange={(v) => setFilter("weapon", v)}
+                />
+                <FloatSelect
+                  label={t("filters.mainAttr")}
+                  value={filters.mainAttr}
+                  options={[
+                    { value: "all", label: t("filters.all_mainAttrs") },
+                    ...uniqueMainAttrs.map((v) => ({ value: v, label: v })),
+                  ]}
+                  onChange={(v) => setFilter("mainAttr", v)}
+                />
+                <FloatSelect
+                  label={t("filters.subAttr")}
+                  value={filters.subAttr}
+                  options={[
+                    { value: "all", label: t("filters.all_subAttrs") },
+                    ...uniqueSubAttrs.map((v) => ({ value: v, label: v })),
+                  ]}
+                  onChange={(v) => setFilter("subAttr", v)}
+                />
+                <GlassButton
+                  size="sm"
+                  variant="outline"
+                  isIconOnly
+                  className="rounded-full! shrink-0"
+                  aria-label={t("common.clear")}
+                  onPress={resetFilters}
+                >
+                  <svg
+                    className="w-4 h-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                    />
+                  </svg>
+                </GlassButton>
+              </div>
+            </div>
           </div>
 
           {filteredCharacters.length === 0 ? (

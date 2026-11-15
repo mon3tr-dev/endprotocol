@@ -191,6 +191,21 @@ function circleAvatar(src: string): Promise<string> {
   });
 }
 
+/**
+ * 图表度量（按容器宽度等比缩放）。
+ *
+ * 这张图原先按 ~480px 以上的宽度设计，容器上还写死 `minWidth: 480` ——
+ * 在 Android 窄屏（Pixel 7 视口 411px，卡片内可用宽度仅约 331px）下，
+ * 480px 的画布塞进 331px 的容器里，右侧被直接裁掉：柱子被切断、
+ * 计数标签看不见，用户看到的就是「图表被截断」。
+ *
+ * 修法不是简单地去掉 minWidth（那样左侧头像列 + 右侧计数标签这两段**固定**
+ * 留白会占掉 148px，只剩 183px 给柱子，横向仍然挤），而是让这些尺寸随容器宽度
+ * 等比缩小，保证「左侧列 / 柱体 / 右侧标签」三段的横向比例基本不变。
+ * 下限 0.7 是下限的取舍：再小头像与字号就糊了，宁可让柱子短一点。
+ */
+const BASE_WIDTH = 480; // 设计基准宽度
+const MIN_SCALE = 0.7; // 缩放下限（保证可读性）
 const ROW_H = 44; // 每行高度（含卡池分组头）
 const AVATAR_SIZE = 36; // 头像尺寸
 const GRID_LEFT = 84; // 左侧留白：头像列 + 竖线 + 间距
@@ -198,8 +213,48 @@ const GRID_RIGHT = 64; // 右侧留白：计数标签
 const BAR_GAP = 10; // 柱体上下留白
 const BAR_START_GAP = 10; // 柱体与竖线的间距（竖线不动，柱体右移）
 const CHART_BOTTOM_PAD = 14; // 画布底部留白（避免最后一行贴底被遮住）
+const AVATAR_INNER_GAP = 12; // 头像右边距（竖线到头像的距离）
+const NAME_INNER_GAP = 24; // 卡池名相对竖线的左缩进
+const LABEL_FONT_FAMILY =
+  "system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif";
 
-const HEADER_FONT = "600 12px system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif";
+interface ChartMetrics {
+  rowH: number;
+  avatar: number;
+  avatarInnerGap: number;
+  gridLeft: number;
+  gridRight: number;
+  nameInnerGap: number;
+  barGap: number;
+  barStartGap: number;
+  bottomPad: number;
+  headerFont: string;
+  countFont: string;
+  initialFont: string;
+  giftFont: string;
+}
+
+/** 由容器宽度推出本帧要用的全部尺寸 */
+function chartMetrics(containerWidth: number): ChartMetrics {
+  const usable = containerWidth > 0 ? containerWidth : BASE_WIDTH;
+  const scale = Math.max(MIN_SCALE, Math.min(1, usable / BASE_WIDTH));
+  const px = (v: number) => Math.round(v * scale);
+  return {
+    rowH: px(ROW_H),
+    avatar: px(AVATAR_SIZE),
+    avatarInnerGap: px(AVATAR_INNER_GAP),
+    gridLeft: px(GRID_LEFT),
+    gridRight: px(GRID_RIGHT),
+    nameInnerGap: px(NAME_INNER_GAP),
+    barGap: px(BAR_GAP),
+    barStartGap: px(BAR_START_GAP),
+    bottomPad: px(CHART_BOTTOM_PAD),
+    headerFont: `600 ${px(12)}px ${LABEL_FONT_FAMILY}`,
+    countFont: `600 ${px(12)}px ${LABEL_FONT_FAMILY}`,
+    initialFont: `600 ${px(14)}px ${LABEL_FONT_FAMILY}`,
+    giftFont: `600 ${px(10)}px ${LABEL_FONT_FAMILY}`,
+  };
+}
 
 const _measureCtx = typeof document !== "undefined" ? document.createElement("canvas").getContext("2d") : null;
 function measureTextWidth(text: string, font: string): number {
@@ -348,6 +403,13 @@ export default function GachaPityChart({
 
   const hasRows = meta.length > 0;
 
+  /**
+   * 容器实测宽度：图表的所有横向尺寸都由它推出。
+   * 初值 0 表示「尚未测量」，此时按基准宽度排布，测到后再按真实宽度重排，
+   * 避免首帧按过小的宽度画一次再跳一下。
+   */
+  const [containerW, setContainerW] = useState(0);
+
   // 初始化图表实例 + 自适应（数据行存在时才挂载容器，行数变化时重建）
   useEffect(() => {
     const el = chartRef.current;
@@ -368,7 +430,16 @@ export default function GachaPityChart({
       lastW = w;
       lastH = h;
       chart.resize();
+      // 宽度变化要重排（横向留白按比例缩放），高度变化只需 resize
+      setContainerW(w);
     };
+    // 首次同步测一次，别等 RO 的第一次回调
+    const initialW = el.clientWidth;
+    if (initialW > 0) {
+      lastW = initialW;
+      lastH = el.clientHeight;
+      setContainerW(initialW);
+    }
     const ro = new ResizeObserver(() => {
       if (frame) return;
       frame = window.requestAnimationFrame(applyResize);
@@ -381,6 +452,9 @@ export default function GachaPityChart({
       chartInstance.current = null;
     };
   }, [hasRows]);
+
+  /** 当前宽度对应的全部尺寸 */
+  const metrics = useMemo(() => chartMetrics(containerW), [containerW]);
 
   const sixCount = useMemo(
     () => sections.reduce((acc, s) => acc + s.rows.filter((r) => r.kind === "six").length, 0),
@@ -407,7 +481,7 @@ export default function GachaPityChart({
     const option: EChartsOption = {
       animationDuration: 500,
       animationEasing: "cubicOut",
-      grid: { left: GRID_LEFT, right: GRID_RIGHT, top: 0, bottom: CHART_BOTTOM_PAD, containLabel: false },
+      grid: { left: metrics.gridLeft, right: metrics.gridRight, top: 0, bottom: metrics.bottomPad, containLabel: false },
       xAxis: {
         type: "value",
         min: 0,
@@ -461,10 +535,10 @@ export default function GachaPityChart({
           {
             type: "line",
             shape: {
-              x1: GRID_LEFT,
+              x1: metrics.gridLeft,
               y1: 0,
-              x2: GRID_LEFT,
-              y2: meta.length * ROW_H,
+              x2: metrics.gridLeft,
+              y2: meta.length * metrics.rowH,
             },
             style: { stroke: muted, lineWidth: 1.5, opacity: 0.6 },
           },
@@ -484,20 +558,20 @@ export default function GachaPityChart({
             const m = meta[params.dataIndex];
             if (!m) return null;
             const bandTop = api.coord([0, params.dataIndex])[1] as number;
-            const centerY = bandTop + ROW_H / 2;
+            const centerY = bandTop + metrics.rowH / 2;
 
             if (m.kind === "header") {
               const name = m.section.poolName;
-              const lineY = bandTop + ROW_H / 2;
-              const nameX = GRID_LEFT + 24;
-              const maxTextW = api.getWidth() - GRID_LEFT - GRID_RIGHT - 24;
-              const nameW = Math.min(measureTextWidth(name, HEADER_FONT), maxTextW);
+              const lineY = bandTop + metrics.rowH / 2;
+              const nameX = metrics.gridLeft + metrics.nameInnerGap;
+              const maxTextW = api.getWidth() - metrics.gridLeft - metrics.gridRight - metrics.nameInnerGap;
+              const nameW = Math.min(measureTextWidth(name, metrics.headerFont), maxTextW);
               return {
                 type: "group",
                 children: [
                   {
                     type: "rect",
-                    shape: { x: 0, y: bandTop, width: api.getWidth(), height: ROW_H },
+                    shape: { x: 0, y: bandTop, width: api.getWidth(), height: metrics.rowH },
                     style: { fill: "rgba(127, 127, 140, 0.07)" },
                   },
                   {
@@ -522,7 +596,7 @@ export default function GachaPityChart({
                       x: nameX,
                       y: lineY,
                       fill: headerColor,
-                      font: HEADER_FONT,
+                      font: metrics.headerFont,
                       maxWidth: maxTextW,
                       overflow: "truncate",
                       textVerticalAlign: "middle",
@@ -536,25 +610,25 @@ export default function GachaPityChart({
             const row = m.row!;
             const x0 = api.coord([0, params.dataIndex])[0] as number;
             const x1 = api.coord([row.count, params.dataIndex])[0] as number;
-            const barH = ROW_H - BAR_GAP * 2;
-            const barY = bandTop + BAR_GAP;
+            const barH = metrics.rowH - metrics.barGap * 2;
+            const barY = bandTop + metrics.barGap;
             const isSix = row.kind === "six";
             const children: any[] = [];
 
             // 头像（仅六星行）
             if (isSix && row.id) {
               const img = avatarImgs[row.id];
-              const ax = GRID_LEFT - 12 - AVATAR_SIZE;
-              const ay = centerY - AVATAR_SIZE / 2;
+              const ax = metrics.gridLeft - metrics.avatarInnerGap - metrics.avatar;
+              const ay = centerY - metrics.avatar / 2;
               if (img) {
                 children.push({
                   type: "image",
-                  style: { image: img, x: ax, y: ay, width: AVATAR_SIZE, height: AVATAR_SIZE },
+                  style: { image: img, x: ax, y: ay, width: metrics.avatar, height: metrics.avatar },
                 });
               } else {
                 children.push({
                   type: "circle",
-                  shape: { cx: ax + AVATAR_SIZE / 2, cy: centerY, r: AVATAR_SIZE / 2 },
+                  shape: { cx: ax + metrics.avatar / 2, cy: centerY, r: metrics.avatar / 2 },
                   style: { fill: "rgba(127, 127, 140, 0.15)", stroke: separator, lineWidth: 1 },
                 });
                 const initial = (row.name ?? "?").slice(0, 1);
@@ -562,10 +636,10 @@ export default function GachaPityChart({
                   type: "text",
                   style: {
                     text: initial,
-                    x: ax + AVATAR_SIZE / 2,
+                    x: ax + metrics.avatar / 2,
                     y: centerY,
                     fill: muted,
-                    font: "600 14px system-ui, sans-serif",
+                    font: metrics.initialFont,
                     textVerticalAlign: "middle",
                     textAlign: "center",
                   },
@@ -577,9 +651,9 @@ export default function GachaPityChart({
             children.push({
               type: "rect",
               shape: {
-                x: x0 + BAR_START_GAP,
+                x: x0 + metrics.barStartGap,
                 y: barY,
-                width: Math.max(x1 - x0 - BAR_START_GAP, 2),
+                width: Math.max(x1 - x0 - metrics.barStartGap, 2),
                 height: barH,
                 r: [0, 10, 10, 0],
               },
@@ -606,7 +680,7 @@ export default function GachaPityChart({
                 x: x1 + 8,
                 y: centerY,
                 fill: isSix ? primary : muted,
-                font: "600 12px system-ui, sans-serif",
+                font: metrics.countFont,
                 textVerticalAlign: "middle",
                 textAlign: "left",
               },
@@ -618,10 +692,10 @@ export default function GachaPityChart({
                 type: "text",
                 style: {
                   text: "赠",
-                  x: x0 + BAR_START_GAP - 6,
+                  x: x0 + metrics.barStartGap - 6,
                   y: centerY,
                   fill: danger,
-                  font: "600 10px system-ui, sans-serif",
+                  font: metrics.giftFont,
                   textVerticalAlign: "middle",
                   textAlign: "right",
                 },
@@ -635,7 +709,7 @@ export default function GachaPityChart({
     };
 
     chart.setOption(option, true);
-  }, [meta, avatarImgs, themeTick, isZh]);
+  }, [meta, avatarImgs, themeTick, isZh, metrics]);
 
   if (sections.length === 0) {
     return (
@@ -658,10 +732,15 @@ export default function GachaPityChart({
     <GlassCard className="p-6  border border-separator/90">
       <ChartHeader isZh={isZh} sixCount={sixCount} poolOptions={poolOptions} poolFilter={poolFilter} onPoolChange={setPoolFilter} />
       <div className="overflow-x-auto pb-3">
+        {/*
+          不再写死 `minWidth: 480`：容器宽度随屏幕自适应，横向尺寸全部由
+          `metrics`（按容器宽度等比缩放）推出，窄屏下整张图完整落在卡片内，
+          不会再把右侧柱子与计数标签裁掉。高度同样跟着缩放后的行高走。
+        */}
         <div
           ref={chartRef}
           className="w-full"
-          style={{ height: `${meta.length * ROW_H + CHART_BOTTOM_PAD}px`, minWidth: 480 }}
+          style={{ height: `${meta.length * metrics.rowH + metrics.bottomPad}px` }}
         />
       </div>
     </GlassCard>
