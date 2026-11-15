@@ -4,7 +4,7 @@
 
     <application>
         <provider
-            android:name="androidx.core.content.FileProvider"
+            android:name="com.endprotocol.apk_installer.ApkFileProvider"
             android:authorities="${applicationId}.apkprovider"
             android:exported="false"
             android:grantUriPermissions="true">
