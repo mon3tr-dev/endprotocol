@@ -740,12 +740,31 @@ jobs:
             signature: windowsUpdater.signature,
           };
 
+          // Android: the universal APK is not a Tauri updater target (no
+          // minisign .sig), so it must NOT go into `platforms` — every entry
+          // there is deserialized as { url, signature } and a signature-less
+          // android key would break desktop updater parsing. Expose it as a
+          // dedicated top-level `android` field instead: serde ignores unknown
+          // top-level fields, so desktop stays unaffected. The APK itself
+          // never needs re-signing; it is verified by its APK signature.
+          const androidApkName = 'endprotocol-android-universal.apk';
+          let manifestAndroid = null;
+          if (fs.existsSync(path.join('android-release', androidApkName))) {
+            manifestAndroid = {
+              url: `https://github.com/${repository}/releases/download/${tag}/${encodeURIComponent(androidApkName)}`,
+              assetName: androidApkName,
+            };
+          } else {
+            console.log('::warning title=Android APK missing::android-release/' + androidApkName + ' not found, so latest.json carries no android entry.');
+          }
+
           const manifest = {
             version,
             pub_date: new Date().toISOString(),
             notes: fs.readFileSync('CHANGELOG.md', 'utf8'),
             platforms,
           };
+          if (manifestAndroid) manifest.android = manifestAndroid;
           fs.writeFileSync(path.join(assetsDir, 'latest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
 
           const upload = spawnSync(
