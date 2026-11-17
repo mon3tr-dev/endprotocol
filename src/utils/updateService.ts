@@ -7,6 +7,8 @@ import { pushGlobalAlert } from "@/components/ui/global-alert";
 import { getConfig, setConfig } from "./configService";
 import logger from "./logger";
 import { isAndroidApp, isWindowsPlatform, isMobileApp } from "./platform";
+// 本地版本也走容错封装：getVersion() 直接 reject 时，更新检查会整条链路失败。
+import { getAppVersion } from "./appInfoService";
 
 // ============================================================================
 // Types
@@ -566,7 +568,10 @@ async function resolveAndroidReleaseFromMirror(
     return null;
   }
 
-  const remoteParsed = manifest.version ? parseSemVer(manifest.version) : null;
+  // 镜像清单由 Worker 生成，`version` 可能缺失；先归一成字符串，避免
+  // `stripVPrefix(undefined)` 在清单异常时把整条更新链路抛崩。
+  const remoteVersionRaw = manifest.version ?? "";
+  const remoteParsed = remoteVersionRaw ? parseSemVer(remoteVersionRaw) : null;
   if (!remoteParsed) {
     logger.warn("Mirror manifest carries no parseable version", "Updater");
     return null;
@@ -576,7 +581,7 @@ async function resolveAndroidReleaseFromMirror(
   }
   if (compareSemVer(remoteParsed, localParsed) <= 0) {
     logger.info(
-      `No mirror Android update: ${localVersion} >= ${manifest.version}`,
+      `No mirror Android update: ${localVersion} >= ${remoteVersionRaw}`,
       "Updater",
     );
     return null;
@@ -591,13 +596,13 @@ async function resolveAndroidReleaseFromMirror(
   }
 
   logger.info(
-    `Mirror Android update available: ${localVersion} → ${manifest.version} (ABI ${abi ?? "unknown"})`,
+    `Mirror Android update available: ${localVersion} → ${remoteVersionRaw} (ABI ${abi ?? "unknown"})`,
     "Updater",
   );
 
   return {
     currentVersion: localVersion,
-    version: stripVPrefix(manifest.version),
+    version: stripVPrefix(remoteVersionRaw),
     date: manifest.pub_date,
     body: manifest.notes,
     apkUrl,
@@ -609,8 +614,7 @@ async function resolveAndroidRelease(): Promise<AndroidUpdate | null> {
   currentUpdateInfo = null;
   manualUpdaterEndpoint = null;
 
-  const { getVersion } = await import("@tauri-apps/api/app");
-  const localVersion = await getVersion();
+  const localVersion = await getAppVersion();
   const localParsed = parseSemVer(localVersion);
   if (!localParsed) return null;
 
@@ -698,8 +702,7 @@ async function resolveAndroidRelease(): Promise<AndroidUpdate | null> {
 }
 
 async function resolvePreviewRelease(): Promise<Update | ManualUpdate | null> {
-  const { getVersion } = await import("@tauri-apps/api/app");
-  const localVersion = await getVersion();
+  const localVersion = await getAppVersion();
   const localParsed = parseSemVer(localVersion);
   manualUpdaterEndpoint = null;
 
@@ -836,8 +839,7 @@ async function resolvePreviewRelease(): Promise<Update | ManualUpdate | null> {
 }
 
 async function resolveChannelSwitchRelease(): Promise<Update | ManualUpdate | null> {
-  const { getVersion } = await import("@tauri-apps/api/app");
-  const localVersion = await getVersion();
+  const localVersion = await getAppVersion();
   const channel = currentChannel;
 
   let releases: GitHubRelease[];

@@ -5,7 +5,7 @@
 ## `src/pages/settings.tsx`
 **文件职责**：应用「设置」路由页（`/settings`）的全部 UI 与状态管理。呈现通用偏好、外观、开发者模式开关、更新与关于信息，并负责把偏好写入配置服务（`configService`）或后端状态，附带三个确认对话框与更新对话框；Windows 额外显示游戏启动设置卡，macOS/Linux 隐藏该卡。
 **导出**：`export default function SettingsPage()`（settings.tsx:43），仅此一个导出。
-**主要依赖**：`react-i18next`（`useTranslation`）、`@/components/ui/glass`（GlassAlertDialog/GlassButton/GlassCard/GlassSelect/GlassSkeleton/GlassSwitch）、`@/components/game-launch-settings`（`GameLaunchSettings`）、`@/components/appearance-settings`（`AppearanceSettings`）、`react`（useState/useEffect/useRef/useCallback）、`react-dom`（`createPortal`）、`@tauri-apps/api/app`（`getVersion`/`getTauriVersion`/`getIdentifier`）、`@/utils/configService`（`getConfig`/`setConfig`）、`@/utils/roleDetailService`、`@/utils/trayService`（`setTrayUser`）、`@/components/ui/settings-row`（`SettingsDivider`）、`@/utils/updateService`（`fetchRemoteVersion`/`getRemoteVersion`/`subscribeRemoteVersion`/`getChannel`/`setChannel`/`getSource`/`setSource`/`initializeChannel`）、`@/components/ui/global-alert`（`pushGlobalAlert`）、`@/components/update-dialog`（`UpdateDialog`）、`@/utils/platform`（`isWindowsPlatform`）。
+**主要依赖**：`react-i18next`（`useTranslation`）、`@/components/ui/glass`（GlassAlertDialog/GlassButton/GlassCard/GlassSelect/GlassSkeleton/GlassSwitch）、`@/components/game-launch-settings`（`GameLaunchSettings`）、`@/components/appearance-settings`（`AppearanceSettings`）、`react`（useState/useEffect/useRef/useCallback）、`react-dom`（`createPortal`）、`@/utils/appInfoService`（`getAppVersion`/`getTauriVersionSafe`/`getAppIdentifier`，永不 reject，IPC 失败时退回构建期常量）、`@/utils/configService`（`getConfig`/`setConfig`）、`@/utils/roleDetailService`、`@/utils/trayService`（`setTrayUser`）、`@/components/ui/settings-row`（`SettingsDivider`）、`@/utils/updateService`（`fetchRemoteVersion`/`getRemoteVersion`/`subscribeRemoteVersion`/`getChannel`/`setChannel`/`getSource`/`setSource`/`initializeChannel`）、`@/components/ui/global-alert`（`pushGlobalAlert`）、`@/components/update-dialog`（`UpdateDialog`）、`@/utils/platform`（`isWindowsPlatform`）。
 
 > 托盘相关的 `invoke`（`set_tray_user`/`update_tray_user_data`）与 `roleDataService.queryData` 组装已迁到 `@/utils/trayService`（见 [utils_services_a.md](utils_services_a.md)），本文件因此不再直接依赖 `@tauri-apps/api/core` 与 `@/utils/roleDataService`；账号列表只在 `loadConfig` 里动态 `import("@/utils/accountService")`。
 
@@ -46,11 +46,11 @@
 | `refreshOnSwitch` 等偏好 state | settings.tsx:55-59 | `refreshOnSwitch`、`lazyLoadEnabled`、`wikiDetailPreload`、`closeAction`、`trayUserRoleId`（代理配置已不在本文件，见 `NetworkSettings`） |
 | `accounts` | settings.tsx:60-62 | 托盘角色下拉用的账号列表（id/nickname/avatar） |
 | `developerMode` / `showDevWarning` | settings.tsx:64-65 | 开发者模式开关与警告弹窗可见性 |
-| `isConfigLoading` / `appVersion` / `tauriVersion` / `appId` | settings.tsx:66-69 | 加载态与 `@tauri-apps/api/app` 三元信息 |
+| `isConfigLoading` / `appVersion` / `tauriVersion` / `appId` | settings.tsx:66-69 | 加载态与应用元信息（经 `@/utils/appInfoService` 读取，取不到时用 Vite `define` 注入的构建期常量，卡片不会停在 `...`） |
 | `isCheckingUpdate` / `remoteVersion` / `updateChannel` / `updateSource` | settings.tsx:70-74 | 更新检查状态、远端版本状态、通道与来源 |
 | `showUpdateDialog` / `showPreviewWarning` / `showGithubWarning` / `pendingChannel` / `pendingSource` | settings.tsx:75-81 | 对话框可见性与待确认的通道/来源 |
 | `isLangDropdownOpen` / `langDropdownPos` + 三个 ref | settings.tsx:46-54 | 语言下拉的开关、portal 定位与 DOM 引用 |
-| `loadConfig`（effect 内部 async） | settings.tsx:89-142 | `Promise.all` 读 9 项；随后动态 import 账号、初始化更新通道/来源 |
+| `loadConfig`（effect 内部 async） | settings.tsx:89-142 | `Promise.all` 读 9 项（版本/标识符三项走 `@/utils/appInfoService`，失败不 reject）；随后动态 import 账号、初始化更新通道/来源 |
 | 初始化 effect | settings.tsx:88-156 | 调 `loadConfig`，完成后 `fetchRemoteVersion()`；订阅远端版本并清理 |
 | 下拉关闭 effect | settings.tsx:158-172 | 菜单/按钮外点击或任意滚动（捕获）时关闭语言下拉 |
 | `handleLanguageChange` | settings.tsx:174-177 | `i18n.changeLanguage(langKey)` 并关闭下拉 |

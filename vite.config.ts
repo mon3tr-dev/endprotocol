@@ -2,13 +2,64 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tsconfigPaths from "vite-tsconfig-paths";
 import tailwindcss from "@tailwindcss/vite";
+import fs from "node:fs";
 import path from "path";
 
 const host = process.env.TAURI_DEV_HOST;
 
+/* --------------------------------------------------------------------------
+ * 构建期注入的应用元信息（`src/utils/appInfoService.ts` 的兜底值）
+ *
+ * `plugin:app|version` 等 IPC 在个别平台/权限组合下会失败或返回空串，
+ * 那样设置页的版本卡片就只剩 `...`。这三个常量让兜底不依赖运行时：
+ *   - __APP_VERSION__       package.json 的 version（CI 按 git tag 改写）
+ *   - __TAURI_CORE_VERSION__ Cargo.lock 里 `tauri` 包的版本（实际编进二进制的核心版本）
+ *   - __APP_IDENTIFIER__    tauri.conf.json 的 identifier
+ * 读取失败一律退化成 "unknown"，**不允许构建因此失败**（配置是辅助信息）。
+ * -------------------------------------------------------------------------- */
+const projectRoot = import.meta.dirname;
+
+function readJson<T>(relativePath: string, fallback: T): T {
+  try {
+    return JSON.parse(
+      fs.readFileSync(path.resolve(projectRoot, relativePath), "utf8"),
+    ) as T;
+  } catch {
+    return fallback;
+  }
+}
+
+function readTauriCoreVersion(): string {
+  for (const lockPath of ["Cargo.lock", "src-tauri/Cargo.lock"]) {
+    try {
+      const lock = fs.readFileSync(path.resolve(projectRoot, lockPath), "utf8");
+      const match = /\[\[package\]\]\s*\nname = "tauri"\s*\nversion = "([^"]+)"/.exec(
+        lock,
+      );
+      if (match?.[1]) return match[1];
+    } catch {
+      // 继续试下一个路径
+    }
+  }
+  return "unknown";
+}
+
+const appVersion = readJson<{ version?: string }>("package.json", {}).version ?? "unknown";
+const appIdentifier =
+  readJson<{ identifier?: string }>("src-tauri/tauri.conf.json", {}).identifier ??
+  "unknown";
+const tauriCoreVersion = readTauriCoreVersion();
+
 // https://vite.dev/config/
 export default defineConfig(async () => ({
   plugins: [react(), tsconfigPaths(), tailwindcss()],
+
+  // 构建期常量：`src/utils/appInfoService.ts` 在 IPC 取不到元信息时用它们兜底。
+  define: {
+    __APP_VERSION__: JSON.stringify(appVersion),
+    __TAURI_CORE_VERSION__: JSON.stringify(tauriCoreVersion),
+    __APP_IDENTIFIER__: JSON.stringify(appIdentifier),
+  },
 
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //

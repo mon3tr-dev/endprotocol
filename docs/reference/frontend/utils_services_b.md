@@ -507,3 +507,18 @@
 - 调用方：`src/pages/account.tsx`（「凭证过期」弹窗里显示 `token` / `cred` 的掩码，替代明文渲染）。
 - 后端对应实现：`src-tauri/src/utils/redact.rs`（日志脱敏）。
 - 机密字段的存储与保护见 [`docs/secure_storage.md`](../../../secure_storage.md)。
+
+## `src/utils/appInfoService.ts`
+**职责**：读取应用元信息（应用版本 / Tauri 核心版本 / 应用标识符）的容错封装。这三个值来自 Tauri 的 `app` 插件 IPC（`plugin:app|version`、`plugin:app|tauri_version`、`plugin:app|identifier`），命令缺失、ACL 拒绝或返回空串时调用会 reject 或拿到 `""`；调用方把它们和配置读取塞在同一个 `Promise.all` 里时，一次失败会连带整块配置不落地，界面上表现为版本卡片一直停在 `...`（Android 上曾出现）。
+**导出**：`getAppVersion()`、`getTauriVersionSafe()`、`getAppIdentifier()`。
+**主要依赖**：`@tauri-apps/api/app`（`getVersion`/`getTauriVersion`/`getIdentifier`）、`@/utils/logger`，以及 Vite `define` 注入的 `__APP_VERSION__` / `__TAURI_CORE_VERSION__` / `__APP_IDENTIFIER__`。
+
+| 符号 | 位置 | 说明 |
+| --- | --- | --- |
+| `getAppVersion` | appInfoService.ts:31 | `getVersion()` 去空白后非空即返回；空串或 reject 时退回 `__APP_VERSION__`（`package.json` 的 version，CI 按 git tag 改写），并 `logger.warn` |
+| `getTauriVersionSafe` | appInfoService.ts:51 | `getTauriVersion()` 同上；兜底为 `__TAURI_CORE_VERSION__`（`Cargo.lock` 里 `tauri` 包的版本，即真正编进二进制的核心版本） |
+| `getAppIdentifier` | appInfoService.ts:71 | `getIdentifier()` 同上；兜底为 `__APP_IDENTIFIER__`（`tauri.conf.json` 的 `identifier`） |
+| `normalize`（私有） | appInfoService.ts:26 | 非字符串按空串处理，字符串 `trim()` |
+| `BUILD_APP_VERSION` / `BUILD_TAURI_VERSION` / `BUILD_IDENTIFIER`（私有） | appInfoService.ts:18-24 | 构建期常量，读取失败时为 `"unknown"` |
+
+**备注**：三个函数约定**永不 reject、永不返回空串**，调用方可以放心放进 `Promise.all`。常量由 `vite.config.ts` 注入（读 `package.json`、`Cargo.lock`、`src-tauri/tauri.conf.json`，读取失败退化为 `"unknown"`，不让构建失败），类型声明在 `src/vite-env.d.ts`。调用方：`src/pages/settings.tsx`（版本四宫格与 identifier）、`src/utils/updateService.ts`（更新检查比较本地版本，原先直接 `import("@tauri-apps/api/app").getVersion()`，失败会让整条更新链路报错）。无新增 IPC 命令。

@@ -132,14 +132,15 @@
 - 入口 HTML `tray-panel.html` 的 `<html>` 带 `data-window="tray-panel"`，`globals.css` 据此去掉 `body` 默认底色，让窗口的系统 Acrylic 透出来。
 
 ## `src/vite-env.d.ts`
-**职责**：Vite 客户端类型引用 + 声明 `*.json` 为任意类型模块，使 TS 允许直接 import 翻译 JSON。
+**职责**：Vite 客户端类型引用 + 声明 `*.json` 为任意类型模块，使 TS 允许直接 import 翻译 JSON；同时声明 `vite.config.ts` 注入的构建期常量。
 **导出**：无运行时导出（纯类型声明文件）。
 **主要依赖**：`vite/client` 类型。
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
 | `/// <reference types="vite/client" />` | vite-env.d.ts:1 | 引入 Vite 客户端全局类型（`import.meta.env` 等） |
-| `declare module "*.json"` | vite-env.d.ts:3-6 | 兜底声明 JSON 模块默认导出为 `any` |
+| `declare module "*.json"` | vite-env.d.ts:11-14 | 兜底声明 JSON 模块默认导出为 `any` |
+| `__APP_VERSION__` / `__TAURI_CORE_VERSION__` / `__APP_IDENTIFIER__` | vite-env.d.ts:7-9 | `vite.config.ts` 的 `define` 注入值（`package.json` 版本、`Cargo.lock` 里 `tauri` 版本、`tauri.conf.json` 的 identifier）；供 `src/utils/appInfoService.ts` 在 IPC 取不到元信息时兜底 |
 
 ## `src/config/site.ts`
 **职责**：存放静态、与语言无关的站点元信息与外链（供 About/页脚等复用；需要本地化的 nav 标签由组件内 `useTranslation` 处理）。

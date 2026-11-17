@@ -15,10 +15,10 @@ import { TodoSettings } from "@/components/todo-settings";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
 import {
-  getVersion,
-  getTauriVersion,
-  getIdentifier,
-} from "@tauri-apps/api/app";
+  getAppIdentifier,
+  getAppVersion,
+  getTauriVersionSafe,
+} from "@/utils/appInfoService";
 import { getConfig, setConfig } from "@/utils/configService";
 import { roleDetailService } from "@/utils/roleDetailService";
 import { isTrayAvailable, setTrayUser } from "@/utils/trayService";
@@ -111,9 +111,11 @@ export default function SettingsPage() {
         roleDetailService.isLazyLoadEnabled(),
         getConfig<boolean>("developer_mode"),
         getConfig<boolean>("wiki_detail_preload"),
-        getVersion(),
-        getTauriVersion(),
-        getIdentifier(),
+        // 版本/标识符走永不 reject 的封装：IPC 失败时退回构建期常量，
+        // 不会因为其中一个失败就把整页配置一起打回默认值。
+        getAppVersion(),
+        getTauriVersionSafe(),
+        getAppIdentifier(),
         getConfig<string>("close_action"),
         getConfig<string>("tray_user_role_id"),
         isTrayAvailable(),
