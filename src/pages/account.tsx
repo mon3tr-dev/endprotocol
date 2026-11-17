@@ -63,6 +63,8 @@ import {
   applyApiHealthSnapshot,
   authorizeRoleU8Token,
   revokeRoleU8Token,
+  U8_AUTH_TIMEOUT_MESSAGE,
+  U8_AUTH_TIMEOUT_SECONDS,
   Account,
   LoginResult,
   RoleDisplayInfo,
@@ -81,6 +83,7 @@ import {
 } from "@/utils/accountAvailability";
 import type { ApiHealthSnapshot } from "@/utils/crashReporting";
 import { roleDetailService } from "@/utils/roleDetailService";
+import { CheckStatus } from "@/components/check-status";
 import logger, { logDebug, logError } from "../utils/logger";
 import { getConfig } from "@/utils/configService";
 import { addMessage } from "@/utils/messageStore";
@@ -244,6 +247,11 @@ function GameRoleRow({  role,
             Lv.{role.level} · {resolveServerLabel(role.serverId, i18n.language)}
           </p>
         </div>
+        {/*
+          验证抽卡授权时把「已等了几秒」显示在角色行里：这一步要串两次
+          鹰角通行证接口，慢的时候十几秒，只有转圈会被当成卡死。
+        */}
+        {isAuthBusy && <CheckStatus active scope="u8" className="mt-1" />}
       </div>
       {/*
         按钮区：窄容器下允许换行，与上面的 `min-w-[7rem]` 配合 ——
@@ -674,6 +682,15 @@ export default function AccountPage() {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [showSklandConfirmation, setShowSklandConfirmation] = useState(false);
   const [isRoleSelectionOpen, setIsRoleSelectionOpen] = useState(false);
+  /**
+   * 是否正在检测可绑定的游戏角色。
+   *
+   * 专用于角色选择步骤的三态判定（检测中 / 确实没有 / 有角色），**不要**再
+   * 拿通用的 `isLoading` 兼做这件事：`isLoading` 还会被保存账户、刷新列表、
+   * 绑定角色等流程同时置位，任一处回落都会让角色列表提前掉进「暂无可绑定的
+   * 游戏角色」这个结论式空态，看起来像流程结束或卡死。
+   */
+  const [isCheckingRoles, setIsCheckingRoles] = useState(false);
   const [isManagingSklandRoles, setIsManagingSklandRoles] = useState(false);
   const [selectedAccount, setSelectedAccount] = useState<Account | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -1286,6 +1303,9 @@ export default function AccountPage() {
     setReloginMismatchUserId("");
     setReloginProfile(null);
     resetAuthStep();
+    // 上一轮若在检测角色中途被打断，标志会留在 true；不清掉的话下次打开
+    // 弹窗会一直停在「检测中」（请求早就不在了，永远等不到 false）。
+    setIsCheckingRoles(false);
     setIsAddModalOpen(true);
   };
 
@@ -1319,6 +1339,8 @@ export default function AccountPage() {
     setLoginToken("");
     setLoginUserId("");
     resetAuthStep();
+    // 同上：关闭时把「正在检测角色」的残留标志清掉。
+    setIsCheckingRoles(false);
     setIsAddModalOpen(false);
   };
 
@@ -1348,6 +1370,23 @@ export default function AccountPage() {
       body,
       tag: "account",
     });
+  };
+
+  /**
+   * 把后端/前端的授权失败原因转成用户能读的一句话。
+   *
+   * `authorizeRoleU8Token` 超时会返回哨兵 `message: "timeout"`（见
+   * `accountService` 的 `U8_AUTH_TIMEOUT_MS`），这里换成带秒数的说明；
+   * 其余情况沿用后端原文 —— 那通常是「通行证没绑定该渠道」或「hytoken 过期」，
+   * 对排查有用，不该被吞掉。
+   */
+  const describeU8Failure = (message?: string): string => {
+    if (message === U8_AUTH_TIMEOUT_MESSAGE) {
+      return t("settings.account.u8_timeout", {
+        seconds: U8_AUTH_TIMEOUT_SECONDS,
+      });
+    }
+    return message || t("settings.account.u8_authorize_failed");
   };
 
   /**
@@ -1411,10 +1450,7 @@ export default function AccountPage() {
         patchRoleAuthFlag(userId, roleId, true);
         pushResultMessage("success", t("settings.account.u8_authorized_ok"));
       } else {
-        pushResultMessage(
-          "danger",
-          result.message || t("settings.account.u8_authorize_failed"),
-        );
+        pushResultMessage("danger", describeU8Failure(result.message));
       }
       return result;
     } finally {
@@ -1457,10 +1493,7 @@ export default function AccountPage() {
         patchRoleAuthFlag(userId, role.roleId, true);
         pushResultMessage("success", t("settings.account.u8_authorized_ok"));
       } else {
-        pushResultMessage(
-          "danger",
-          result.message || t("settings.account.u8_authorize_failed"),
-        );
+        pushResultMessage("danger", describeU8Failure(result.message));
       }
     } finally {
       setAuthBusyRoleId(null);
@@ -2021,6 +2054,9 @@ export default function AccountPage() {
 
   const handleConfirmSklandAccount = async () => {
     setIsLoading(true);
+    // 角色请求单独一段真值：保存账户与刷新列表都会动 isLoading，
+    // 但只有这段才是「正在检测可绑定的游戏角色」。
+    setIsCheckingRoles(true);
     setLoginError("");
     try {
       const saved = await saveSklandAccount(loginCred, loginToken, loginUserId);
@@ -2043,6 +2079,7 @@ export default function AccountPage() {
     } catch (error) {
       setLoginError(String(error));
     } finally {
+      setIsCheckingRoles(false);
       setIsLoading(false);
     }
   };
@@ -2885,9 +2922,17 @@ export default function AccountPage() {
                         }`}
                       >
                         {loadingSklandId === sklandAccount.userId ? (
-                          <div className="flex items-center justify-center gap-3 py-8 text-sm text-muted">
-                            <GlassSpinner color="primary" size="sm" />
-                            {t("settings.account.loading_game_roles")}
+                          /*
+                            展开账户卡片拉角色同样是「检测」而不是普通加载：
+                            同样要串通行证绑定列表 + 每个角色详情。这里原先只有
+                            圆环 +「正在读取游戏角色…」，走慢时读起来和卡死没区别，
+                            统一换成带秒数的 CheckStatus。
+                          */
+                          <div className="flex flex-col items-center justify-center gap-2 py-8 text-center">
+                            <CheckStatus active scope="roles" slowAfterSeconds={10} />
+                            <p className="text-xs text-muted/70">
+                              {t("settings.account.roles_checking_scope")}
+                            </p>
                           </div>
                         ) : roleLoadErrors[sklandAccount.userId] ? (
                           <p className="py-5 text-center text-sm text-danger-text">
@@ -3883,21 +3928,49 @@ export default function AccountPage() {
             </div>
           ) : isRoleSelectionOpen ? (
             /*
-              角色列表为空 ≠ 没有可绑定的角色：绑定成功后还要 `refreshData()`
-              才进入「授权抽卡数据」步骤，这段 `isLoading` 里 `availableRoles`
-              已被清空但角色仍在读取。此时直接显示「暂无可绑定的游戏角色」，
-              会被用户当成 bug（底栏同时在转「加载中」），因此先给加载态。
+              角色列表为空 ≠ 没有可绑定的角色。
+              这里原先按 `isLoading` 分两支，但 `isLoading` 在这段等待里并不可靠：
+              「确认森空岛账户」之后要先后跑「保存账户 → get_skland_account_roles」，
+              一旦 `isLoading` 已经回落而角色请求还没回来（或回来是空数组），界面就
+              直接给「暂无可绑定的游戏角色」这个**结论式空态** —— 用户看到的是
+              「流程结束了 / 卡住了」，而不是「还在检测」。
+
+              改成三态：
+              1. 正在检测（角色请求在飞）→ 明确写「正在检测可绑定的游戏角色」+ 秒数
+              2. 检测完确实没有        → 结论式空态 + 重试（那句「可稍后重新检查」才有落点）
+              3. 有角色                → 角色选择列表
+              判定用 `isCheckingRoles`（角色请求专用的标志），不再借用 `isLoading`。
             */
-            isLoading ? (
-              <div className="flex items-center justify-center gap-3 py-8 text-sm text-muted">
-                <GlassSpinner color="primary" size="sm" />
-                {t("settings.account.loading_game_roles")}
+            isCheckingRoles ? (
+              <div className="flex flex-col items-center justify-center gap-2 py-10 text-center">
+                <CheckStatus active scope="roles" slowAfterSeconds={10} />
+                {/*
+                  再补一句范围说明：检测要串两次鹰角接口（通行证绑定列表 +
+                  每个角色的详情），十几秒是正常的，不是卡死。
+                */}
+                <p className="text-xs text-muted/70">
+                  {t("settings.account.roles_checking_scope")}
+                </p>
               </div>
             ) : (
-              <div className="py-8 text-center">
+              <div className="space-y-3 py-8 text-center">
                 <p className="text-sm text-muted">
                   {t("settings.account.no_game_roles")}
                 </p>
+                {/*
+                  文案本来就写着「可稍后重新检查」，但这里原先只有一段死文字：
+                  刚绑好的账户第一次拉角色很可能因为网络/通行证绑定延迟返回空，
+                  用户除了关掉弹窗再从头登录一遍没有别的出路。给一个就地重试，
+                  直接复用它自己那条「保存账户 → 重新拉角色」的链路。
+                */}
+                <GlassButton
+                  size="sm"
+                  variant="outline"
+                  isLoading={isCheckingRoles}
+                  onPress={() => void handleConfirmSklandAccount()}
+                >
+                  {t("settings.account.retry_later")}
+                </GlassButton>
               </div>
             )
           ) : isAuthStepOpen ? (
@@ -3961,6 +4034,8 @@ export default function AccountPage() {
                             </>
                           )}
                         </p>
+                        {/* 验证中显示已等待秒数，避免「只有转圈」被当成卡死 */}
+                        {isBusy && <CheckStatus active scope="u8" className="mt-1" />}
                       </div>
                       <div className="flex shrink-0 items-center gap-2">
                         {/*
@@ -4686,7 +4761,7 @@ export default function AccountPage() {
               <GlassButton
                 variant="outline"
                 onPress={handleCloseAddModal}
-                isDisabled={isLoading}
+                isDisabled={isLoading || isCheckingRoles}
               >
                 {t("settings.account.cancel")}
               </GlassButton>
@@ -4695,16 +4770,25 @@ export default function AccountPage() {
                 onPress={handleConfirmRoles}
                 isDisabled={
                   isLoading ||
+                  // 检测中不给「关闭/确认」这个结论式出口，避免看起来流程已经结束
+                  isCheckingRoles ||
                   (availableRoles.length > 0 &&
                     selectedRoles.length === 0 &&
                     !isManagingSklandRoles)
                 }
               >
-                {isLoading
-                  ? t("settings.account.loading")
-                  : availableRoles.length === 0
-                    ? t("settings.account.close")
-                    : `${t("settings.account.confirm")} (${selectedRoles.length})`}
+                {/*
+                  检测中时按钮必须说「检测中」，不能落到「关闭」：
+                  后者是给「确实没有角色」这个结论用的，出现在检测阶段会
+                  直接把人劝退。isCheckingRoles 才是这段等待的真值。
+                */}
+                {isCheckingRoles
+                  ? t("settings.account.roles_checking_button")
+                  : isLoading
+                    ? t("settings.account.loading")
+                    : availableRoles.length === 0
+                      ? t("settings.account.close")
+                      : `${t("settings.account.confirm")} (${selectedRoles.length})`}
               </GlassButton>
             </>
           ) : loginMethod === "phone" ? (

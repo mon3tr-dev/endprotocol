@@ -228,6 +228,20 @@
 - `prefers-reduced-motion` 必须自行判断：globals.css 里那条全局 `animation-duration: 80ms !important` 只覆盖 CSS 动画与过渡，**管不到 Web Animations API**（它不产生 CSS `animation-duration`）。
 - 使用点：`layouts/dashboard.tsx` 的底部内容排（`contentRowRef`）、`components/custom-titlebar.tsx` 的游戏名（`titleRef`）；序号与方向来自 `stores/launcherGame.ts` 的 `getGameSwitchSeq()` / `getGameSwitchDirection()`。
 
+## `src/hooks/useElapsedSeconds.ts`
+**职责**：等待计时 Hook——`active` 为 true 时从 0 开始每秒 +1，变回 false 时归零。给「只有转圈、没有进度」的等待加一个可见的时间刻度，让用户能判断「还在跑」还是「已经卡死」。
+**导出**：`useElapsedSeconds(active: boolean): number`（useElapsedSeconds.ts:13）。
+**主要依赖**：`react`（useState/useEffect/useRef）、`window.setInterval`。
+
+| 符号 | 位置 | 说明 |
+| --- | --- | --- |
+| `useElapsedSeconds` | useElapsedSeconds.ts:13 | `active` 变 true 时记下 `Date.now()` 起始时刻并每秒重算已过整秒数；变 false 时清定时器并归零 |
+
+**备注**：
+- 用「起始时刻 + Date.now() 差值」而不是逐次 `+1` 累加：定时器会漂移，累加会让显示的秒数越走越慢、和真实耗时对不上。
+- 每秒只 `setSeconds` 一次，且仅在 `active` 时运行 —— 对渲染预算的影响可忽略。
+- 使用点：`src/components/check-status.tsx`（角色检测与抽卡授权验证的「已检测 / 已等待 N 秒」）。
+
 ## `src/hooks/useLongPressDrag.ts`
 **职责**：可复用的「长按进入编辑态并随后开始拖拽」Hook：长按期间按 40ms 步进显示进度环，达到时长后触发回调并置位待拖拽标志，提供取消与模拟 pointerdown 的接口。
 **导出**：`useLongPressDrag`（useLongPressDrag.ts:23）。

@@ -34,7 +34,7 @@
 | `setSelectedAccount` | accountService.ts:512 | invoke `set_selected_account`，参数 `{accountId}`，返回 `boolean`；失败返回 `false` |
 | `checkAndRefreshCred` | accountService.ts:526 | invoke `check_and_refresh_cred`，参数 `{userId}`，返回 `[cred, token] \| null`（`null` 表示无需刷新）；失败记录日志后**重新 throw** |
 | `deleteSklandAccount` | accountService.ts（新增） | invoke `delete_skland_account`，参数 `{userId}`，返回 `boolean`（账号不存在为 `false`）；**彻底删除**父账户 + 全部角色 + 全部凭据，与 `logoutAccount`（只解绑单角色）不同 |
-| `authorizeRoleU8Token` | accountService.ts（新增） | invoke `authorize_role_u8token`，参数 `{roleId}`，返回 `RoleU8AuthResult`（`status` ∈ `authorized` / `failed`，另有 `message`）；失败返回 `{status:"failed", message}` |
+| `authorizeRoleU8Token` | accountService.ts:615 | invoke `authorize_role_u8token`，参数 `{roleId}`，返回 `RoleU8AuthResult`（`status` ∈ `authorized` / `failed`，另有 `message`）；失败返回 `{status:"failed", message}`。**带 20s 上限**（`U8_AUTH_TIMEOUT_MS`）：用 `Promise.race` 与一个超时 promise 竞速，超时返回 `{status:"failed", message: U8_AUTH_TIMEOUT_MESSAGE}`（`"timeout"`），并在 `finally` 清定时器；后台请求仍会跑完，重试安全（授权是幂等开关写入） |
 | `revokeRoleU8Token` | accountService.ts（新增） | invoke `revoke_role_u8token`，参数 `{roleId}`，返回 `boolean`（是否确实取消了授权）；失败返回 `false` |
 
 **内部结构**：
@@ -47,7 +47,7 @@
 **备注**：
 - 封装的 invoke 命令：`get_accounts`、`get_skland_accounts`、`save_skland_account`、`get_skland_account_roles`、`get_skland_user_info`、`get_skland_user_info_by_cred`、`get_skland_games`、`add_account`、`logout_account`、`delete_skland_account`、`batch_logout`、`refresh_accounts`、`send_verification_code`、`add_account_by_code`、`gen_scan_login`、`scan_status`、`add_account_by_scan`、`save_selected_roles`、`get_selected_account`、`set_selected_account`、`check_and_refresh_cred`、**`authorize_role_u8token`、`revoke_role_u8token`**（共 23 个）。
 - **游戏标识**：`GameId = "endfield" | "arknights"`，对应后端 `models::role::GAME_*` 常量。`Account.game?` 与 `RoleDisplayInfo.game?` 都是可选字段，缺失时按终末地处理（后端三处结构体都带 `#[serde(default = "default_game")]`）。明日方舟角色**没有头像**（`avatarUrl` 为空串），也没有终末地那套角色数据接口。
-- **抽卡授权**：`authorizeRoleU8Token` / `revokeRoleU8Token` 是唯一入口，前端从不接触令牌明文 —— u8token 不落盘、每次同步由后端现换。官服与 B 服走同一条链路，没有「渠道服不支持」分支。
+- **抽卡授权**：`authorizeRoleU8Token` / `revokeRoleU8Token` 是唯一入口，前端从不接触令牌明文 —— u8token 不落盘、每次同步由后端现换。官服与 B 服走同一条链路，没有「渠道服不支持」分支。授权要走两次鹰角通行证接口，慢网络下能到十几秒，因此这次调用设了 20s 上限并把超时表达成可读结果（见 `U8_AUTH_TIMEOUT_MESSAGE` / `U8_AUTH_TIMEOUT_SECONDS`），页面据此把「转圈到天荒地老」变成「验证超时，检查网络或代理后重试」；验证期间 `U8CheckStatus` 每秒推进已等待秒数。
 - 配置键：本文件**不直接**读写任何配置键；选中账户由后端命令 `get_selected_account`/`set_selected_account` 管理（对应后端配置键在 Rust 侧，前端未出现字面量）。
 - 缓存策略：无前端缓存，每次调用直接 IPC；森空岛游戏列表的缓存由后端负责（`getSklandGames` 的 `force` 参数控制强制刷新）。
 - 错误处理不统一：`getSklandUserInfo`、`getSklandGames` 不捕获错误；`saveSelectedRoles`、`checkAndRefreshCred` 记录日志后 rethrow；其余函数均吞掉错误并返回空值/false。

@@ -260,6 +260,24 @@
 - 取色结果始终为小写 `#rrggbb`（`toString(16)`），显示时才 `toUpperCase()`。
 - 原生截图依赖 Win32 GDI；Linux/macOS 不挂载此组件，其后端命令返回明确的 Windows-only 错误。
 
+## `src/components/check-status.tsx`
+**职责**：「正在检测…」的进行中提示。解决的核心问题是**结论式空态冒充进度**：拉取游戏角色与验证抽卡授权都要串鹰角接口，慢的时候十几秒。原先这段等待里界面要么只剩一个不停转的圆环，要么直接显示「暂无可绑定的游戏角色」这种已经结束的结论 —— 用户会以为流程走完了或卡死了，于是关掉重来。这个组件把三件事摆明：正在做什么（文案）、已经等了多久（每秒推进的秒数）、以及「还在继续」（秒数在动）。
+**导出**：`CheckStatus`、`CheckStatusProps`、`CheckScope`。
+**主要依赖**：`react-i18next`（`useTranslation`）、`@/components/ui/glass`（`GlassSpinner`）、`@/hooks/useElapsedSeconds`、`@/lib/utils`（`cn`）。
+
+| 符号 | 位置 | 说明 |
+| --- | --- | --- |
+| `CheckScope` | check-status.tsx:22 | `"roles" \| "u8"`：两个作用域共用同一套呈现，只换文案前缀（`roles` = 检测可绑定游戏角色；`u8` = 验证抽卡授权） |
+| `KEY_PREFIX`（私有） | check-status.tsx:25 | 作用域 → i18n 键前缀：`settings.account.roles_checking` / `settings.account.u8_checking`；`_elapsed` / `_slow` / `_hint` 由前缀派生 |
+| `CheckStatusProps` | check-status.tsx:30 | `active`（false 时返回 `null`）、`scope`、`slowAfterSeconds?`（默认 8）、`className?` |
+| `CheckStatus` | check-status.tsx:39 | 渲染 `GlassSpinner` + 一行文案：0 秒用 `{prefix}`，之后用 `{prefix}_elapsed`（带 `{{seconds}}`），超过 `slowAfterSeconds` 换成 `{prefix}_slow` 并把颜色从 `text-muted` 改为 `text-warning-text`。`title` 取 `{prefix}_hint`，`aria-live="polite"`，文案 `truncate` 以适应窄屏 |
+
+**备注**：
+- 秒数来自 `useElapsedSeconds(active)`：每秒一次 `setSeconds`，组件卸载或 `active` 变 false 时定时器被清理。
+- 状态提示不是错误：默认色 `muted`，慢时才转 `warning`，不用 `danger`，避免看起来像已经失败了。
+- 角色检测的慢阈值用 10 秒（客户端两次调用叠加：绑定列表 + 每个角色详情），抽卡授权用默认 8 秒。
+- 使用点：`src/pages/account.tsx` —— 角色选择步骤的检测态（`scope="roles"`）、账号卡片展开区拉角色（`scope="roles"`）、`GameRoleRow` 与授权步骤的角色行（`scope="u8"`）。
+
 ## `src/components/simple-pagination.tsx`
 **职责**：统一分页控件（液态玻璃风格）。按页数生成页码序列（含首尾省略号），并提供前后翻页与「跳至指定页」输入框。
 **导出**：`SimplePagination`

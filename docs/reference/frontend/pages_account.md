@@ -173,12 +173,23 @@
 - 说明文案只有一句（`u8_auth_desc`），不再罗列渠道链路细节；底部只留一个按钮 —— 「跳过」与「关闭」语义相同，合二为一。
 - **底栏文案随授权进度切换**：`allAuthRolesAuthorized`（`authRoles` 非空且每个角色的 `authStatuses` 都是 `authorized`）为真时显示 `u8_done`「完成」，否则显示 `u8_skip`「暂时跳过」。两者点击行为完全一样（`handleCloseAddModal`），只是全部授权后再写「暂时跳过」会让人以为漏做了什么；授权失败的角色按「暂时跳过」。
 - 点「授权」：后端用该角色的**渠道绑定 uid** 现换一次令牌做校验（**令牌不保存、不落盘**），成功才记下开关。
+- **验证过程必须可见、且一定会有终点**：这一步要串两次鹰角通行证接口（OAuth token → `u8_token_by_uid`），正常几百毫秒，网络差或走代理时能到十几秒。原先界面只有一个不停转的圆环，用户分不清「还在跑」和「已经卡死」。
+  - 进行中时角色行副标题下方显示 `U8CheckStatus`（`src/components/check-status.tsx`）：`正在验证抽卡授权…已等待 {{seconds}} 秒`，秒数由 `useElapsedSeconds`（`src/hooks/useElapsedSeconds.ts`）每秒推进，画面持续变化本身就是「还在动」的证据；超过 8 秒改用 `u8_checking_slow`（转为 `text-warning-text`），表示网络较慢但仍在继续。
+  - `authorizeRoleU8Token`（`utils/accountService.ts`）给这次调用加 **20 秒上限**（`U8_AUTH_TIMEOUT_MS`），超时返回 `{status:"failed", message: U8_AUTH_TIMEOUT_MESSAGE}`；后台请求仍会跑完，重试是安全的（授权是幂等的开关写入）。
+  - 超时的哨兵值由页面侧 `describeU8Failure` 换成 `u8_timeout`（带秒数、提示检查网络或代理），其余失败沿用后端原文（通常是通行证未绑定该渠道或 hytoken 过期，对排查有用）。
 - 结果通过 `pushResultMessage` 写入**消息中心**，不弹浮层。
 - 官服与 B 服**没有区别**：同一条鹰角通行证链路、同一个 hytoken，差异只在渠道 uid，因此渠道服角色也能直接授权。
 - 底栏是「暂时跳过 / 完成」——按钮只在全部角色都已授权时改叫「完成」（`u8_done`），点击都只是关弹窗，不影响绑定结果，之后可随时在账号页授权或取消。
 - 账号页展开区的已绑定角色行同样只占**一个**按钮（未授权实心 / 已授权描边带勾），**点一下就地授权、不弹窗**，按钮立即变为已授权态；与「设为当前」「解绑」并排，按钮区允许换行，避免把昵称压成一两个字。
 - **弹窗只在「绑定角色后」出现一次**（`openAuthStep`），用于列多个角色逐个决定；账号页的授权/取消都是就地切换。
-- **进入本步骤前不闪「暂无可绑定的游戏角色」**：`saveRoles` 绑定成功后先清空 `availableRoles`、`await refreshData()` 之后才 `openAuthStep`；这段 `isLoading` 里角色选择步骤的空列表按**加载态**渲染（`GlassSpinner` + `loading_game_roles`），只有真正读完角色仍为空（`isLoading === false`）才显示 `no_game_roles` —— 否则底栏在转「加载中」、正文却说「没有角色」，会被当成绑定失败。
+- **角色选择步骤是三态，不是一个 `isLoading` 二选一**：判定真值改成专用的 `isCheckingRoles`（新增 state，只由角色请求置位/复位），因为 `isLoading` 还会被保存账户、刷新列表、绑定角色共用，任一处回落都会让列表提前掉进结论式空态。
+  1. **正在检测**（`isCheckingRoles === true`）：正文显示 `CheckStatus scope="roles"`（`正在检测可绑定的游戏角色…` + 每秒推进的已检测秒数，超过 10 秒转「网络较慢，仍在检测游戏角色…」），下方补一句 `roles_checking_scope` 说明要依次读通行证绑定列表与每个角色详情；底栏主按钮同时显示 `roles_checking_button`（「检测中…」）**并禁用**，取消按钮也禁用 —— 避免用户在检测途中以为流程已结束而退出。
+  2. **检测完确实没有**（`isCheckingRoles === false` 且 `availableRoles` 为空）：显示 `no_game_roles` 结论式空态 + 重试按钮（见下条）。
+  3. **有角色**：角色选择列表。
+  这修的是原先最容易被误读的一处：检测途中直接显示「暂无可绑定的游戏角色」，用户看到的是「流程结束了」或「卡住了」，而不是「还在检测」。
+- **空列表带「重试」**：`no_game_roles` 文案本来就写着「可稍后重新检查」，但原先只有一段死文字 —— 刚绑好的账户第一次拉角色很可能因网络或通行证绑定延迟返回空，用户除了关弹窗重登一遍没有出路。现在空态附一个描边按钮（`retry_later`），直接复用 `handleConfirmSklandAccount`（保存账户 → 重新拉角色）就地重试。
+- **账号卡片展开区同样用 `CheckStatus scope="roles"`**：`handleExpandSklandAccount` 拉角色时不再是「圆环 + 正在读取游戏角色…」，改为带秒数的检测提示（`loadingSklandId` 命中时）。
+- **打开/关闭弹窗都会复位 `isCheckingRoles`**：上一轮若在检测中被关闭，标志会留在 `true`，而发起它的请求早就不在了，下次打开会永远停在「检测中」。
 - **未授权不影响其它功能**：只是不能同步抽卡记录（本地已同步的记录仍可查看）。
 
 ### 账户不可用与重新登录（account.tsx:594-622、1056-1080、1272-1429、1538-1590、2182-2450）

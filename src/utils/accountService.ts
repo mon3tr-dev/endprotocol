@@ -175,6 +175,22 @@ export interface RoleU8AuthResult {
 }
 
 /**
+ * 交换一次抽卡令牌最多等多久（毫秒）。
+ *
+ * 授权要串两次鹰角通行证接口（OAuth token → `u8_token_by_uid`），后端 HTTP
+ * 客户端本身是 30s 超时；这里留出稍长的余量，只为把「真的不会再回来了」
+ * 变成一个明确的失败，而不是让界面无限转圈。超时后请求仍在后台跑完，
+ * 只是前端不再等它 —— 用户重试是安全的（授权是幂等的开关写入）。
+ */
+const U8_AUTH_TIMEOUT_MS = 20_000;
+
+/** 授权超时的秒数（供调用方在提示文案里显示，避免两处各写一份数字）。 */
+export const U8_AUTH_TIMEOUT_SECONDS = Math.round(U8_AUTH_TIMEOUT_MS / 1000);
+
+/** 授权超时时 `RoleU8AuthResult.message` 的哨兵值；调用方据此换成可读文案。 */
+export const U8_AUTH_TIMEOUT_MESSAGE = "timeout";
+
+/**
  * 登录请求接口
  */
 export interface LoginRequest {
@@ -600,14 +616,33 @@ export async function checkAndRefreshCred(userId: string): Promise<[string, stri
  * 官方服与渠道服走同一条链路、同一个 hytoken，差异只在渠道绑定 uid，
  * 因此渠道服角色同样可以直接授权。
  *
+ * 超过 {@link U8_AUTH_TIMEOUT_MS} 仍未返回时按失败处理并给出可读原因，
+ * 避免界面无限转圈（超时后后台请求仍会跑完，重试是安全的）。
+ *
  * @param roleId 角色 ID
  */
 export async function authorizeRoleU8Token(roleId: string): Promise<RoleU8AuthResult> {
+  let timer: number | undefined;
   try {
-    return await invoke<RoleU8AuthResult>('authorize_role_u8token', { roleId });
+    return await Promise.race([
+      invoke<RoleU8AuthResult>('authorize_role_u8token', { roleId }),
+      new Promise<RoleU8AuthResult>((resolve) => {
+        timer = window.setTimeout(() => {
+          logError(
+            `Authorize gacha access timed out after ${U8_AUTH_TIMEOUT_MS}ms (role ${roleId})`,
+          );
+          resolve({
+            status: 'failed',
+            message: U8_AUTH_TIMEOUT_MESSAGE,
+          });
+        }, U8_AUTH_TIMEOUT_MS);
+      }),
+    ]);
   } catch (error) {
     logError('Failed to authorize gacha access:', error);
     return { status: 'failed', message: String(error) };
+  } finally {
+    if (timer !== undefined) window.clearTimeout(timer);
   }
 }
 
