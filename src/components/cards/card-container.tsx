@@ -1045,9 +1045,13 @@ export function CardContainer({
   if (cards.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center h-80 text-center px-6">
-        <div className="w-16 h-16 rounded-2xl lg-inset flex items-center justify-center mb-4">
+        {/* 空态图标底：用主题色的极淡染色而不是 `lg-inset` 的中性灰 ——
+            后者在浅色主题下是一块中灰板（见 globals.css 的 --lg-inset-alpha），
+            空态整块屏幕只有它最重，第一眼像「出错了」而不是「还没有卡片」。
+            淡主色既托住了加号，又和仪表盘的玻璃语言同源。 */}
+        <div className="w-16 h-16 rounded-2xl bg-primary/10 ring-1 ring-primary/15 flex items-center justify-center mb-4">
           <svg
-            className="w-8 h-8 text-muted"
+            className="w-8 h-8 text-primary-text"
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"

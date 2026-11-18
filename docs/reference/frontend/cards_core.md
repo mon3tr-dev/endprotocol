@@ -200,7 +200,7 @@
 | 687-780 | `handleDragEnd`：清理状态（`activeId/isDragging/extraHeight/highlightGrid/hasCollision`，:698-702）；长按进入编辑的拖拽结束后退出编辑模式（:706-713）；无 `delta` 提前返回（:716-719）；吸附换算回网格坐标并 `Math.max(0,…)` 夹取（:728-733）；**碰撞则回退、不落盘**（:739-763）；否则本地更新 `sortedCards`（:766-770）并调用 `updateCardLayout(tabId ?? roleId, card.id, {x,y,w,h})` **持久化**（:773-779） |
 | 783-785 | `activeCard`：为 `DragOverlay` 找到被拖拽卡片 |
 | 788-794 | 渲染状态调试日志 effect |
-| 796-823 | **空状态**：`cards.length === 0` 时渲染 `dashboard.no_cards` 引导占位并提前 return |
+| 1045-1076 | **空状态**：`cards.length === 0` 时渲染 `dashboard.no_cards` 引导占位并提前 return。图标底用**淡主色** `bg-primary/10` + `ring-1 ring-primary/15` + `text-primary-text`，不用 `lg-inset`——后者是中性压暗块，空态整屏只有它最重，第一眼像「出错了」而不是「还没有卡片」；`tab-selector.tsx` 的空态（无标签页）用同一套，两处须保持一致。（行号会漂移，以 `cards.length === 0` 定位） |
 | 825-831 | `<DndContext sensors onDragStart onDragMove onDragEnd>` |
 | 832-839 | 容器背景：编辑态或拖拽中显示 `generateGridSVG` 网格 |
 | 841-866 | **落点高亮格**：碰撞时红色（`hasCollision`），否则主色；中心显示 `(x, y) WxH` 与 `MapPin`/`TriangleAlert` 图标，`data-testid="highlight-grid"` |

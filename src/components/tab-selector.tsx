@@ -78,8 +78,9 @@ export function TabSelector({
 
         {filteredTabs.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 text-center">
-            <div className="w-16 h-16 rounded-2xl lg-inset flex items-center justify-center mb-4">
-              <SearchIcon className="w-8 h-8 text-muted" />
+            {/* 与卡片容器空态同款：淡主色底 + 主色图标，避免中灰板压过整页 */}
+            <div className="w-16 h-16 rounded-2xl bg-primary/10 ring-1 ring-primary/15 flex items-center justify-center mb-4">
+              <SearchIcon className="w-8 h-8 text-primary-text" />
             </div>
             <p className="text-lg font-medium text-foreground mb-2">
               {searchQuery
