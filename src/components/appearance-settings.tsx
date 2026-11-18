@@ -712,7 +712,12 @@ export function AppearanceSettings() {
             {t("settings.appearance.theme_mode_desc")}
           </p>
         </div>
-        <div className="flex gap-1 p-1 rounded-xl lg-inset ring-1 ring-default-200/50">
+        {/* self-start 不能省：`flex flex-col` 的行在窄屏下按交叉轴 stretch，
+            这块**带可见底色的轨道**会被拉满整行宽，而三个按钮仍是内容宽度 ——
+            屏幕上就是一条又宽又空的灰条、图标挤在左上角（Android 上报的
+            「主题模式版式错乱」）。宽屏下要跟随 `sm:items-center` 垂直居中，
+            所以再补一个 `sm:self-center` 复位。 */}
+        <div className="self-start sm:self-center flex gap-1 p-1 rounded-xl lg-inset ring-1 ring-default-200/50">
           {modeOptions.map((opt) => (
             <button
               key={opt.value}

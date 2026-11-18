@@ -82,7 +82,7 @@
 - 469-585 行：`convertToWebP`、背景图选择/删除、背景图透明度与模糊的修改与重置、玻璃清晰度修改与重置（均写 CSS 变量 + 配置键；清晰度还额外 `emit("theme-changed", themeModeRef.current)` 广播给其他窗口，供托盘浮层实时跟随）。
 - 578-685 行：`handleSaveCustom`（新增/编辑自定义色）、`handleDeleteCustom`（删除并回退到 `PRESET_COLORS[0]`）、`openPicker`/`closePicker`、`handleScreenPick`、`handlePickFromScreen`（Tauri 走原生截图覆盖层，浏览器走 `EyeDropper`）。
 - 687-708 行：`isLoading` 时返回 `null`；`modeOptions` 三选项（浅/深/系统，含图标）；计算当前 HSV。
-- 710-738 行：主题模式分段按钮 UI。
+- 705-736 行：主题模式分段按钮 UI。分段控件的轨道必须带 `self-start`（宽屏再 `sm:self-center` 复位）：外层那行是 `flex flex-col sm:flex-row`，窄屏纵向排列时 `align-items` 回到默认的 `stretch`，带可见底色的轨道会被拉满整行宽、而三个按钮仍是内容宽度——Android 上报的「主题模式版式错乱」就是这个（一条又宽又空的灰条、图标挤在左上角）。
 - 740-1146 行：主题色区块——预设色行、自定义色行与右键菜单入口、新增按钮、取色器 portal（SV 面板、色相条、预览 + Hex 输入、屏幕取色按钮、RGB 输入、名称输入、取消/保存按钮）、自定义色右键菜单 portal、`ScreenColorPicker` portal。
 - 1148-1263 行：背景图区块——隐藏 file input、预览与移除按钮、不透明度滑杆、模糊滑杆、无图时的虚线选择按钮。
 - 1306-1310 行：文件末尾的 `applyThemeModeLocal` 别名与 `dispatchThemeChange`。
