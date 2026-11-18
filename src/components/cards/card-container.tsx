@@ -34,6 +34,16 @@ import { confirmDialog } from "@/components/ui/confirm-dialog";
 // 就把卡片挤成一条、或让最后一张卡探出右边缘。
 const GRID_SIZE = 100; // Each grid cell is 100x100 pixels
 
+// 窄屏断点（px），与 Tailwind 的 `sm` 对齐。
+//
+// 低于该宽度时，绝对定位的网格不再可用：4 列缩到 400px 以下，卡片会小到
+// 看不清、且每张卡只占屏幕一角。此时改为**单列纵向堆叠**（见
+// `CardContainer` 的 `isNarrow`），卡片宽度撑满内容区、高度按原网格行数
+// 换算，因此手机上永远只有纵向滚动，没有横向溢出。
+const NARROW_BREAKPOINT = 640;
+/** 窄屏媒体查询：与 NARROW_BREAKPOINT 同源，避免两处阈值漂移 */
+const NARROW_MEDIA_QUERY = `(max-width: ${NARROW_BREAKPOINT - 1}px)`;
+
 // Generate SVG grid pattern with dashed lines (uses default token)
 const generateGridSVG = (isDragging: boolean) => {
   const opacity = isDragging ? 0.3 : 0.15;
@@ -70,6 +80,7 @@ function FreeDragCard({
   onExitEditMode,
   highlightCardId,
   gridScale = 1,
+  stacked = false,
 }: FreeDragCardProps & {
   isDragging?: boolean;
   showGridCoords?: boolean;
@@ -78,6 +89,15 @@ function FreeDragCard({
   highlightCardId?: string | null;
   /** 窄屏缩放系数：网格坐标仍是 100px 一格，渲染时统一乘以它 */
   gridScale?: number;
+  /**
+   * 纵向堆叠模式（窄屏）。
+   *
+   * `true` 时卡片不再是画布上的绝对定位块，而是普通文档流里的一行：
+   * 宽度撑满内容区（`width: 100%`），高度仍按 `h * cell` 换算，于是
+   * 「高几格」的语义在手机上保持可读。此时拖拽自由摆放没有意义
+   * （坐标是给网格用的），因此 dnd-kit 被禁用，编辑模式只剩删除。
+   */
+  stacked?: boolean;
 }) {
   const { t } = useTranslation();
   /** 当前缩放下的格子边长 */
@@ -85,7 +105,8 @@ function FreeDragCard({
 
   const draggable = useDraggable({
     id: card.id,
-    disabled: !isEditMode,
+    // 堆叠模式下卡片按文档流排列，自由拖拽既无意义也会把卡片拖出画布
+    disabled: !isEditMode || stacked,
   });
 
   const { setNodeRef, attributes, listeners, transform } = draggable;
@@ -365,32 +386,51 @@ function FreeDragCard({
   //
   // 拖拽位移来自 dnd-kit 的像素值，是**已经乘过缩放**的实际位移，
   // 不能再乘 cell —— 直接相加即可。
-  const style: React.CSSProperties = {
-    position: "absolute",
-    left: x,
-    top: y,
-    width: (card.w ?? 3) * cell - 2,
-    height: (card.h ?? 2) * cell - 2, // Default 3x2
-    transform: transform
-      ? `translate(${transform.x}px, ${transform.y}px)`
-      : undefined,
-    cursor: isEditMode ? "grab" : "default",
-    // Hide original card when dragging to prevent ghosting
-    opacity: isDragging ? 0 : 1,
-    visibility: isDragging ? "hidden" : "visible",
-  };
+  //
+  // 堆叠模式（窄屏）下卡片回到文档流：宽度 100%，高度仍按网格行数换算，
+  // 于是「这卡高两格」在任何屏宽下读起来一样。绝对定位 / 拖拽位移一律不写，
+  // 否则卡片会脱离文档流又叠回左上角。
+  const style: React.CSSProperties = stacked
+    ? {
+        position: "relative",
+        width: "100%",
+        height: (card.h ?? 2) * cell - 2, // Default 3x2
+        cursor: "default",
+        // 纵向堆叠时高度就是内容高度：禁止 flex 收缩，否则父容器一旦
+        // 有高度约束，卡片会被压扁成几条。
+        flexShrink: 0,
+        opacity: isDragging ? 0 : 1,
+        visibility: isDragging ? "hidden" : "visible",
+      }
+    : {
+        position: "absolute",
+        left: x,
+        top: y,
+        width: (card.w ?? 3) * cell - 2,
+        height: (card.h ?? 2) * cell - 2, // Default 3x2
+        transform: transform
+          ? `translate(${transform.x}px, ${transform.y}px)`
+          : undefined,
+        cursor: isEditMode ? "grab" : "default",
+        // Hide original card when dragging to prevent ghosting
+        opacity: isDragging ? 0 : 1,
+        visibility: isDragging ? "hidden" : "visible",
+      };
 
   return (
     <div
       ref={setNodeRef}
       style={style}
       data-card-id={card.id}
-      className={`dashboard-card-shell group ${isEditMode ? "active:cursor-grabbing" : "card-hover cursor-default"} ${
+      className={`dashboard-card-shell group ${isEditMode && !stacked ? "active:cursor-grabbing" : "card-hover cursor-default"} ${
         card.id === highlightCardId ? "card-flash-highlight" : ""
       }`}
-      {...(isEditMode ? { ...attributes, ...listeners } : {})}
+      {...(isEditMode && !stacked ? { ...attributes, ...listeners } : {})}
       onContextMenu={handleContextMenu}
       onPointerDown={(e) => {
+        // 堆叠模式没有拖拽：长按进编辑也没意义（没有可以摆放的位置），
+        // 直接不接管指针事件，把事件留给卡片内容自己的点击。
+        if (stacked) return;
         // In edit mode, let dnd-kit handle everything
         if (isEditMode) {
           if (listeners?.onPointerDown) {
@@ -402,6 +442,9 @@ function FreeDragCard({
         }
       }}
       onPointerUp={(e) => {
+        // 堆叠模式下没有长按/拖拽状态要收尾
+        if (stacked) return;
+
         // Always call our custom handlePointerUp first
         handlePointerUp();
 
@@ -413,13 +456,13 @@ function FreeDragCard({
         }
       }}
       onPointerLeave={() => {
-        if (!isEditMode) {
+        if (!isEditMode && !stacked) {
           handlePointerLeave();
         }
       }}
     >
       {/* Long Press Progress Circle - Top Right Corner */}
-      {!isEditMode && !isDragging && longPressProgress > 0 && (
+      {!isEditMode && !isDragging && !stacked && longPressProgress > 0 && (
         <div className="absolute top-2 right-2 z-50 pointer-events-none">
           <GlassProgressCircle
             aria-label="Loading"
@@ -571,25 +614,61 @@ export function CardContainer({
   // 修法不是改坐标（那是持久化的用户布局），而是整体缩放渲染：
   // 按 `containerWidth / (GRID_COLS * 100)` 求一个 ≤ 1 的系数，
   // 格子边长、卡片尺寸、拖拽吸附全部乘以它。桌面宽屏系数恒为 1，行为不变。
+  //
+  // 但一直缩下去没有尽头：400px 时系数 0.99 还好，320px 就只剩 0.79，
+  // 4 列各占 79px，卡片内容全被压扁。所以**屏幕**窄于 NARROW_BREAKPOINT 时
+  // 不再缩放，改用 `isNarrow` 切到单列堆叠（见 `FreeDragCard` 的 `stacked`）。
   const GRID_COLS = 4;
-  const gridAreaRef = useRef<HTMLDivElement>(null);
   const [gridScale, setGridScale] = useState(1);
 
+  // 窄屏以**视口**为准（用户说的「屏幕为窄屏」），不用内容区宽度：
+  // 内容区还受侧栏展开与否影响，用它会关掉侧栏就换布局、来回跳。
+  const [isNarrow, setIsNarrow] = useState(
+    () => typeof window !== "undefined" && window.matchMedia(NARROW_MEDIA_QUERY).matches,
+  );
+
   useEffect(() => {
-    const el = gridAreaRef.current;
-    if (!el) return;
-    const measure = () => {
-      const width = el.clientWidth;
-      if (width <= 0) return;
-      // 留 1px 余量，避免亚像素舍入造成的新溢出
-      const scale = Math.min(1, (width - 1) / (GRID_COLS * GRID_SIZE));
-      setGridScale((prev) => (Math.abs(prev - scale) < 0.001 ? prev : scale));
-    };
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(el);
-    return () => observer.disconnect();
+    const mq = window.matchMedia(NARROW_MEDIA_QUERY);
+    const sync = () => setIsNarrow(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
   }, []);
+
+  const observerRef = useRef<ResizeObserver | null>(null);
+
+  // 用回调 ref 而不是 useEffect 起观察者：空列表时本组件会提前 return，
+  // 网格 div 根本不存在，`useEffect(() => {...}, [])` 只会跑在没有节点的
+  // 那一刻然后永远不再跑 —— 加进第一张卡时测量结果仍是初值，手机上
+  // 第一张卡就会横向溢出。挂在 ref 上则节点出现/消失都会重新测量。
+  const gridAreaRef = useCallback(
+    (el: HTMLDivElement | null) => {
+      observerRef.current?.disconnect();
+      observerRef.current = null;
+      if (!el) return;
+
+      const measure = () => {
+        const width = el.clientWidth;
+        if (width <= 0) return;
+        // 堆叠模式下宽度已是 100%，格子边长只用来定**高度**；
+        // 若继续按视口缩放，越窄的手机卡片越矮，最后挤成一条。
+        // 所以窄屏固定 1:1（一「行」就是 100px），宽屏才按列宽收缩。
+        // 留 1px 余量，避免亚像素舍入造成的新溢出。
+        const scale = isNarrow
+          ? 1
+          : Math.min(1, (width - 1) / (GRID_COLS * GRID_SIZE));
+        setGridScale((prev) => (Math.abs(prev - scale) < 0.001 ? prev : scale));
+      };
+
+      measure();
+      const observer = new ResizeObserver(measure);
+      observer.observe(el);
+      observerRef.current = observer;
+    },
+    [isNarrow],
+  );
+
+  useEffect(() => () => observerRef.current?.disconnect(), []);
 
   /** 当前缩放下的格子边长 */
   const cell = GRID_SIZE * gridScale;
@@ -938,6 +1017,22 @@ export function CardContainer({
     ? sortedCards.find((card) => card.id === activeId)
     : null;
 
+  /**
+   * 实际渲染顺序。
+   *
+   * 宽屏照旧用 `sortedCards`（按 `position`，位置由绝对定位决定、顺序无关）。
+   * 窄屏是文档流堆叠，顺序直接决定阅读顺序，所以改按**视觉位置**排：
+   * 先按 `y` 分排、同排按 `x`。这样手机上看到的先后与桌面网格完全一致，
+   * 用户不会因为「`position` 是添加顺序、`x/y` 是拖拽后位置」两者错位，
+   * 而发现同一批卡片在手机上换了次序。
+   */
+  const displayCards = useMemo(() => {
+    if (!isNarrow) return sortedCards;
+    return [...sortedCards].sort(
+      (a, b) => (a.y ?? 0) - (b.y ?? 0) || (a.x ?? 0) - (b.x ?? 0),
+    );
+  }, [sortedCards, isNarrow]);
+
   // Debug: Log rendering state
   useEffect(() => {
     logger.info(
@@ -987,13 +1082,16 @@ export function CardContainer({
         ref={gridAreaRef}
         className="relative w-full"
         style={{
+          // 堆叠模式没有网格坐标可供参照，画网格只会变成背景噪点
           backgroundImage:
-            isEditMode || isDragging ? generateGridSVG(isDragging) : "none",
+            !isNarrow && (isEditMode || isDragging)
+              ? generateGridSVG(isDragging)
+              : "none",
           backgroundSize: `${cell}px ${cell}px`,
         }}
       >
         {/* Highlight Grid Cell - Fill the entire grid area */}
-        {isDragging && highlightGrid && (
+        {!isNarrow && isDragging && highlightGrid && (
           <div
             className={`absolute pointer-events-none transition-all duration-150 ease-out rounded-lg border-[3px] z-[100] ${
               hasCollision
@@ -1020,7 +1118,7 @@ export function CardContainer({
           </div>
         )}
         {/* Grid Coordinate Labels */}
-        {(isEditMode || isDragging) && (
+        {!isNarrow && (isEditMode || isDragging) && (
           <div className="absolute inset-0 pointer-events-none">
             {Array.from({ length: Math.ceil(containerHeight / cell) }).map(
               (_, rowIndex) => (
@@ -1046,12 +1144,16 @@ export function CardContainer({
         )}
         {/* Container with dynamic height */}
         <div
-          className="relative w-full"
-          style={{
-            minHeight: containerHeight,
-          }}
+          className={isNarrow ? "relative w-full flex flex-col" : "relative w-full"}
+          style={
+            isNarrow
+              ? // 堆叠模式下高度由内容决定：卡片依次排开，间距用 margin 兜住，
+                // 不用 minHeight（那 N 张卡会先被拉成一张 2000px 的空画布）
+                { rowGap: 12 }
+              : { minHeight: containerHeight }
+          }
         >
-          {sortedCards.map((card) => (
+          {displayCards.map((card) => (
             <FreeDragCard
               key={card.id}
               card={card}
@@ -1063,6 +1165,7 @@ export function CardContainer({
               showGridCoords={isDragging && activeId === card.id}
               highlightCardId={highlightCardId}
               gridScale={gridScale}
+              stacked={isNarrow}
               onLongPress={() => {
                 onEnterEditMode?.();
                 setDraggedViaLongPress(true);

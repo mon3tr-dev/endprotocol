@@ -503,7 +503,11 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
         )}
 
         <div className="flex-1 flex flex-col overflow-hidden min-w-0">
-          <main className="flex-1 overflow-y-auto p-4 lg:p-8 pt-6">
+          {/* overflow-x-hidden：`overflow-y-auto` 会让 overflow-x 被计算成 auto，
+              于是任何超宽内容都会在 <main> 上生出一条横向滚动条。窄屏下卡片
+              已改为单列堆叠（见 cards/card-container.tsx 的 isNarrow），这里
+              再兜一道，确保手机上只能上下滚。 */}
+          <main className="flex-1 overflow-y-auto overflow-x-hidden p-4 lg:p-8 pt-6">
             <div
               id="dashboard-main"
               key={location.pathname}

@@ -58,7 +58,7 @@
   - 渐变磨砂层：`.frost-main frost-with-sidebar` 全屏覆盖层（504-512 行，`--frost-sidebar-w` 按折叠状态写入 `288px`/`64px`），纵向遮罩对应标题栏、横向遮罩对应侧边栏，两者取并集形成连通的 L 形强区；**游戏模式不再铺磨砂层**（原先的 `.frost-main frost-titlebar-only` 已移除，标题栏直接露出背景视频）。放在背景层之上、veil 之下、内容层之下。
   - 519-529 行：桌面端侧边栏——外层 `div` 宽度在 `w-72` 与 `w-[64px]` 间以 `transition-[width] duration-300 ease-out` 平滑过渡（`overflow-hidden` 裁剪），向 `<Sidebar collapsed={sidebarCollapsed} onToggleCollapsed={toggleSidebarCollapsed} />` 传入折叠状态与切换回调。
   - 531-557 行：移动端抽屉（`mobileOpen` 为真时渲染遮罩 + `Sidebar onNavigate={关闭}`）；抽屉内另挂 `.frost-main frost-drawer`（545-553 行，fixed 定位、仅横向遮罩）。抽屉容器带 `padding-top: var(--safe-area-top)` 内联样式，让 Android/iOS 状态栏不压住抽屉内容。
-  - 559-585 行：`<main>` 滚动容器，内部 `div` 带 `id="dashboard-main"`（562，仪表盘快照的截图基准：`tabSnapshotService` 以它的视口矩形计算截取区域）并以 `location.pathname` 为 key 强制路由切换时重挂载，其中 `<Suspense>` 包裹 `{children}`，懒加载页面 chunk 未就绪时以居中的 `GlassProgressCircle`（不定量 lg）作为兜底（布局外壳保持挂载）。
+  - 559-588 行：`<main>` 滚动容器（`overflow-y-auto overflow-x-hidden p-4 lg:p-8 pt-6`）。**`overflow-x-hidden` 不能省**：`overflow-y-auto` 会让 `overflow-x` 被计算成 `auto`，任何超宽内容都会在 `<main>` 上生出一条横向滚动条；窄屏下卡片已改为单列堆叠（见 `cards/card-container.tsx` 的 `isNarrow`），这里是第二道保险。内部 `div` 带 `id="dashboard-main"`（562，仪表盘快照的截图基准：`tabSnapshotService` 以它的视口矩形计算截取区域）并以 `location.pathname` 为 key 强制路由切换时重挂载，其中 `<Suspense>` 包裹 `{children}`，懒加载页面 chunk 未就绪时以居中的 `GlassProgressCircle`（不定量 lg）作为兜底（布局外壳保持挂载）。
   - 587-607 行：移动端右下角浮动菜单按钮（`lg:hidden`），点击 `setMobileOpen(true)`；bottom 用 `[bottom:calc(1.5rem+var(--safe-area-bottom))]` 让出 Android 手势条 / iOS Home 条。⚠️ 这个按钮占据右下角 **52×52px**（411×914 视口下 x335–387 / y838–890，z-30），**页面内所有右下角悬浮控件都必须让开它**，否则会被盖住点不到（详见 `pages_game_data.md` 抽卡页分类胶囊与 `ui_components.md` 的 `BackToTopFab` 两条记录）。
 - 612-735 行：背景模式切换器实现——触发区常量（612-614）、选项表 `BG_MODE_OPTIONS`（616-635）、`GameBackgroundSwitch`（637-735）：固定定位在 `top-12`（标题栏下方）居中，隐藏态 `-translate-y-2 scale-95 opacity-0 pointer-events-none`，显示态复位（`transition-all duration-300 ease-out` 浮出动画）；胶囊容器内为滑动主色指示块 + 两个图标按钮（`h-8 w-9`，`MorphIcon size=16`），激活图标使用 `text-primary-foreground`。
 
@@ -127,7 +127,7 @@
 | 加载中渲染分支 | dashboard.tsx:437-448 | `isLoading && view === "loading"` 时渲染不定向 `GlassProgressCircle` |
 | selector 渲染分支 | dashboard.tsx:450-471 | `TabSelector`（传 `snapshotPaths`）+ `TabEditorModal` |
 | `IconComponent`（派生） | dashboard.tsx:474 | `getTabIcon(activeTab.icon)`，用于标题左侧图标 |
-| tab 主渲染分支 | dashboard.tsx:476-667 | 头部（返回/标题/刷新，含 `id="dashboard-header"`）+ 内容（卡片容器）+ 各类弹窗 |
+| tab 主渲染分支 | dashboard.tsx:476-672 | 头部（返回/标题/刷新，含 `id="dashboard-header"`）+ 内容（卡片容器）+ 各类弹窗。外层 div 带 `overflow-x-clip`：窄屏卡片已单列堆叠，这里再兜一道防横向滚动（用 `clip` 不用 `hidden`，避免把本层变成滚动容器、影响子元素 `backdrop-filter` 采样） |
 
 **内部结构**（行号为当前工作区快照，改动后以源码为准）：
 - 1-57 行：导入。

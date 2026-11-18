@@ -485,12 +485,16 @@ export default function DashboardPage() {
   const IconComponent = activeTab ? getTabIcon(activeTab.icon) : null;
 
   return (
-    <div className="space-y-6 lg:space-y-8">
+    // overflow-x-clip：窄屏下卡片是单列堆叠（见 card-container 的 isNarrow），
+    // 这里再兜一道，任何卡片内容都不许把整页顶出横向滚动条。
+    // 用 clip 而不是 hidden：hidden 会把本层变成滚动容器（进而影响
+    // 子元素的 backdrop-filter 采样），clip 只裁切、不改变滚动行为。
+    <div className="space-y-6 lg:space-y-8 overflow-x-clip">
       <div
         id="dashboard-header"
         className="flex flex-col sm:flex-row sm:items-center justify-between gap-4"
       >
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 min-w-0">
           <GlassTooltip>
             <GlassButton
               isIconOnly
@@ -498,7 +502,7 @@ export default function DashboardPage() {
               size="sm"
               onPress={handleBackToSelector}
               aria-label="Back"
-              className="rounded-xl lg-hoverable"
+              className="rounded-xl lg-hoverable shrink-0"
             >
               <ChevronLeftIcon size={20} />
             </GlassButton>
@@ -506,14 +510,17 @@ export default function DashboardPage() {
               {t("settings.account.back") || "Back"}
             </GlassTooltip.Content>
           </GlassTooltip>
-          <div>
-            <div className="flex items-center gap-2">
-              {IconComponent && <IconComponent size={24} className="text-primary-text" />}
-              <h1 className="text-2xl lg:text-3xl font-bold text-foreground tracking-tight">
+          {/* min-w-0：窄屏下标签页名可能很长，不收缩就会把整行顶宽、生出横向滚动 */}
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 min-w-0">
+              {IconComponent && (
+                <IconComponent size={24} className="text-primary-text shrink-0" />
+              )}
+              <h1 className="text-2xl lg:text-3xl font-bold text-foreground tracking-tight truncate">
                 {activeTab?.name ?? t("nav.dashboard")}
               </h1>
             </div>
-            <p className="text-foreground/70 mt-1">
+            <p className="text-foreground/70 mt-1 truncate">
               {t("dashboard.customize_hint") ||
                 "Customize your dashboard with cards"}
             </p>
