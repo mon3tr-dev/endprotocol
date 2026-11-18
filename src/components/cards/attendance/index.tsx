@@ -453,7 +453,7 @@ export default function AttendanceCard({
   if (!settingsLoaded) {
     return (
       <GlassCard className="p-3  border border-separator/90 h-full w-full flex items-center justify-center">
-        <GlassProgressCircle isIndeterminate size="sm" aria-label={t("a11y.loading")} className="text-primary">
+        <GlassProgressCircle isIndeterminate size="sm" aria-label="Loading" className="text-primary">
           <GlassProgressCircle.Track>
             <GlassProgressCircle.TrackCircle />
             <GlassProgressCircle.FillCircle />

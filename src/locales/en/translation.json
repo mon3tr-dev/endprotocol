@@ -140,6 +140,8 @@
     "delete": "Delete",
     "edit": "Edit",
     "reset": "Reset",
+    "no_data": "No data",
+    "remove": "Remove",
     "characters": "Characters"
   },
   "domain_page": {
