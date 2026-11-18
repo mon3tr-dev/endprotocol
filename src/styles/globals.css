@@ -957,6 +957,14 @@ html[data-window="tray-panel"] body {
     border-color: var(--lg-hairline);
   }
 
+  /* Radix 滑块：手柄位置由外层包裹 span 的 left 逐帧驱动，
+   * 拖动时若不隔离，每帧 left 变化会触发整页布局，表现为掉帧。
+   * 给该包裹层加 contain: layout，把重排限制在层内；
+   * 手柄的白色实体 + 主色光晕不受影响。 */
+  .slider > span:has([role="slider"]) {
+    contain: layout;
+  }
+
   /* 内容层内部的次级填充块（代码块、分组底、徽章底、分段控件轨道）
    * 必须与表面反向：浅色压暗、深色提亮。用 foreground 参与混合即可自动反转，
    * 若沿用 tint（浅色=白）就会在白卡上叠出白块、毫无对比。 */

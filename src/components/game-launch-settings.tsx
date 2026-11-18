@@ -293,7 +293,7 @@ export function GameLaunchSettingsFields() {
               {t("settings.game_launch.download_threads_desc")}
             </p>
           </div>
-          <div className="flex items-center gap-3 sm:w-56 shrink-0">
+          <div className="flex items-center gap-3 sm:w-72 shrink-0">
             <Slider
               min={1}
               max={32}
@@ -347,7 +347,7 @@ export function GameLaunchSettingsFields() {
               {t("settings.game_launch.verify_threads_desc")}
             </p>
           </div>
-          <div className="flex items-center gap-3 sm:w-56 shrink-0">
+          <div className="flex items-center gap-3 sm:w-72 shrink-0">
             <Slider
               min={1}
               max={32}

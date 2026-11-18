@@ -492,7 +492,7 @@ character-list / domain-info / spaceship / attendance-settings-modal）都复用
 | --- | --- | --- |
 | `Slider` | slider.tsx:5 | forwardRef 直通 `SliderPrimitive.Root` 全部 props（`value`/`min`/`max`/`step`/`onValueChange` 等 Radix 原生 API）；Thumb 自动继承根的 `aria-label`（:21）；displayName 取自 Radix Root |
 
-**备注**：无自定义 props，样式常量写死在 Track/Range/Thumb 上；`value` 是 Radix 的数组形式。
+**备注**：无自定义 props，样式常量写死在 Track/Range/Thumb 上；轨道 `h-2.5`、手柄 `h-5 w-5` 白色（`bg-white`，深色主题下不再取近黑的 `--surface`）、根容器 `py-2.5`（视觉加粗并扩大垂直热区）。性能：轨道刻意不用 `lg-control` 而用 `lg-inset`（其 `::before` 带 `backdrop-filter`，拖动时填充区逐帧重算会掉帧），Range 为纯色无逐帧光晕；手柄加 `will-change-transform` 提升合成层，光晕挂在手柄上（只重绘一次）。`globals.css` 里 `.slider > span:has([role="slider"])` 对 Radix 手柄包裹层加 `contain: layout`，隔离其逐帧 `left` 变化导致的整页重排。Radix 1.6.1 手柄无 `data-state` 属性，不能用 `data-[state=dragging]` 做拖动态样式。`value` 是 Radix 的数组形式。
 
 ## `src/components/ui/spinner.tsx`
 **职责**：SVG 环形加载指示器。
