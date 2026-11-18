@@ -8,6 +8,7 @@
     "build": " vite build",
     "preview": "vite preview",
     "tauri": "tauri",
+    "android:install": "node scripts/android-build-install.mjs",
     "push": "git -c http.proxy=http://127.0.0.1:10808 -c https.proxy=http://127.0.0.1:10808 push"
   },
   "dependencies": {

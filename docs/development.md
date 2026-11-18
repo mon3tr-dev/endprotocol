@@ -67,6 +67,45 @@ pnpm tauri android dev
 pnpm tauri android build          # debug APK
 pnpm tauri android build --apk    # release APK（签名需在 gen/android 配置签名信息）
 
+# 装到已连设备（推荐：自动处理 versionCode 与数据保留，见下方「重装不丢数据」）
+pnpm android:install
+```
+
+#### 重装不丢数据（`pnpm android:install`）
+
+> ⚠️ **不要直接 `adb uninstall` 再装本地包。** `uninstall` 会整个删掉
+> `/data/data/<包名>`，账户、仪表盘标签页、卡片布局全部随之消失。
+
+本地 debug 包无法直接覆盖已安装的 release 包，原因有**两个且彼此独立**：
+
+| 阻塞点 | 本地 debug 包 | 已安装 release 包 | Android 的反应 |
+| --- | --- | --- | --- |
+| `versionCode` | 1000（`version` 恒为 0.1.0） | 1007（由 tag `v0.1.7-pre4` 推导） | `INSTALL_FAILED_VERSION_DOWNGRADE` |
+| 签名证书 | Android Debug（`CN=Android Debug`） | 项目 keystore（`CN=mon3tr`） | 签名不一致，**无任何参数可绕过** |
+
+`versionCode` 的推导规则是 `major*1e6 + minor*1e3 + patch`；本地 `package.json`
+始终是 0.1.0（CI 才会按 tag 重写），所以本地包永远低于线上包。
+
+`scripts/android-build-install.mjs` 把这两半都接管了：
+
+1. 按可达的 git tag 算出本地应使用的高位 `versionCode`（`最高 tag + 1_000_000`），
+   并在每次构建时确保高于设备当前已装版本 → 不再触发降级判定。
+   **注意它通过 `tauri --config` 叠加注入，不改 `tauri.conf.json`**：把
+   `bundle.android.versionCode` 写进仓库配置会污染所有后续 release 包。
+2. 签名边界无法就地跨越，因此在卸载前用 `run-as` 把私有配置打包备份，
+   装完立刻还原（`app_config.json` + `.bak`）。release 包不可 `run-as`，
+   脚本会明确拒绝而不是静默清空数据。
+
+```bash
+pnpm android:install                       # 构建 + 备份 + 安装 + 还原
+pnpm android:install --target aarch64      # 指定 ABI（默认 x86_64，模拟器用）
+node scripts/android-build-install.mjs --dry-run                   # 只看会做什么
+node scripts/android-build-install.mjs --install-only path/to.apk  # 跳过构建
+```
+
+脚本自带 `adb` / `aapt2` 发现逻辑（`ANDROID_HOME` → 常见安装路径 → PATH），
+并会优先选用 Android SDK 自带的 JDK 21，避免 Gradle 联网下载 toolchain 失败。
+
 # 发布用的按 ABI 拆分 release 包（与 CI 一致，见 §7.1）
 # CARGO_PROFILE_RELEASE_STRIP=symbols 必须带上，否则原生库带着调试符号（arm64 ~100 MB）
 CARGO_PROFILE_RELEASE_STRIP=symbols \
