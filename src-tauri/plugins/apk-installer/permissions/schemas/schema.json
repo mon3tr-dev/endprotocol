@@ -307,16 +307,10 @@
           "markdownDescription": "Denies the install_apk command without any pre-configured scope."
         },
         {
-          "description": "Default permissions for the APK installer plugin.\n#### This permission set includes:\n\n- `allow-install-apk`",
+          "description": "Default permissions for the APK installer plugin.\n#### This default permission set includes:\n\n- `allow-install-apk`",
           "type": "string",
           "const": "default",
-          "markdownDescription": "Default permissions for the APK installer plugin.\n#### This permission set includes:\n\n- `allow-install-apk`"
-        },
-        {
-          "description": "Allows opening an APK with the Android package installer.",
-          "type": "string",
-          "const": "allow-install-apk",
-          "markdownDescription": "Allows opening an APK with the Android package installer."
+          "markdownDescription": "Default permissions for the APK installer plugin.\n#### This default permission set includes:\n\n- `allow-install-apk`"
         }
       ]
     }
