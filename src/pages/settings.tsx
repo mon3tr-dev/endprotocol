@@ -377,7 +377,7 @@ export default function SettingsPage() {
         {/* General Settings */}
         <GlassCard
           id="settings-general"
-          className="p-6 lg-material border border-separator/90"
+          className="p-4 sm:p-6 lg-material border border-separator/90"
         >
           <h2 className="text-lg font-semibold mb-6 flex items-center gap-3">
             <div className="w-8 h-8 rounded-xl bg-primary/10 flex items-center justify-center ring-1 ring-primary/20">
@@ -438,7 +438,7 @@ export default function SettingsPage() {
             </div>
           ) : (
             <div className="space-y-6">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-4">
                 <div id="settings-language">
                   <p className="font-medium text-foreground">
                     {t("settings.general.language")}
@@ -635,7 +635,7 @@ export default function SettingsPage() {
 
               {/* Close Action */}
               <div id="settings-close-action">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-4">
                   <div className="min-w-0">
                     <p className="font-medium text-foreground">
                       {t("settings.general.close_action")}
@@ -649,7 +649,9 @@ export default function SettingsPage() {
                       </p>
                     )}
                   </div>
-                  <div className="flex gap-2">
+                  {/* 窄屏：三个选项并排会溢出（中文标签各 4~5 字 + padding），
+                      改成横向滚动，宽度不足时能滑。 */}
+                  <div className="flex gap-2 max-w-full overflow-x-auto scroll-touch [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                     {[
                       {
                         value: "close",
@@ -672,7 +674,7 @@ export default function SettingsPage() {
                     ].map((opt) => (
                       <button
                         key={opt.value}
-                        className={`px-3 py-1.5 rounded-lg text-sm border transition-all ${
+                        className={`px-3 py-2 rounded-lg text-sm border transition-all shrink-0 ${
                           closeAction === opt.value
                             ? "border-primary/50 bg-primary/10 text-primary-text font-medium"
                             : "border-separator/40 text-muted lg-hoverable"
@@ -690,7 +692,7 @@ export default function SettingsPage() {
 
               {/* Tray User */}
               <div id="settings-tray-user">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-4">
                   <div className="min-w-0">
                     <p className="font-medium text-foreground">
                       {t("settings.general.tray_user")}
@@ -722,7 +724,7 @@ export default function SettingsPage() {
         {/* Network Settings */}
         <GlassCard
           id="settings-network"
-          className="p-6 lg-material border border-separator/90"
+          className="p-4 sm:p-6 lg-material border border-separator/90"
         >
           <h2 className="text-lg font-semibold mb-6 flex items-center gap-3">
             <div className="w-8 h-8 rounded-xl bg-primary/10 flex items-center justify-center ring-1 ring-primary/20">
@@ -752,7 +754,7 @@ export default function SettingsPage() {
         {supportsLauncher && (
           <GlassCard
             id="settings-game-launch"
-            className="p-6 lg-material border border-separator/90"
+            className="p-4 sm:p-6 lg-material border border-separator/90"
           >
             <h2 className="text-lg font-semibold mb-6 flex items-center gap-3">
               <div className="w-8 h-8 rounded-xl bg-primary/10 flex items-center justify-center ring-1 ring-primary/20">
@@ -786,7 +788,7 @@ export default function SettingsPage() {
         {/* Appearance Settings */}
         <GlassCard
           id="settings-appearance"
-          className="p-6 lg-material border border-separator/90"
+          className="p-4 sm:p-6 lg-material border border-separator/90"
         >
           <h2 className="text-lg font-semibold mb-6 flex items-center gap-3">
             <div className="w-8 h-8 rounded-xl bg-primary/10 flex items-center justify-center ring-1 ring-primary/20">
@@ -808,7 +810,7 @@ export default function SettingsPage() {
         {/* System Resource Card Defaults */}
         <GlassCard
           id="settings-system-resource"
-          className="p-6 lg-material border border-separator/90"
+          className="p-4 sm:p-6 lg-material border border-separator/90"
         >
           <h2 className="text-lg font-semibold mb-6 flex items-center gap-3">
             <div className="w-8 h-8 rounded-xl bg-primary/10 flex items-center justify-center ring-1 ring-primary/20">
@@ -831,7 +833,7 @@ export default function SettingsPage() {
         {/* To-Do Card Defaults */}
         <GlassCard
           id="settings-todo"
-          className="p-6 lg-material border border-separator/90"
+          className="p-4 sm:p-6 lg-material border border-separator/90"
         >
           <h2 className="text-lg font-semibold mb-6 flex items-center gap-3">
             <div className="w-8 h-8 rounded-xl bg-primary/10 flex items-center justify-center ring-1 ring-primary/20">
@@ -854,7 +856,7 @@ export default function SettingsPage() {
         {/* Developer Mode */}
         <GlassCard
           id="settings-developer"
-          className="p-6 lg-material border border-separator/90"
+          className="p-4 sm:p-6 lg-material border border-separator/90"
         >
           {isConfigLoading ? (
             <div className="space-y-6">
@@ -910,7 +912,7 @@ export default function SettingsPage() {
         {/* Updates & About */}
         <GlassCard
           id="settings-about"
-          className="p-6 lg-material border border-separator/90"
+          className="p-4 sm:p-6 lg-material border border-separator/90"
         >
           <h2 className="text-lg font-semibold mb-6 flex items-center gap-3">
             <div className="w-8 h-8 rounded-xl bg-primary/10 flex items-center justify-center ring-1 ring-primary/20">

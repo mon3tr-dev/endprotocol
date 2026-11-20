@@ -718,7 +718,7 @@ export default function GachaRecordsPage() {
       </header>
 
       {!active || active.records.length === 0 ? (
-        <GlassCard className="p-16 border border-separator/90">
+        <GlassCard className="p-8 sm:p-16 border border-separator/90">
           <div className="text-center space-y-3">
             <RefreshIcon size={40} className="mx-auto text-muted" />
             <p className="text-muted">
@@ -787,7 +787,7 @@ export default function GachaRecordsPage() {
           />
 
           {/* 抽卡记录详情 */}
-          <GlassCard className="p-6 border border-separator/90">
+          <GlassCard className="p-4 sm:p-6 border border-separator/90">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-sm font-semibold text-muted">
                 {isZh ? "寻访记录" : "Headhunting Records"}
@@ -975,12 +975,13 @@ export default function GachaRecordsPage() {
        * 这个胶囊是 `sticky`（吸底悬浮），窄屏上有三点必须收敛：
        *  1) 它整条压在内容之上，手机上没有留白就会盖住最后一行表格；
        *     用 `--safe-area-bottom` + 底部留白把它抬到手势条之上。
-       *  2) ⚠️ 它与右下角的**移动端菜单按钮**同处一个角：
-       *     菜单按钮是 `fixed right-6 bottom-[1.5rem+safe]`（52px 见方，z-30），
-       *     胶囊若也占满整行宽度，两者会**重叠 52×44px**，菜单按钮把胶囊右端
-       *     整个盖住，分类项点不到。
-       *     → 移动端让胶囊**停在菜单按钮左边**：右边距 4.25rem（68px，正好让开
-       *     菜单按钮的 52px + 16px 间隙），宽度由 `w-full` 改为自适应撑满剩余空间。
+       *  2) ⚠️ 它与**移动端底部导航胶囊**同处屏幕底部：
+       *     导航胶囊是 `fixed bottom-0` 的悬浮件（高约 56px），分类胶囊若也贴底，
+       *     两者会**重叠**，导航胶囊把分类胶囊的下半截整个盖住，分类项点不到。
+       *     → 移动端把分类胶囊**抬到导航胶囊之上**：`bottom` 给到
+       *     `calc(4.5rem + var(--safe-area-bottom))`（72px + 安全区），
+       *     并去掉右侧让位（`mr-[4.25rem]`）—— 让位对象已从「菜单按钮」变成
+       *     「整条导航胶囊」，那是通栏的，横向让位不再成立。
        *  3) 空出来的宽度要**分给每个分类项**（`flex-1` 等分），而不是让文字
        *     按内容宽度挤在左边 —— 否则「全部角色」三项之外大片留白、右侧空荡。
        *     实测 411px 视口：胶囊 x16–319（303px 宽），各项等分、文字不截断。
@@ -992,10 +993,10 @@ export default function GachaRecordsPage() {
        * （早先窄屏曾让按钮自己换底 `bg-primary` + 指示器 `hidden lg:block`，
        *  两套并存；现已统一为指示器方案。）
        *
-       * `lg` 及以上桌面没有菜单按钮，恢复原来的 `w-full max-w-2xl` 居中 +
+       * `lg` 及以上桌面没有底部导航胶囊，恢复原来的 `w-full max-w-2xl` 居中 +
        * `bottom-4`。
        */}
-      <div className="sticky z-40 mx-auto rounded-full p-1.5 flex lg-control border border-separator/70 shadow-lg overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden bottom-4 w-auto max-w-none mr-[4.25rem] lg:mr-0 lg:w-full lg:max-w-2xl">
+      <div className="sticky z-40 mx-auto rounded-full p-1.5 flex lg-control border border-separator/70 shadow-lg overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden bottom-[calc(4.5rem+var(--safe-area-bottom))] lg:bottom-4 w-auto max-w-none lg:mr-0 lg:w-full lg:max-w-2xl">
         {/* 滑动指示器：始终渲染（移动端与桌面同一套动画）。
          * 宽度 = 胶囊内容宽 / 项数 —— 各项等分（`flex-1`）时正好落在对应项上。 */}
         <span

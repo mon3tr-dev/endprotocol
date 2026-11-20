@@ -488,7 +488,7 @@ export default function DeveloperPage() {
 
       <div className="grid grid-cols-1 gap-6">
         {/* Image Cache Settings */}
-        <GlassCard id="developer-cache" className="p-6 border border-separator/90 overflow-hidden">
+        <GlassCard id="developer-cache" className="p-4 sm:p-6 border border-separator/90 overflow-hidden">
           <h2 className="text-lg font-semibold mb-6 flex items-center gap-2">
             <span className="w-1 h-5 bg-primary rounded-full" />
             {t("settings.cache.title")}
@@ -685,7 +685,7 @@ export default function DeveloperPage() {
         </GlassCard>
 
         {/* 网络请求录制 */}
-        <GlassCard id="developer-capture" className="p-6 border border-separator/90 overflow-hidden">
+        <GlassCard id="developer-capture" className="p-4 sm:p-6 border border-separator/90 overflow-hidden">
           <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 mb-4">
             <h2 className="text-lg font-semibold flex items-center gap-2">
               <span
@@ -1054,7 +1054,7 @@ export default function DeveloperPage() {
         </GlassCard>
 
         {/* Log Viewer */}
-        <GlassCard id="developer-logs" className="p-6 border border-separator/90 overflow-hidden">
+        <GlassCard id="developer-logs" className="p-4 sm:p-6 border border-separator/90 overflow-hidden">
           <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 mb-4">
             <h2 className="text-lg font-semibold flex items-center gap-2">
               <span className="w-1 h-5 bg-secondary rounded-full" />

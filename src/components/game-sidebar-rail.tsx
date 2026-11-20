@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { Headset, Share2 } from "lucide";
 import { MorphIcon } from "morphicons/react";
 import { openInAppBrowser } from "@/stores/inAppBrowser";
+import { useIsTouchPrimary } from "@/hooks/useMediaQuery";
 import type { SidebarItem } from "@/utils/launcherService";
 
 /** 收起时鼠标靠近右边缘多少像素即展开 */
@@ -81,6 +82,8 @@ export function GameSidebarRail({ items }: GameSidebarRailProps) {
   const expandedRef = useRef(false);
   const railRef = useRef<HTMLDivElement | null>(null);
   const flyoutRef = useRef<HTMLDivElement | null>(null);
+  /** 触屏设备：没有悬停，展开/收起改由点击驱动 */
+  const isTouch = useIsTouchPrimary();
 
   const visibleItems = useMemo(
     () =>
@@ -107,6 +110,12 @@ export function GameSidebarRail({ items }: GameSidebarRailProps) {
   }, []);
 
   useEffect(() => {
+    // 触屏：不用「鼠标靠近右边缘」判定 —— 触摸设备上没有 mousemove，
+    // 这根栏会永远收着（只露出一个 32px 的浮标，7 个渠道图标全被裁掉），
+    // 等于在手机上完全无法访问官方社媒入口。
+    // 改为：点击浮标展开/收起（浮标本身一直可点，见渲染部分）。
+    if (isTouch) return;
+
     const handleMouseMove = (event: MouseEvent) => {
       const { clientX: x, clientY: y } = event;
 
@@ -140,7 +149,7 @@ export function GameSidebarRail({ items }: GameSidebarRailProps) {
 
     window.addEventListener("mousemove", handleMouseMove);
     return () => window.removeEventListener("mousemove", handleMouseMove);
-  }, [expand, collapse]);
+  }, [expand, collapse, isTouch]);
 
   /** 记住悬停项的视口矩形，把二维码浮层钉在它左侧，并夹在视口内 */
   const handleItemEnter = useCallback(
@@ -228,7 +237,14 @@ export function GameSidebarRail({ items }: GameSidebarRailProps) {
                       aria-disabled={!canOpen ? true : undefined}
                       onMouseEnter={(e) => handleItemEnter(index, e.currentTarget)}
                       onFocus={(e) => handleItemEnter(index, e.currentTarget)}
-                      onClick={() => {
+                      onClick={(e) => {
+                        // 触屏：第一次点 = 显示二维码（没有悬停，浮层不会自动出现）；
+                        // 第二次点同一个图标 = 打开网页。
+                        // 没有二维码的条目直接打开（它只有链接）。
+                        if (isTouch && item.qr_url && hoveredIndex !== index) {
+                          handleItemEnter(index, e.currentTarget);
+                          return;
+                        }
                         if (!canOpen) return;
                         openInAppBrowser(item.jump_url);
                       }}
@@ -264,7 +280,10 @@ export function GameSidebarRail({ items }: GameSidebarRailProps) {
               </div>
             </div>
 
-            {/* 浮标：常驻、始终在条的底端；无关闭按钮，离开自动收起 */}
+            {/* 浮标：常驻、始终在条的底端；桌面上离开自动收起，
+                触屏上点它展开/收起（没有「鼠标离开」这个事件）。
+                触屏上把它放大到 44px —— 它是这根栏唯一的入口，
+                32px 在手指上太难点。 */}
             <button
               type="button"
               aria-label={label}
@@ -272,7 +291,9 @@ export function GameSidebarRail({ items }: GameSidebarRailProps) {
               aria-expanded={expanded}
               onMouseEnter={() => setHoveredIndex(-1)}
               onClick={() => (expandedRef.current ? collapse() : expand())}
-              className="pointer-events-auto flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-xl text-white/80 transition-colors duration-200 lg-hoverable hover:text-white"
+              className={`pointer-events-auto flex shrink-0 cursor-pointer items-center justify-center rounded-xl text-white/80 transition-colors duration-200 lg-hoverable hover:text-white ${
+                isTouch ? "h-11 w-11" : "h-8 w-8"
+              }`}
             >
               <MorphIcon icon={Share2} size={15} aria-hidden />
             </button>

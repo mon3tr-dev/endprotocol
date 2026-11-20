@@ -24,17 +24,19 @@ export function SettingsRow({
     <div
       id={id}
       className={clsx(
-        "flex flex-col sm:flex-row sm:items-center justify-between gap-4",
+        "flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-4",
         className,
       )}
     >
       <div className="min-w-0 flex-1">
-        <p className="font-medium text-foreground">{title}</p>
+        <p className="font-medium text-foreground break-words">{title}</p>
         {description && (
           <p className="text-sm text-muted mt-0.5">{description}</p>
         )}
       </div>
-      <div className="shrink-0">{control}</div>
+      {/* 窄屏：控件整行靠左（不是靠右）—— 靠右的控件在窄屏上离拇指
+          更远，且长控件会溢出。宽屏保持靠右。 */}
+      <div className="shrink-0 sm:text-right w-full sm:w-auto">{control}</div>
     </div>
   );
 }

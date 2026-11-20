@@ -16,6 +16,7 @@
 | --- | --- | --- |
 | `DashboardLayoutProps` | dashboard.tsx:56-58 | 接口，仅含 `children: React.ReactNode` |
 | `DashboardLayout` | dashboard.tsx:60 | 页面外壳组件：见下方「内部结构」 |
+| `MobileTopBar` | dashboard.tsx:~700 | 内部组件（未导出）：**窄屏顶栏**——左侧「更多」按钮（打开抽屉）、居中标题 `ENDPROTOCOL`、右侧铃铛（消息中心，与桌面标题栏同一个入口）。props `onOpenDrawer: () => void` |
 | `BG_SWITCH_TRIGGER_HEIGHT` | dashboard.tsx:612 | 浮出触发区：指针距窗口顶部 ≤150px |
 | `BG_SWITCH_TRIGGER_HALF_WIDTH` | dashboard.tsx:613 | 浮出触发区：指针水平距窗口中线 ≤220px |
 | `BG_SWITCH_HIDE_DELAY` | dashboard.tsx:614 | 离开触发区后 300ms 收起 |
@@ -54,19 +55,23 @@
   - 页面层之后：`GameSwitchRail`（左侧贴边游戏切换栏）——**只挂载一份、放在页面层之外**：它本身 portal 到 body、fixed 贴左边缘，不随页面推移；放进页面层会导致每次切换随新页重新挂载出收起态的新实例（portal 后入者的 DOM 顺序在上，盖住旧实例），表现为切一下游戏左侧栏就收回去、要再动一下鼠标才重新展开。
   - **游戏模式不挂磨砂层**：背景是视频，标题栏保持背景本身清晰（原先的 `.frost-main frost-titlebar-only` 已移除）。
 - 494-609 行：**DATA MODE 分支**（默认业务界面）：
-  - 497 行：`dashboard-background` 背景层；515 行：`CustomTitlebar`。
+  - 497 行：`dashboard-background` 背景层；515 行：`CustomTitlebar`（**仅 `lg` 及以上渲染**：`hidden lg:block`）。
   - 渐变磨砂层：`.frost-main frost-with-sidebar` 全屏覆盖层（504-512 行，`--frost-sidebar-w` 按折叠状态写入 `288px`/`64px`），纵向遮罩对应标题栏、横向遮罩对应侧边栏，两者取并集形成连通的 L 形强区；**游戏模式不再铺磨砂层**（原先的 `.frost-main frost-titlebar-only` 已移除，标题栏直接露出背景视频）。放在背景层之上、veil 之下、内容层之下。
+  - **窄屏顶栏**：`<MobileTopBar onOpenDrawer={() => setMobileOpen(true)} />`（`lg:hidden`）。桌面标题栏（`CustomTitlebar`）在窄屏下不适用：它带数据/游戏模式拨杆与三个窗口按钮，移动端既没有窗口可控制、模式拨杆也只在 Windows 上出现（见 `custom-titlebar.tsx` 里 `isWindowsPlatform()` 的判断），整条排布在 375px 宽的屏上必然溢出。窄屏顶栏自带头部安全区（`.mobile-top-bar` 的 `padding-top: var(--safe-area-top)`）。
   - 519-529 行：桌面端侧边栏——外层 `div` 宽度在 `w-72` 与 `w-[64px]` 间以 `transition-[width] duration-300 ease-out` 平滑过渡（`overflow-hidden` 裁剪），向 `<Sidebar collapsed={sidebarCollapsed} onToggleCollapsed={toggleSidebarCollapsed} />` 传入折叠状态与切换回调。
-  - 531-557 行：移动端抽屉（`mobileOpen` 为真时渲染遮罩 + `Sidebar onNavigate={关闭}`）；抽屉内另挂 `.frost-main frost-drawer`（545-553 行，fixed 定位、仅横向遮罩）。抽屉容器带 `padding-top: var(--safe-area-top)` 内联样式，让 Android/iOS 状态栏不压住抽屉内容。
-  - 559-588 行：`<main>` 滚动容器（`overflow-y-auto overflow-x-hidden p-4 lg:p-8 pt-6`）。**`overflow-x-hidden` 不能省**：`overflow-y-auto` 会让 `overflow-x` 被计算成 `auto`，任何超宽内容都会在 `<main>` 上生出一条横向滚动条；窄屏下卡片已改为单列堆叠（见 `cards/card-container.tsx` 的 `isNarrow`），这里是第二道保险。内部 `div` 带 `id="dashboard-main"`（562，仪表盘快照的截图基准：`tabSnapshotService` 以它的视口矩形计算截取区域）并以 `location.pathname` 为 key 强制路由切换时重挂载，其中 `<Suspense>` 包裹 `{children}`，懒加载页面 chunk 未就绪时以居中的 `GlassProgressCircle`（不定量 lg）作为兜底（布局外壳保持挂载）。
-  - 587-607 行：移动端右下角浮动菜单按钮（`lg:hidden`），点击 `setMobileOpen(true)`；bottom 用 `[bottom:calc(1.5rem+var(--safe-area-bottom))]` 让出 Android 手势条 / iOS Home 条。⚠️ 这个按钮占据右下角 **52×52px**（411×914 视口下 x335–387 / y838–890，z-30），**页面内所有右下角悬浮控件都必须让开它**，否则会被盖住点不到（详见 `pages_game_data.md` 抽卡页分类胶囊与 `ui_components.md` 的 `BackToTopFab` 两条记录）。
+  - 531-557 行：移动端抽屉（`mobileOpen` 为真时渲染遮罩 + `Sidebar onNavigate={关闭}`）。**窄屏抽屉宽度改 `w-[min(20rem,85vw)]`**（原先固定 `w-72`，在 320px 屏上占掉 90% 宽度）；抽屉内另挂 `.frost-main frost-drawer`（`--frost-sidebar-w` 同步为 `min(20rem,85vw)`）。抽屉容器带 `padding-top: var(--safe-area-top)` 内联样式，让 Android/iOS 状态栏不压住抽屉内容。**抽屉新增显式头部**（标题 + 关闭按钮）：遮罩点按在窄屏上容易误触（内容区贴边时），必须有一个看得见的关闭入口。
+    - ⚠️ **抽屉必须 `createPortal` 到 body**：这段 JSX 在 `<div class="relative z-10 flex flex-1 overflow-hidden">` 里面，那个容器有 `z-10` —— **它建立了一个层叠上下文**。抽屉的 `fixed z-50` 只在该上下文**内部**排序，对外只表现为「父容器的 z-10」。于是同为 root 层元素的窄屏顶栏（`sticky z-30`）与底部导航（`fixed z-40`）都会**盖在抽屉上面**：顶栏压住抽屉头部（标题与关闭按钮点不到）、导航浮在抽屉内容上（抽屉底部一截永远被压住）。portal 到 body 后抽屉与遮罩回到 root 层，`z-[60]` 高于顶栏的 z-30 与导航的 z-40，层级才正确（模拟器实测确认）。
+  - 559-588 行：`<main>` 滚动容器（`overflow-y-auto overflow-x-hidden scroll-touch p-3 sm:p-4 lg:p-8 lg:pt-6 pb-24 lg:pb-8`）。**`overflow-x-hidden` 不能省**：`overflow-y-auto` 会让 `overflow-x` 被计算成 `auto`，任何超宽内容都会在 `<main>` 上生出一条横向滚动条；窄屏下卡片已改为单列堆叠（见 `cards/card-container.tsx` 的 `isNarrow`），这里是第二道保险。**`pb-24` 是给底部导航条留的位置**（`lg:pb-8` 恢复原值）。内部 `div` 带 `id="dashboard-main"`（562，仪表盘快照的截图基准：`tabSnapshotService` 以它的视口矩形计算截取区域）并以 `location.pathname` 为 key 强制路由切换时重挂载，其中 `<Suspense>` 包裹 `{children}`，懒加载页面 chunk 未就绪时以居中的 `GlassProgressCircle`（不定量 lg）作为兜底（布局外壳保持挂载）。
+  - **底部导航条**：`<MobileBottomNav game={activeGameAccountGame} onOpenDrawer={() => setMobileOpen(true)} />`（`lg:hidden`）。**原先的「右下角浮动菜单按钮」已撤除** —— 它和仪表板的「添加卡片」FAB（同样固定在右下角）会重叠，两个半透明圆钮叠在一起互相遮挡。改用底部导航条承载「更多」入口后，右下角空出来给 FAB。
+  - **`activeGameAccountGame`**：当前选中**账户**的游戏（`endfield` / `arknights`），与 `activeGame`（启动器的游戏页）不是一回事 —— 前者决定「哪些页面 / 卡片对当前账户可用」（侧栏过滤），后者决定「游戏模式里显示哪个游戏」。由 `getSelectedAccount()` + `getAccounts()` 取出，并监听 window `accountChanged` 刷新（账户切换后底部导航要立刻换掉上个账户允许的入口）。
 - 612-735 行：背景模式切换器实现——触发区常量（612-614）、选项表 `BG_MODE_OPTIONS`（616-635）、`GameBackgroundSwitch`（637-735）：固定定位在 `top-12`（标题栏下方）居中，隐藏态 `-translate-y-2 scale-95 opacity-0 pointer-events-none`，显示态复位（`transition-all duration-300 ease-out` 浮出动画）；胶囊容器内为滑动主色指示块 + 两个图标按钮（`h-8 w-9`，`MorphIcon size=16`），激活图标使用 `text-primary-foreground`。
 
 **备注**：
 - **invoke 命令**：本文件无直接 `invoke(...)`；间接经 `launcherService` 调用 `launcher_get_notice_content`（公告 + Banner + 右侧栏）与 `launcher_get_background_image`（背景）。
 - 路由：作为所有业务路由的外层包裹（`App.tsx` 中 `/`、`/settings`、`/account`、`/characters`、`/medals`、`/attendance`、`/gacha`、`/developer` 均包在 `DashboardLayout` 内）。
 - 平台限制：游戏启动器页面分支和公告/背景 IPC 仅在 Windows 启用；`launcherMode` store 在其他平台始终返回 data 模式。
-- 移动端（Android/iOS）：标题栏经 globals.css 的 `.titlebar-shell` 让出顶部安全区（高度 = 44px + `env(safe-area-inset-top)`，磨砂带 `--lg-frost-titlebar-h` 同步延伸），抽屉与右下角菜单按钮各让出对应 inset；仪表盘的 `DashboardFAB` 在 `<lg` 视口抬到菜单按钮上方（`bottom: calc(6rem + var(--safe-area-bottom))`，`lg:bottom-6`）避免两个 FAB 重叠。**同理，抽卡页底部分类胶囊与 `BackToTopFab`（`bottom-[calc(6rem+safe)] lg:bottom-6`）也必须让开菜单按钮** —— 前者选择**横向让位**（停在菜单按钮左边，各项均分剩余宽度），后者选择**纵向让位**（抬到按钮上方），因为它没有横向空间可让。`index.html` 的 viewport 带 `viewport-fit=cover`（安全区 insets 生效的前提）。
+- 移动端（Android/iOS）：标题栏经 globals.css 的 `.titlebar-shell` 让出顶部安全区（高度 = 44px + `env(safe-area-inset-top)`，磨砂带 `--lg-frost-titlebar-h` 同步延伸），抽屉与底部导航条各让出对应 inset。**窄屏用 `MobileTopBar` + `MobileBottomNav` 替代桌面标题栏与侧边栏**（见上方 DATA MODE 说明）；`index.html` 的 viewport 带 `viewport-fit=cover`（安全区 insets 生效的前提）。
+  - ⚠️ **右下角悬浮控件的让位规则变了**：原先右下角有一个浮动菜单按钮（52×52），所有右下角悬浮控件都要让开它。该按钮**已撤除**（改由底部导航条的「更多」入口承担），现在右下角只剩仪表盘的 `DashboardFAB`（`bottom: calc(4.5rem + var(--safe-area-bottom))`，`lg:right-6 lg:bottom-6`）。**抽卡页的吸底分类胶囊与 `BackToTopFab` 仍须让开 FAB 与底部导航条** —— 前者选择**横向让位**（停在 FAB 左边），后者选择**纵向让位**（抬到 FAB 上方）。
 - 关键 window/事件语义：无自定义 window 事件；使用 store 订阅（`subscribeLauncherMode`/`subscribeLauncherBgMedia`/`subscribeGameBgMode`/`subscribeActiveGame`）；`GameBackgroundSwitch` 额外监听 window `mousemove` 实现顶部中央浮出与离场收起（右侧栏 `GameSidebarRail` 自己监听 `mousemove`，不在本文件）。
 - localStorage：渠道按游戏分区读写 `launcher_channel` / `launcher_channel_arknights`（经 `launcherService.readGameChannel` / `gameConfigKey`）；背景模式 `game_bg_mode` 由 `stores/launcherMode` 读写；当前游戏 `launcher_game` 由 `stores/launcherGame` 读写。
 - 配置键（configService）：读 `sidebar_rail_collapsed`；写 `sidebar_rail_collapsed`。

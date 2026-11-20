@@ -138,7 +138,11 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_fs::init())
-        .plugin(tauri_plugin_apk_installer::init());
+        .plugin(tauri_plugin_apk_installer::init())
+        // 系统栏 inset 查询：Android 15+ 强制 edge-to-edge，WebView 会排到状态栏/
+        // 手势条之下，而 wry 不会把 inset 告诉 WebView（`env(safe-area-inset-*)`
+        // 恒为 0）。前端据此写入 CSS 变量，见 src/utils/safeArea.ts。
+        .plugin(tauri_plugin_safe_area::init());
 
     // 桌面专属插件：单实例转发 + 自更新（两者的依赖都只在桌面目标编译）。
     #[cfg(desktop)]

@@ -64,6 +64,8 @@ rand = "0.10"
 indexmap = { version = "2.0", features = ["serde"] }
 tauri-plugin-process = "~2.4"
 tauri-plugin-apk-installer = { path = "plugins/apk-installer" }
+# 系统栏 inset 查询（Android edge-to-edge；其它平台返回 0，由前端回退到 env()）
+tauri-plugin-safe-area = { path = "plugins/safe-area" }
 walkdir = "2"
 sysinfo = "0.40"
 zip = { version = "9", default-features = false, features = ["aes-crypto", "deflate-flate2"] }

@@ -13,7 +13,7 @@
 | `SidebarProps` | dashboard-sidebar.tsx:84 | props：`onNavigate?: () => void`（移动端点击导航后关闭抽屉的回调）、`collapsed?: boolean`（桌面端折叠为仅图标窄轨，默认 `false`）、`onToggleCollapsed?: () => void`（切换折叠状态；提供时页脚渲染折叠/展开按钮） |
 | `NavKey` | dashboard-sidebar.tsx:95 | 联合类型：`"dashboard" \| "characters" \| "medals" \| "attendance" \| "gacha" \| "todo" \| "domain" \| "spaceship" \| "recruitment" \| "building" \| "gamedata"` |
 | `NAV_KEYS` | dashboard-sidebar.tsx:97 | 默认导航顺序数组（11 项，含 `/domain` 区域信息与 `/spaceship` 帝江号页，以及 `/recruitment` 公开招募、`/building` 基地数据、`/game-data` 游戏数据——三者仅明日方舟账户可见），作为 `navOrder` 初值 |
-| `GripHandle` | dashboard-sidebar.tsx:106 | 六点拖拽手柄按钮（内联 SVG）。props：`onPointerDown`（必需）、`onDragEnd?`、`isDragging?`；`pointerUp`/`click` 均 `preventDefault+stopPropagation`，hover 时才显示 |
+| `GripHandle` | dashboard-sidebar.tsx:106 | 六点拖拽手柄按钮（内联 SVG）。props：`onPointerDown`（必需）、`onDragEnd?`、`isDragging?`；`pointerUp`/`click` 均 `preventDefault+stopPropagation`，hover 时才显示。**窄屏隐藏（`hidden lg:block`）** —— 拖拽换位依赖 `onMouseEnter` 越过另一项触发交换，触屏上 mouseenter 不触发，手柄显示出来也换不了位 |
 | `Sidebar` | dashboard-sidebar.tsx:145 | 主组件，约 145-2270 行，见下方内部结构 |
 | `handleNavClick` | dashboard-sidebar.tsx:291 | 导航点击守卫：`preventDefault` → await `runDashboardLeaveHandler()`（当前若停在仪表盘标签页则先截图）→ `navigate(href)` → `onNavigate?.()`。用于除「仪表盘父节点」「子标签」外的全部导航项与底部入口 |
 | `useFlipList(navListRef, navOrder)` | dashboard-sidebar.tsx:302 | 主导航列表换位 FLIP 动画（260ms） |
@@ -51,6 +51,11 @@
 - **2161-2220 行**：页脚——`bottomItems` 链接（每项 `onClick={(e) => void handleNavClick(e, item.href)}`）、GitHub 外链、`ThemeSwitch`、`LanguageSwitch`。
 - **2225 行附近**：`AccountSwitchModal`。
 - **折叠（`collapsed`）**：账户卡片收缩为居中小头像（`AccountAvatar size` `md`→`sm`、外层 `px-3`→`px-[7px]`、卡片 `p-2`→`p-[5px]`、始终 `w-full`，过渡连续不跳变），文字/切换按钮 `max-w-0 + opacity-0` 隐藏；主导航与页脚项 `justify-center` 仅图标；`GripHandle` 与仪表板标签列表隐藏；页脚仅折叠/展开按钮。所有过渡统一 `duration-300 ease-out`。
+- **移动端适配**：
+  - 导航项点击区加高到 44px（`py-3 min-h-[44px]`，原 `py-2.5`）—— 手指接触面比鼠标指针大得多，44×44 是 Apple HIG 与 WCAG 2.5.8 的可点区域下限。
+  - **「切换账户」按钮在触屏上常驻**（`hover-reveal`）：Tailwind v4 的 `hover:` 变体被包在 `@media (hover: hover)` 里，触屏上 `group-hover:opacity-100` 不生效，这个按钮在手机上会永远点不到。
+  - **拖拽手柄在窄屏隐藏**（`hidden lg:block`）：换位靠 `onMouseEnter` 越过另一项触发，触屏上 mouseenter 不触发。
+  - 抽屉宽度由调用方（`layouts/dashboard.tsx`）改为 `w-[min(20rem,85vw)]`。
 
 **备注**：
 - **invoke 命令**：本文件 0 个直接 `invoke`；后端能力经 `getAccounts`/`getSelectedAccount`/`getConfig`/`setConfig`/`getAllTabs`/`addTab`/`updateTab`/`removeTab`/`saveTabs`/`getActiveTabId`/`setActiveTabId`/`runDashboardLeaveHandler`（间接触发 `save_tab_snapshot`）/`deleteTabSnapshotFile`（`delete_tab_snapshot`）间接调用。
@@ -60,6 +65,36 @@
 - **配置键（configService）**：读 `sidebar_nav_order`(~215)、`developer_mode`(~341)、`sidebar_collapsed`(~350)、`refresh_on_account_switch`(~415)；写 `sidebar_nav_order`(252)、`sidebar_collapsed`（折叠按钮）。（整条侧边栏的折叠状态 `sidebar_rail_collapsed` 由外层布局 `layouts/dashboard.tsx` 读写，本文件不涉及。）
 - **Props 清单**：`Sidebar` 的 `onNavigate?`（默认 `{}`）、`collapsed`（默认 `false`）、`onToggleCollapsed?`。
 - **异常/注意点**：① 搜索 UI 被 `{false && ...}` 永久隐藏，但其状态、4 个键盘/鼠标 effect 与约 500 行 JSX 仍保留在文件中（属死代码）。② `handleManualRefresh` 中 `void expectedAccountCount` 为规避 lint 的占位。③ `highlightMatch` 用带 `g` 标志的正则做 `.test()`，`lastIndex` 有状态残留风险。④ ~~`location.pathname === ""` 永不命中~~ 已修复：与父节点高亮统一为 `pathname === "/" && !sidebarActiveTab`。⑤ `startNavDrag`/`startTabDrag` 注册的 `pointerup` 监听只在触发后移除，拖拽中途卸载组件会短暂泄漏。⑥ FLIP 动画与 `grid-template-rows` 展开折叠并存：换位只改顺序（高度不变），折叠展开只改容器（keys 不变），互不干扰；`prefers-reduced-motion` 下 FLIP 自动跳过。
+
+## `src/components/mobile-bottom-nav.tsx`
+**职责**：**移动端底部导航条 —— 悬浮胶囊**形态。桌面端把全部导航放在左侧栏里，窄屏下侧栏收成一个汉堡按钮，于是手机上每次换页面都要「开抽屉 → 点 → 关抽屉」（三次点击）。底部导航条把最常用的几个入口常驻在拇指可达范围内。
+**导出**：`MobileBottomNav`（命名导出）、`MobileAccountIcon`（命名导出，`AccountIcon` 的再导出，供抽屉头部使用）。
+**主要依赖**：`react-router-dom`（`useLocation`/`useNavigate`）、`react-i18next` 的 `useTranslation`、`clsx`、`@/components/icons`（`HomeIcon`/`CalendarIcon`/`GachaIcon`/`BookmarkIcon`/`AccountIcon`）、`morphicons/react` 的 `MorphIcon`、`lucide` 的 `Menu`、**`@/config/gameSupport`（`isNavVisible`）**。
+
+| 符号 | 位置 | 说明 |
+| --- | --- | --- |
+| `MobileBottomNavProps` | mobile-bottom-nav.tsx:35 | props：`game?: GameId \| string \| null`（当前**账户**的游戏，决定哪些入口可见）、`onOpenDrawer: () => void`（点击「更多」时打开侧栏抽屉） |
+| `NavEntry`（接口） | mobile-bottom-nav.tsx:42 | `{ key, path, labelKey, Icon }` |
+| `PRIMARY_NAV` | mobile-bottom-nav.tsx:50 | 底部常驻的四个入口（仪表板 `/`、签到 `/attendance`、抽卡 `/gacha`、待办 `/todo`），顺序即显示顺序。标签走**独立的短文案**（`mobile_nav.*`：仪表板/签到/抽卡/待办/更多）而不是复用侧栏的 `sidebar.*` —— 「抽卡记录」四个字在胶囊里会把格子撑宽、挤掉图标 |
+| `MobileBottomNav` | mobile-bottom-nav.tsx:57 | 主组件 |
+
+**形态（对齐 Apple 的悬浮导航条）**：
+- **不贴边**：左右各留 12px（`mx-3`），底部留 8px + 安全区（`mb-2` + `.mobile-bottom-nav` 的 `padding-bottom`）—— 悬浮感的关键。
+- **四角全圆**（`rounded-[28px]`），不是只有上两角圆 —— 它是悬浮件不是抽屉。
+- **半透明玻璃**：`.lg-regular` 材质（模糊 + 提亮 + 边缘高光 + 阴影），与全应用的 Liquid Glass 语言一致；底下滚动的卡片会透出一点。
+- **竖排**：图标在上、文字在下（`flex-col`）；选中态用一枚 `lg-control lg-solid bg-primary` 的**实底主色胶囊**托住整个图标+文字组 —— 胶囊是浅色玻璃上的浮层，只改文字色的话「未选中的灰」与「选中的主色」在浅背景上区分度不够，一眼扫过去不知道自己在哪一页。
+
+**内部结构**：
+- 按当前游戏过滤入口：`PRIMARY_NAV.filter(entry => isNavVisible(entry.key, game))` —— 与侧栏**同一张真值表**，两处不会给出不同答案。
+- `isActive(path)`：`path === "/"` 时精确匹配，否则 `location.pathname.startsWith(path)`。
+- 渲染：`<nav class="mobile-bottom-nav lg:hidden">` → 胶囊容器（`mx-3 mb-2 lg-regular rounded-[28px]`）→ `<ul>` 里每个入口一个 `<li class="flex-1">` + 按钮（`touch-target` 保证 ≥44px 命中区）。
+- 第五格是「更多」：调 `onOpenDrawer()` 打开**已有的侧栏**（`<Sidebar>`），不重复实现一份导航 —— 侧栏里还有账户、设置、开发者模式、按游戏过滤的完整列表与标签页树。
+
+**备注**：
+- **为什么只放 4+1 格**：再多就会挤（每格不足 64px，低于 44px 的可点区域下限），而且高频入口本来就只有这几个。
+- **游戏过滤的两套「游戏」不要混淆**：`game` prop 传的是**当前选中账户**的游戏（`endfield` / `arknights`，决定哪些页面可用），与 `stores/launcherGame` 的「当前启动器游戏页」不是一回事。布局层 `layouts/dashboard.tsx` 用 `getSelectedAccount()` + `getAccounts()` 取到它。
+- **invoke 命令**：本文件 0 个直接 `invoke`；账户数据由布局层取好后传入。
+- **使用点**：`src/layouts/dashboard.tsx`（数据模式的 DATA MODE 分支，`lg:hidden`）。
 
 ## `src/components/gacha-pity-chart.tsx`
 **职责**：抽卡「寻访统计」保底条形图——按卡池分组，以横向柱条展示每次六星距离上个六星的抽数（或赠送十连内序号）及未出六星的余量，柱头附角色/武器圆形头像，支持卡池筛选与中英文案。

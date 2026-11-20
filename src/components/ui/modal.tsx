@@ -1,6 +1,7 @@
 import { createContext, forwardRef, useContext, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils";
+import { useIsBelowSm } from "@/hooks/useMediaQuery";
 
 /* ======================================================
  * GlassModal — Liquid Glass 模态（功能层 regular + clear 遮罩）
@@ -82,11 +83,14 @@ function GlassModal({ isOpen, onOpenChange, children }: ModalProps) {
 
 function Backdrop({ isDismissable = true, className, children }: ModalBackdropProps) {
   const { close } = useContext(ModalCtx);
+  const isNarrow = useIsBelowSm();
   return (
     <div
       className={cn(
         // lg-scrim：35% 暗化 + 8px 轻模糊（clear 语义），渐入渐出对称
-        "lg-scrim fixed inset-0 z-[100] flex items-center justify-center",
+        "lg-scrim fixed inset-0 z-[100] flex justify-center",
+        // 窄屏：底部对齐（底部抽屉贴底）；宽屏：居中。
+        isNarrow ? "items-end" : "items-center",
         "[animation:lg-backdrop-in_var(--lg-dur-slow)_var(--lg-ease-emphasized)]",
         className,
       )}
@@ -105,6 +109,30 @@ function Container({
   className,
   children,
 }: ModalContainerProps) {
+  const isNarrow = useIsBelowSm();
+
+  if (isNarrow) {
+    // 窄屏：居中卡片改**底部抽屉**。
+    //
+    // 为什么：手机上屏幕是竖的，一个居中的大卡片上下都要留白，实际可用
+    // 高度被压到 40% 左右，键盘一弹就几乎看不见内容。底部抽屉从下往上
+    // 展开，正文贴着拇指、顶部留给标题，键盘弹出时正文仍然可见 ——
+    // 这是 iOS/Android 系统自己所有表单弹层采用的形态。
+    return (
+      <div
+        className={cn(
+          "flex w-full items-end justify-center",
+          // 底部对齐 + 一点点上边距：抽屉顶角露出一点桌面内容，
+          // 暗示「这是一层浮在上面的东西」。
+          "px-0 pt-8",
+          className,
+        )}
+      >
+        <div className="w-full max-w-full">{children}</div>
+      </div>
+    );
+  }
+
   return (
     <div
       className={cn(
@@ -121,6 +149,7 @@ function Container({
 }
 
 function Dialog({ className, children }: { className?: string; children?: React.ReactNode }) {
+  const isNarrow = useIsBelowSm();
   return (
     <div
       role="dialog"
@@ -129,7 +158,9 @@ function Dialog({ className, children }: { className?: string; children?: React.
         // lg-float-in：translateY(24px)+scale(.96) → 1，阴影同步扩散；
         // 不做淡入——opacity 动画会让这层玻璃在入场期间退化成半透明，
         // 位移/缩放（opacity 恒为 1）则全程保住 backdrop-filter
-        "lg-float-in lg-regular rounded-2xl border border-separator/60",
+        "lg-float-in lg-regular border border-separator/60",
+        // 窄屏：底部抽屉形态（顶部两角圆角、贴底、内部纵向滚动）。
+        isNarrow ? "mobile-sheet w-full" : "rounded-2xl",
         className,
       )}
     >
@@ -249,10 +280,13 @@ function GlassAlertDialog({ isOpen, onOpenChange, children }: AlertDialogProps) 
 }
 
 function AlertDialogBackdrop({ className, children }: { className?: string; children?: React.ReactNode }) {
+  const isNarrow = useIsBelowSm();
   return (
     <div
       className={cn(
-        "lg-scrim fixed inset-0 z-[100] flex items-center justify-center p-4",
+        "lg-scrim fixed inset-0 z-[100] flex justify-center",
+        // 窄屏：底部对齐（抽屉贴底）；宽屏：居中。
+        isNarrow ? "items-end" : "items-center p-4",
         "[animation:lg-backdrop-in_var(--lg-dur-slow)_var(--lg-ease-emphasized)]",
         className,
       )}
@@ -267,12 +301,16 @@ function AlertDialogContainer({ className, children }: { className?: string; chi
 }
 
 function AlertDialogDialog({ className, children }: { className?: string; children?: React.ReactNode }) {
+  const isNarrow = useIsBelowSm();
   return (
     <div
       role="alertdialog"
       aria-modal="true"
       className={cn(
-        "lg-float-in lg-regular rounded-2xl border border-separator/60 p-5",
+        "lg-float-in lg-regular border border-separator/60",
+        // 窄屏：底部抽屉。确认弹窗在手机上尤其需要贴底 —— 拇指够得到，
+        // 且正文不会被居中布局挤成一小块。
+        isNarrow ? "mobile-sheet w-full p-5 pb-6" : "rounded-2xl p-5",
         className,
       )}
     >
@@ -314,7 +352,21 @@ function AlertDialogBody({ className, children }: { className?: string; children
 }
 
 function AlertDialogFooter({ className, children }: { className?: string; children?: React.ReactNode }) {
-  return <div className={cn("mt-5 flex items-center justify-end gap-2", className)}>{children}</div>;
+  const isNarrow = useIsBelowSm();
+  return (
+    <div
+      className={cn(
+        "mt-5 flex gap-2",
+        // 窄屏：按钮纵向铺满（拇指可达、点得准）；宽屏：右对齐横排。
+        isNarrow
+          ? "flex-col-reverse [&>*]:w-full"
+          : "items-center justify-end",
+        className,
+      )}
+    >
+      {children}
+    </div>
+  );
 }
 
 function AlertDialogCloseTrigger({ className }: { className?: string }) {

@@ -392,7 +392,13 @@
   --lg-frost-fade: 28px;
   /* 安全区（移动端）：Android 15+ 强制 edge-to-edge、iOS 刘海屏同理，
    * 内容会延伸到状态栏 / 手势条之下，必须让出对应 inset。
-   * env() 在桌面 webview / 浏览器里恒为 0px，所有用到它的计算对桌面零影响。 */
+   *
+   * ⚠️ **Android 上 env() 恒为 0**：wry 的 Android WebView 从不把系统栏 inset
+   * 告诉页面（wry 0.57 没有 safe-area 通路），于是 env() 求值为 0px，
+   * **而状态栏就压在页面上**。因此 Android 启动时由原生插件读出真实 inset
+   * 并覆盖这四个变量（见 src/utils/safeArea.ts）。
+   * 这里的 env() 仍是 iOS / 桌面浏览器上的正确来源 —— 桌面 webview 里恒为
+   * 0px，所有用到它的计算对桌面零影响。 */
   --safe-area-top: env(safe-area-inset-top, 0px);
   --safe-area-bottom: env(safe-area-inset-bottom, 0px);
   --safe-area-left: env(safe-area-inset-left, 0px);
@@ -2056,6 +2062,177 @@ html {
   -webkit-tap-highlight-color: transparent;
   -webkit-touch-callout: none;
 }
+
+/* ==================================================================
+ * 移动端适配层（Mobile adaptation layer）
+ *
+ * 桌面端直接改出来的界面在手机上有一类**共性**问题：交互只在「悬停」时
+ * 存在。Tailwind v4 的 `hover:` 变体被包在 `@media (hover: hover)` 里
+ * （见 tailwindcss/dist/lib.js 的 static("hover", …)），因此在触屏设备上
+ * `group-hover:opacity-100` **完全不生效** —— 那些「悬停才出现」的编辑/
+ * 删除/更多按钮在手机上不是「不好看」，而是**永远点不到**。
+ *
+ * 下面这层用三条规则系统性解决：
+ *   ① `.hover-reveal`  —— 触屏上恒常可见（未分层声明压过 utilities 层的 opacity-0）；
+ *   ② `.touch-target`  —— 最小 44×44 的可点区域（HIG / WCAG 2.5.8 建议）；
+ *   ③ 安全区与滚动容器 —— 避开 Android 手势条与 iOS Home 条。
+ * ================================================================== */
+
+/* ① 悬停才出现的控件：触屏上改为常驻。
+ *
+ * 必须**未分层**（unlayered）写在文件末尾：CSS 层叠里未分层声明的优先级
+ * 高于 @layer utilities，才能压过 JSX 里的 `opacity-0`。
+ *
+ * 桌面端行为不变：`@media (hover: none)` 只在真正没有悬停能力的设备上命中。 */
+@media (hover: none) {
+  .hover-reveal {
+    opacity: 1 !important;
+  }
+  /* 悬停才显形的次级动作（编辑 / 删除 / 更多）：触屏上直接可见，
+   * 否则这些功能在手机上等于不存在。 */
+  .hover-reveal-child {
+    opacity: 1 !important;
+  }
+}
+
+/* ② 最小可点区域。
+ *
+ * 手指的接触面比鼠标指针大得多：44×44 是 Apple HIG 与 WCAG 2.5.8
+ * （Target Size Minimum, AA）共同给出的下限。图标按钮在桌面上做 24×24
+ * 没问题，但在手机上会误触相邻元素。
+ *
+ * 用 `min-width/min-height` 而不是固定尺寸：按钮本身的内容（图标 + 文案）
+ * 仍按原样排布，只是命中区域被撑到 44px。 */
+.touch-target {
+  min-width: 44px;
+  min-height: 44px;
+}
+
+/* ③ 底部安全区：内容区与固定底栏都要避开 Android 手势条 / iOS Home 条。
+ * `env()` 在桌面 webview 恒为 0px，对桌面零影响。 */
+.safe-bottom {
+  padding-bottom: var(--safe-area-bottom);
+}
+.safe-bottom-4 {
+  padding-bottom: calc(1rem + var(--safe-area-bottom));
+}
+.safe-bottom-6 {
+  padding-bottom: calc(1.5rem + var(--safe-area-bottom));
+}
+
+/* 固定在底部的条（底部导航、吸底分类胶囊）：底边让开安全区。 */
+.safe-bottom-fixed {
+  bottom: var(--safe-area-bottom);
+}
+
+/* 滚动容器：移动端惯性滚动更顺滑，同时避免外层 overscroll 触发页面级橡皮筋。 */
+.scroll-touch {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
+/* 移动端底部导航条：**悬浮胶囊**。
+ *
+ * 只负责「固定在视口底部 + 底部让开安全区」；胶囊本体的左右内缩、圆角与
+ * 材质由组件自己写（`mx-3 mb-2 lg-regular rounded-[28px]`）。
+ *
+ * 这里用 `inset-inline: 0` 而不是 `left: 0; right: 0`：后者会让 nav 本身
+ * 铺满整行宽，胶囊的 `mx-3` 依然生效，但 nav 的背景（若有）会铺满 ——
+ * 现在没有背景，但保持这个约束能防止后来者给 nav 加底色时意外铺满。
+ */
+.mobile-bottom-nav {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 40;
+  pointer-events: none;
+  padding-bottom: calc(var(--safe-area-bottom) + 0.5rem);
+  padding-left: var(--safe-area-left);
+  padding-right: var(--safe-area-right);
+}
+
+/* 胶囊本体要能接收指针事件（nav 本身不吃）。 */
+.mobile-bottom-nav > * {
+  pointer-events: auto;
+}
+
+/* 移动端顶栏：覆盖在内容之上（sticky），高度含顶部安全区。 */
+.mobile-top-bar {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  padding-top: var(--safe-area-top);
+}
+
+/* 移动端底部抽屉（Bottom sheet）：
+ * 从底部升起的面板，顶部两角圆角，底部贴边（同时吃进安全区）。
+ * 只在窄屏使用，宽屏仍是居中模态。 */
+.mobile-sheet {
+  border-radius: 1.25rem 1.25rem 0 0;
+  max-height: calc(100dvh - var(--safe-area-top) - 2rem);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+/* 抽屉顶部的「抓手」（drag handle），纯装饰但能暗示可拖动。
+ * 独占一行、水平居中（`margin: 0.5rem auto 0`）。 */
+.mobile-sheet-grip {
+  display: block;
+  width: 2.25rem;
+  height: 4px;
+  border-radius: 9999px;
+  background: color-mix(in oklab, var(--foreground) 22%, transparent);
+  margin: 0.5rem auto 0;
+  flex-shrink: 0;
+}
+
+/* 表单控件在触屏上要更大：原生 select 在 12px 字号下几乎点不中。 */
+@media (hover: none) {
+  select,
+  input[type="checkbox"],
+  input[type="radio"] {
+    min-height: 2.25rem;
+  }
+}
+
+/* 触屏上没有悬停，`:hover` 会被点击瞬间「粘住」（移动端 Safari/Chrome 的
+ * 已知行为：点过的元素保持 hover 态直到点别处）。这会让玻璃按钮在点过一次
+ * 后长期保持高亮，看起来像「卡住了」。
+ * `@media (hover: hover)` 保证桌面端完全不受影响。 */
+@media (hover: none) {
+  .lg-hoverable:hover,
+  .lg-hoverable-soft:hover {
+    background-color: transparent;
+  }
+  .lg-hoverable:active,
+  .lg-hoverable-soft:active {
+    background-color: var(--lg-interactive-strong);
+  }
+  /* hover 位移类在触屏上会「点一下弹一下再弹回」，观感是抖动：禁用位移，
+   * 保留按压反馈。 */
+  .card-hover:hover,
+  .interactive-hover:hover,
+  .button-hover:hover,
+  .chip-hover:hover,
+  .switch-hover:hover,
+  .checkbox-hover:hover,
+  .nav-hover:hover,
+  .list-item-hover:hover,
+  .dropdown-item-hover:hover,
+  .link-hover:hover,
+  .icon-hover:hover,
+  .modal-hover:hover,
+  .tooltip-hover:hover {
+    transform: none;
+  }
+  .nav-hover:active,
+  .list-item-hover:active,
+  .dropdown-item-hover:active {
+    transform: none;
+  }
+}
+
 
 /* 性能预算备注：
  * - backdrop-filter 同屏实例 ≤ 8（全屏 scrim 计 2）。内容层全部走

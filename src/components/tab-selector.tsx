@@ -154,14 +154,18 @@ export function TabSelector({
                     ))}
                   </div>
 
-                  <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  {/* 编辑/删除：桌面上悬停才出现，触屏上常驻（hover-reveal）。
+                      否则这两个按钮在手机上永远点不到 —— Tailwind 的 hover 变体
+                      被包在 @media (hover: hover) 里，触屏上不生效。 */}
+                  <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 hover-reveal transition-opacity">
                     <button
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
                         onEditTab(tab);
                       }}
-                      className="p-1.5 rounded-lg lg-hoverable text-muted hover:text-foreground transition-all duration-150 hover:scale-110 active:scale-90"
+                      className="p-2 sm:p-1.5 rounded-lg lg-hoverable text-muted hover:text-foreground transition-all duration-150 active:scale-90"
+                      aria-label={i18n.language === "zh" ? "编辑" : "Edit"}
                     >
                       <EditIcon size={16} />
                     </button>
@@ -171,7 +175,8 @@ export function TabSelector({
                         e.stopPropagation();
                         onDeleteTab(tab.id);
                       }}
-                      className="p-1.5 rounded-lg hover:bg-danger/10 text-danger-text transition-all duration-150 hover:scale-110 active:scale-90"
+                      className="p-2 sm:p-1.5 rounded-lg hover:bg-danger/10 text-danger-text transition-all duration-150 active:scale-90"
+                      aria-label={i18n.language === "zh" ? "删除" : "Delete"}
                     >
                       <TrashIcon size={16} />
                     </button>

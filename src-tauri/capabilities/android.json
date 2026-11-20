@@ -1,8 +1,8 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "android-capability",
-  "description": "Android-only APK update installation",
+  "description": "Android-only APK update installation and system bar inset queries",
   "platforms": ["android"],
   "windows": ["main"],
-  "permissions": ["apk-installer:default"]
+  "permissions": ["apk-installer:default", "safe-area:default"]
 }

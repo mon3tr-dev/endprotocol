@@ -85,6 +85,7 @@ import {
 } from "@/stores/launcherGame";
 import { SettingsDivider } from "@/components/ui/settings-row";
 import { ElapsedTime } from "@/components/ui/elapsed-time";
+import { useIsTouchPrimary } from "@/hooks/useMediaQuery";
 
 /** 渠道键按游戏分区：终末地 `launcher_channel`，明日方舟 `launcher_channel_arknights`。
  *  安装路径的分区键由 `launcherService.persistInstallPath` / `persistDetectedInstall` 统一处理。 */
@@ -447,6 +448,10 @@ export function GameActionPanel({ game: pinnedGame }: GameActionPanelProps = {})
   const [btnHovered, setBtnHovered] = useState(false);
   const [btnLabelKey, setBtnLabelKey] = useState(0);
   const prevBtnLabelRef = useRef<string>("");
+  /** 触屏：长按主按钮的定时器（长按 = 显示取消入口 + 进度浮层） */
+  const pressTimerRef = useRef<number | null>(null);
+  /** 是否是触屏主设备（无悬停） */
+  const isTouch = useIsTouchPrimary();
   /** 预下载进行中的进度（仅驱动预下载按钮，不占用主按钮） */
   const [preloadProgress, setPreloadProgress] =
     useState<DownloadProgress | null>(null);
@@ -892,6 +897,17 @@ export function GameActionPanel({ game: pinnedGame }: GameActionPanelProps = {})
       unlistenSwitch.then((fn) => fn());
     };
   }, [game, installPath, refreshStatus]);
+
+  // 卸载时清掉长按定时器（触屏上长按主按钮会起一个 450ms 的定时器）
+  useEffect(
+    () => () => {
+      if (pressTimerRef.current !== null) {
+        window.clearTimeout(pressTimerRef.current);
+        pressTimerRef.current = null;
+      }
+    },
+    [],
+  );
 
   // Close menu flyout on outside click
   useEffect(() => {
@@ -2021,7 +2037,10 @@ export function GameActionPanel({ game: pinnedGame }: GameActionPanelProps = {})
         </div>
       )}
 
-      <div className="relative inline-flex items-center gap-2" ref={flyoutRef}>
+      <div
+        className="relative flex flex-wrap items-center justify-end gap-2 lg:inline-flex lg:flex-nowrap"
+        ref={flyoutRef}
+      >
         {/* 累计游戏运行时长（后端在 EndProtocol 运行期间统计），位于开始游戏按钮左侧 */}
         {isInstalled && playtime && (
           <div
@@ -2200,6 +2219,43 @@ export function GameActionPanel({ game: pinnedGame }: GameActionPanelProps = {})
               }
             }}
             onMouseLeave={() => {
+              setBtnHovered(false);
+              setProgressFlyoutPos(null);
+            }}
+            // 触屏：没有悬停，按钮上的「取消下载 / 停止游戏」提示与
+            // 进度浮层永远不出现。改为**按下即切换**（长按取消）——
+            // 点一下按钮是执行（开始游戏 / 安装），按住不放才是取消，
+            // 用 pointer 事件的时长差区分。
+            onPointerDown={(e) => {
+              if (!isTouch) return;
+              pressTimerRef.current = window.setTimeout(() => {
+                setBtnHovered(true);
+                if (btnRef.current) {
+                  const r = btnRef.current.getBoundingClientRect();
+                  const fw = 256;
+                  const fh = 140;
+                  let x = r.left + r.width / 2;
+                  let y = r.top - 8;
+                  if (x - fw / 2 < 8) x = fw / 2 + 8;
+                  if (x + fw / 2 > window.innerWidth - 8)
+                    x = window.innerWidth - fw / 2 - 8;
+                  if (y - fh < 8) y = r.bottom + 8;
+                  setProgressFlyoutPos({ x, y });
+                }
+              }, 450);
+              void e;
+            }}
+            onPointerUp={() => {
+              if (pressTimerRef.current !== null) {
+                window.clearTimeout(pressTimerRef.current);
+                pressTimerRef.current = null;
+              }
+            }}
+            onPointerCancel={() => {
+              if (pressTimerRef.current !== null) {
+                window.clearTimeout(pressTimerRef.current);
+                pressTimerRef.current = null;
+              }
               setBtnHovered(false);
               setProgressFlyoutPos(null);
             }}

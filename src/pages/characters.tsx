@@ -485,7 +485,7 @@ export default function CharactersPage() {
           </GlassProgressCircle>
         </div>
       ) : !charDetail || charDetail.chars.length === 0 ? (
-        <GlassCard className="p-16  border border-separator/90">
+        <GlassCard className="p-8 sm:p-16  border border-separator/90">
           <div className="text-center">
             <svg
               className="w-16 h-16 mx-auto mb-4 opacity-30 text-muted"

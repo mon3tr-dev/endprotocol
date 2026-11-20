@@ -228,6 +228,23 @@
 - `prefers-reduced-motion` 必须自行判断：globals.css 里那条全局 `animation-duration: 80ms !important` 只覆盖 CSS 动画与过渡，**管不到 Web Animations API**（它不产生 CSS `animation-duration`）。
 - 使用点：`layouts/dashboard.tsx` 的底部内容排（`contentRowRef`）、`components/custom-titlebar.tsx` 的游戏名（`titleRef`）；序号与方向来自 `stores/launcherGame.ts` 的 `getGameSwitchSeq()` / `getGameSwitchDirection()`。
 
+## `src/hooks/useMediaQuery.ts`
+**职责**：响应式媒体查询 Hook（SSR / 首帧安全），把「视口宽度 / 指针类型」这类**结构性**判断暴露给 React 组件。Tailwind 的 `sm:` / `lg:` 只能在**样式**层面切换，而很多移动端优化要改的是**结构**（侧栏换成底部导航条、居中弹窗换成底部抽屉）；结构必须由 JS 决定渲染哪套 DOM，否则两套结构会同时挂载（双份 DOM、状态不同步、焦点错乱）。
+**导出**：`useMediaQuery`（useMediaQuery.ts:18）、`useIsBelowSm`（:42）、`useIsTouchPrimary`（:52）、`useSupportsHover`（:61）。
+**主要依赖**：`react`（useState/useEffect）、`window.matchMedia`。
+
+| 符号 | 位置 | 说明 |
+| --- | --- | --- |
+| `useMediaQuery` | useMediaQuery.ts:18-38 | 参数 `(query: string): boolean`。首帧返回 `false`（桌面假设），effect 里建 `MediaQueryList` 同步 `matches` 并监听 `change`；`matchMedia` 不可用或抛错时返回 `false` |
+| `useIsBelowSm` | useMediaQuery.ts:42-44 | `(max-width: 639px)`——与 Tailwind `sm` 断点对齐。**窄屏判定统一走它**（而非 `isMobileApp()`）：后者看的是 UA（判断「是不是手机 App」），前者看的是视口宽度（判断「当前屏幕够不够窄」）—— 平板与桌面窗口缩窄同样需要窄屏版式 |
+| `useIsTouchPrimary` | useMediaQuery.ts:56-58 | `(pointer: coarse) and (hover: none)`——触屏主设备。用于把「只有悬停才出现」的控件在手机上改为常驻 / 点击触发 |
+| `useSupportsHover` | useMediaQuery.ts:65-67 | `(hover: hover)`——设备能否悬停。tooltip 这类交互在手机上没有意义，用它在**渲染期**直接关掉，省掉一次无用的浮层渲染 |
+
+**备注**：
+- 首帧返回 `false` 与 Tailwind 断点行为一致（`lg:` 之前就是手机样式）。对「宽屏才渲染」的结构，首帧多渲染一次桌面结构是无害的。
+- 与 `utils/platform.ts` 的 `isTouchPrimaryDevice()` / `supportsHover()` 是**同一套判据的两种形态**：前者是零依赖的同步读（适合模块级判断），后者是可订阅的 Hook（适合组件内按指针类型切换渲染）。
+- 使用点：`components/ui/modal.tsx`（窄屏底部抽屉）、`components/ui/tooltip.tsx`（触屏不渲染 tooltip）、`components/game-switch-rail.tsx` 与 `components/game-sidebar-rail.tsx`（触屏改点击驱动展开）、`components/game-action-panel.tsx`（长按显示取消入口）。
+
 ## `src/hooks/useElapsedSeconds.ts`
 **职责**：等待计时 Hook——`active` 为 true 时从 0 开始每秒 +1，变回 false 时归零。给「只有转圈、没有进度」的等待加一个可见的时间刻度，让用户能判断「还在跑」还是「已经卡死」。
 **导出**：`useElapsedSeconds(active: boolean): number`（useElapsedSeconds.ts:13）。

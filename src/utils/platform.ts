@@ -47,6 +47,43 @@ export function isDesktopApp(): boolean {
 }
 
 /**
+ * 是否是「粗指针 / 无悬停」设备（手机、平板触屏）。
+ *
+ * 桌面浏览器在某些外接触屏屏上也会命中 `(hover: none)`，但桌面端的主交互
+ * 仍然是鼠标，所以这里用 `pointer: coarse` 与 `hover: none` **同时**成立才判定
+ * 为触屏主设备 —— 这样 Windows 触屏笔记本仍按桌面布局处理。
+ *
+ * 用途：把「只有悬停才出现」的控件（卡片编辑按钮、右键菜单入口、tooltip）
+ * 在触屏上改成常驻或长按触发，否则手机上这些按钮永远点不到。
+ */
+export function isTouchPrimaryDevice(): boolean {
+  if (typeof window === "undefined" || !window.matchMedia) return false;
+  try {
+    return (
+      window.matchMedia("(pointer: coarse)").matches &&
+      window.matchMedia("(hover: none)").matches
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * 是否支持「悬停」交互（指针能稳定停在元素上并触发 hover 状态）。
+ *
+ * 与 `isTouchPrimaryDevice` 互补：这里问的是「设备**能不能**悬停」，
+ * 用于决定 tooltip / hover 浮出这类交互是否值得启用。
+ */
+export function supportsHover(): boolean {
+  if (typeof window === "undefined" || !window.matchMedia) return true;
+  try {
+    return window.matchMedia("(hover: hover)").matches;
+  } catch {
+    return true;
+  }
+}
+
+/**
  * 是否运行在 Tauri 窗口内（而非直接用浏览器打开 dev server）。
  * 直接读 `window.__TAURI_INTERNALS__`（Tauri v2 在每个 webview 里注入），
  * 不引入 `@tauri-apps/api` 依赖，保证本模块保持零依赖。

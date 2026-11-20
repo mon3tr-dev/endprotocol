@@ -66,6 +66,7 @@
 | `tauri_plugin_opener` | lib.rs:129 | 仅完整模式，`opener:default` / `opener:allow-open-url`（default.json）、`opener:allow-open-path`（desktop.json） |
 | `tauri_plugin_fs` | lib.rs:130 | 仅完整模式；**未授予任何 `fs:*` 权限**（见文末异常） |
 | `tauri_plugin_apk_installer` | lib.rs:133 | 跨平台注册，Android 用 `src-tauri/plugins/apk-installer` Kotlin 插件打开受限缓存 APK；`apk-installer:default` 只在 `capabilities/android.json` 授予 |
+| `tauri_plugin_safe_area` | lib.rs:137 | 跨平台注册，Android 用 `src-tauri/plugins/safe-area` Kotlin 插件读系统栏 inset（`env(safe-area-inset-*)` 在 Android WebView 里恒为 0）；`safe-area:default` 在 `capabilities/android.json` 授予 |
 | `tauri_plugin_devdeck` | lib.rs:147 | **仅桌面 + debug**（`#[cfg(all(desktop, debug_assertions))]`；依赖同样只在桌面目标编译） |
 
 **稳定命令行参数**：`--game <endfield\|arknights>` 选择要启动的游戏（缺省终末地）；`--silent` 单独出现时不启动应用、不创建窗口/托盘/驻守进程，直接退出；`--silent --launch-game` 启动一个**不可见驻守实例**（无窗口、无托盘、不计时、不注册单实例插件）并启动 config 中配置的游戏，每 2 秒探测该渠道对应的游戏进程（终末地 `Endfield.exe` / 明日方舟 `Arknights.exe`），游戏退出（或 120 秒内未检测到游戏进程）后退出；仅 `--launch-game` 时以正常完整模式启动应用并一并启动游戏；`--dx11` 仅与 `--launch-game` 组合生效——存在时给游戏进程追加 `-force-d3d11`，不存在时使用应用内设置 `launcher_dx11`（默认 false）。完整模式注册单实例插件，因此同时只允许一个主实例；驻守实例彼此独立，且不受主实例或其它驻守实例启停影响。第二实例按普通启动方式转发给主实例并显示主窗口（`--dx11` 随请求转发）。debug 模式优先使用配置的 Vite `devUrl`；若开发服务器未运行，则在同一进程内注册自定义协议 `endprotocol`（Windows 为 `http://endprotocol.localhost`，其余平台为 `endprotocol://localhost`），由 `asset_resolver()` 回退读取 `frontendDist` 中构建好的文件（注册于 `register_dev_asset_protocol`），二者均不可用时返回明确错误。注意不能用 `tauri://localhost` / `http://tauri.localhost`：dev 构建不含内嵌资源，Tauri 协议处理器会直接报 `asset not found`。
@@ -338,8 +339,33 @@
 
 ---
 
+## `src-tauri/plugins/safe-area/`
+**职责**：本地 Tauri 插件，读取 Android 的系统栏 inset（状态栏 / 手势条 / 刘海），供前端让开被系统 UI 覆盖的区域。
+
+**为什么需要**：Android 15+ 强制 edge-to-edge，WebView 排在状态栏之下，而
+wry 的 Android WebView **从不把 inset 告诉页面** —— `env(safe-area-inset-*)`
+恒为 `0px`（实测 Pixel 7 模拟器：状态栏实际 28.19 CSS px，`env()` 报 0）。
+JS 侧也拿不到（`screen.height` / `innerHeight` / `visualViewport` 在
+edge-to-edge 下都是全屏值）。详见 `docs/development.md` 的「Android 系统栏 inset」。
+
+| 文件 | 说明 |
+| --- | --- |
+| `Cargo.toml` / `build.rs` | Rust 插件 crate；`build.rs` 声明命令名 `get_safe_area_insets`（自动生成权限文件） |
+| `src/lib.rs` | 注册 `plugin:safe-area|get_safe_area_insets`；Android 下经 `run_mobile_plugin` 调 Kotlin 插件，其他平台返回全 0。返回 `SafeAreaInsets { top, bottom, left, right }`（**CSS px**） |
+| `permissions/default.toml` | `[default]` 段引用自动生成的 `allow-get-safe-area-insets`（**不能写 `[[set]]`，也不能手写 `[[permission]]`** —— 见 apk-installer 那节的「权限文件的坑」） |
+| `android/src/main/java/com/endprotocol/safe_area/SafeAreaPlugin.kt` | 读 `WindowInsetsCompat`（`systemBars() or displayCutout()`），物理 px ÷ `displayMetrics.density` 换算成 CSS px；读不到时返回全 0（前端保留 `env()` 默认值） |
+
+**接口**：`get_safe_area_insets()` → `{ top, bottom, left, right }`（CSS px）。
+
+**前端消费**：`src/utils/safeArea.ts` 的 `syncSafeAreaInsets()` 在启动时调用一次，
+把结果写入根元素的 `--safe-area-top` / `--safe-area-bottom` /
+`--safe-area-left` / `--safe-area-right`（**只写大于 0 的值**，平台报 0 时
+保留 globals.css 里 `env()` 的默认值，iOS/桌面因此完全不受影响）。
+
+---
+
 ## `src-tauri/capabilities/android.json`
-**职责**：Android 主窗口的专属能力，只授权 `apk-installer:default`，用于将已下载的应用私有缓存 APK 交给 Android 安装器。
+**职责**：Android 主窗口的专属能力：授权 `apk-installer:default`（把已下载的私有缓存 APK 交给 Android 安装器）与 `safe-area:default`（读系统栏 inset）。
 **导出**：无。
 
 ---

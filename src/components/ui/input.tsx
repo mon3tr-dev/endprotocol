@@ -32,7 +32,12 @@ const GlassInput = forwardRef<HTMLInputElement, GlassInputProps>(
     ref,
   ) {
     const sizeClass =
-      size === "sm" ? "h-8 text-sm" : size === "lg" ? "h-11 text-sm" : "h-9 text-sm";
+      // 触屏：输入框高度提升（sm 32→36、md 36→40），键盘弹出时更好按。
+      size === "sm"
+        ? "h-9 sm:h-8 text-sm"
+        : size === "lg"
+          ? "h-11 text-sm"
+          : "h-10 sm:h-9 text-sm";
 
     const inner = (
       <input
@@ -48,7 +53,8 @@ const GlassInput = forwardRef<HTMLInputElement, GlassInputProps>(
           "lg-field w-full min-w-0 rounded-xl px-3 text-foreground placeholder:text-muted/70",
           "[transition:box-shadow_var(--lg-dur-fast)_var(--lg-ease-standard)]",
           "focus:outline-none focus:ring-2 focus:ring-primary/40",
-          "hover:brightness-[1.03]",
+          // 触屏不要 hover 提亮（hover 会「粘住」，看起来像输入框一直处于激活态）
+          "lg:hover:brightness-[1.03]",
           "disabled:opacity-50 disabled:pointer-events-none",
           isInvalid && "border-danger",
           sizeClass,

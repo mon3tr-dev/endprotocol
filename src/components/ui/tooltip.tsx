@@ -1,4 +1,5 @@
 import { cn } from "@/lib/utils";
+import { useSupportsHover } from "@/hooks/useMediaQuery";
 
 export interface GlassTooltipProps extends React.HTMLAttributes<HTMLSpanElement> {
   delay?: number;
@@ -19,6 +20,13 @@ function TooltipContent({
   className?: string;
   children?: React.ReactNode;
 }) {
+  // 触屏上没有悬停，tooltip 永远不显形 —— 而且它的绝对定位层会盖住
+  // 触发元素下方的一小片区域，手指点上去时可能被它接住（pointer-events
+  // 虽然是 none，但仍然会改变点击落点）。
+  // 直接不渲染：手机上「点一下提示条」不是可用的交互方式。
+  const canHover = useSupportsHover();
+  if (!canHover) return null;
+
   return (
     <span
       role="tooltip"
@@ -56,6 +64,10 @@ function TooltipContentAlt({
   className?: string;
   children?: React.ReactNode;
 }) {
+  // 同 TooltipContent：触屏不渲染 tooltip。
+  const canHover = useSupportsHover();
+  if (!canHover) return null;
+
   return (
     <span
       role="tooltip"

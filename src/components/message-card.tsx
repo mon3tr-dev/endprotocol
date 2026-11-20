@@ -189,7 +189,7 @@ export function MessageCard({
             e.stopPropagation();
             removeMessage(msg.id);
           }}
-          className="opacity-0 group-hover:opacity-100 shrink-0 h-5 w-5 flex items-center justify-center rounded text-muted/50 hover:text-foreground transition-all"
+          className="opacity-0 group-hover:opacity-100 hover-reveal shrink-0 h-6 w-6 sm:h-5 sm:w-5 flex items-center justify-center rounded text-muted/50 hover:text-foreground transition-all"
           aria-label={t("messages.dismiss")}
         >
           <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">

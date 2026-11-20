@@ -1,8 +1,10 @@
 import { useState, useEffect, useRef, useCallback, useMemo, Suspense } from "react";
 import { useLocation } from "react-router-dom";
+import { createPortal } from "react-dom";
 import clsx from "clsx";
 import { CustomTitlebar } from "@/components/custom-titlebar";
 import { Sidebar } from "@/components/dashboard-sidebar";
+import { MobileBottomNav } from "@/components/mobile-bottom-nav";
 import { GlassProgressCircle } from "@/components/ui/glass";
 import { getConfig, setConfig } from "@/utils/configService";
 import {
@@ -21,6 +23,15 @@ import {
 } from "@/stores/inAppBrowser";
 import { InAppBrowser } from "@/components/in-app-browser";
 import { GameSwitchRail } from "@/components/game-switch-rail";
+import { AppInfoDrawer } from "@/components/app-info-drawer";
+import { BellIcon } from "@/components/ui/app-icon";
+import {
+  getMessages,
+  getUnreadCount,
+  hasUrgentUnread,
+  subscribeMessages,
+} from "@/utils/messageStore";
+import { getAccounts, getSelectedAccount } from "@/utils/accountService";
 import { useTranslation } from "react-i18next";
 import { MorphIcon } from "morphicons/react";
 import { Image as ImageIcon, Video } from "lucide";
@@ -79,12 +90,25 @@ interface PageLayer {
 
 export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const location = useLocation();
+  // 抽屉头部与窄屏顶栏都要 i18n 文案 —— 主组件里必须自己取一份 `t`，
+  // 内部组件（MobileTopBar / GameBackgroundSwitch）各有各的 useTranslation。
+  const { t } = useTranslation();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [viewMode, setViewMode] = useState(getLauncherMode);
   const [bgMediaMode, setBgMediaMode] = useState<GameBgMode>(getGameBgMode);
   // 公告 / 背景图 / 横幅都跟着"当前游戏"走：切换游戏后重新拉该游戏的内容。
   const [activeGame, setActiveGame] = useState(getActiveGame);
+  /**
+   * 当前选中**账户**的游戏（endfield / arknights）。
+   *
+   * 与 `activeGame`（启动器的游戏页）不是一回事：前者决定「哪些页面 /
+   * 卡片对当前账户可用」（侧栏过滤），后者决定「游戏模式里显示哪个游戏」。
+   * 移动端底部导航条要按账户的游戏过滤入口，所以需要单独取一份。
+   */
+  const [activeGameAccountGame, setActiveGameAccountGame] = useState<
+    string | null
+  >(null);
   /**
    * 当前游戏的 ref 镜像。
    *
@@ -249,6 +273,35 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     getConfig<boolean>("sidebar_rail_collapsed").then((value) => {
       if (typeof value === "boolean") setSidebarCollapsed(value);
     });
+  }, []);
+
+  /**
+   * 当前选中账户的游戏 —— 移动端底部导航按它过滤入口。
+   *
+   * 账户切换时侧栏会广播 `accountChanged`，这里跟着刷新，
+   * 否则底部导航会一直显示上一个账户的游戏所允许的入口。
+   */
+  useEffect(() => {
+    const sync = () => {
+      void (async () => {
+        try {
+          const id = await getSelectedAccount();
+          if (!id) {
+            setActiveGameAccountGame(null);
+            return;
+          }
+          const accounts = await getAccounts();
+          setActiveGameAccountGame(
+            accounts.find((a) => a.id === id)?.game ?? null,
+          );
+        } catch {
+          setActiveGameAccountGame(null);
+        }
+      })();
+    };
+    sync();
+    window.addEventListener("accountChanged", sync);
+    return () => window.removeEventListener("accountChanged", sync);
   }, []);
 
   const toggleSidebarCollapsed = () => {
@@ -455,7 +508,17 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
       />
       <div className="dashboard-veil" aria-hidden="true" />
 
-      <CustomTitlebar />
+      {/*
+       * 标题栏：桌面端是「图标 + 游戏名 + 模式拨杆 + 铃铛 + 窗口按钮」一整条；
+       * 窄屏下这套排布塞不下（模式拨杆 + 铃铛 + 三个窗口按钮至少要 200px，
+       * 加上品牌区就超出 375px 屏宽），而且移动端本来就没有窗口按钮。
+       * 所以窄屏另给一条精简顶栏：左侧「更多」按钮打开抽屉，中间标题，
+       * 右侧留空（铃铛改挂在底部导航里不现实，这里保留标题栏自带的铃铛）。
+       */}
+      <div className="hidden lg:block">
+        <CustomTitlebar />
+      </div>
+      <MobileTopBar onOpenDrawer={() => setMobileOpen(true)} />
 
       <div className="relative z-10 flex flex-1 overflow-hidden">
         {/* Desktop Sidebar */}
@@ -471,19 +534,37 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
           />
         </div>
 
-        {/* Mobile Drawer */}
-        {mobileOpen && (
-          <>
-            <div
-              className="lg-scrim lg:hidden fixed inset-0 z-40 [animation:lg-backdrop-in_var(--lg-dur-base)_var(--lg-ease-emphasized)]"
-              onClick={() => setMobileOpen(false)}
-              aria-label="Close sidebar"
-              role="button"
-            />
-            <div
-              className="lg:hidden fixed inset-y-0 left-0 z-50 w-72 border-r border-separator/60 animate-slide-in-left"
-              style={{ paddingTop: "var(--safe-area-top)" }}
-            >
+        {/*
+         * 移动端抽屉。
+         *
+         * ⚠️ 必须 **portal 到 body**（`createPortal`），不能直接放在这里。
+         *
+         * 原因：这段 JSX 在 `<div class="relative z-10 flex flex-1 overflow-hidden">`
+         * 里面，那个容器有 `z-10` —— **它建立了一个层叠上下文**。抽屉的
+         * `fixed z-50` 只在这个上下文**内部**排序，对外只表现为「父容器的 z-10」。
+         * 于是同为 root 层元素的窄屏顶栏（`sticky z-30`）和底部导航
+         * （`fixed z-40`）都会**盖在抽屉上面**：
+         *   - 顶栏压住抽屉头部，抽屉的标题与关闭按钮点不到；
+         *   - 底部导航浮在抽屉内容上，抽屉底部一截永远被压住。
+         * 两者都在 root 层（祖先链 z=auto），与 z-10 的容器比较时
+         * z-30 / z-40 更大 —— 于是它们赢。
+         *
+         * portal 到 body 之后，抽屉与遮罩回到 root 层，z-60 高于顶栏的
+         * z-30 与导航的 z-40，层级才正确。
+         */}
+        {mobileOpen &&
+          createPortal(
+            <>
+              <div
+                className="lg-scrim lg:hidden fixed inset-0 z-[55] [animation:lg-backdrop-in_var(--lg-dur-base)_var(--lg-ease-emphasized)]"
+                onClick={() => setMobileOpen(false)}
+                aria-label="Close sidebar"
+                role="button"
+              />
+              <div
+                className="lg:hidden fixed inset-y-0 left-0 z-[60] w-[min(20rem,85vw)] border-r border-separator/60 animate-slide-in-left flex flex-col"
+                style={{ paddingTop: "var(--safe-area-top)" }}
+              >
               {/*
                * 抽屉自身的磨砂：fixed 定位，不能复用桌面端那条全屏覆盖层。
                * 这里只需要侧边栏的横向遮罩（抽屉从顶部到底，不经过标题栏段）。
@@ -492,22 +573,49 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                 className="frost-main frost-drawer"
                 style={
                   {
-                    "--frost-sidebar-w": "288px",
+                    "--frost-sidebar-w": "min(20rem,85vw)",
                   } as React.CSSProperties
                 }
                 aria-hidden="true"
               />
-              <Sidebar onNavigate={() => setMobileOpen(false)} />
-            </div>
-          </>
-        )}
+              {/* 抽屉头部：标题 + 关闭按钮。手机上必须有一个显式关闭按钮 ——
+                  遮罩点按在窄屏上容易误触（内容区贴边时）。 */}
+              <div className="flex items-center justify-between px-4 py-3 shrink-0 border-b border-separator/40">
+                <span className="text-sm font-semibold text-foreground">
+                  {t("sidebar.title", "导航")}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setMobileOpen(false)}
+                  aria-label={t("common.close", "关闭")}
+                  className="lg-control flex h-9 w-9 items-center justify-center rounded-xl text-muted"
+                >
+                  <svg
+                    className="h-4 w-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                    strokeWidth={2}
+                    strokeLinecap="round"
+                  >
+                    <path d="M6 6l12 12M18 6L6 18" />
+                  </svg>
+                </button>
+              </div>
+              <div className="flex-1 min-h-0 overflow-hidden">
+                <Sidebar onNavigate={() => setMobileOpen(false)} />
+              </div>
+              </div>
+            </>,
+            document.body,
+          )}
 
         <div className="flex-1 flex flex-col overflow-hidden min-w-0">
           {/* overflow-x-hidden：`overflow-y-auto` 会让 overflow-x 被计算成 auto，
               于是任何超宽内容都会在 <main> 上生出一条横向滚动条。窄屏下卡片
               已改为单列堆叠（见 cards/card-container.tsx 的 isNarrow），这里
               再兜一道，确保手机上只能上下滚。 */}
-          <main className="flex-1 overflow-y-auto overflow-x-hidden p-4 lg:p-8 pt-6">
+          <main className="flex-1 overflow-y-auto overflow-x-hidden scroll-touch p-3 sm:p-4 lg:p-8 lg:pt-6 pb-28 lg:pb-8">
             <div
               id="dashboard-main"
               key={location.pathname}
@@ -534,28 +642,90 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
         </div>
       </div>
 
-      {/* Mobile menu trigger */}
-      <button
-        type="button"
-        onClick={() => setMobileOpen(true)}
-        className="lg:hidden fixed right-6 z-30 p-3.5 rounded-full bg-primary text-primary-foreground shadow-lg [transition:transform_var(--lg-dur-press)_var(--lg-ease-spring),translate_var(--lg-dur-press)_var(--lg-ease-spring),scale_var(--lg-dur-press)_var(--lg-ease-spring)] hover:scale-105 active:scale-95 [bottom:calc(1.5rem+var(--safe-area-bottom))]"
-        aria-label="Open menu"
-      >
-        <svg
-          className="w-6 h-6"
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
-          <path
-            d="M4 6h16M4 12h16M4 18h16"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-          />
-        </svg>
-      </button>
+      {/*
+       * 移动端底部导航条。
+       *
+       * 桌面端那个右下角悬浮的汉堡按钮在窄屏上被撤掉了：它和仪表板的
+       * 「添加卡片」FAB（同样固定在右下角）会重叠，两个半透明圆钮叠在一起
+       * 互相遮挡。改用底部导航条承载「更多」入口后，右下角空出来给 FAB。
+       */}
+      <MobileBottomNav game={activeGameAccountGame} onOpenDrawer={() => setMobileOpen(true)} />
     </div>
+  );
+}
+
+/**
+ * 窄屏顶栏：左侧「更多」按钮 + 标题 + 右侧铃铛。
+ *
+ * 桌面端标题栏（`CustomTitlebar`）在窄屏下并不适用：它带数据/游戏模式拨杆
+ * 与三个窗口按钮，移动端既没有窗口可控制、模式拨杆也只在 Windows 上出现
+ * （见 `custom-titlebar.tsx` 里 `isWindowsPlatform()` 的判断），整条排布在
+ * 375px 宽的屏上必然溢出。
+ */
+function MobileTopBar({ onOpenDrawer }: { onOpenDrawer: () => void }) {
+  const { t } = useTranslation();
+  const [unreadCount, setUnreadCount] = useState(() => getUnreadCount());
+  const [hasUrgent, setHasUrgent] = useState(() => hasUrgentUnread());
+  const [infoOpen, setInfoOpen] = useState(false);
+
+  useEffect(() => {
+    return subscribeMessages(() => {
+      setUnreadCount(getUnreadCount());
+      setHasUrgent(hasUrgentUnread());
+    });
+  }, []);
+
+  return (
+    <header className="mobile-top-bar lg:hidden">
+      <div className="flex h-12 items-center gap-2 px-2">
+        <button
+          type="button"
+          onClick={onOpenDrawer}
+          aria-label={t("sidebar.title", "打开导航")}
+          className="lg-control flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-foreground"
+        >
+          <svg
+            className="h-5 w-5"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+            strokeWidth={2}
+            strokeLinecap="round"
+          >
+            <path d="M4 6h16M4 12h16M4 18h16" />
+          </svg>
+        </button>
+
+        {/* 标题：居中且可截断，避免长标题把铃铛挤出屏幕 */}
+        <div className="flex-1 min-w-0 text-center">
+          <span className="block truncate text-sm font-bold tracking-widest text-foreground">
+            ENDPROTOCOL
+          </span>
+        </div>
+
+        {/* 铃铛：与桌面标题栏同一个入口（消息中心） */}
+        <button
+          type="button"
+          onClick={() => setInfoOpen(true)}
+          aria-label={t("messages.title", "消息")}
+          className="lg-control relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-foreground"
+        >
+          <BellIcon size={16} />
+          {unreadCount > 0 && (
+            <span
+              className={clsx(
+                "absolute -top-0.5 -right-0.5 flex h-4 min-w-[16px] items-center justify-center rounded-full px-1 text-[9px] font-bold leading-none text-primary-foreground",
+                hasUrgent ? "bg-danger" : "bg-primary",
+              )}
+            >
+              {unreadCount > 99 ? "99+" : unreadCount}
+            </span>
+          )}
+        </button>
+      </div>
+
+      <AppInfoDrawer isOpen={infoOpen} onClose={() => setInfoOpen(false)} />
+    </header>
   );
 }
 

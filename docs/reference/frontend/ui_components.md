@@ -102,10 +102,12 @@
 | `GlassButtonSize` | button.tsx:7 | `sm/md/lg` |
 | `GlassButtonProps` | button.tsx:9 | 关键 props：`variant`（默认 `secondary`）、`size`（默认 `md`）、`isIconOnly`（方形图标按钮）、`isDisabled`、`isLoading`（前置 spinner 并禁用）、`fullWidth`、`onPress`（点击回调）、`startContent`/`endContent`（前后插槽节点） |
 | `buttonVariants` | button.tsx:22 | cva 变体表；基础类含 hover `scale-105`、active `scale-95`、focus ring、disabled 50% 透明。**`lg-control` 玻璃底挂在 primary/secondary/outline/danger 四个变体上**（不含 ghost/tertiary）——历史上挂在基础类 + 用 `before:hidden` 隐藏 ghost/tertiary 的玻璃层，结果 `display:none` 连带杀死调用方经 `className` 追加的 `lg-material`（同属宿主的 `::before` 一票否决），导致账户胶囊等 ghost+lg-material 组合丢失玻璃底。**`primary`/`danger` 另加 `lg-solid`**：实底按钮的 `::before` 只留边缘高光、不铺玻璃填充，否则深色主题下 `--primary` 被 tint 压成灰紫，而前景按 `--primary-foreground`（indigo 上算出的近黑 `#0b0b0d`）落上去几乎读不出；顶光引用 `--lg-edge-glint`（柔光令牌，带 1px blur），不写死白色 rgba。**`secondary`/`outline` 的 hover/按压提亮改走 `lg-glass-interactive`**（`:hover`/`:active` 只给 `::before` 加 `filter: brightness()`），已不再写 `hover:brightness-105` / `active:brightness-95`——宿主一旦带 `filter` 就成为 backdrop root，按钮一悬停便从毛玻璃退化成半透明色块（见 [types_locales_styles.md](types_locales_styles.md) 的「backdrop root 约束」）；`primary`/`danger` 的 `hover:bg-*/90` 只改底色，不受此限 |
-| `iconOnlySize` | button.tsx:55 | `isIconOnly` 时 sm=32 / md=36 / lg=40 的方形尺寸 |
-| `ButtonProps` | button.tsx:61 | 基础按钮 props（原生 button attrs + variant/size） |
-| `Button` | button.tsx:65 | forwardRef；`type` 默认 `"button"`，`variant` 默认 `secondary`、`size` 默认 `md` |
-| `GlassButton` | button.tsx:96 | forwardRef；按下态 = `disabled 或 isDisabled 或 isLoading`；渲染顺序 spinner → startContent → children → endContent（button.tsx:132-135） |
+| `iconOnlySize` | button.tsx:72 | `isIconOnly` 时的方形尺寸：**窄屏 sm=40 / md=40 / lg=44，桌面 sm=32 / md=36 / lg=40**。图标按钮在触屏上必须够大 —— 24×24 的图标配 32px 的按钮，手指根本点不准（命中区下限见 globals.css 的 `.touch-target`） |
+| `ButtonProps` | button.tsx:78 | 基础按钮 props（原生 button attrs + variant/size） |
+| `Button` | button.tsx:82 | forwardRef；`type` 默认 `"button"`，`variant` 默认 `secondary`、`size` 默认 `md` |
+| `GlassButton` | button.tsx:113 | forwardRef；按下态 = `disabled 或 isDisabled 或 isLoading`；渲染顺序 spinner → startContent → children → endContent |
+
+**尺寸分档（移动端）**：`size` 变体的高度带 `sm:` 断点 —— 窄屏 sm=36 / md=40 / lg=44，桌面 sm=32 / md=36 / lg=40。触屏上按钮要更大才点得准，桌面端保持原尺寸（鼠标指针不需要大命中区）。
 
 **备注**：`GlassButtonProps` 与 `ButtonProps` 是两套 props 不可混用（前者用 `onPress`/`isXxx` 命名，后者是原生属性）。
 
@@ -117,7 +119,7 @@
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
 | `GlassCardProps` | card.tsx:3 | `isPressable`（渲染为 `<button>`）、`onPress`（点击回调）、`shadow`（`none/sm/md/lg`，默认 `none`） |
-| `GlassCard` | card.tsx:9 | 毛玻璃卡（`glass-surface rounded-xl border`）；`isPressable=true` 时输出 `<button>` 并带 hover 抬升缩放动效（card.tsx:17-38），否则输出 `<div>` |
+| `GlassCard` | card.tsx:14 | 毛玻璃卡（`lg-material rounded-xl border`）；`isPressable=true` 时输出 `<button>` 并带 hover 抬升缩放动效，否则输出 `<div>`。**hover 位移加 `lg:` 前缀**（`lg:hover:-translate-y-1 lg:hover:scale-[1.02] lg:hover:shadow-lg`）—— 触屏上 hover 会「粘住」（点过就一直保持抬起姿态），看上去像被按住不放 |
 | `CardProps` | card.tsx:58 | 仅 `shadow` + 原生 div attrs |
 | `Card` | card.tsx:62 | 静态毛玻璃卡（无 hover 位移动效） |
 | `CardHeader` | card.tsx:79 | 头部容器 `p-6 space-y-1.5` |
@@ -300,8 +302,8 @@ character-list / domain-info / spaceship / attendance-settings-modal）都复用
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
-| `GlassInputProps` | input.tsx:4 | `variant`（声明但未用于样式）、`size`（`sm h-8 / md h-9 / lg h-11`，默认 `md`）、`isDisabled`、`isInvalid`（danger 边框）、`isClearable`（声明但未实现）、`startContent`/`endContent`（绝对定位插槽，`pointer-events-none`）、`onValueChange(value)` |
-| `GlassInput` | input.tsx:16 | 有插槽时外包 `relative` 容器并加 `pl-9/pr-9`（:52-53, :62-72）；同时触发原生 `onChange` 与 `onValueChange` |
+| `GlassInputProps` | input.tsx:4 | `variant`（声明但未用于样式）、`size`（**窄屏 sm h-9 / md h-10 / lg h-11，桌面 sm h-8 / md h-9 / lg h-11**，默认 `md`）、`isDisabled`、`isInvalid`（danger 边框）、`isClearable`（声明但未实现）、`startContent`/`endContent`（绝对定位插槽，`pointer-events-none`）、`onValueChange(value)` |
+| `GlassInput` | input.tsx:16 | 有插槽时外包 `relative` 容器并加 `pl-9/pr-9`；同时触发原生 `onChange` 与 `onValueChange`。**hover 提亮加 `lg:` 前缀**（`lg:hover:brightness-[1.03]`）—— 触屏上 hover 会「粘住」，输入框会一直保持提亮态，看起来像处于激活状态 |
 | `InputProps` / `Input` | input.tsx:78 / 81 | 原生 input 直通版，`type` 默认 `text`，固定 `h-9 rounded-xl` |
 
 **备注**：`variant` 与 `isClearable` 目前是死 props（未参与渲染逻辑）。
@@ -353,7 +355,7 @@ character-list / domain-info / spaceship / attendance-settings-modal）都复用
 ## `src/components/ui/modal.tsx`
 **职责**：模态框全家桶——普通 `GlassModal` 与确认用 `GlassAlertDialog`，均为 Portal + 复合（compound）API。
 **导出**：`GlassModal`、`GlassModalCompound`、`GlassAlertDialog`、`GlassAlertDialogCompound`、类型 `GlassModalProps`、`GlassAlertDialogProps`
-**主要依赖**：`react`（createContext/forwardRef/useContext/useEffect）、`react-dom`（`createPortal`）、`@/lib/utils`（`cn`）
+**主要依赖**：`react`（createContext/forwardRef/useContext/useEffect）、`react-dom`（`createPortal`）、`@/lib/utils`（`cn`）、**`@/hooks/useMediaQuery`（`useIsBelowSm`）**
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
@@ -361,29 +363,20 @@ character-list / domain-info / spaceship / attendance-settings-modal）都复用
 | `ModalBackdropProps` | modal.tsx:27 | `isDismissable`（默认 true）、`variant`（声明但未被消费）、`className` |
 | `ModalContainerProps` | modal.tsx:34 | `size`（`xs/sm/md/lg/xl/2xl/full`）、`placement`（`center/top/bottom`）、`scroll`（`inside/outside`，当前未参与渲染） |
 | `CONTAINER_SIZES` | modal.tsx:44 | size→max-width：xs 360 / sm 400 / md 560 / lg 720 / xl 1100 / 2xl 1000 / full `calc(100vw-2rem)` |
-| `GlassModal` | modal.tsx:54 | 打开时挂 Esc 关闭 + 锁定 body 滚动（:55-67），Portal 到 body 并提供 `close` Context；关闭时不渲染任何节点 |
-| `Backdrop` | modal.tsx:83 | 全屏遮罩 `lg-scrim z-[100]`（黑 35% + 轻模糊），**入场用 `lg-backdrop-in`（渐显背景色，不是 opacity 淡入）**——它是 `Dialog` 的父元素，用淡入会让内部玻璃在入场期间发虚；`isDismissable` 时 mousedown 点击自身关闭 |
-| `Container` | modal.tsx:94 | 定位与宽度容器，`placement` 决定上下对齐 |
-| `Dialog` | modal.tsx:123 | `role="dialog" aria-modal="true"`，`lg-float-in lg-regular rounded-2xl`（入场：`translateY(24px)+scale(0.96)` → 1，阴影同步扩散，slow 档） |
+| `GlassModal` | modal.tsx:54 | 打开时挂 Esc 关闭 + 锁定 body 滚动，Portal 到 body 并提供 `close` Context；关闭时不渲染任何节点 |
+| `Backdrop` | modal.tsx:83 | 全屏遮罩 `lg-scrim z-[100]`（黑 35% + 轻模糊），**入场用 `lg-backdrop-in`（渐显背景色，不是 opacity 淡入）**——它是 `Dialog` 的父元素，用淡入会让内部玻璃在入场期间发虚；`isDismissable` 时 mousedown 点击自身关闭。**窄屏（`useIsBelowSm`）改为 `items-end` 底部对齐**（底部抽屉贴底） |
+| `Container` | modal.tsx:94 | 定位与宽度容器，`placement` 决定上下对齐。**窄屏改为底部抽屉容器**（`px-0 pt-8` + `items-end justify-center`），不再套 `CONTAINER_SIZES` 的 max-width |
+| `Dialog` | modal.tsx:123 | `role="dialog" aria-modal="true"`，`lg-float-in lg-regular rounded-2xl`（入场：`translateY(24px)+scale(0.96)` → 1，阴影同步扩散，slow 档）。**窄屏改用 `.mobile-sheet` 类**（顶部两角圆角、贴底、内部纵向滚动），不再 `rounded-2xl` |
 | `Header` / `Heading` / `Body` / `Footer` | modal.tsx:130 / 134 / 138 / 149 | 结构分区；`Heading` 为 `h2 text-lg`；`Body` 是 forwardRef（displayName `GlassModalBody`）默认 `overflow-y-auto` 并支持 `onScroll` |
 | `CloseTrigger` | modal.tsx:153 | 右上角 x 按钮，读 Context 关闭 |
 | `GlassModalWithSub`（即 `GlassModalCompound`） | modal.tsx:174 / 194 | 挂载 8 个子件：`Backdrop/Container/Dialog/Header/Heading/Body/Footer/CloseTrigger` |
 | `AlertDialogProps` / `GlassAlertDialog` | modal.tsx:201 / 209 | 与 GlassModal 同构（Esc + 锁滚动 + Portal） |
-| `AlertDialogBackdrop` / `AlertDialogContainer` / `AlertDialogDialog` | modal.tsx:245 / 259 / 263 | 遮罩（不可点击关闭，入场同样用 `lg-backdrop-in`）、限宽 400px 容器、`role="alertdialog"` 面板 |
+| `AlertDialogBackdrop` / `AlertDialogContainer` / `AlertDialogDialog` | modal.tsx:245 / 259 / 263 | 遮罩（不可点击关闭，入场同样用 `lg-backdrop-in`）、限宽 400px 容器、`role="alertdialog"` 面板。**窄屏：遮罩 `items-end` 底部对齐、面板改用 `.mobile-sheet`（贴底、顶部两角圆角）** |
 | `ICON_TONES` / `AlertDialogIcon` | modal.tsx:266 / 274 | 圆形图标底色（success/warning/danger/info/default），`status` 默认 `info`，内嵌感叹号 SVG |
-| `AlertDialogHeader` / `Heading` / `Body` / `Footer` / `CloseTrigger` | modal.tsx:285 / 289 / 293 / 297 / 301 | 结构件；`CloseTrigger` 为绝对定位右上 x |
+| `AlertDialogHeader` / `Heading` / `Body` / `Footer` / `CloseTrigger` | modal.tsx:285 / 289 / 293 / 297 / 301 | 结构件；`CloseTrigger` 为绝对定位右上 x。**`AlertDialogFooter` 窄屏改纵向铺满**（`flex-col-reverse [&>*]:w-full`）—— 确认弹窗在手机上尤其需要贴底，拇指够得到且正文不被居中布局挤成一小块 |
 | `GlassAlertDialogWithSub`（即 `GlassAlertDialogCompound`） | modal.tsx:322 / 344 | 挂载 9 个子件（比 Modal 多一个 `Icon`） |
 
-**内部结构**（modal.tsx 共 345 行）：
-
-| 行号区间 | 内容 |
-| --- | --- |
-| 5-19 | GlassModal 用法注释（compound API 示例） |
-| 21-52 | 三个接口定义 + size 到宽度映射表 |
-| 54-195 | `GlassModal` 及其 8 个子件实现、复合类型断言、导出 |
-| 197-207 | GlassAlertDialog 分隔注释 + 接口与 Context |
-| 209-320 | `GlassAlertDialog` 及其 9 个子件实现 |
-| 322-345 | 复合类型断言、子件挂载与导出 |
+**窄屏（< 640px）行为**：居中卡片改**底部抽屉**。手机上屏幕是竖的，一个居中的大卡片上下都要留白，实际可用高度被压到 40% 左右，键盘一弹就几乎看不见内容；底部抽屉从下往上展开，正文贴着拇指、顶部留给标题，键盘弹出时正文仍然可见 —— 这是 iOS/Android 系统自己所有表单弹层采用的形态。判定用 `useIsBelowSm()`（`@/hooks/useMediaQuery`）。
 
 **备注**：`Container` 接收 `scroll` prop 但实现未使用；`Backdrop` 声明了 `variant` 却不消费（`confirm-dialog.tsx:61` 传 `variant="blur"` 无效）；`xl`(1100px) 比 `2xl`(1000px) 更宽，尺寸序列不单调。
 
@@ -412,7 +405,7 @@ character-list / domain-info / spaceship / attendance-settings-modal）都复用
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
 | `PageHeaderProps` | page-header.tsx:3 | `title`（必填）、`description`、`actions`（右上按钮组）、`id`（锚点）、`className` |
-| `PageHeader` | page-header.tsx:16 | `<header id>`；标题 `text-2xl lg:text-3xl font-bold`，移动端纵向、桌面横向两端对齐（:27） |
+| `PageHeader` | page-header.tsx:16 | `<header id>`；标题 `text-xl sm:text-2xl lg:text-3xl font-bold`（手机上 2xl 已占掉一行，再大就挤掉副标题）；窄屏纵向、桌面横向两端对齐（`flex-col sm:flex-row`）。**操作区窄屏改为整行横向滚动**（`max-w-full overflow-x-auto`）—— 多个按钮横排必然溢出，换行又会把标题挤下去 |
 
 ## `src/components/ui/progress.tsx`
 **职责**：进度展示两件套——环形 `ProgressCircle`（含不定量加载态）与线性 `Meter`，均为 Context 驱动的复合组件。
@@ -443,7 +436,7 @@ character-list / domain-info / spaceship / attendance-settings-modal）都复用
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
 | `SectionCardProps` | section-card.tsx:4 | `id`（锚点）、`title`、`description`、`actions`（右侧按钮）、`padded`（默认 `true` 是否内边距）、`flush`（移除内边距用于自定义布局）、`className`、`children`（必填） |
-| `SectionCard` | section-card.tsx:17 | 基于 `GlassCard`，hover 时 `shadow-md + scale 1.01`（:32）；有 title/actions 才渲染头行（:36）；内容区 padding 规则见 :57-63 |
+| `SectionCard` | section-card.tsx:17 | 基于 `GlassCard`，hover 时 `shadow-md + scale 1.01`（**加 `lg:` 前缀** —— 触屏上 hover 会「粘住」，放大的卡片看起来像被按住了）；有 title/actions 才渲染头行。**窄屏：标题区纵向堆叠**（`flex-col sm:flex-row`）—— 标题长时不会把操作按钮挤出卡片；头行/内容区内边距收紧（`px-4 pt-4 pb-2 sm:px-6 sm:pt-6` / `p-4 sm:p-6`） |
 
 **备注**：`padded` 与 `flush` 同时为 true 时以 `flush` 优先（内容 `p-0`，头行仍保留 padding）。
 
@@ -456,7 +449,7 @@ character-list / domain-info / spaceship / attendance-settings-modal）都复用
 | --- | --- | --- |
 | `GlassSelectOption` | select.tsx:6 | `{ value, label }`。`label` 类型为 **`ReactNode`**（原为 `string`；字符串本身即合法 `ReactNode`，因此是向后兼容的类型放宽）。放标识时传 `<AccountNameLine game={...}>{nickname}</AccountNameLine>` |
 | `GlassSelectProps` | select.tsx:18 | `value`（可 null）、`options`、`onChange(value)`、`className`、`placeholder`、`maxMenuHeight`（默认 288）、`highlightSelected`（默认 false，选中项加粗） |
-| `GlassSelect` | select.tsx:28 | 触发按钮 + fixed 定位菜单（`z-[9999]`，按下拉框底部 `top = rect.bottom + 4`）；菜单宽度 `max(150, 触发器宽度)`。触发器文案用 `min-w-0 flex-1 text-left`（由 `label` 内部自行 `truncate`） |
+| `GlassSelect` | select.tsx:28 | 触发按钮 + fixed 定位菜单（`z-[9999]`，按下拉框底部 `top = rect.bottom + 4`）；菜单宽度 `max(150, 触发器宽度)`。触发器文案用 `min-w-0 flex-1 text-left`（由 `label` 内部自行 `truncate`）。**窄屏**：触发器高度 40px（`h-10 sm:h-9`）、选项行最小 44px（`min-h-[44px] sm:min-h-0`）；打开后按实际尺寸把菜单**夹进视口**（宽度收到 `100vw - 16px`、位置靠边对齐、底部越界时改为向上弹出）—— 触发器在屏幕右侧时菜单会横向溢出（手机上尤其明显：打开后一半在屏幕外，选不到） |
 | `SelectProps` / `Select` | select.tsx:179 / 190 | 薄封装：回调取 `onValueChange ?? onChange`；**两者都不传时直接返回 null（不渲染）** |
 
 **备注**：打开状态下任意 document mousedown 或 window scroll（capture）都会关闭菜单（select.tsx:48-62）。菜单入场用 `animate-scale-in`（slow 档，`-8px + scale(0.9)`，origin 由该类内置为 top center），关闭先置 `closing` 播 `animate-fade-out`、280ms 后卸载（closeMenu，:37-45），收尾不再被切掉。
@@ -469,7 +462,7 @@ character-list / domain-info / spaceship / attendance-settings-modal）都复用
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
 | `SettingsRowProps` | settings-row.tsx:3 | `id`（锚点）、`title`（必填）、`description`、`control`（必填，右侧控件）、`className` |
-| `SettingsRow` | settings-row.tsx:16 | 移动端纵向、桌面两端对齐；左区 `flex-1`，右区 `shrink-0` |
+| `SettingsRow` | settings-row.tsx:16 | 移动端纵向、桌面两端对齐；左区 `flex-1`，右区 `shrink-0`。**窄屏控件整行靠左**（`w-full sm:w-auto sm:text-right`）—— 靠右的控件在窄屏上离拇指更远，且长控件会溢出 |
 | `SettingsDivider` | settings-row.tsx:43 | `h-px bg-separator` 全宽线，`role="separator"` |
 
 ## `src/components/ui/skeleton.tsx`
@@ -570,14 +563,14 @@ character-list / domain-info / spaceship / attendance-settings-modal）都复用
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
 | `GlassTableProps` | table.tsx:3 | 通用 `{ className?, children? }` |
-| `Table` | table.tsx:8 | 外层滚动容器（`w-full overflow-x-auto`） |
+| `Table` | table.tsx:8 | 外层滚动容器（`w-full overflow-x-auto scroll-touch`）。**窄屏保留横向滚动并让滚动条可见**（`[scrollbar-width:thin] sm:[scrollbar-width:none]` + `[&::-webkit-scrollbar]:h-6`）—— 表格天生是「多列并排」的信息结构，硬改成堆叠会破坏「同一行是同一条记录」的语义（开发者页的缓存图片表、字段表尤其如此） |
 | `Table.ScrollContainer` | table.tsx:12 | 额外横向滚动容器 |
 | `Table.Content` | table.tsx:16 | `<table>` 本体，支持 `aria-label`，`border-collapse text-sm` |
 | `Table.Header` | table.tsx:32 | `<thead>` 并**自动包裹一层 `<tr>`**（:36），子件应直接写 `<Column>` |
-| `Table.Column` | table.tsx:40 | `<th>`；`isRowHeader=true` 时 `scope="row"` 否则 `scope="col"` |
+| `Table.Column` | table.tsx:40 | `<th>`；`isRowHeader=true` 时 `scope="row"` 否则 `scope="col"`。**窄屏收紧内边距 + `whitespace-nowrap`**（`px-2 sm:px-4`）—— 换行会把表头撑成两行、表格高度暴涨；不换行则靠容器横向滚动 |
 | `Table.Body` | table.tsx:51 | `<tbody>`，`divide-y divide-separator/60` |
 | `Table.Row` | table.tsx:55 | `<tr>`，hover 背景 + 微缩放 |
-| `Table.Cell` | table.tsx:59 | `<td>`，`px-4 py-2.5` |
+| `Table.Cell` | table.tsx:59 | `<td>`，`px-2 sm:px-4 py-2 sm:py-2.5` |
 
 **备注**：`Table.Header` 自带 `<tr>`，不要在其内部再写 `<tr>`。
 
@@ -594,15 +587,15 @@ character-list / domain-info / spaceship / attendance-settings-modal）都复用
 ## `src/components/ui/tooltip.tsx`
 **职责**：纯 CSS 悬浮提示（group-hover 触发，绝对定位在触发元素上方），两套同构实现。
 **导出**：`Tooltip`、`GlassTooltip`
-**主要依赖**：`@/lib/utils`（`cn`）
+**主要依赖**：`@/lib/utils`（`cn`）、**`@/hooks/useMediaQuery`（`useSupportsHover`）**
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
 | `GlassTooltipProps` | tooltip.tsx:3 | 继承 `HTMLAttributes<HTMLSpanElement>`；声明了 `delay` 但实现未使用 |
 | `GlassTooltip` | tooltip.tsx:7 | 触发容器 `group relative inline-flex` |
-| `GlassTooltip.Content` | tooltip.tsx:15 | `role="tooltip"`，默认透明，`group-hover` 时显现并上浮 4px（:29） |
+| `GlassTooltip.Content` | tooltip.tsx:15 | `role="tooltip"`，默认透明，`group-hover` 时显现并上浮 4px。**触屏（`useSupportsHover()` 为 false）直接不渲染** —— 触屏上没有悬停，tooltip 永远不显形；而且它的绝对定位层会盖住触发元素下方的一小片区域，手指点上去时可能被它接住（`pointer-events` 虽然是 none，仍会改变点击落点） |
 | `TooltipProps` / `Tooltip` | tooltip.tsx:40 / 42 | 同 GlassTooltip，容器类名改为 `peer/group` |
-| `Tooltip.Content` | tooltip.tsx:50 | 除 `group-hover` 外还响应 `peer-focus-within`（键盘聚焦也显示，:65） |
+| `Tooltip.Content` | tooltip.tsx:50 | 除 `group-hover` 外还响应 `peer-focus-within`（键盘聚焦也显示）。同样在触屏上不渲染 |
 
 **备注**：提示内容必须作为触发元素的兄弟节点（依赖 group/peer 选择器）；`delay` prop 无效（无延迟实现）。
 

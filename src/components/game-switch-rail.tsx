@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { readGameInstallPath } from "@/utils/launcherService";
+import { useIsTouchPrimary } from "@/hooks/useMediaQuery";
 import {
   ALL_GAMES,
   getActiveGame,
@@ -70,6 +71,8 @@ export function GameSwitchRail() {
   const [game, setGame] = useState<LauncherGame>(getActiveGame);
   const expandedRef = useRef(false);
   const panelRef = useRef<HTMLDivElement | null>(null);
+  /** 触屏设备：没有悬停，展开/收起改由点击驱动 */
+  const isTouch = useIsTouchPrimary();
 
   useEffect(() => subscribeActiveGame(() => setGame(getActiveGame())), []);
 
@@ -86,6 +89,11 @@ export function GameSwitchRail() {
   }, []);
 
   useEffect(() => {
+    // 触屏：不用「鼠标靠近边缘」判定 —— 触摸设备上根本没有 mousemove，
+    // 条子会永远收着（只露出一条 10px 的窄把手，48px 的图标全被裁掉，
+    // 等于「切不了游戏」）。改为点击把手展开/收起。
+    if (isTouch) return;
+
     const handleMouseMove = (event: MouseEvent) => {
       const { clientX: x, clientY: y } = event;
       const rect = panelRef.current?.getBoundingClientRect();
@@ -113,7 +121,7 @@ export function GameSwitchRail() {
 
     window.addEventListener("mousemove", handleMouseMove);
     return () => window.removeEventListener("mousemove", handleMouseMove);
-  }, [expand, collapse]);
+  }, [expand, collapse, isTouch]);
 
   return createPortal(
     <div
@@ -130,15 +138,29 @@ export function GameSwitchRail() {
           height: expanded ? RAIL_HEIGHT : HANDLE_HEIGHT,
         }}
       >
-        {/* 收起态的窄把手：只给一个"这里能拉出来"的暗示，不收指针事件 */}
-        <span
-          aria-hidden="true"
-          className={`pointer-events-none absolute inset-y-0 left-0 flex w-full items-center justify-center transition-opacity duration-200 ease-out ${
-            expanded ? "opacity-0" : "opacity-100"
-          }`}
-        >
-          <span className="h-8 w-1 rounded-full bg-white/40" />
-        </span>
+        {/* 收起态的窄把手：桌面上只是「这里能拉出来」的暗示；
+            触屏上它必须**可点**（否则整条栏在手机上毫无作用），
+            所以做成一个真实的按钮。 */}
+        {isTouch ? (
+          <button
+            type="button"
+            aria-label={t("launcher.select_game_title", "切换游戏")}
+            aria-expanded={expanded}
+            onClick={() => (expanded ? collapse() : expand())}
+            className="pointer-events-auto absolute inset-0 flex w-full items-center justify-center"
+          >
+            <span className="h-8 w-1 rounded-full bg-white/60" />
+          </button>
+        ) : (
+          <span
+            aria-hidden="true"
+            className={`pointer-events-none absolute inset-y-0 left-0 flex w-full items-center justify-center transition-opacity duration-200 ease-out ${
+              expanded ? "opacity-0" : "opacity-100"
+            }`}
+          >
+            <span className="h-8 w-1 rounded-full bg-white/40" />
+          </span>
+        )}
 
         {/* 图标列：挂 `inert`，收起时既不接收指针也不进 Tab 序列 */}
         <div

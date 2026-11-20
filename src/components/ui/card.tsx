@@ -30,7 +30,9 @@ function GlassCard({
           // 位移走 press 档 + glide：fast 档的 150ms 让 2px 上跳看着像弹。
           "[transition:transform_var(--lg-dur-press)_var(--lg-ease-glide),translate_var(--lg-dur-press)_var(--lg-ease-glide),scale_var(--lg-dur-press)_var(--lg-ease-glide),box-shadow_var(--lg-dur-press)_var(--lg-ease-standard)] cursor-pointer",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50",
-          "hover:-translate-y-1 hover:scale-[1.02] hover:shadow-lg active:translate-y-0 active:scale-[0.99]",
+          // 只有真正能悬停的设备才做 hover 上浮：触屏上 hover 会「粘住」，
+          // 卡片会保持放大/抬起的姿态，看上去像被按住不放。
+          "lg:hover:-translate-y-1 lg:hover:scale-[1.02] lg:hover:shadow-lg active:translate-y-0 active:scale-[0.99]",
           shadow === "sm" && "shadow-sm",
           shadow === "md" && "shadow-md",
           shadow === "lg" && "shadow-lg",
@@ -47,7 +49,7 @@ function GlassCard({
       className={cn(
         "lg-material rounded-xl border border-separator overflow-hidden",
         "[transition:transform_var(--lg-dur-press)_var(--lg-ease-glide),translate_var(--lg-dur-press)_var(--lg-ease-glide),scale_var(--lg-dur-press)_var(--lg-ease-glide),box-shadow_var(--lg-dur-press)_var(--lg-ease-standard)]",
-        "hover:-translate-y-1 hover:scale-[1.01] hover:shadow-lg",
+        "lg:hover:-translate-y-1 lg:hover:scale-[1.01] lg:hover:shadow-lg",
         shadow === "sm" && "shadow-sm",
         shadow === "md" && "shadow-md",
         shadow === "lg" && "shadow-lg",

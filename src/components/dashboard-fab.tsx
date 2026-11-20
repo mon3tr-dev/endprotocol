@@ -23,10 +23,13 @@ export function DashboardFAB({
   }, [isEditMode]);
 
   return createPortal(
-    // 移动端（<lg）整体抬到右下角菜单按钮上方，避免两个 FAB 重叠；
-    // lg 及以上恢复 bottom-6（菜单按钮只在移动端渲染）。safe-area-bottom
-    // 让 Android 手势条 / iOS Home 条不遮住按钮。
-    <div className="fixed right-6 z-50 [bottom:calc(6rem+var(--safe-area-bottom))] lg:bottom-6">
+    // 移动端（<lg）：抬到悬浮导航胶囊**上方**。
+    //
+    // 胶囊高约 52px（h-9 图标行 + py-1.5 上下 + 边框），加上底部留白
+    // 8px 与安全区，FAB 的 56px 圆钮不能压到它 —— 压上去会盖住胶囊右端
+    // 的「更多」入口，导航在移动端就打不开了。
+    // 桌面端（lg+）用 bottom-6：底部导航只在窄屏渲染，两边不会打架。
+    <div className="fixed right-4 z-50 lg:right-6 lg:bottom-6 [bottom:calc(5rem+var(--safe-area-bottom))]">
       {isExpanded && (
         <div className="absolute bottom-16 right-0 flex flex-col gap-2 animate-fade-in">
           <button

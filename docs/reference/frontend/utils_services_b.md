@@ -1,4 +1,4 @@
-﻿# 前端服务与工具（B 组：更新/解析/图片/日志）— 文件功能参考
+# 前端服务与工具（B 组：更新/解析/图片/日志）— 文件功能参考
 
 > 逐文件精读源码生成。行号基于当前工作区版本，仅用于快速定位。
 
@@ -454,25 +454,49 @@
 
 **备注**：无 IPC、无事件；纯字符串处理，供 `pages/todo.tsx` 的导入导出按钮调用。
 
+## `src/utils/safeArea.ts`
+**职责**：把系统栏 inset（状态栏 / 手势条 / 刘海）写入根元素的 CSS 变量，让移动端布局能真正让开被系统 UI 覆盖的区域。
+**导出**：`syncSafeAreaInsets(): Promise<void>`（唯一导出）。
+**主要依赖**：`@tauri-apps/api/core` 的 `invoke`、`@/utils/platform` 的 `isAndroidApp`。
+
+| 符号 | 位置 | 说明 |
+| --- | --- | --- |
+| `VARIABLE_NAMES` | safeArea.ts:22 | CSS 变量名映射：`top → --safe-area-top`、`bottom → --safe-area-bottom`、`left → --safe-area-left`、`right → --safe-area-right`（与 globals.css 同名） |
+| `SafeAreaInsets`（接口） | safeArea.ts:31 | `{ top, bottom, left, right }`，单位 **CSS px** |
+| `applyInsets` | safeArea.ts:42 | 把 inset 写入 `document.documentElement` 的行内样式。**只写大于 0 的值** —— 平台报 0 时保留 globals.css 里 `env(...)` 的默认值，于是 iOS/桌面完全不受这条链路影响 |
+| `syncSafeAreaInsets` | safeArea.ts:65 | 对外入口。仅在 Android 上发请求（`isAndroidApp()` 门控）：其它平台的 `env()` 本来就是对的，多一次 IPC 只是浪费。调用 `plugin:safe-area\|get_safe_area_insets`（**Tauri v2 插件命令必须带 `plugin:<name>\|` 前缀**） |
+
+**为什么不能只靠 `env(safe-area-inset-*)`**：那是 web 标准做法，在 iOS Safari 与桌面浏览器上都工作正常。**但 Android 上它恒为 0**：Android 15（API 35）起 targetSdk ≥ 35 的应用被强制 edge-to-edge —— WebView 排在状态栏/手势条**之下**，而 wry 的 Android WebView 从不把 inset 告诉页面（wry 0.57 无任何 safe-area 通路，`WryActivity` 也不调用 `setDecorFitsSystemWindows(false)`）。结果是 `env(safe-area-inset-top)` 求值为 `0px`，**而状态栏就明明白白压在页面上**（实测 Pixel 7 模拟器：状态栏 28.19 CSS px，`env()` 报 0）。JS 侧同样拿不到（`screen.height` / `innerHeight` / `visualViewport` 在 edge-to-edge 下都是全屏值 —— 视口就是全屏，inset 属于系统 UI 而非视口）。
+
+**调用点**：`src/main.tsx` 的启动序列（`applyWindowEffectsSupport()` 之后、React 挂载之前）—— 必须赶在首屏渲染前完成，否则顶栏会先闪一下被状态栏压住的样子。
+
+**备注**：失败时静默降级 —— 保留 `env()` 的默认值，也就是「状态栏可能压住顶栏」这个既有状态，而不是让整个应用起不来。
+
+---
+
 ## `src/utils/platform.ts`
 **职责**：同步判断当前 WebView/浏览器运行平台，供平台能力受限的 UI 做一致性门控；并把「窗口是否有原生磨砂」「窗口圆角由谁负责」写进根元素供样式层分流。
-**导出**：`isWindowsPlatform(): boolean`、`isMacPlatform(): boolean`、`isAndroidApp(): boolean`、`isIosApp(): boolean`、`isMobileApp(): boolean`、`isDesktopApp(): boolean`、`supportsNativeWindowEffects(): boolean`、`needsSelfDrawnWindowRadius(): boolean`、`applyWindowEffectsSupport(): void`。
-**主要依赖**：浏览器 `navigator.platform` / `navigator.userAgent` / `navigator.userAgentData`、`document.documentElement`。
+**导出**：`isWindowsPlatform(): boolean`、`isMacPlatform(): boolean`、`isAndroidApp(): boolean`、`isIosApp(): boolean`、`isMobileApp(): boolean`、`isDesktopApp(): boolean`、`isTouchPrimaryDevice(): boolean`、`supportsHover(): boolean`、`supportsNativeWindowEffects(): boolean`、`needsSelfDrawnWindowRadius(): boolean`、`applyWindowEffectsSupport(): void`。
+**主要依赖**：浏览器 `navigator.platform` / `navigator.userAgent` / `navigator.userAgentData`、`window.matchMedia`、`document.documentElement`。
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
 | `isWindowsPlatform` | platform.ts:1 | 通过 `navigator.platform`（`Win*`）或 UA（`Windows`）判断 Windows；navigator 不存在时返回 `false` |
 | `isMacPlatform` | platform.ts:8 | 通过 `navigator.platform`（`Mac*`）或 UA（`Mac OS X` / `Macintosh`）判断 macOS |
-| `isAndroidApp` | platform.ts:16 | UA 含 `Android`（Tauri Android 系统 WebView 必然命中，桌面 WebView2/WebKitGTK 不含）或 `navigator.userAgentData.platform` 为 Android；`isWindowsPlatform` 在 Android 上恒 false，因此启动器门控自动生效 |
-| `isIosApp` | platform.ts:33 | UA 含 `iphone|ipad|ipod`（预留，Tauri iOS 同按移动端处理） |
-| `isMobileApp` | platform.ts:41 | `isAndroidApp() \|\| isIosApp()`；Android/iOS 移动端门控的统一入口（托盘、更新器、窗口控制、取色器等全部按它隐藏） |
-| `isDesktopApp` | platform.ts:48 | `!isMobileApp()` |
-| `isTauriWindow`（私有） | platform.ts:51 | 读 `window.__TAURI_INTERNALS__`（Tauri v2 在每个 webview 注入）判断是否真在 Tauri 窗口内，不引入 `@tauri-apps/api`，保持本模块零依赖 |
-| `supportsNativeWindowEffects` | platform.ts:68 | Tauri 窗口内且为 Windows 或 macOS 才算有原生窗口磨砂。依据是 Tauri 的 `vibrancy::set_window_effects` 只按 `#[cfg(windows)]` / `#[cfg(target_os = "macos")]` 分发，Linux（WebKitGTK）分支什么都不做；直接用浏览器打开 dev server 时同样按无磨砂处理 |
-| `needsSelfDrawnWindowRadius` | platform.ts:83 | Tauri 窗口内、且**非移动端**、非 Windows 也非 macOS（即 Linux）时为 `true`：这类无边框窗口没有系统圆角，需前端自己裁。移动端（Android/iOS）是系统全屏窗口，排除在 clip-path 兜底之外 |
-| `applyWindowEffectsSupport` | platform.ts:99 | 写 `<html data-window-effects="native\|fallback">` 与 `<html data-window-radius="native\|self">`；必须在首屏渲染前调用（`main.tsx` 在 `setStartupPhase(12)` 之后、读配置之前调用，`tray-panel.tsx` 在挂载 React 前调用），否则会先闪一帧透明背景/直角窗口 |
+| `isAndroidApp` | platform.ts:21 | UA 含 `Android`（Tauri Android 系统 WebView 必然命中，桌面 WebView2/WebKitGTK 不含）或 `navigator.userAgentData.platform` 为 Android；`isWindowsPlatform` 在 Android 上恒 false，因此启动器门控自动生效 |
+| `isIosApp` | platform.ts:31 | UA 含 `iphone|ipad|ipod`（预留，Tauri iOS 同按移动端处理） |
+| `isMobileApp` | platform.ts:40 | `isAndroidApp() \|\| isIosApp()`；Android/iOS 移动端门控的统一入口（托盘、更新器、窗口控制、取色器等全部按它隐藏） |
+| `isDesktopApp` | platform.ts:45 | `!isMobileApp()` |
+| `isTouchPrimaryDevice` | platform.ts:59 | `(pointer: coarse)` **与** `(hover: none)` **同时**成立才算触屏主设备。两个条件同时用是刻意的：桌面浏览器接了外接触屏屏也会命中 `hover: none`，但桌面端主交互仍是鼠标；只问 `pointer: coarse` 会把触屏笔记本误判成手机。用它把「只有悬停才出现」的控件（编辑/删除/更多）在手机上改成常驻或点击触发 |
+| `supportsHover` | platform.ts:77 | `(hover: hover)`——设备**能不能**稳定停在元素上并触发 hover。与 `isTouchPrimaryDevice` 互补：这个问的是能力，用于决定 tooltip / hover 浮出这类交互是否值得启用 |
+| `isTauriWindow`（私有） | platform.ts:91 | 读 `window.__TAURI_INTERNALS__`（Tauri v2 在每个 webview 注入）判断是否真在 Tauri 窗口内，不引入 `@tauri-apps/api`，保持本模块零依赖 |
+| `supportsNativeWindowEffects` | platform.ts:108 | Tauri 窗口内且为 Windows 或 macOS 才算有原生窗口磨砂。依据是 Tauri 的 `vibrancy::set_window_effects` 只按 `#[cfg(windows)]` / `#[cfg(target_os = "macos")]` 分发，Linux（WebKitGTK）分支什么都不做；直接用浏览器打开 dev server 时同样按无磨砂处理 |
+| `needsSelfDrawnWindowRadius` | platform.ts:124 | Tauri 窗口内、且**非移动端**、非 Windows 也非 macOS（即 Linux）时为 `true`：这类无边框窗口没有系统圆角，需前端自己裁。移动端（Android/iOS）是系统全屏窗口，排除在 clip-path 兜底之外 |
+| `applyWindowEffectsSupport` | platform.ts:142 | 写 `<html data-window-effects="native\|fallback">` 与 `<html data-window-radius="native\|self">`；必须在首屏渲染前调用（`main.tsx` 在 `setStartupPhase(12)` 之后、读配置之前调用，`tray-panel.tsx` 在挂载 React 前调用），否则会先闪一帧透明背景/直角窗口 |
 
 **备注**：`isWindowsPlatform` 用于限定 Windows 原生屏幕取色器和游戏启动器；`isMobileApp` 用于 Android/iOS 适配（后端命令层面也有对应 stub，见 `docs/development.md` §2.1 的差异表）；`applyWindowEffectsSupport` 供 `globals.css` 分流两条样式——`data-window-effects="fallback"` 时给 `body` 铺不透明的 `--background`，让 `.dashboard-background` 的主题渐变在没有系统 Acrylic 的平台上真正渲染出来；`data-window-radius="self"` 时用 `clip-path: inset(0 round 12px)` 把整个窗口裁圆（Windows 交 DWM、macOS 交系统，只有 Linux 需要）。不依赖 IPC、配置或第三方库。
+
+**为什么新增 `isTouchPrimaryDevice` / `supportsHover`**：Tailwind v4 的 `hover:` 变体被包在 `@media (hover: hover)` 里（见 `tailwindcss/dist/lib.js` 的 `static("hover", …)`），因此在触屏设备上 `group-hover:opacity-100` **完全不生效** —— 那些「悬停才出现」的按钮在手机上不是「不好看」，而是**永远点不到**。这两个函数把「设备能不能悬停」变成可查询的事实，让组件在渲染期就能改用常驻 / 点击驱动的形态，而不是靠 CSS 补救。
 
 ## `src/utils/browserViewService.ts`
 **职责**：in-app browser 原生子 Webview 的后端导航服务封装。JS 侧 `@tauri-apps/api/webview` 的 `Webview` 类只有生命周期与布局方法（无 back/forward/reload/navigate/url），这些能力由 `src-tauri/src/commands/browser.rs` 以 app command 暴露，本文件统一加类型并把失败显式转成返回值，不抛给 UI 层。

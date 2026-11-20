@@ -6,25 +6,26 @@
 ## `src/components/custom-modal.tsx`
 **职责**：应用级 Modal 兼容层，把自研 `GlassModal`（液态玻璃）包装成语义化的头部/主体/底部结构，并保留向后兼容的 `size` 语义。全项目业务弹窗（账户切换、添加卡片、选人、标签页编辑等）均基于此层构建。
 **导出**：`CustomModal`、`CustomModalHeader`、`CustomModalBody`、`CustomModalFooter`
-**主要依赖**：`react`（`forwardRef`）、`@/components/ui/modal`（`GlassModal` 复合组件）、`@/components/ui/app-icon`（`CloseIcon`）
+**主要依赖**：`react`（`forwardRef`）、`@/components/ui/modal`（`GlassModal` 复合组件）、`@/components/ui/app-icon`（`CloseIcon`）、**`@/hooks/useMediaQuery`（`useIsBelowSm`）**
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
 | `ModalSize` | custom-modal.tsx:5 | 类型别名 `"xs" \| "sm" \| "md" \| "lg" \| "full" \| "cover"`，声明后未被任何代码引用（见备注） |
 | `SIZE_CONFIG` | custom-modal.tsx:11 | size → `{ size, widthClass }` 映射表。键为 `sm/md/lg/xl/2xl/3xl/4xl/5xl`，值分别映射到 `GlassModal` 的 `xs~2xl` 宽度档；`xl` 用于角色详情/选人、`2xl` 用于账户切换；`3xl/4xl/5xl` 均降级为 `2xl`；所有档位 `widthClass` 都是 `w-full` |
 | `CustomModalProps` | custom-modal.tsx:25 | 接口定义，见下行 props 说明 |
-| `CustomModal` | custom-modal.tsx:36 | 弹窗容器。关键 props：`isOpen`（布尔，受控开关）、`onClose`（关闭回调，`GlassModal` 的 `onOpenChange` 收到 `false` 时触发）、`children`（内容，须自行组合 Header/Body/Footer）、`size`（`keyof SIZE_CONFIG`，默认 `"md"`，非法值回退 `md`）、`disableBackdropClick`（默认 `false`；为 `true` 时禁止点击遮罩关闭）、`height`（`"auto" \| "fixed"`，默认 `auto`；`fixed` 时对话框固定 `90vh`，否则 `max-h-90vh`）。渲染结构：`GlassModal > Backdrop(z-[100]) > Container(placement="center", scroll="inside") > Dialog`，Dialog 为 `rounded-2xl !p-0` 纵向 flex 列 |
+| `CustomModal` | custom-modal.tsx:36 | 弹窗容器。关键 props：`isOpen`（布尔，受控开关）、`onClose`（关闭回调，`GlassModal` 的 `onOpenChange` 收到 `false` 时触发）、`children`（内容，须自行组合 Header/Body/Footer）、`size`（`keyof SIZE_CONFIG`，默认 `"md"`，非法值回退 `md`）、`disableBackdropClick`（默认 `false`；为 `true` 时禁止点击遮罩关闭）、`height`（`"auto" \| "fixed"`，默认 `auto`）。渲染结构：`GlassModal > Backdrop(z-[100]) > Container(placement="center", scroll="inside") > Dialog`，Dialog 为 `!p-0` 纵向 flex 列。**高度上限改用 `dvh`**（`!max-h-[85dvh] sm:!max-h-[90vh]`）—— 移动端浏览器地址栏收起/展开时 `vh` 不会变，弹窗会超出实际可见区域 |
 | `ModalHeaderProps` | custom-modal.tsx:79 | 头部 props：`children`、`onClose?`、`rightContent?`、`className?` |
-| `CustomModalHeader` | custom-modal.tsx:86 | 底部分隔线的标题栏（`px-6 py-3.5 border-b`）。左侧为 `text-lg font-semibold` 标题（`children`），右侧容器渲染 `rightContent`；传入 `onClose` 时在最右侧绝对定位一个 `aria-label="Close"` 的关闭按钮（18px `CloseIcon`），可与 `rightContent` 并存 |
+| `CustomModalHeader` | custom-modal.tsx:86 | 底部分隔线的标题栏。左侧为标题，右侧容器渲染 `rightContent`；传入 `onClose` 时在最右侧绝对定位一个 `aria-label="Close"` 的关闭按钮（18px `CloseIcon`），可与 `rightContent` 并存。**窄屏**：内边距收紧（`px-4 py-3 sm:px-6 sm:py-3.5`）、标题降一档并可截断（`text-base sm:text-lg` + `truncate`）、顶部加一个抓手（`.mobile-sheet-grip`）；关闭按钮 `p-2`（原 `p-1.5`） |
 | `ModalBodyProps` | custom-modal.tsx:111 | 主体 props：`children`、`className?`、`onScroll?` |
-| `CustomModalBody` | custom-modal.tsx:117 | 可滚动内容区（`flex-1 min-h-0 px-6 py-4 overflow-y-auto`）。用 `forwardRef<HTMLDivElement>` 实现，支持 ref 透传与滚动事件；`displayName` 在 custom-modal.tsx:130 置为 `"CustomModalBody"` |
+| `CustomModalBody` | custom-modal.tsx:117 | 可滚动内容区（`flex-1 min-h-0 overflow-y-auto scroll-touch`）。用 `forwardRef<HTMLDivElement>` 实现，支持 ref 透传与滚动事件；`displayName` 置为 `"CustomModalBody"`。**窄屏**内边距收紧（`px-4 py-3 sm:px-6 sm:py-4`） |
 | `ModalFooterProps` | custom-modal.tsx:132 | 底栏 props：`children`、`className?` |
-| `CustomModalFooter` | custom-modal.tsx:137 | 按钮栏（`flex justify-end gap-2 px-6 py-4 border-t`），不自带按钮，由调用方塞入 `GlassButton` |
+| `CustomModalFooter` | custom-modal.tsx:137 | 按钮栏（`flex gap-2 border-t`），不自带按钮，由调用方塞入 `GlassButton`。**窄屏**：按钮纵向铺满（`flex-col-reverse [&>*]:w-full`）并吃掉底部安全区（`pb-[calc(0.75rem+var(--safe-area-bottom))]`）—— 拇指可达、且按钮不会被 Android 手势条压住 |
 
 **备注**：
 - 层级：Backdrop 固定 `z-[100]`；Dialog 尺寸/滚动由 `GlassModal.Container` 的 `size` + `scroll="inside"` 控制。
 - 无 `invoke` / `listen` / i18n，纯展示层。
 - 异常：`ModalSize`（line 5）声明了 `xs/full/cover` 但 `SIZE_CONFIG` 无这些键，且该类型未被使用——外部传 `size="xs"` 或 `"full"` 会静默回退到 `md`。
+- **窄屏整体形态**：居中卡片 → **底部抽屉**（`useIsBelowSm()` 判定，判定与形变都交给 `GlassModal` 的 `Container`/`Dialog`/`Backdrop`）。理由见 `ui_components.md` 的 modal 段落。
 
 ## `src/components/close-confirm-dialog.tsx`
 **职责**：关闭窗口二次确认对话框，让用户选择「最小化到托盘」或「关闭程序」，可勾选记住选择并写入配置。
@@ -105,8 +106,10 @@
 | 订阅 effect | app-info-drawer.tsx:17-19 | `subscribeMessages(() => setMsgs(getMessages()))`，卸载时退订 |
 | 自动已读 effect | app-info-drawer.tsx:21-27 | 打开时遍历消息，对 `!read && type === "info"` 的条目调用 `markRead(m.id)` |
 | `handleBackdropClick` | app-info-drawer.tsx:29 | `useCallback` 包裹的 `onClose`，绑定在全屏遮罩上 |
-| 渲染/portal | app-info-drawer.tsx:33-70 | `isOpen` 为 `false` 时返回 `null`；`createPortal(..., document.body)`。遮罩 `fixed inset-0 z-[200]`，抽屉本体 `fixed inset-y-0 right-0 z-[210] w-[380px] max-w-[85vw] rounded-l-2xl`，并 `stopPropagation` 防止点击抽屉关闭 |
-| 内容块 | app-info-drawer.tsx:42-66 | 顶部「全部已读」按钮（仅 `unreadCount > 0` 时显示）→ 消息列表（空态为铃铛 SVG + 文案，否则 `msgs.map(m => <MessageCard key={m.id} msg={m} />)`） |
+| 渲染/portal | app-info-drawer.tsx:33-90 | `isOpen` 为 `false` 时返回 `null`；`createPortal(..., document.body)`。遮罩 `fixed inset-0 z-[200]`，抽屉本体 `fixed inset-y-0 right-0 z-[210] w-[380px] max-w-[85vw] rounded-l-2xl`，并 `stopPropagation` 防止点击抽屉关闭。**窄屏改底部抽屉**（`inset-x-0 bottom-0 w-full max-h-[85dvh] border-t rounded-t-2xl`，`lg:` 断点恢复右侧抽屉形态），并吃掉底部安全区 |
+| 内容块 | app-info-drawer.tsx:42-90 | 顶部抓手（仅窄屏 `.mobile-sheet-grip`）→「全部已读」按钮（仅 `unreadCount > 0` 时显示）→ 消息列表（空态为铃铛 SVG + 文案，否则 `msgs.map(m => <MessageCard key={m.id} msg={m} />)`） |
+
+**窄屏行为**：右侧抽屉改成**底部抽屉**。原来固定 380px 宽、右侧贴边，在手机上会占掉 2/3 屏宽，背后的消息列表只剩一条缝；而消息中心是竖向内容，底部抽屉能给出完整宽度 + 拇指可达的关闭位置。高度留出顶部安全区，避免被状态栏压住。
 
 **备注**：
 - 无 `invoke` / `listen`（数据同步靠 `subscribeMessages` 回调，非 Tauri 事件）。
@@ -308,12 +311,13 @@
 | 自动展开 effect | dashboard-fab.tsx:21-23 | `isEditMode` 为真时强制 `setIsExpanded(true)` |
 | 展开动作区 | dashboard-fab.tsx:27-53 | 绝对定位在主按钮上方（`bottom-16 right-0` 纵向堆叠，`animate-fade-in`）：①「Add Card」（`MorphIcon Plus`，调 `onAddCard`）②「Edit Mode / Exit Edit」（`Pencil`/`Check` 图标随 `isEditMode` 切换，调 `onToggleEdit`） |
 | 主按钮 | dashboard-fab.tsx:55-64 | `h-14 w-14` 圆形玻璃按钮，`aria-label="FAB toggle"`；展开时旋转 90°，图标在 `Plus`/`X` 间切换 |
-| 渲染/portal | dashboard-fab.tsx:25-67 | `createPortal(..., document.body)`，外层 `fixed bottom-6 right-6 z-50` |
+| 渲染/portal | dashboard-fab.tsx:25-67 | `createPortal(..., document.body)`，外层 `fixed right-4 z-50 lg:right-6 lg:bottom-6 [bottom:calc(5rem+var(--safe-area-bottom))]`。**窄屏抬到悬浮导航胶囊上方** —— 胶囊高约 52px（图标行 + py-1.5 上下 + 边框）加底部留白与安全区，FAB 的 56px 圆钮压上去会盖住胶囊右端的「更多」入口，导航在移动端就打不开了。桌面端用 `bottom-6`（底部导航只在窄屏渲染） |
 
 **备注**：
 - 无 `invoke` / `listen`。
 - i18n key：`dashboard.add_card_button`、`dashboard.edit_mode`、`dashboard.exit_edit`（均带 `|| 英文兜底`）。
 - 层级 `z-50`；展开态不自动收起（仅由主按钮或进入编辑模式切换）。
+- ⚠️ **右下角的「让位规则」**：桌面端布局里的浮动菜单按钮已撤除（改由底部导航条的「更多」入口承担），现在右下角只剩这个 FAB。**页面内其它右下角悬浮控件必须让开它**（详见 `pages_core.md` 的 DATA MODE 说明与 `pages_game_data.md` 抽卡页分类胶囊）。
 
 ## `src/components/navbar.tsx`
 **职责**：顶部导航栏。提供 GitHub 链接、主题/语言切换、搜索框、赞助按钮，并在窄屏折叠为汉堡菜单。
@@ -376,13 +380,13 @@
 | `GameSidebarRail` | game-sidebar-rail.tsx:75 | 组件主体。状态 `expanded`、`hoveredIndex`、`flyout`；refs `expandedRef`、`railRef`（常驻条）、`flyoutRef`（二维码浮层，参与命中判定） |
 | `visibleItems` | game-sidebar-rail.tsx:85-92 | `useMemo` 过滤掉 `HIDDEN_MEDIA` 与 `DisplayType_GRID` 的条目。用 `useMemo` 是因为 `handleItemEnter` 依赖它——每次渲染新建数组会让回调每帧重建 |
 | `expand` / `collapse` | game-sidebar-rail.tsx:95/101 | 幂等切换（各自先比对 `expandedRef`）；`collapse` 同时清空 `hoveredIndex` 与 `flyout` |
-| 几何命中 effect | game-sidebar-rail.tsx:109-143 | 监听 window `mousemove`，**每次实时量** `railRef` / `flyoutRef` 矩形：命中任一（条含 6px 外扩）即保持展开；否则若在右边缘 + 竖向带内则展开，都不满足则**立即收起**。不挂 DOM 事件、不用定时器，所以回缩无延迟，动画途中也不会读到过期矩形 |
-| `handleItemEnter` | game-sidebar-rail.tsx:146-169 | 按悬停项的**视口矩形**算浮层位置（`right = innerWidth - rect.left + 8`，`bottom` 夹在视口内），并记录 `hoveredIndex`。**没有二维码的条目直接 `setFlyout(null)`，不弹浮层**——实测方舟官服 7 个条目里只有抖音有 `qr_url`，森空岛 / 微博 / B站 / TapTap / 小红书 / 客服都只有跳转链接，浮层里没有可展示的东西。列表项**没有** `onMouseLeave`：换项靠新项的 enter 覆盖，离开条靠几何收起，浮标额外用 `onMouseEnter` 清掉 `hoveredIndex`（否则停在分隔线/内边距上会残留上一张二维码） |
-| `cell` | game-sidebar-rail.tsx:181 | 收起 `h-8 w-8`、展开 `h-9 w-9`：图标与内边距同步变大，条子向左生长 |
-| 常驻条本体 | game-sidebar-rail.tsx:185-280 | portal 到 body，外层 `fixed right-0 top-1/2 z-30 -translate-y-1/2`；本体 `rounded-l-2xl border-r-0 overflow-hidden`，收起 `p-1 bg-black/45`、展开 `p-1.5 bg-black/55` |
-| 图标列 | game-sidebar-rail.tsx:198-267 | `grid-template-rows: 0fr → 1fr` 做高度动画（内层 `min-h-0` + 外层裁剪），opacity 同步换内容；按钮 `h-[22px] w-[22px]` 图标统一尺寸；`jump_url` 为空（如微信公众号）时不可点击并在 title 追加「仅支持扫码」；末尾分隔线随高度一起被裁掉 |
-| 浮标按钮 | game-sidebar-rail.tsx:268-284 | 常驻在条的底端、固定 `h-8 w-8`，`MorphIcon Share2 size=15`；无关闭按钮，点击仅作手动切换 |
-| 二维码浮层 | game-sidebar-rail.tsx:285-320 | **单独 portal 到 body**（不能挂在常驻条里：既会被 `overflow-hidden` 裁掉，也会因常驻条带 `transform` 而使 `position: fixed` 退化为相对该祖先定位）；`pointer-events-none` 纯展示层，保持展开的能力由上面的几何命中提供；**渲染条件带 `hoveredItem?.qr_url`**（无二维码不渲染）。`qr_url` 图片 `h-36 w-36` 白底，加载失败时隐藏图片 |
+| 几何命中 effect | game-sidebar-rail.tsx:109-152 | 监听 window `mousemove`，**每次实时量** `railRef` / `flyoutRef` 矩形：命中任一（条含 6px 外扩）即保持展开；否则若在右边缘 + 竖向带内则展开，都不满足则**立即收起**。不挂 DOM 事件、不用定时器，所以回缩无延迟，动画途中也不会读到过期矩形。**触屏（`useIsTouchPrimary()`）直接 return，不注册 mousemove** —— 触摸设备上没有 mousemove，这根栏会永远收着（只露出一个 32px 的浮标，7 个渠道图标全被裁掉），等于在手机上完全无法访问官方社媒入口 |
+| `handleItemEnter` | game-sidebar-rail.tsx:155-178 | 按悬停项的**视口矩形**算浮层位置（`right = innerWidth - rect.left + 8`，`bottom` 夹在视口内），并记录 `hoveredIndex`。**没有二维码的条目直接 `setFlyout(null)`，不弹浮层**——实测方舟官服 7 个条目里只有抖音有 `qr_url`，森空岛 / 微博 / B站 / TapTap / 小红书 / 客服都只有跳转链接，浮层里没有可展示的东西。列表项**没有** `onMouseLeave`：换项靠新项的 enter 覆盖，离开条靠几何收起，浮标额外用 `onMouseEnter` 清掉 `hoveredIndex`（否则停在分隔线/内边距上会残留上一张二维码） |
+| `cell` | game-sidebar-rail.tsx:190 | 收起 `h-8 w-8`、展开 `h-9 w-9`：图标与内边距同步变大，条子向左生长 |
+| 常驻条本体 | game-sidebar-rail.tsx:194-289 | portal 到 body，外层 `fixed right-0 top-1/2 z-30 -translate-y-1/2`；本体 `rounded-l-2xl border-r-0 overflow-hidden`，收起 `p-1`、展开 `p-1.5` |
+| 图标列 | game-sidebar-rail.tsx:207-276 | `grid-template-rows: 0fr → 1fr` 做高度动画（内层 `min-h-0` + 外层裁剪），opacity 同步换内容；按钮 `h-[22px] w-[22px]` 图标统一尺寸；`jump_url` 为空（如微信公众号）时不可点击并在 title 追加「仅支持扫码」；末尾分隔线随高度一起被裁掉。**触屏上点击行为不同**：第一次点 = 显示二维码（没有悬停，浮层不会自动出现）、第二次点同一个图标 = 打开网页；没有二维码的条目直接打开 |
+| 浮标按钮 | game-sidebar-rail.tsx:277-294 | 常驻在条的底端、`MorphIcon Share2 size=15`；无关闭按钮，点击仅作手动切换。**触屏放大到 44×44**（`isTouch ? "h-11 w-11" : "h-8 w-8"`）—— 它是这根栏唯一的入口，32px 在手指上太难点 |
+| 二维码浮层 | game-sidebar-rail.tsx:299-334 | **单独 portal 到 body**（不能挂在常驻条里：既会被 `overflow-hidden` 裁掉，也会因常驻条带 `transform` 而使 `position: fixed` 退化为相对该祖先定位）；`pointer-events-none` 纯展示层，保持展开的能力由上面的几何命中提供；**渲染条件带 `hoveredItem?.qr_url`**（无二维码不渲染）。`qr_url` 图片 `h-36 w-36` 白底，加载失败时隐藏图片 |
 
 **备注**：
 - 无 `invoke` / `listen`。两处 `createPortal(..., document.body)`，外层 `z-30`（低于 `InAppBrowser` 的 `z-40`，浏览器打开时整条栏被覆盖）。
@@ -395,7 +399,7 @@
 ## `src/components/game-switch-rail.tsx`
 **职责**：游戏界面（dashboard 游戏模式）左侧的**游戏切换栏**：一根贴左边缘的常驻条，收起时只有一条窄把手，鼠标靠近左边缘即向右、向上下两侧生长成两枚游戏图标（终末地 / 明日方舟），鼠标离开立即收起。选中项带同轮廓的选中环，点击即切换 `launcherGame` store——标题栏标题、操作面板与该游戏的安装路径/渠道/DX11 配置随之整套换掉。
 **导出**：`GameSwitchRail`
-**主要依赖**：`react`（`useState/useEffect/useRef/useCallback`）、`react-dom`（`createPortal`）、`react-i18next`、`@/utils/launcherService`（`readGameInstallPath`）、`@/stores/launcherGame`（`ALL_GAMES`、`getActiveGame`、`setActiveGame`、`subscribeActiveGame`、`LauncherGame`）
+**主要依赖**：`react`（`useState/useEffect/useRef/useCallback`）、`react-dom`（`createPortal`）、`react-i18next`、`@/utils/launcherService`（`readGameInstallPath`）、`@/stores/launcherGame`（`ALL_GAMES`、`getActiveGame`、`setActiveGame`、`subscribeActiveGame`、`LauncherGame`）、**`@/hooks/useMediaQuery`（`useIsTouchPrimary`）**
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
@@ -406,8 +410,9 @@
 | `GameSwitchRail` | game-switch-rail.tsx:67 | 组件主体。状态 `expanded`、`game`（当前选中的游戏）；refs `expandedRef`、`panelRef`（展开后的面板，参与命中判定） |
 | 游戏订阅 effect | game-switch-rail.tsx:74 | `subscribeActiveGame(() => setGame(getActiveGame()))` |
 | `expand` / `collapse` | game-switch-rail.tsx:76-86 | 幂等切换（各自先比对 `expandedRef`） |
-| 几何命中 effect | game-switch-rail.tsx:88-116 | 监听 window `mousemove`，**每次实时量** `panelRef` 矩形：命中面板（含 10px 外扩）即保持展开；否则若在左边缘 + 竖向带内则展开，都不满足则立即收起 |
+| 几何命中 effect | game-switch-rail.tsx:88-116 | 监听 window `mousemove`，**每次实时量** `panelRef` 矩形：命中面板（含 10px 外扩）即保持展开；否则若在左边缘 + 竖向带内则展开，都不满足则立即收起。**触屏（`useIsTouchPrimary()`）直接 return，不注册 mousemove** —— 触摸设备上没有 mousemove，条子会永远收着（只露出一条 10px 的窄把手，48px 的图标全被裁掉），等于「切不了游戏」 |
 | 常驻条本体 | game-switch-rail.tsx:118-131 | portal 到 body，外层 `fixed left-0 top-1/2 z-30 -translate-y-1/2`，收起态 `pointer-events-none`；本体 `rounded-r-2xl border-l-0 lg-media-chip lg-hairline`，宽度/高度同时进退 |
+| 收起态把手 | game-switch-rail.tsx:132-160 | 桌面上只是「这里能拉出来」的暗示（`pointer-events-none` 的纯展示 span）。**触屏上必须可点**（否则整条栏在手机上毫无作用），所以触屏时渲染成一个真实的 `<button>`（`aria-expanded` + 点击展开/收起） |
 | 图标列 | game-switch-rail.tsx:143-208 | 挂 `inert={!expanded}`（收起时既不收指针也不进 Tab 序列）；每项 `48×48`，选中环与图标共用 `SQUIRCLE_CLIP`；图标整体 `scale(0.9)` 让选中环露成一圈；未选中降饱和（`opacity-70 grayscale-[0.7]`），悬停恢复；已安装的游戏在角上带一个绿色圆点（`readGameInstallPath` 非空） |
 
 **备注**：

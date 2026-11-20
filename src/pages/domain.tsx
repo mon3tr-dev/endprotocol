@@ -274,7 +274,7 @@ export default function DomainPage() {
           </GlassProgressCircle>
         </div>
       ) : !effectiveDomain ? (
-        <GlassCard className="p-16 border border-separator/90">
+        <GlassCard className="p-8 sm:p-16 border border-separator/90">
           <div className="text-center text-muted">
             <p className="text-sm">{t("domain_page.empty")}</p>
           </div>
@@ -384,7 +384,7 @@ export default function DomainPage() {
               </span>
             </div>
             {settlements.length === 0 ? (
-              <GlassCard className="p-10 border border-separator/90">
+              <GlassCard className="p-6 sm:p-10 border border-separator/90">
                 <p className="text-center text-sm text-muted">
                   {t("domain_page.empty")}
                 </p>

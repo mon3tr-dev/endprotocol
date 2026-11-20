@@ -315,7 +315,7 @@ export default function SpaceshipPage() {
           </GlassProgressCircle>
         </div>
       ) : roomsWithChars.length === 0 ? (
-        <GlassCard className="p-16  border border-separator/90">
+        <GlassCard className="p-8 sm:p-16  border border-separator/90">
           <div className="text-center text-muted">
             <p className="text-sm">{t("card:spaceship_empty")}</p>
           </div>

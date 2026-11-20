@@ -192,18 +192,25 @@ export function GamePageContent({ game, data }: GamePageProps) {
       <GameSidebarRail items={data.sidebars} />
 
       {/* Content layer */}
-      <div className="relative z-10 flex-1 flex flex-col p-4 lg:p-8">
+      <div className="relative z-10 flex-1 flex flex-col p-3 sm:p-4 lg:p-8">
         {/* Spacer */}
         <div className="flex-1" />
 
-        {/* Bottom: banner/announcements (left) + game action (right) */}
-        <div className="flex items-end justify-between gap-4">
+        {/*
+         * Bottom: banner/announcements (left) + game action (right)
+         *
+         * 窄屏改为**纵向堆叠**：横幅/公告在上、游戏操作面板在下。
+         * 桌面端是左右并排（横幅占满左侧、操作面板固定在右下角），
+         * 但在竖屏手机上左右并排会把横幅压到不足 150px 宽 —— 官方
+         * 横幅是 16:9 的横图，压到这么窄就只剩一条看不清的缝。
+         */}
+        <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-3 lg:gap-4">
           {/* Banner + announcements box */}
-          <div className="lg-media-chip lg-hairline flex items-stretch h-40 max-w-2xl flex-1 min-w-0 rounded-xl overflow-hidden">
+          <div className="lg-media-chip lg-hairline flex flex-col lg:flex-row items-stretch h-auto lg:h-40 max-w-2xl w-full lg:flex-1 min-w-0 rounded-xl overflow-hidden">
             {/* Banner — left side, 4px margin top/left/bottom, auto width by aspect ratio */}
             {banners.length > 0 && (
               <div
-                className="relative shrink-0 my-1 ml-1 flex items-center group overflow-hidden rounded-lg"
+                className="relative shrink-0 my-1 ml-1 flex items-center justify-center group overflow-hidden rounded-lg bg-black/15 lg:bg-transparent"
                 onMouseEnter={() => setBannerHovered(true)}
                 onMouseLeave={() => setBannerHovered(false)}
               >
@@ -236,17 +243,23 @@ export function GamePageContent({ game, data }: GamePageProps) {
                   <img
                     src={banners[bannerIndex].image_url}
                     alt="Banner"
-                    className="h-full w-auto object-contain rounded-lg cursor-pointer transition-transform duration-300 ease-out group-hover:scale-[1.08]"
+                    /* 窄屏：给一个确定的高度（16:9 的横幅按宽度自适应会
+                       高达 200px+，把下面的公告列表整个挤出屏幕）。
+                       桌面端保持「高度撑满容器、宽度按比例」。 */
+                    className="h-24 w-auto object-contain rounded-lg cursor-pointer transition-transform duration-300 ease-out group-hover:scale-[1.08] lg:h-full"
                     onError={(e) => {
                       (e.target as HTMLImageElement).style.display = "none";
                     }}
                   />
                 </div>
 
-                {/* 翻页键：悬停浮现的左右箭头 + 底部页点。
-                    绝对定位贴在容器两缘（容器宽度由图片撑开，箭头不参与布局）；
-                    手动翻页复用上面的「推动」动画——setBannerIndex 一变，
-                    URL 判据 effect 自动把旧图往相反方向推出去。 */}
+                {/* 翻页键：左右箭头 + 底部页点。
+                    桌面上悬停才浮现，触屏上**常驻**（hover-reveal）——
+                    否则手机上根本没有翻页入口：TapTailwind 的 hover 变体
+                    被包在 @media (hover: hover) 里，触屏上不生效，
+                    箭头会永久停在 opacity-0。
+                    另外箭头本身在窄屏改走**上下**排列（见下方 lg: 断点），
+                    左右箭头在竖屏横幅上会压住图片内容。 */}
                 {banners.length > 1 && (
                   <>
                     <button
@@ -257,7 +270,7 @@ export function GamePageContent({ game, data }: GamePageProps) {
                           (i) => (i - 1 + banners.length) % banners.length,
                         )
                       }
-                      className="absolute inset-y-0 left-0 z-[2] flex w-7 items-center justify-center rounded-l-lg bg-gradient-to-r from-black/45 to-transparent text-white/85 opacity-0 transition-opacity duration-200 group-hover:opacity-100 hover:text-white cursor-pointer"
+                      className="absolute inset-y-0 left-0 z-[2] flex w-9 sm:w-7 items-center justify-center rounded-l-lg bg-gradient-to-r from-black/45 to-transparent text-white/85 opacity-0 transition-opacity duration-200 group-hover:opacity-100 hover-reveal hover:text-white cursor-pointer"
                     >
                       <ChevronLeftIcon className="w-4 h-4" />
                     </button>
@@ -267,12 +280,13 @@ export function GamePageContent({ game, data }: GamePageProps) {
                       onClick={() =>
                         setBannerIndex((i) => (i + 1) % banners.length)
                       }
-                      className="absolute inset-y-0 right-0 z-[2] flex w-7 items-center justify-center rounded-r-lg bg-gradient-to-l from-black/45 to-transparent text-white/85 opacity-0 transition-opacity duration-200 group-hover:opacity-100 hover:text-white cursor-pointer"
+                      className="absolute inset-y-0 right-0 z-[2] flex w-9 sm:w-7 items-center justify-center rounded-r-lg bg-gradient-to-l from-black/45 to-transparent text-white/85 opacity-0 transition-opacity duration-200 group-hover:opacity-100 hover-reveal hover:text-white cursor-pointer"
                     >
                       <ChevronRightIcon className="w-4 h-4" />
                     </button>
-                    {/* 页点：底部居中，悬停浮现；当前页加宽高亮 */}
-                    <div className="absolute bottom-1 left-1/2 z-[2] flex -translate-x-1/2 items-center gap-1 rounded-full bg-black/40 px-1.5 py-1 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+                    {/* 页点：底部居中，悬停浮现；当前页加宽高亮。
+                        触屏上常驻（hover-reveal），否则手机上不知道有几页。 */}
+                    <div className="absolute bottom-1 left-1/2 z-[2] flex -translate-x-1/2 items-center gap-1 rounded-full bg-black/40 px-1.5 py-1 opacity-0 transition-opacity duration-200 group-hover:opacity-100 hover-reveal">
                       {banners.map((_, i) => (
                         <button
                           key={`banner-dot-${i}`}
@@ -294,15 +308,15 @@ export function GamePageContent({ game, data }: GamePageProps) {
 
             {/* Announcements — right side */}
             {announcementCategories.length > 0 ? (
-              <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+              <div className="flex-1 flex flex-col min-w-0 overflow-hidden max-h-32 lg:max-h-none">
                 {/* Tabs */}
-                <div className="flex items-center gap-0 px-3 pt-2 shrink-0">
+                <div className="flex items-center gap-0 px-3 pt-2 shrink-0 overflow-x-auto scroll-touch [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                   {announcementCategories.map((cat, i) => (
                     <button
                       key={cat}
                       type="button"
                       onClick={() => setAnnouncementTab(i)}
-                      className={`px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer ${
+                      className={`px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
                         i === announcementTab
                           ? "text-white border-b-2 border-white"
                           : "text-white/50 hover:text-white/80"
@@ -314,7 +328,7 @@ export function GamePageContent({ game, data }: GamePageProps) {
                 </div>
 
                 {/* List */}
-                <div className="flex-1 px-3 pb-2 pt-1 space-y-0.5 overflow-y-auto">
+                <div className="flex-1 px-3 pb-2 pt-1 space-y-0.5 overflow-y-auto scroll-touch">
                   {filteredAnnouncements.slice(0, 6).map((item, i) => (
                     <div
                       key={i}
@@ -337,8 +351,8 @@ export function GamePageContent({ game, data }: GamePageProps) {
             )}
           </div>
 
-          {/* Game action panel — right side */}
-          <div className="shrink-0 self-end mb-2">
+          {/* Game action panel — right side (desktop) / below (mobile) */}
+          <div className="shrink-0 w-full lg:w-auto self-end mb-2">
             <GameActionPanel game={game} />
           </div>
         </div>

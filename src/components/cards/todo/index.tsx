@@ -259,7 +259,7 @@ export default function TodoCard({ cardId, settings }: BaseCardProps) {
                   onClick={() => {
                     void deleteTodoItem(list.id, item.id).then(flashUndo);
                   }}
-                  className="opacity-0 group-hover:opacity-100 text-muted hover:text-danger-text text-[10px] shrink-0"
+                  className="opacity-0 group-hover:opacity-100 hover-reveal text-muted hover:text-danger-text text-[10px] shrink-0"
                   aria-label={t("common.delete")}
                 >
                   <MorphIcon icon={X} size={12} aria-hidden />

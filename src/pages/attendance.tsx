@@ -241,7 +241,7 @@ export default function AttendancePage() {
           </GlassProgressCircle>
         </div>
       ) : error ? (
-        <GlassCard className="p-16  border border-separator/90">
+        <GlassCard className="p-8 sm:p-16  border border-separator/90">
           <div className="text-center text-muted">
             <p>{error}</p>
             <GlassButton className="mt-4" variant="secondary" onPress={() => loadData()}>
@@ -250,7 +250,7 @@ export default function AttendancePage() {
           </div>
         </GlassCard>
       ) : !attendanceData ? (
-        <GlassCard className="p-16  border border-separator/90">
+        <GlassCard className="p-8 sm:p-16  border border-separator/90">
           <div className="text-center text-muted">
             <p>{t("card:attendance_no_account")}</p>
           </div>
@@ -258,9 +258,11 @@ export default function AttendancePage() {
       ) : (
         <>
           {/* 签到操作区：今日/明日奖励 + 签到按钮 */}
-          <GlassCard className="p-6  border border-separator/90">
+          <GlassCard className="p-4 sm:p-6  border border-separator/90">
             <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex gap-6">
+              {/* 窄屏：两个奖励块从横排改成横排但收紧间距
+                  （gap-6 在 320px 宽上会让两块各剩 ~110px）。 */}
+              <div className="flex gap-4 sm:gap-6">
                 <RewardSummary
                   label={t("card:attendance_today")}
                   reward={todayReward}
@@ -274,7 +276,8 @@ export default function AttendancePage() {
                 />
               </div>
 
-              <div className="flex items-center gap-3">
+              {/* 窄屏：状态文字与两个按钮纵向铺满（横排在 320px 上会挤成一条） */}
+              <div className="flex flex-col sm:flex-row sm:items-center gap-3">
                 <span
                   className={`text-sm font-medium ${
                     signedToday ? "text-success-text" : "text-warning-text"
@@ -286,25 +289,29 @@ export default function AttendancePage() {
                       : "card:attendance_not_signed",
                   )}
                 </span>
-                <GlassButton
-                  variant="primary"
-                  size="md"
-                  isLoading={isSpinning}
-                  isDisabled={!canSign || isSpinning}
-                  onPress={handleSignIn}
-                >
-                  {signedToday
-                    ? t("card:attendance_already_signed")
-                    : t("card:attendance_sign_btn")}
-                </GlassButton>
-                <GlassButton
-                  variant="secondary"
-                  size="md"
-                  isDisabled={isSpinning}
-                  onPress={() => loadData(accountId ?? undefined)}
-                >
-                  {t("card:attendance_refresh")}
-                </GlassButton>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <GlassButton
+                    variant="primary"
+                    size="md"
+                    isLoading={isSpinning}
+                    isDisabled={!canSign || isSpinning}
+                    onPress={handleSignIn}
+                    className="w-full sm:w-auto"
+                  >
+                    {signedToday
+                      ? t("card:attendance_already_signed")
+                      : t("card:attendance_sign_btn")}
+                  </GlassButton>
+                  <GlassButton
+                    variant="secondary"
+                    size="md"
+                    isDisabled={isSpinning}
+                    onPress={() => loadData(accountId ?? undefined)}
+                    className="w-full sm:w-auto"
+                  >
+                    {t("card:attendance_refresh")}
+                  </GlassButton>
+                </div>
               </div>
             </div>
 
@@ -364,7 +371,7 @@ export default function AttendancePage() {
             )}
           </GlassCard>
 
-          <GlassCard className="p-6  border border-separator/90">
+          <GlassCard className="p-4 sm:p-6  border border-separator/90">
             <AttendanceRewards attendanceData={attendanceData} />
           </GlassCard>
         </>

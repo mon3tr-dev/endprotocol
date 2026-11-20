@@ -2594,28 +2594,29 @@ export default function AccountPage() {
       )}
 
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl lg:text-3xl font-bold text-foreground tracking-tight">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
+        <div className="min-w-0">
+          <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-foreground tracking-tight">
             {t("settings.account.title")}
           </h1>
-          <p className="text-foreground/70 mt-1.5">
+          <p className="text-foreground/70 mt-1.5 text-sm">
             {t("settings.account.subtitle")}
           </p>
         </div>
 
-        <div className="flex gap-2">
+        {/* 窄屏：按钮横向滚动（两个按钮并排在 320px 宽上必然溢出） */}
+        <div className="flex gap-2 max-w-full overflow-x-auto scroll-touch [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           <GlassButton
             variant="ghost"
             onPress={refreshData}
             isDisabled={isRefreshing}
-            className="lg-material border border-separator/70"
+            className="lg-material border border-separator/70 shrink-0"
           >
             {isRefreshing
               ? t("settings.account.refreshing")
               : t("settings.account.refresh_data")}
           </GlassButton>
-          <GlassButton variant="primary" onPress={handleOpenAddModal}>
+          <GlassButton variant="primary" onPress={handleOpenAddModal} className="shrink-0">
             {t("settings.account.add_account")}
           </GlassButton>
         </div>
@@ -3142,7 +3143,7 @@ export default function AccountPage() {
             </div>
           ) : accounts.length === 0 ? (
             <GlassCard
-              className="p-12 lg-material border border-separator/90"
+              className="p-6 sm:p-12 lg-material border border-separator/90"
               style={{ minHeight: `${CONTAINER_HEIGHT}px` }}
             >
               <div className="text-center">
@@ -4265,8 +4266,8 @@ export default function AccountPage() {
               {isNewDeviceVerify ? (
                 // 新设备验证方式选择
                 <div className="flex flex-col gap-3">
-                  <div className="grid grid-cols-[auto_1fr] items-center gap-y-4 gap-x-3">
-                    <label className="text-sm font-medium text-foreground whitespace-nowrap justify-self-end">
+                  <div className="grid grid-cols-1 sm:grid-cols-[auto_1fr] items-center gap-y-2 sm:gap-y-4 gap-x-3">
+                    <label className="text-sm font-medium text-foreground whitespace-nowrap sm:justify-self-end">
                       {t("settings.account.phone_number")}
                     </label>
                     <div className="flex flex-col gap-1">
@@ -4320,9 +4321,9 @@ export default function AccountPage() {
               ) : (
                 <>
                   {/* 手机号和密码输入 */}
-                  <div className="grid grid-cols-[auto_1fr] items-center gap-y-4 gap-x-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-[auto_1fr] items-center gap-y-2 sm:gap-y-4 gap-x-3">
                     {/* 手机号输入行 */}
-                    <label className="text-sm font-medium text-foreground whitespace-nowrap justify-self-end">
+                    <label className="text-sm font-medium text-foreground whitespace-nowrap sm:justify-self-end">
                       {t("settings.account.phone_number")}
                     </label>
                     <div className="flex flex-col gap-1">
@@ -4355,7 +4356,7 @@ export default function AccountPage() {
                     </div>
 
                     {/* 密码输入行 */}
-                    <label className="text-sm font-medium text-foreground whitespace-nowrap justify-self-end">
+                    <label className="text-sm font-medium text-foreground whitespace-nowrap sm:justify-self-end">
                       {t("settings.account.password")}
                     </label>
                     <GlassFieldInput
@@ -4415,8 +4416,8 @@ export default function AccountPage() {
               {!showOtpInput ? (
                 // 第一步：输入手机号
                 <div className="flex flex-col gap-4">
-                  <div className="grid grid-cols-[auto_1fr] items-center gap-y-4 gap-x-3">
-                    <label className="text-sm font-medium text-foreground whitespace-nowrap justify-self-end">
+                  <div className="grid grid-cols-1 sm:grid-cols-[auto_1fr] items-center gap-y-2 sm:gap-y-4 gap-x-3">
+                    <label className="text-sm font-medium text-foreground whitespace-nowrap sm:justify-self-end">
                       {t("settings.account.phone_number")}
                     </label>
                     <div className="flex flex-col gap-1">

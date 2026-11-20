@@ -27,6 +27,7 @@ import {
 import { installCrashHandlers } from "@/utils/crashReporting";
 import { loadAccountAvailability } from "@/utils/accountAvailability";
 import { applyWindowEffectsSupport, isDesktopApp } from "@/utils/platform";
+import { syncSafeAreaInsets } from "@/utils/safeArea";
 import {
   applyThemeColor,
   applyThemeMode,
@@ -65,6 +66,11 @@ if (bootErrorPanel) {
 setStartupPhase(12, i18n.t("startup.loadingSettings"));
 // 决定窗口是否需要前端自绘底色（Linux 无系统级磨砂），必须在首屏前生效。
 applyWindowEffectsSupport();
+// Android edge-to-edge：env(safe-area-inset-*) 在 Android WebView 里恒为 0
+// （wry 从不把系统栏 inset 告诉页面），改为向原生问真实值并写入 CSS 变量。
+// 必须在首屏渲染前完成 —— 否则顶栏会先闪一下被状态栏压住的样子。
+// iOS/桌面不发起请求（env() 本来就是对的）。
+void syncSafeAreaInsets();
 // Cover the case where an IPC invoke never resolves and React is never mounted.
 armStartupTimeout();
 void syncSilentLaunchConfig().catch((error: unknown) => {

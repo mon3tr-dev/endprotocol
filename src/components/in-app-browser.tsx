@@ -9,6 +9,7 @@ import { listen } from "@tauri-apps/api/event";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import logger from "@/utils/logger";
 import { getConfig } from "@/utils/configService";
+import { isMobileApp } from "@/utils/platform";
 import { isTrayAvailable } from "@/utils/trayService";
 import { CloseConfirmDialog } from "@/components/close-confirm-dialog";
 import {
@@ -546,15 +547,16 @@ export function InAppBrowser() {
        */}
       <div
         ref={toolbarRef}
-        className="lg-regular h-11 flex items-center gap-1.5 pl-3 pr-2 shrink-0 rounded-none border-b border-separator/60"
+        className="lg-regular h-11 flex items-center gap-1.5 pl-2 sm:pl-3 pr-2 shrink-0 rounded-none border-b border-separator/60"
         data-tauri-drag-region="deep"
       >
         {/* Back */}
         <button
           type="button"
           onClick={handleBack}
-          className="w-7 h-7 flex items-center justify-center rounded-lg text-muted hover:text-foreground lg-hoverable transition-colors cursor-pointer"
+          className="w-9 h-9 sm:w-7 sm:h-7 flex items-center justify-center rounded-lg text-muted hover:text-foreground lg-hoverable transition-colors cursor-pointer shrink-0"
           title={t("browser.back", "Back")}
+          aria-label={t("browser.back", "Back")}
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -565,39 +567,43 @@ export function InAppBrowser() {
         <button
           type="button"
           onClick={handleForward}
-          className="w-7 h-7 flex items-center justify-center rounded-lg text-muted hover:text-foreground lg-hoverable transition-colors cursor-pointer"
+          className="w-9 h-9 sm:w-7 sm:h-7 flex items-center justify-center rounded-lg text-muted hover:text-foreground lg-hoverable transition-colors cursor-pointer shrink-0"
           title={t("browser.forward", "Forward")}
+          aria-label={t("browser.forward", "Forward")}
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
           </svg>
         </button>
 
-        {/* Refresh */}
+        {/* Refresh —— 窄屏隐藏：手机上没有「刷新」的习惯动作，
+            而它会把地址栏挤到只剩几十像素（见上方工具栏注释）。 */}
         <button
           type="button"
           onClick={handleRefresh}
-          className="w-7 h-7 flex items-center justify-center rounded-lg text-muted hover:text-foreground lg-hoverable transition-colors cursor-pointer"
+          className="hidden sm:flex w-7 h-7 items-center justify-center rounded-lg text-muted hover:text-foreground lg-hoverable transition-colors cursor-pointer"
           title={t("browser.refresh", "Refresh")}
+          aria-label={t("browser.refresh", "Refresh")}
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
           </svg>
         </button>
 
-        {/* Open in external browser */}
+        {/* Open in external browser —— 窄屏隐藏（同上） */}
         <button
           type="button"
           onClick={handleOpenExternal}
-          className="w-7 h-7 flex items-center justify-center rounded-lg text-muted hover:text-foreground lg-hoverable transition-colors cursor-pointer"
+          className="hidden sm:flex w-7 h-7 items-center justify-center rounded-lg text-muted hover:text-foreground lg-hoverable transition-colors cursor-pointer"
           title={t("browser.open_in_browser", "Open in Browser")}
+          aria-label={t("browser.open_in_browser", "Open in Browser")}
         >
           <ExternalLinkIcon size={14} />
         </button>
 
         {/* 地址显示：只读，点击回读真实地址 */}
         <div
-          className="flex-1 flex items-center h-7 px-2.5 rounded-lg lg-inset min-w-0"
+          className="flex-1 flex items-center h-8 sm:h-7 px-2.5 rounded-lg lg-inset min-w-0"
           data-tauri-drag-region="false"
         >
           <svg className="w-3 h-3 text-muted shrink-0 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -617,14 +623,17 @@ export function InAppBrowser() {
         <button
           type="button"
           onClick={handleClose}
-          className="w-7 h-7 flex items-center justify-center rounded-lg text-muted hover:text-danger-text hover:bg-danger/10 transition-colors cursor-pointer mr-1"
+          className="w-9 h-9 sm:w-7 sm:h-7 flex items-center justify-center rounded-lg text-muted hover:text-danger-text hover:bg-danger/10 transition-colors cursor-pointer mr-1 shrink-0"
           title={t("browser.close", "Close Browser")}
+          aria-label={t("browser.close", "Close Browser")}
         >
           <CloseIcon size={14} />
         </button>
 
-        {/* 窗口控制（接管被覆盖的标题栏） */}
-        {isTauri() && (
+        {/* 窗口控制（接管被覆盖的标题栏）—— 仅桌面：
+            移动端是全屏窗口，没有最小化 / 最大化 / 关闭的系统语义，
+            生命周期由系统导航与最近任务负责。 */}
+        {isTauri() && !isMobileApp() && (
           <div
             className="flex items-center rounded-xl overflow-hidden lg-control border border-separator/60"
             data-tauri-drag-region="false"

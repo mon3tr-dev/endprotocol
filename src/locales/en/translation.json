@@ -142,7 +142,16 @@
     "reset": "Reset",
     "no_data": "No data",
     "remove": "Remove",
+    "more": "More",
     "characters": "Characters"
+  },
+  "mobile_nav": {
+    "dashboard": "Home",
+    "attendance": "Daily",
+    "gacha": "Gacha",
+    "todo": "To-Do",
+    "more": "More",
+    "open_menu": "Open navigation"
   },
   "domain_page": {
     "subtitle": "Overview of Regional Development Level, Stock Bills and Outpost Prosperity",
@@ -804,6 +813,7 @@
     "no_data": "No data"
   },
   "messages": {
+    "title": "Messages",
     "mark_all_read": "Mark all read",
     "empty": "No messages yet",
     "just_now": "just now",
@@ -1008,9 +1018,9 @@
     "list_count": "{{n}} lists",
     "group_by": "Group",
     "ungrouped": "Ungrouped",
-    "no_lists": "No lists yet, create one from the top right",
+    "no_lists": "No lists yet — create one with “New list” above",
     "empty_title": "Choose or create a to-do list",
-    "empty_desc": "Choose an existing list on the left, or create a new one to manage your tasks",
+    "empty_desc": "Pick an existing list above, or create a new one to manage your tasks",
     "settings": "List settings",
     "duplicate": "Duplicate list",
     "templates": "Choose a template",

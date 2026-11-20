@@ -226,6 +226,25 @@
 | 377-422 行 | 交互动效工具类：`.interactive-hover`、`.card-hover`、`.button-hover`、`.icon-hover`、`.nav-hover`、`.list-item-hover`、`.input-hover`、`.chip-hover`、`.switch-hover`、`.checkbox-hover`、`.modal-hover`、`.tooltip-hover`、`.dropdown-item-hover`、`.table-row-hover`、`.link-hover` |
 | 424-430 行 | 状态发光阴影：`.shadow-glow-success/danger/warning`（深色模式加强） |
 | 432-463 行 | 技能描述富文本标记：`.ba-tag`、`.ba-at-*` / `.ba-hash-*` / `.ba-tips-*` 系列属性关键字配色（cryst/key/vup/poise/speedup/slow/spellburst 等） |
+| 文件末尾（`html { transition: color-scheme }` 之后） | **移动端适配层**（新增，见下方「移动端适配层」小节） |
+
+**移动端适配层**（文件末尾）：
+
+桌面端直接改出来的界面在手机上有一类**共性**问题：交互只在「悬停」时存在。**Tailwind v4 的 `hover:` 变体被包在 `@media (hover: hover)` 里**（见 `tailwindcss/dist/lib.js` 的 `static("hover", …)`），因此在触屏设备上 `group-hover:opacity-100` **完全不生效** —— 那些「悬停才出现」的编辑 / 删除 / 更多按钮在手机上不是「不好看」，而是**永远点不到**。这一层用几条规则系统性解决：
+
+| 类 / 规则 | 作用 |
+| --- | --- |
+| `@media (hover: none) { .hover-reveal { opacity: 1 !important } }` | **悬停才出现的控件在触屏上改为常驻**。必须**未分层**（unlayered）写在文件末尾：CSS 层叠里未分层声明的优先级高于 `@layer utilities`，才能压过 JSX 里的 `opacity-0`。桌面端行为不变（`@media (hover: none)` 只在真正没有悬停能力的设备上命中） |
+| `.touch-target { min-width: 44px; min-height: 44px }` | **最小可点区域**。手指接触面比鼠标指针大得多：44×44 是 Apple HIG 与 WCAG 2.5.8（Target Size Minimum, AA）共同给出的下限。用 `min-width/min-height` 而非固定尺寸 —— 按钮内容仍按原样排布，只是命中区域被撑到 44px |
+| `.safe-bottom` / `.safe-bottom-4` / `.safe-bottom-6` / `.safe-bottom-fixed` | **安全区**：内容区与固定底栏避开 Android 手势条 / iOS Home 条。`env()` 在桌面 webview 恒为 0px，对桌面零影响 |
+| `.scroll-touch` | 移动端惯性滚动（`-webkit-overflow-scrolling: touch`）+ `overscroll-behavior: contain`（避免外层 overscroll 触发页面级橡皮筋） |
+| `.mobile-bottom-nav` | 移动端底部导航条：固定在视口底部，底部留出安全区，左右也留出刘海区（`layouts/dashboard.tsx` 里 `MobileBottomNav` 的外层类） |
+| `.mobile-top-bar` | 移动端顶栏：`sticky top-0`，`padding-top: var(--safe-area-top)`（Android 15+ 强制 edge-to-edge，状态栏会压住内容） |
+| `.mobile-sheet` | **移动端底部抽屉**（Bottom sheet）：从底部升起的面板，顶部两角圆角、底部贴边，内部纵向滚动。`max-height: calc(100dvh - var(--safe-area-top) - 2rem)` —— 用 `dvh`（动态视口高度）而非 `vh`，移动端浏览器地址栏收起/展开时 `vh` 不变、面板会超出实际可见区域 |
+| `.mobile-sheet-grip` | 抽屉顶部的「抓手」（drag handle），纯装饰但能暗示可拖动 |
+| `@media (hover: none) { select, input[type=checkbox], input[type=radio] { min-height: 2.25rem } }` | 表单控件在触屏上要更大：原生 select 在 12px 字号下几乎点不中 |
+| `@media (hover: none) { .lg-hoverable:hover { background-color: transparent } … }` | **触屏上的「hover 粘住」**：移动端 Safari/Chrome 的已知行为 —— 点过的元素会保持 hover 态直到点别处，于是玻璃按钮点过一次后长期保持高亮，看起来像「卡住了」。这条规则在触屏上撤掉 hover 底色、只保留 `:active` 反馈 |
+| `@media (hover: none) { .card-hover:hover, .interactive-hover:hover, … { transform: none } }` | 触屏上的 hover 位移会「点一下弹一下再弹回」（观感是抖动）：禁用位移，保留按压反馈 |
 
 **关键变量（`:root`，7-66 行）**：
 - 色阶：`--default-50…900`、`--primary-50…900`、`--danger-50`

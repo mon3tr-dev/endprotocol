@@ -207,8 +207,11 @@ export default function TodoPage() {
       />
 
       <div className="flex flex-col lg:flex-row gap-4 min-h-[70vh]">
-        {/* 左侧：列表 */}
-        <GlassCard className="lg:w-72 shrink-0  border border-separator/90 p-3 flex flex-col gap-2 lg:max-h-[78vh]">
+        {/* 左侧：列表
+            窄屏（纵向堆叠）时限制最大高度并让内部列表滚动：
+            否则列表一多，下面的「详情」区就被推到屏幕外很远，
+            而详情才是这个页面真正要操作的地方。 */}
+        <GlassCard className="lg:w-72 shrink-0  border border-separator/90 p-3 flex flex-col gap-2 max-h-[40vh] lg:max-h-[78vh]">
           <GlassInput
             size="sm"
             value={search}
@@ -280,7 +283,7 @@ export default function TodoPage() {
                             )}
                           </div>
                         </div>
-                        <div className="opacity-0 group-hover:opacity-100 flex items-center gap-0.5">
+                        <div className="opacity-0 group-hover:opacity-100 hover-reveal flex items-center gap-0.5">
                           <button
                             type="button"
                             className="w-5 h-5 rounded text-muted hover:text-foreground text-[10px]"

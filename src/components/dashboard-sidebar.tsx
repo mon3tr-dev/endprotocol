@@ -144,7 +144,11 @@ function GripHandle({
         e.preventDefault();
         e.stopPropagation();
       }}
-      className={`absolute right-1.5 top-1/2 -translate-y-1/2 p-1 rounded-md opacity-0 group-hover:opacity-100 transition-all duration-150 cursor-grab text-muted hover:text-foreground active:cursor-grabbing ${
+      /* 窄屏隐藏：拖拽换位依赖 `onMouseEnter` 越过另一项触发交换，
+         触屏上 mouseenter 不触发 —— 手柄显示出来也换不了位。
+         桌面端侧栏所在的容器是 `hidden lg:flex`，所以这里用 `lg:block`
+         正好只让桌面侧栏显示手柄。 */
+      className={`hidden lg:block absolute right-1.5 top-1/2 -translate-y-1/2 p-1 rounded-md opacity-0 group-hover:opacity-100 transition-all duration-150 cursor-grab text-muted hover:text-foreground active:cursor-grabbing ${
         isDragging ? "opacity-100 cursor-grabbing" : ""
       }`}
       aria-label="Drag to reorder"
@@ -1190,7 +1194,7 @@ export const Sidebar = ({
               >
                 <button
                   onClick={() => setIsSwitchModalOpen(true)}
-                  className="p-1.5 rounded-lg transition-all duration-200 flex-shrink-0 text-muted hover:text-foreground hover:scale-105 active:scale-95 opacity-0 group-hover:opacity-100"
+                  className="p-2 rounded-lg transition-all duration-200 flex-shrink-0 text-muted hover:text-foreground hover:scale-105 active:scale-95 opacity-0 group-hover:opacity-100 hover-reveal"
                   title={i18n.language === "zh" ? "切换账户" : "Switch Account"}
                   aria-label="Switch account"
                 >
@@ -1541,8 +1545,8 @@ export const Sidebar = ({
                         className={clsx(
                           "relative flex items-center rounded-xl transition-all duration-300 ease-in-out group",
                           collapsed
-                            ? "justify-center px-0 py-2.5 gap-0"
-                            : "gap-1 pl-3 pr-8 py-2.5",
+                            ? "justify-center px-0 py-3 gap-0 min-h-[44px]"
+                            : "gap-1 pl-3 pr-8 py-3 min-h-[44px]",
                           draggingNav === "dashboard" ? "opacity-60" : "",
                           location.pathname === "/" && !sidebarActiveTab
                             ? "lg-control text-foreground"
@@ -1759,8 +1763,8 @@ export const Sidebar = ({
                         className={clsx(
                           "flex items-center rounded-xl transition-all duration-300 ease-in-out",
                           collapsed
-                            ? "justify-center px-0 py-2.5 gap-0"
-                            : "gap-3 pl-3 pr-8 py-2.5",
+                            ? "justify-center px-0 py-3 gap-0 min-h-[44px]"
+                            : "gap-3 pl-3 pr-8 py-3 min-h-[44px]",
                           draggingNav === "characters" ? "opacity-60" : "",
                           location.pathname === "/characters"
                             ? "lg-control text-foreground"
@@ -1817,8 +1821,8 @@ export const Sidebar = ({
                         className={clsx(
                           "flex items-center rounded-xl transition-all duration-300 ease-in-out",
                           collapsed
-                            ? "justify-center px-0 py-2.5 gap-0"
-                            : "gap-3 pl-3 pr-8 py-2.5",
+                            ? "justify-center px-0 py-3 gap-0 min-h-[44px]"
+                            : "gap-3 pl-3 pr-8 py-3 min-h-[44px]",
                           draggingNav === "medals" ? "opacity-60" : "",
                           location.pathname === "/medals"
                             ? "lg-control text-foreground"
@@ -1877,8 +1881,8 @@ export const Sidebar = ({
                         className={clsx(
                           "flex items-center rounded-xl transition-all duration-300 ease-in-out",
                           collapsed
-                            ? "justify-center px-0 py-2.5 gap-0"
-                            : "gap-3 pl-3 pr-8 py-2.5",
+                            ? "justify-center px-0 py-3 gap-0 min-h-[44px]"
+                            : "gap-3 pl-3 pr-8 py-3 min-h-[44px]",
                           draggingNav === "attendance" ? "opacity-60" : "",
                           location.pathname === "/attendance"
                             ? "lg-control text-foreground"
@@ -1935,8 +1939,8 @@ export const Sidebar = ({
                         className={clsx(
                           "flex items-center rounded-xl transition-all duration-300 ease-in-out",
                           collapsed
-                            ? "justify-center px-0 py-2.5 gap-0"
-                            : "gap-3 pl-3 pr-8 py-2.5",
+                            ? "justify-center px-0 py-3 gap-0 min-h-[44px]"
+                            : "gap-3 pl-3 pr-8 py-3 min-h-[44px]",
                           draggingNav === "gacha" ? "opacity-60" : "",
                           location.pathname === "/gacha"
                             ? "lg-control text-foreground"
@@ -1993,8 +1997,8 @@ export const Sidebar = ({
                         className={clsx(
                           "flex items-center rounded-xl transition-all duration-300 ease-in-out",
                           collapsed
-                            ? "justify-center px-0 py-2.5 gap-0"
-                            : "gap-3 pl-3 pr-8 py-2.5",
+                            ? "justify-center px-0 py-3 gap-0 min-h-[44px]"
+                            : "gap-3 pl-3 pr-8 py-3 min-h-[44px]",
                           draggingNav === "todo" ? "opacity-60" : "",
                           location.pathname === "/todo"
                             ? "lg-control text-foreground"
@@ -2051,8 +2055,8 @@ export const Sidebar = ({
                         className={clsx(
                           "flex items-center rounded-xl transition-all duration-300 ease-in-out",
                           collapsed
-                            ? "justify-center px-0 py-2.5 gap-0"
-                            : "gap-3 pl-3 pr-8 py-2.5",
+                            ? "justify-center px-0 py-3 gap-0 min-h-[44px]"
+                            : "gap-3 pl-3 pr-8 py-3 min-h-[44px]",
                           draggingNav === "domain" ? "opacity-60" : "",
                           location.pathname === "/domain"
                             ? "lg-control text-foreground"
@@ -2111,8 +2115,8 @@ export const Sidebar = ({
                         className={clsx(
                           "flex items-center rounded-xl transition-all duration-300 ease-in-out",
                           collapsed
-                            ? "justify-center px-0 py-2.5 gap-0"
-                            : "gap-3 pl-3 pr-8 py-2.5",
+                            ? "justify-center px-0 py-3 gap-0 min-h-[44px]"
+                            : "gap-3 pl-3 pr-8 py-3 min-h-[44px]",
                           draggingNav === "spaceship" ? "opacity-60" : "",
                           location.pathname === "/spaceship"
                             ? "lg-control text-foreground"
@@ -2171,8 +2175,8 @@ export const Sidebar = ({
                         className={clsx(
                           "flex items-center rounded-xl transition-all duration-300 ease-in-out",
                           collapsed
-                            ? "justify-center px-0 py-2.5 gap-0"
-                            : "gap-3 pl-3 pr-8 py-2.5",
+                            ? "justify-center px-0 py-3 gap-0 min-h-[44px]"
+                            : "gap-3 pl-3 pr-8 py-3 min-h-[44px]",
                           draggingNav === "recruitment" ? "opacity-60" : "",
                           location.pathname === "/recruitment"
                             ? "lg-control text-foreground"
@@ -2231,8 +2235,8 @@ export const Sidebar = ({
                         className={clsx(
                           "flex items-center rounded-xl transition-all duration-300 ease-in-out",
                           collapsed
-                            ? "justify-center px-0 py-2.5 gap-0"
-                            : "gap-3 pl-3 pr-8 py-2.5",
+                            ? "justify-center px-0 py-3 gap-0 min-h-[44px]"
+                            : "gap-3 pl-3 pr-8 py-3 min-h-[44px]",
                           draggingNav === "building" ? "opacity-60" : "",
                           location.pathname === "/building"
                             ? "lg-control text-foreground"
@@ -2291,8 +2295,8 @@ export const Sidebar = ({
                         className={clsx(
                           "flex items-center rounded-xl transition-all duration-300 ease-in-out",
                           collapsed
-                            ? "justify-center px-0 py-2.5 gap-0"
-                            : "gap-3 pl-3 pr-8 py-2.5",
+                            ? "justify-center px-0 py-3 gap-0 min-h-[44px]"
+                            : "gap-3 pl-3 pr-8 py-3 min-h-[44px]",
                           draggingNav === "gamedata" ? "opacity-60" : "",
                           location.pathname === "/game-data"
                             ? "lg-control text-foreground"
@@ -2422,8 +2426,8 @@ export const Sidebar = ({
                   className={clsx(
                     "flex items-center rounded-xl transition-all duration-300 ease-in-out group",
                     collapsed
-                      ? "justify-center px-0 py-2.5 gap-0"
-                      : "gap-3 px-3 py-2.5",
+                      ? "justify-center px-0 py-3 gap-0 min-h-[44px]"
+                      : "gap-3 px-3 py-3 min-h-[44px]",
                     isActive
                       ? "lg-control text-foreground"
                       : "text-foreground hover:text-foreground",

@@ -55,13 +55,13 @@ export function BackToTopFab({
     <button
       type="button"
       className={cn(
-        // 移动端（<lg）：右下角的移动端菜单按钮是 `fixed right-6 bottom-[1.5rem+safe]`
-        // （52px 见方，z-30），与本按钮的 `bottom-6 right-6` 完全重合 ——
-        // 本按钮 z-[10003] 更高，会把菜单按钮整个盖住，菜单在移动端就打不开了。
-        // 参照 DashboardFAB 的做法：<lg 抬到菜单按钮上方，lg 及以上恢复 bottom-6
-        // （桌面没有菜单按钮）。
+        // 移动端（<lg）：右下角是**悬浮的底部导航胶囊**（`fixed bottom-0`，高约
+        // 56px，通栏），与本按钮的 `bottom-6 right-6` 完全重合 —— 本按钮
+        // z-[10003] 更高，会把导航胶囊整个盖住，导航在移动端就用不了了。
+        // 参照 DashboardFAB 的做法：<lg 抬到导航胶囊上方，lg 及以上恢复 bottom-6
+        // （桌面没有底部导航）。
         "fixed right-6 z-[10003] w-12 h-12 rounded-full bg-primary text-primary-foreground shadow-lg flex items-center justify-center transition-all duration-300 hover:scale-110 active:scale-90",
-        "bottom-[calc(6rem+var(--safe-area-bottom))] lg:bottom-6",
+        "bottom-[calc(7rem+var(--safe-area-bottom))] lg:bottom-6",
         className,
       )}
       onClick={() => getContainer()?.scrollTo({ top: 0, behavior: "smooth" })}

@@ -490,11 +490,22 @@ export default function DashboardPage() {
     // 用 clip 而不是 hidden：hidden 会把本层变成滚动容器（进而影响
     // 子元素的 backdrop-filter 采样），clip 只裁切、不改变滚动行为。
     <div className="space-y-6 lg:space-y-8 overflow-x-clip">
+      {/*
+       * 仪表板头部。
+       *
+       * 窄屏不能沿用桌面的「纵向堆叠」：那会把刷新按钮甩到标题**下面**的
+       * 左侧（截图里就是这么排的 —— 一行标题、一行孤零零的刷新图标）。
+       * 手机上正确的排布是：标题在左、刷新在**右上角**同一行。
+       *
+       * 做法：外层保持 `flex-row`（不再窄屏改列），左边的标题组 `flex-1 min-w-0`
+       * 吃掉剩余宽度，右边的刷新按钮 `shrink-0` 固定在右上角。标题过长时靠
+       * `truncate` 截断而不是换行。
+       */}
       <div
         id="dashboard-header"
-        className="flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+        className="flex flex-row items-start sm:items-center justify-between gap-3"
       >
-        <div className="flex items-center gap-3 min-w-0">
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
           <GlassTooltip>
             <GlassButton
               isIconOnly
@@ -502,7 +513,7 @@ export default function DashboardPage() {
               size="sm"
               onPress={handleBackToSelector}
               aria-label="Back"
-              className="rounded-xl lg-hoverable shrink-0"
+              className="rounded-xl lg-hoverable shrink-0 -ml-2"
             >
               <ChevronLeftIcon size={20} />
             </GlassButton>
@@ -516,17 +527,17 @@ export default function DashboardPage() {
               {IconComponent && (
                 <IconComponent size={24} className="text-primary-text shrink-0" />
               )}
-              <h1 className="text-2xl lg:text-3xl font-bold text-foreground tracking-tight truncate">
+              <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-foreground tracking-tight truncate">
                 {activeTab?.name ?? t("nav.dashboard")}
               </h1>
             </div>
-            <p className="text-foreground/70 mt-1 truncate">
+            <p className="text-foreground/70 mt-1 truncate text-sm">
               {t("dashboard.customize_hint") ||
                 "Customize your dashboard with cards"}
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           <GlassTooltip>
             <GlassButton
               isIconOnly

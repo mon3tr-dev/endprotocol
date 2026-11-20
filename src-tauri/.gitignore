@@ -8,3 +8,4 @@
 
 # Tauri Android API template copied in by `tauri android init` / plugin build scripts
 /plugins/apk-installer/android/.tauri/
+/plugins/safe-area/android/.tauri/

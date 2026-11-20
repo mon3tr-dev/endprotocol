@@ -90,15 +90,49 @@ function GlassSelect({
     setOpen(next);
   };
 
+  // 窄屏：菜单不能被推出视口。
+  //
+  // 触发器在屏幕右侧时，按钮宽度可能大于「到右边缘的距离」，菜单就会
+  // 横向溢出（手机上尤其明显：右侧的选择器一打开，菜单有一半在屏幕外，
+  // 选不到）。这里在渲染后按实际宽度夹一次：宽度收到视口内，位置靠边对齐。
+  useEffect(() => {
+    if (!open || !menuRef.current) return;
+    const menu = menuRef.current;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const mh = menu.offsetHeight;
+    const mw = menu.offsetWidth;
+    setPos((prev) => {
+      let left = prev.left;
+      let top = prev.top;
+      let width = Math.max(150, prev.width || 0);
+
+      // 宽度超过视口：收到视口宽度（减去两侧各 8px 的余量）
+      const maxWidth = vw - 16;
+      if (width > maxWidth) width = maxWidth;
+      // 位置：右对齐到视口右边，左对齐到视口左边
+      if (left + width > vw - 8) left = Math.max(8, vw - width - 8);
+      if (left < 8) left = 8;
+      // 高度：底部越界时改为向上弹出
+      if (top + mh > vh - 8) {
+        const wrapRect = wrapRef.current?.getBoundingClientRect();
+        const above = wrapRect ? wrapRect.top - mh - 4 : top;
+        top = above > 8 ? above : Math.max(8, vh - mh - 8);
+      }
+      return { top, left, width };
+    });
+  }, [open]);
+
   return (
     <div ref={wrapRef} className={cn("relative shrink-0", className)}>
       <button
         type="button"
         onClick={handleToggle}
         className={cn(
-          "lg-field flex items-center gap-2 h-9 pl-3 pr-2.5 rounded-xl text-sm cursor-pointer",
+          // 触屏：高度提到 40px（9→10），下拉更容易点中。
+          "lg-field flex items-center gap-2 h-10 sm:h-9 pl-3 pr-2.5 rounded-xl text-sm cursor-pointer",
           "[transition:transform_var(--lg-dur-press)_var(--lg-ease-spring),translate_var(--lg-dur-press)_var(--lg-ease-spring),scale_var(--lg-dur-press)_var(--lg-ease-spring),box-shadow_var(--lg-dur-fast)_var(--lg-ease-standard)]",
-          "hover:-translate-y-px active:translate-y-0",
+          "active:translate-y-0",
           open && "ring-2 ring-primary/40",
         )}
       >
@@ -126,6 +160,7 @@ function GlassSelect({
               top: pos.top,
               left: pos.left,
               width: Math.max(150, pos.width || 0),
+              maxWidth: "calc(100vw - 16px)",
             }}
             onClick={(e) => e.stopPropagation()}
           >
@@ -145,7 +180,8 @@ function GlassSelect({
                     closeMenu();
                   }}
                   className={cn(
-                    "w-full text-left px-3 py-2 text-sm cursor-pointer",
+                    // 触屏：选项行高从 36px 提到 44px（可点区域下限）。
+                    "w-full text-left px-3 py-2 sm:py-2 text-sm cursor-pointer min-h-[44px] sm:min-h-0 flex items-center",
                     "[transition:background-color_var(--lg-dur-fast)_var(--lg-ease-standard)]",
                     active
                       ? highlightSelected

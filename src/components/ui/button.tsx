@@ -49,9 +49,12 @@ const buttonVariants = cva(
           "lg-control lg-solid bg-danger text-danger-foreground shadow-[inset_0_1px_1px_var(--lg-edge-glint)] hover:bg-danger/90",
       },
       size: {
-        sm: "h-8 px-3 text-xs gap-1.5 rounded-xl",
-        md: "h-9 px-4 text-sm gap-2 rounded-xl",
-        lg: "h-10 px-5 text-sm gap-2 rounded-xl",
+        // 窄屏（触屏）下按钮要更大才点得准：sm 从 32px 提到 36px、
+        // md 从 36px 提到 40px。lg 不变（已经 40px）。
+        // 桌面端保持原尺寸（鼠标指针不需要大命中区）。
+        "sm": "h-9 sm:h-8 px-3 text-xs gap-1.5 rounded-xl",
+        "md": "h-10 sm:h-9 px-4 text-sm gap-2 rounded-xl",
+        "lg": "h-11 sm:h-10 px-5 text-sm gap-2 rounded-xl",
       },
       isIconOnly: {
         true: "px-0",
@@ -70,9 +73,11 @@ const buttonVariants = cva(
 );
 
 const iconOnlySize: Record<GlassButtonSize, string> = {
-  sm: "w-8 h-8",
-  md: "w-9 h-9",
-  lg: "w-10 h-10",
+  // 图标按钮在触屏上必须够大：24×24 的图标配 32px 的按钮，
+  // 手指根本点不准。这里把命中区提到 40px（图标仍是 16px）。
+  sm: "w-10 h-10 sm:w-8 sm:h-8",
+  md: "w-10 h-10 sm:w-9 sm:h-9",
+  lg: "w-11 h-11 sm:w-10 sm:h-10",
 };
 
 export interface ButtonProps

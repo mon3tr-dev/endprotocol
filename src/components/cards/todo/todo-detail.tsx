@@ -649,7 +649,7 @@ function TodoItemRow({
         <button
           type="button"
           onClick={onDelete}
-          className="opacity-0 group-hover:opacity-100 w-6 h-6 flex items-center justify-center rounded-md text-muted hover:text-danger-text hover:bg-danger/10 transition-all text-xs shrink-0"
+          className="opacity-0 group-hover:opacity-100 hover-reveal w-7 h-7 sm:w-6 sm:h-6 flex items-center justify-center rounded-md text-muted hover:text-danger-text hover:bg-danger/10 transition-all text-xs shrink-0"
           aria-label={t("common.delete")}
         >
           <MorphIcon icon={X} size={12} aria-hidden />
