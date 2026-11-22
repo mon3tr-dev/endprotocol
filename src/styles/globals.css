@@ -1059,6 +1059,34 @@ html[data-window="tray-panel"] body {
     --lg-glass-hover: 1.08;
     --lg-glass-active: 0.94;
   }
+
+  /* ---- 边缘只走柔光带，不要在媒体层上再画 1px 实线 ----
+   *
+   * `.lg-media-chip::before` 已经用 `--lg-edge-layers` 画了一圈带 blur 的
+   * 内高光（见 §③），这就是游戏 HUD 里唯一允许的边缘语言 —— 左下角那块
+   * banner/公告框只有这一层，观感是渐入渐出的柔和过渡。
+   *
+   * 反面教训：操作胶囊、渠道徽章、进度浮层、窗口控制组曾经在玻璃层之外
+   * 额外写了 `border` 宽度类（配 `.lg-hairline` 着色）。关键点在于
+   * **`.lg-hairline` 只设置 `border-color`、不产生边框**：banner 上保留了
+   * 这个类却看不见任何线，因为那里没有 `border` 宽度；而按钮上多写了
+   * 一个 `border`，1px 实线就凭空出现了。`--lg-hairline` 是 `--separator`
+   * 的 60%，浅色主题下接近白色 —— 叠在深色媒体玻璃上就是一圈硬边高光，
+   * 与 banner 完全不是一套语言，也是「按钮边缘锯齿」的直接来源：
+   * 1px 实线 + `border-radius` + `backdrop-filter` 合成时圆角裁剪不做
+   * 抗锯齿，边缘呈台阶状。所以这类表面只保留柔光带，不写 `border` 宽度。
+   *
+   * 需要强调边缘（停止游戏 / 切换渠道的危险态）时只换**柔光带的颜色**，
+   * 仍然不画实线。注意这里必须直接重写组合层 `--lg-edge-layers`：
+   * 自定义属性里的 var() 在**声明它的那个元素上**就求值完了，子树上再改
+   * `--lg-edge` 不会让 :root 算好的 `--lg-edge-layers` 重新解析。
+   * 两个 blur 档位与 §③ 的 --lg-ring-edge / --lg-ring-edge-top 保持一致。 */
+  .lg-edge-danger {
+    --lg-edge-layers:
+      inset 0 0 1px color-mix(in oklab, var(--danger) 55%, transparent),
+      inset 0 1px 2.5px -0.5px
+        color-mix(in oklab, var(--danger) 40%, transparent);
+  }
 }
 
 /* 无原生磨砂的平台（Linux / 开发态浏览器）：模糊没有背衬，

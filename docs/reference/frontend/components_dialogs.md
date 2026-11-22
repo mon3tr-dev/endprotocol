@@ -151,6 +151,7 @@
 - 层级：标题栏 `titlebar-shell`；**消息浮层经 portal 渲染到 `document.body`、`fixed` + `z-[10005]`，高于任何 modal/抽屉/全屏遮罩（modal backdrop `z-[100]`~`z-[300]`、快选菜单 `z-[9999]`、取色器 `z-[10001]`），保证打开弹窗时依然可见**；抽屉 `z-[200]/[210]`（在 `AppInfoDrawer` 内）。
 - i18n key：`launcher.game_group_endfield` / `launcher.game_group_arknights`（游戏模式下按当前游戏取值）、`launcher.mode_data`、`launcher.mode_game`。
 - **玻璃材质一律走 `.titlebar-mode-toggle`（globals.css 定义）**：切换胶囊不再写 `bg-default-100/55` / `border-white/20`，玻璃底落在 `::after`（`::before` 被拨杆占用），与控制件 `.lg-control` 共用 `--lg-tint` / `--lg-alpha-control` / `--lg-blur` / `--lg-saturate`，随 theme 一起换深浅。铃铛与窗口三键的 hover 由 `.lg-hoverable` 提供，不再写 `hover:bg-white/10`。
+- **窗口三键那组胶囊只写 `lg-regular rounded-xl`，不写 `border border-separator/60`、也不写 `overflow-hidden`**：① 浅色主题下 `--separator` 接近白色，这圈 1px 实线压在任何背景上都是一道硬边高光，与游戏 HUD（左下 banner、操作胶囊）的柔和边缘不是一套语言；② `overflow-hidden` 的裁剪 + `border-radius` + `backdrop-filter` 在 WebView2 上会让圆角裁剪退化、边缘呈台阶状锯齿。去掉裁剪后三个子按钮各自的 `rounded-l-xl` / `rounded-r-xl` 仍让 hover 底色贴合胶囊两端，玻璃层是 `inset:0` + `border-radius: inherit`，形状不受影响。
 - 游戏模式切换仅在 Windows 显示；macOS/Linux 通过 `isWindowsPlatform()` 隐藏切换控件，模式 store 也会拒绝切换到游戏模式。
 - 关闭确认框文案本身无 i18n key（见 close-confirm-dialog 备注）。
 
@@ -383,7 +384,7 @@
 | 几何命中 effect | game-sidebar-rail.tsx:109-152 | 监听 window `mousemove`，**每次实时量** `railRef` / `flyoutRef` 矩形：命中任一（条含 6px 外扩）即保持展开；否则若在右边缘 + 竖向带内则展开，都不满足则**立即收起**。不挂 DOM 事件、不用定时器，所以回缩无延迟，动画途中也不会读到过期矩形。**触屏（`useIsTouchPrimary()`）直接 return，不注册 mousemove** —— 触摸设备上没有 mousemove，这根栏会永远收着（只露出一个 32px 的浮标，7 个渠道图标全被裁掉），等于在手机上完全无法访问官方社媒入口 |
 | `handleItemEnter` | game-sidebar-rail.tsx:155-178 | 按悬停项的**视口矩形**算浮层位置（`right = innerWidth - rect.left + 8`，`bottom` 夹在视口内），并记录 `hoveredIndex`。**没有二维码的条目直接 `setFlyout(null)`，不弹浮层**——实测方舟官服 7 个条目里只有抖音有 `qr_url`，森空岛 / 微博 / B站 / TapTap / 小红书 / 客服都只有跳转链接，浮层里没有可展示的东西。列表项**没有** `onMouseLeave`：换项靠新项的 enter 覆盖，离开条靠几何收起，浮标额外用 `onMouseEnter` 清掉 `hoveredIndex`（否则停在分隔线/内边距上会残留上一张二维码） |
 | `cell` | game-sidebar-rail.tsx:190 | 收起 `h-8 w-8`、展开 `h-9 w-9`：图标与内边距同步变大，条子向左生长 |
-| 常驻条本体 | game-sidebar-rail.tsx:194-289 | portal 到 body，外层 `fixed right-0 top-1/2 z-30 -translate-y-1/2`；本体 `rounded-l-2xl border-r-0 overflow-hidden`，收起 `p-1`、展开 `p-1.5` |
+| 常驻条本体 | game-sidebar-rail.tsx:194-289 | portal 到 body，外层 `fixed right-0 top-1/2 z-30 -translate-y-1/2`；本体 `rounded-l-2xl overflow-hidden lg-media-chip`（**不写 `border` 宽度类**：边缘只由玻璃层 `--lg-edge-layers` 的柔光带承担），收起 `p-1`、展开 `p-1.5`。`overflow-hidden` 在这里保留 —— 它裁的是 `grid-template-rows` 展开/收起的内层，不是圆角玻璃层（那组裁剪退化只在「裁玻璃宿主自身圆角」时出现） |
 | 图标列 | game-sidebar-rail.tsx:207-276 | `grid-template-rows: 0fr → 1fr` 做高度动画（内层 `min-h-0` + 外层裁剪），opacity 同步换内容；按钮 `h-[22px] w-[22px]` 图标统一尺寸；`jump_url` 为空（如微信公众号）时不可点击并在 title 追加「仅支持扫码」；末尾分隔线随高度一起被裁掉。**触屏上点击行为不同**：第一次点 = 显示二维码（没有悬停，浮层不会自动出现）、第二次点同一个图标 = 打开网页；没有二维码的条目直接打开 |
 | 浮标按钮 | game-sidebar-rail.tsx:277-294 | 常驻在条的底端、`MorphIcon Share2 size=15`；无关闭按钮，点击仅作手动切换。**触屏放大到 44×44**（`isTouch ? "h-11 w-11" : "h-8 w-8"`）—— 它是这根栏唯一的入口，32px 在手指上太难点 |
 | 二维码浮层 | game-sidebar-rail.tsx:299-334 | **单独 portal 到 body**（不能挂在常驻条里：既会被 `overflow-hidden` 裁掉，也会因常驻条带 `transform` 而使 `position: fixed` 退化为相对该祖先定位）；`pointer-events-none` 纯展示层，保持展开的能力由上面的几何命中提供；**渲染条件带 `hoveredItem?.qr_url`**（无二维码不渲染）。`qr_url` 图片 `h-36 w-36` 白底，加载失败时隐藏图片 |
@@ -411,7 +412,7 @@
 | 游戏订阅 effect | game-switch-rail.tsx:74 | `subscribeActiveGame(() => setGame(getActiveGame()))` |
 | `expand` / `collapse` | game-switch-rail.tsx:76-86 | 幂等切换（各自先比对 `expandedRef`） |
 | 几何命中 effect | game-switch-rail.tsx:88-116 | 监听 window `mousemove`，**每次实时量** `panelRef` 矩形：命中面板（含 10px 外扩）即保持展开；否则若在左边缘 + 竖向带内则展开，都不满足则立即收起。**触屏（`useIsTouchPrimary()`）直接 return，不注册 mousemove** —— 触摸设备上没有 mousemove，条子会永远收着（只露出一条 10px 的窄把手，48px 的图标全被裁掉），等于「切不了游戏」 |
-| 常驻条本体 | game-switch-rail.tsx:118-131 | portal 到 body，外层 `fixed left-0 top-1/2 z-30 -translate-y-1/2`，收起态 `pointer-events-none`；本体 `rounded-r-2xl border-l-0 lg-media-chip lg-hairline`，宽度/高度同时进退 |
+| 常驻条本体 | game-switch-rail.tsx:134-140 | portal 到 body，外层 `fixed left-0 top-1/2 z-30 -translate-y-1/2`，收起态 `pointer-events-none`；本体 `rounded-r-2xl lg-media-chip`（**不写 `border` 宽度类**：边缘只由玻璃层 `--lg-edge-layers` 的柔光带承担，见 globals.css「边缘只走柔光带」），宽度/高度同时进退 |
 | 收起态把手 | game-switch-rail.tsx:132-160 | 桌面上只是「这里能拉出来」的暗示（`pointer-events-none` 的纯展示 span）。**触屏上必须可点**（否则整条栏在手机上毫无作用），所以触屏时渲染成一个真实的 `<button>`（`aria-expanded` + 点击展开/收起） |
 | 图标列 | game-switch-rail.tsx:143-208 | 挂 `inert={!expanded}`（收起时既不收指针也不进 Tab 序列）；每项 `48×48`，选中环与图标共用 `SQUIRCLE_CLIP`；图标整体 `scale(0.9)` 让选中环露成一圈；未选中降饱和（`opacity-70 grayscale-[0.7]`），悬停恢复；已安装的游戏在角上带一个绿色圆点（`readGameInstallPath` 非空） |
 

@@ -321,10 +321,21 @@ export const TitlebarControls = () => {
         )}
 
       {/* 窗口控制按钮（最小化/最大化/关闭）仅桌面渲染：移动端（Android/iOS）
-          没有窗口化概念，由系统导航/最近任务管理应用生命周期。 */}
+          没有窗口化概念，由系统导航/最近任务管理应用生命周期。
+          
+          边缘语言与游戏 HUD 的 banner/操作胶囊保持一致：只用玻璃层
+          `--lg-edge-layers` 的柔光带，**不写 `border` 实线**。
+          此前这里是 `border border-separator/60` + `overflow-hidden`
+          的组合，两个问题叠在一起：① 浅色主题下 `--separator` 接近白色，
+          这圈 1px 实线压在壁纸上就是一道硬边高光，与左下 banner 的柔和
+          过渡不是一套语言；② `overflow-hidden` 裁剪 + `border-radius` +
+          `backdrop-filter` 在 WebView2 上会让圆角裁剪退化、边缘出现台阶
+          状锯齿（截图里最明显的就是这组按钮）。去掉裁剪后，三个子按钮
+          自身的 `rounded-l-xl` / `rounded-r-xl` 依然让悬停底色贴合胶囊，
+          而玻璃层是 `inset: 0` + `border-radius: inherit`，形状不受影响。 */}
       {!isMobileApp() && (
         <div
-          className="flex items-center rounded-xl overflow-hidden lg-regular border border-separator/60"
+          className="flex items-center rounded-xl lg-regular"
           data-tauri-drag-region="false"
         >
           <button

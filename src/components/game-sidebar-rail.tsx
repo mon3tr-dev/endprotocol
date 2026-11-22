@@ -198,12 +198,13 @@ export function GameSidebarRail({ items }: GameSidebarRailProps) {
             expanded ? "" : "pointer-events-none"
           }`}
         >
-          {/* 常驻条本体：贴右边缘、只圆左侧两角（悬浮于游戏壁纸 → clear 变体） */}
+          {/* 常驻条本体：贴右边缘、只圆左侧两角（悬浮于游戏壁纸 → 媒体层玻璃）。
+              边缘只用玻璃层柔光带，不写 `border` + `lg-hairline`：1px 实线在
+              浅色主题下是一条接近白色的硬边，与左下 banner/公告框的柔和
+              过渡不是一套语言（详见 globals.css「边缘只走柔光带」）。 */}
           <div
-            className={`flex flex-col items-center overflow-hidden rounded-l-2xl border border-r-0 transition-[padding,background-color] duration-300 ease-out ${
-              expanded
-                ? "lg-media-chip lg-hairline p-1.5"
-                : "lg-media-chip lg-hairline p-1"
+            className={`flex flex-col items-center overflow-hidden rounded-l-2xl transition-[padding] duration-300 ease-out lg-media-chip ${
+              expanded ? "p-1.5" : "p-1"
             }`}
           >
             {/* 图标列：grid-template-rows 0fr → 1fr 做高度动画，opacity 同步换内容 */}
@@ -314,7 +315,7 @@ export function GameSidebarRail({ items }: GameSidebarRailProps) {
             className="pointer-events-none fixed z-30 animate-fade-in"
             style={{ right: flyout.right, bottom: flyout.bottom }}
           >
-            <div className="lg-media-chip lg-hairline flex w-max max-w-[260px] flex-col items-center gap-1.5 rounded-xl p-3">
+            <div className="lg-media-chip flex w-max max-w-[260px] flex-col items-center gap-1.5 rounded-xl p-3">
               <img
                 src={hoveredItem.qr_url}
                 alt={hoveredTip}

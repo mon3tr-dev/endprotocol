@@ -132,7 +132,7 @@ export function GameSwitchRail() {
     >
       {/* 常驻条本体：贴左边缘、只圆右侧两角；宽度/高度同时进退 → 向右、向上下生长 */}
       <div
-        className="relative grid place-items-center overflow-hidden rounded-r-2xl border border-l-0 lg-media-chip lg-hairline transition-[width,height] duration-300 ease-out"
+        className="relative grid place-items-center overflow-hidden rounded-r-2xl lg-media-chip transition-[width,height] duration-300 ease-out"
         style={{
           width: expanded ? RAIL_WIDTH : HANDLE_WIDTH,
           height: expanded ? RAIL_HEIGHT : HANDLE_HEIGHT,

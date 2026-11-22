@@ -92,19 +92,27 @@ import { useIsTouchPrimary } from "@/hooks/useMediaQuery";
 const STORAGE_BASE_CHANNEL = "launcher_channel";
 const STORAGE_KEY_SKIP_STOP_CONFIRM = "launcher_skip_stop_confirm";
 
-/** 游戏操作面板统一按钮风格（与预下载按钮一致）
+/** 游戏操作面板统一按钮风格（与预下载按钮、左下 banner 一致）
  *
  * 底色改走 `.lg-media-chip`（globals.css 里定义）：它和标题栏、侧栏、
  * 卡片共用同一套 tint × 密度 × 主题色染色，只是额外按 --lg-scrim-alpha
  * 压暗以适配视频/壁纸背景。此前这里写死 bg-black/40，是全应用里唯一
  * 一处无论 theme 深浅都保持纯黑四成的玻璃，也是"深浅不一"最明显的一处。
  *
+ * **边缘只留柔光带，不写 `border` + `lg-hairline`**：那条 1px 实线在浅色
+ * 主题下是接近白色的 `--separator`，叠在深色媒体玻璃上就是一圈硬边高光；
+ * 而且 1px 实线 + border-radius + backdrop-filter 合成时圆角不做抗锯齿，
+ * 边缘会呈台阶状（截图里右上角那组窗口按钮最明显）。柔光带由
+ * `--lg-edge-layers` 在 `::before` 上画出，与左下 banner/公告框完全同源。
+ * 唯一代价是拿不到 `border` 占位，所以几何尺寸不受影响（玻璃层是 inset:0，
+ * 描边在盒外绘制本来也不占布局）。
+ *
  * hover/按压提亮走 `.lg-glass-interactive`（提亮加在 ::before 玻璃层上）。
  * 不要改回在宿主上加 filter/brightness：宿主带 filter 会成为 backdrop root，
  * ::before 的 backdrop-filter 就采不到背后的视频，按钮一悬停便从毛玻璃
  * 变成一块半透明色。 */
 const PILL_BASE =
-  "lg-media-chip inline-flex items-center h-11 rounded-full whitespace-nowrap lg-hairline border shadow-lg transition-all duration-200 shrink-0";
+  "lg-media-chip inline-flex items-center h-11 rounded-full whitespace-nowrap transition-all duration-200 shrink-0";
 const PILL_INTERACTIVE =
   "lg-media-chip-interactive lg-glass-interactive cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed";
 const PILL_TEXT = "text-xs font-medium text-white/80";
@@ -263,7 +271,7 @@ function ProgressFlyout({
 }) {
   return createPortal(
     <div
-      className="fixed z-[200] lg-media-chip lg-hairline border w-64 rounded-xl shadow-2xl px-4 py-3 pointer-events-none"
+      className="fixed z-[200] lg-media-chip w-64 rounded-xl shadow-2xl px-4 py-3 pointer-events-none"
       style={{
         left: pos.x,
         top: pos.y,
@@ -2081,7 +2089,7 @@ export function GameActionPanel({ game: pinnedGame }: GameActionPanelProps = {})
               setPreloadHovered(false);
               setPreloadFlyoutPos(null);
             }}
-            className={`${PILL_BASE} ${PILL_INTERACTIVE} ${PILL_TEXT} relative overflow-hidden px-4 gap-2`}
+            className={`${PILL_BASE} ${PILL_INTERACTIVE} ${PILL_TEXT} relative px-4 gap-2`}
             title={
               preloadProgress && preloadProgress.total > 0
                 ? `${t("launcher.preload_cancel")} · ${formatBytes(preloadProgress.downloaded)} / ${formatBytes(preloadProgress.total)}`
@@ -2260,8 +2268,10 @@ export function GameActionPanel({ game: pinnedGame }: GameActionPanelProps = {})
               setProgressFlyoutPos(null);
             }}
             disabled={!statusReady || (preloading && hasUpdate)}
-            className={`${PILL_BASE} ${PILL_INTERACTIVE} relative min-w-[120px] px-5 gap-2.5 text-sm font-semibold text-white overflow-hidden active:scale-95 justify-center ${
-              gameRunning || switching ? "!border-danger/60 !text-danger-text" : ""
+            className={`${PILL_BASE} ${PILL_INTERACTIVE} relative min-w-[120px] px-5 gap-2.5 text-sm font-semibold text-white active:scale-95 justify-center ${
+              gameRunning || switching
+                ? "lg-edge-danger !text-danger-text"
+                : ""
             }`}
           >
             {/* Cancellation / stop warning overlay */}
