@@ -34,6 +34,11 @@ const DX11_ARG: &str = "--dx11";
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // WebView2 的进程级启动参数必须在**任何 webview 被创建之前**写好：
+    // 环境由第一次创建 WebView 时建立，之后修改不再生效。
+    // 这里是全进程最早的安全位置（helper 模式分支在下面，它们不建窗口）。
+    apply_webview2_browser_args();
+
     // main.rs 现在无条件使用 Windows 子系统（不再创建控制台，避免被 Steam /
     // 快捷方式拉起时闪现黑窗口）；debug 构建下尝试附接父进程的终端，
     // 让 `cargo run` 的日志仍能打印到运行环境。
@@ -760,6 +765,67 @@ fn exclude_from_alt_tab<R: Runtime>(window: &tauri::WebviewWindow<R>) {
 #[cfg(all(not(target_os = "windows"), desktop))]
 fn exclude_from_alt_tab<R: Runtime>(_window: &tauri::WebviewWindow<R>) {}
 
+/// WebView2 的启动参数（仅 Windows 生效，其它平台由 wry 忽略）。
+///
+/// 症状：游戏界面切到别的窗口一段时间再切回来，背景视频停在最后一帧不动
+/// （前端 `useResumeVideoOnForeground` 是兜底，这里从引擎侧根治）。
+///
+/// ⚠️ **必须走 `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` 环境变量，不能用
+/// `WebviewWindowBuilder::additional_browser_args`。** 后者是**逐 webview** 的，
+/// 而 WebView2 的硬限制是：同一进程内，browser args 不同的 WebView 必须各自绑定
+/// 不同的 data directory（`tauri-utils` 的 `additional_browser_args` 文档、以及
+/// `tauri-runtime-wry` 里 `web_context.entry(webview_attributes.data_directory)` 的
+/// 索引方式都印证这一点）。本项目有多处 webview：
+///   - `create_main_window`（要带参数）
+///   - `create_full_windows` 的 `tray-panel`（`lib.rs` 里另建，默认参数）
+///   - in-app browser 运行时创建的 `inapp-browser-N`（`commands/browser.rs`）
+/// 只给主窗口加参数，其余仍用默认参数却共用同一个 data directory，第二个
+/// webview 创建时直接失败：`HRESULT(0x8007139F)` = `ERROR_INVALID_STATE`
+/// （「组或资源的状态不正确」），应用在 setup 阶段就 panic 起不来。
+///
+/// 环境变量是**进程级**的，WebView2 的环境初始化时读一次，所有 webview 共享同一
+/// 套参数，也就不会出现「参数不一致」这个前提，无需为每个 webview 分配独立目录。
+///
+/// 各开关分工：
+/// - `CalculateNativeWinOcclusion` 关闭：Windows 原生遮挡探测。窗口被其它窗口完全
+///   遮住时，Chromium 会判定「不可见」并降级甚至暂停整个渲染进程 —— 本 bug 主因。
+/// - `disable-backgrounding-occluded-windows`：被遮挡窗口不被转入后台队列。
+/// - `disable-renderer-backgrounding`：渲染进程不因不可见而降优先级。
+/// - `disable-background-timer-throttling`：后台时定时器不降到 1Hz（轮播、
+///   加载进度、游戏时长统计都依赖它）。
+/// - `autoplay-policy`：wry 仅在 `autoplay` 属性为真时才自动补这一项，这里显式
+///   补上，保证无用户交互也能起播。
+///
+/// 前三个 `msWebOOUI,msPdfOOUI,msSmartScreenProtection` 是 wry 的默认串
+/// （`wry/src/webview2/mod.rs` 的 `unwrap_or_else`）——走环境变量时 wry 仍会
+/// 传它自己的默认串，这里保留一份是幂等的，也防止将来有人改回逐窗口传参时
+/// 把默认项整个丢掉（那样会重新冒出 WebView2 迷你菜单 / PDF 菜单 / SmartScreen 拦截）。
+#[cfg(all(desktop, target_os = "windows"))]
+const WEBVIEW2_BROWSER_ARGS: &str = concat!(
+    "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection,CalculateNativeWinOcclusion ",
+    "--disable-backgrounding-occluded-windows ",
+    "--disable-renderer-backgrounding ",
+    "--disable-background-timer-throttling ",
+    "--autoplay-policy=no-user-gesture-required",
+);
+
+/// 把 `WEBVIEW2_BROWSER_ARGS` 写进进程环境变量。
+///
+/// 必须在**任何 webview 被创建之前**调用 —— WebView2 的环境在第一次创建
+/// WebView 时就建立好了，之后再改环境变量不再生效。所以放在 `run()` 的最前面。
+#[cfg(all(desktop, target_os = "windows"))]
+fn apply_webview2_browser_args() {
+    // SAFETY: 这是单线程的进程启动阶段（Tauri 尚未初始化、任何 webview 都还没建、
+    // 也没有其它线程在读环境），满足 `std::env::set_var` 的安全前提。
+    unsafe {
+        std::env::set_var("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", WEBVIEW2_BROWSER_ARGS);
+    }
+}
+
+/// 非 Windows 桌面 / 移动端：没有 WebView2，不需要做任何事。
+#[cfg(not(all(desktop, target_os = "windows")))]
+fn apply_webview2_browser_args() {}
+
 /// 主窗口创建（仅桌面用动态建窗；移动端由 tauri.android.conf.json 静态创建）。
 ///
 /// `create_full_windows` / `tray::show_main_window_focus` 在移动端仍会调用本函数
@@ -795,6 +861,10 @@ pub(crate) fn create_main_window<R: Runtime>(
                         .color(tauri::window::Color(18, 18, 20, 30))
                         .build(),
                 );
+        // 注意：WebView2 的启动参数**不在这里传**。逐窗口传会让主窗口、tray-panel、
+        // in-app browser 的子 webview 参数不一致，而它们共用同一个 data directory，
+        // WebView2 会直接拒绝创建（HRESULT 0x8007139F）。改由 `run()` 起点的
+        // `apply_webview2_browser_args()` 写进程级环境变量，所有 webview 共享一套。
 
         // 窗口图标必须显式挂上：`bundle.icon` 只把图标编进 exe 的 RT_GROUP_ICON
         // 资源，那决定的是 Explorer 里的文件图标；而**任务栏、Alt+Tab、窗口左上角**

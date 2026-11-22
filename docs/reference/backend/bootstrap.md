@@ -54,8 +54,15 @@
 | lib.rs:251-325 | 完整模式 setup：动态窗口、全量服务、原托盘面板和账户刷新；`--launch-game` 时启动游戏 |
 | lib.rs:333-522 | 配置初始化、第二实例请求转发（仅主实例）、按需启动游戏与驻留等待（`wait_for_game_session`） |
 | lib.rs:618-660 | 完整模式窗口动态创建与关闭行为（`create_full_windows` / `exclude_from_alt_tab`） |
-| lib.rs:698-754 | `create_main_window`：主窗口创建与「关闭→隐藏/退出」行为 |
-| lib.rs:817-852 | debug 专用：`endprotocol` 自定义协议，经 `asset_resolver()` 提供 `frontendDist` 构建产物 |
+| lib.rs:768-829 | `WEBVIEW2_BROWSER_ARGS` + `apply_webview2_browser_args()`：WebView2 启动参数，关掉 `CalculateNativeWinOcclusion` 等后台化开关，避免切走一段时间再回来时**背景视频停在最后一帧**；另有 `disable-background-timer-throttling` 保证后台时定时器不降到 1Hz。前端兜底见 `hooks/useResumeVideoOnForeground.ts` |
+| lib.rs:40（`run()` 起点） | 调用 `apply_webview2_browser_args()` 写 `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` 环境变量。**必须在任何 webview 创建之前**（WebView2 环境在首次创建 WebView 时建立，之后改环境变量不生效），所以放在 `run()` 最前面 |
+| lib.rs:838-908 | `create_main_window`：主窗口创建与「关闭→隐藏/退出」行为 |
+| lib.rs:983-1010 | debug 专用：`endprotocol` 自定义协议，经 `register_uri_scheme_protocol` 提供 `frontendDist` 构建产物 |
+
+> ⚠️ **WebView2 启动参数只能走进程级环境变量，不能用 `WebviewWindowBuilder::additional_browser_args`。**
+> 后者是**逐 webview** 的，而 WebView2 的硬限制是「同一进程内，browser args 不同的 WebView 必须各自绑定不同的 data directory」。本项目有多个 webview（`main` / `tray-panel` / in-app browser 的 `inapp-browser-N`），只给主窗口传参、其余走默认参数却共用同一个 data directory，第二个 webview 创建时直接失败：`HRESULT(0x8007139F)` = `ERROR_INVALID_STATE`（「组或资源的状态不正确」），应用在 setup 阶段 panic 起不来。
+> 环境变量是进程级的，所有 webview 共享同一套参数，不存在「参数不一致」这个前提。
+> 注意 wry 的默认串（`--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection`）在逐窗口传参时会**被整体覆盖**（`wry/src/webview2/mod.rs` 的 `unwrap_or_else`）；走环境变量时 wry 仍会带默认串，故这里保留一份是幂等的。
 
 **插件注册**：
 | 插件 | 行 | 对应 capability |

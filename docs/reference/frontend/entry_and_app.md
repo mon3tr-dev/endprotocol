@@ -259,6 +259,22 @@
 - 每秒只 `setSeconds` 一次，且仅在 `active` 时运行 —— 对渲染预算的影响可忽略。
 - 使用点：`src/components/check-status.tsx`（角色检测与抽卡授权验证的「已检测 / 已等待 N 秒」）。
 
+## `src/hooks/useResumeVideoOnForeground.ts`
+**职责**：让背景 `<video>` 在被系统/引擎暂停后自动恢复播放。应用失去焦点、或被其它窗口完全遮挡一段时间后，WebView2（Chromium）会把窗口判为后台/被遮挡并暂停媒体；用户切回来时**播放器不会自己接着播**（`paused` 停在 true，画面冻结在最后一帧，看起来像「视频卡住了」）。
+**导出**：`useResumeVideoOnForeground(videoRef, src?): void`（useResumeVideoOnForeground.ts:25）。
+**主要依赖**：`react`（useEffect、`RefObject` 类型）；无 `invoke` / `listen`。
+
+| 符号 | 位置 | 说明 |
+| --- | --- | --- |
+| `useResumeVideoOnForeground` | useResumeVideoOnForeground.ts:25-73 | 参数 `(videoRef: RefObject<HTMLVideoElement \| null>, src?: string \| null)`。绑三条前台信号：`document.visibilitychange`（转 visible 时恢复）、`window` 的 `focus` / `pageshow`、以及 `<video>` 自身的 `pause`（若此刻已可见则立即拉起）。内部 `resume()` 三重护栏：`!video.paused` 直接返回、`visibilityState === "hidden"` 时不动、`video.play()` 的 Promise 必须 catch（恢复瞬间可能还没拿到可播放数据，`NotAllowedError` / `AbortError` 交给下次信号重试） |
+
+**备注**：
+- **`autoPlay` 管不了这个场景**：它只在元素首次挂载时生效，属性没变浏览器不会重新评估，所以必须显式调 `play()`。
+- **三条信号缺一不可**：部分后台化只触发 `focus` / `pageshow` 而 `visibilityState` 始终是 `visible`，只监听 `visibilitychange` 会漏；反过来引擎直接暂停媒体时也可能一个页面事件都不发，靠 `pause` 事件兜。
+- 使用点：`src/components/game-background-video.tsx`（游戏模式全屏背景视频）。
+- **引擎侧根治**见 `src-tauri/src/lib.rs` 的 `WEBVIEW2_BROWSER_ARGS`（关掉 `CalculateNativeWinOcclusion` 等）；本 hook 是它失效时的兜底，两层都要有。
+- 手工验证方法：把应用切到别的窗口停留 2–3 分钟再切回，背景视频应继续滚动。注意引擎参数在窗口创建时生效，改完必须重启应用（热重载无效）。
+
 ## `src/hooks/useLongPressDrag.ts`
 **职责**：可复用的「长按进入编辑态并随后开始拖拽」Hook：长按期间按 40ms 步进显示进度环，达到时长后触发回调并置位待拖拽标志，提供取消与模拟 pointerdown 的接口。
 **导出**：`useLongPressDrag`（useLongPressDrag.ts:23）。
