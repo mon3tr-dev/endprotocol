@@ -423,10 +423,27 @@
 
 ---
 
+## `src/components/game-background-video.tsx`
+**职责**：游戏界面的全屏背景视频（`<video autoPlay loop muted playsInline object-cover>`），并接上「回到前台自动恢复播放」的兜底逻辑。
+**导出**：`GameBackgroundVideo`（命名 + 默认）；类型 `GameBackgroundVideoProps`
+**主要依赖**：`react`（useRef）、`@/hooks/useResumeVideoOnForeground`
+
+| 符号 | 位置 | 说明 |
+| --- | --- | --- |
+| `GameBackgroundVideoProps`（接口） | game-background-video.tsx:4-7 | `src: string`——后端 `get_background_image` 下发的 `video_url` |
+| `GameBackgroundVideo` | game-background-video.tsx:18-32 | 持有 `videoRef` 并调 `useResumeVideoOnForeground(videoRef, src)`，渲染背景 `<video>` |
+
+**备注**：
+- **为什么单独抽组件**：`layouts/dashboard.tsx` 的 `pages.map` 里是每次渲染现算的 JSX 片段，没有地方放 `useRef` / `useEffect`；恢复播放必须拿到真实元素引用，只能由组件承接。
+- `muted` + `playsInline` 是自动播放的前提（有声自动播放在任何现代浏览器都会被拦），`loop` 让短片循环成持续背景。
+- 暂停成因与恢复策略见 [entry_and_app.md](entry_and_app.md) 的 `useResumeVideoOnForeground`；引擎侧根治见 `src-tauri/src/lib.rs` 的 `WEBVIEW2_BROWSER_ARGS`。
+
+---
+
 ## `src/components/game-page.tsx`
 **职责**：游戏模式下的**「一页」**——某个游戏（终末地 / 明日方舟）的完整内容层（右侧官方社媒栏 + 底部横幅公告盒 + 操作面板）。切游戏走**整页推移**（旧页与新页同时在场、各自被推走），所以每一页必须持有自己的数据，不能共用一份 state。
 **导出**：`GamePageContent`、`EMPTY_PAGE_DATA`、`fetchPageData`、`getCachedPageData`、`prefetchOtherGame`；类型 `GamePageData`、`GamePageProps`
-**主要依赖**：`react`、`@/utils/launcherService`（`getNoticeContent`、`getBackgroundImage`、`readGameChannel`、类型 `BannerItem`/`AnnouncementItem`/`SidebarItem`）、`@/stores/launcherGame`（`LauncherGame`）、`@/components/game-action-panel`、`@/components/game-sidebar-rail`
+**主要依赖**：`react`、`@/utils/launcherService`（`getNoticeContent`、`getBackgroundImage`、`readGameChannel`、类型 `BannerItem`/`AnnouncementItem`/`SidebarItem`）、`@/stores/launcherGame`（`LauncherGame`）、`@/stores/inAppBrowser`（`openInAppBrowser`）、`@/components/game-action-panel`、`@/components/game-sidebar-rail`
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
@@ -437,9 +454,10 @@
 | `getCachedPageData` | game-page.tsx:42 | 读缓存（无则 `undefined`） |
 | `fetchPageData` | game-page.tsx:48 | 拉某游戏的数据并写入缓存；已在拉或已拉到直接返回（**切换动画不能等网络**） |
 | `prefetchOtherGame` | game-page.tsx:72 | 预取另一个游戏的数据：第一次切过去时不用等网络，推移动画立刻就能播 |
-| `GamePageContent` | game-page.tsx:120 | 页面内容层。props `game`、`data`。内部自持横幅轮播状态（`bannerIndex`/`bannerHovered`/`bannerDir`/`outgoingBanner`/`bannerPrevRef`）与公告分类状态（`announcementTab`）——**每页独立**，推移时两页各转各的。横幅多于 1 张时悬停浮现**翻页键**：左右渐变箭头（`createMorphIcon(ChevronLeft/Right)`——lucide 包导出的是图标节点数组不是组件，直接 JSX 渲染会报 "got: array"，必须经 morph 封装）+ 底部页点（当前页加宽高亮），手动翻页直接 `setBannerIndex`，复用 URL 判据的「推动」动画 |
+| `GamePageContent` | game-page.tsx:113 | 页面内容层。props `game`、`data`。内部自持横幅轮播状态（`bannerIndex`/`bannerHovered`/`bannerDir`/`outgoingBanner`/`bannerPrevRef`）与公告分类状态（`announcementTab`）——**每页独立**，推移时两页各转各的。横幅多于 1 张时悬停浮现**翻页键**：左右渐变箭头（`createMorphIcon(ChevronLeft/Right)`——lucide 包导出的是图标节点数组不是组件，直接 JSX 渲染会报 "got: array"，必须经 morph 封装）+ 底部页点（当前页加宽高亮），手动翻页直接 `setBannerIndex`，复用 URL 判据的「推动」动画 |
 
 **备注**：
+- **横幅与公告行都要接 `openInAppBrowser`**：横幅 `<img>` 点 `banners[bannerIndex].jump_url`、公告行点 `item.jump_url`，空串表示该条没有落地页（官方确实有纯展示横幅），此时不发请求。两者都带 `cursor-pointer`，**样式与行为必须一起搬**——`b631ce1` 把这套标记从 `layouts/dashboard.tsx` 搬进本文件时只搬了 `cursor-pointer`、漏掉了两个 `onClick`，于是横幅和公告行都「看起来能点、点下去毫无反应」，内置浏览器打不开。
 - **数据必须先于动画到位**：后端拉公告/背景要走 HTTP，耗时不可控。所以切游戏时先看缓存：有就直接开始推移；没有就等拉完再推（等的时候旧页还留在原地，用户看到的是「新页推上来」，而不是「旧页没了、新页一片空白」）。
 - **横幅「推动」动画的判据用 URL 而不是下标**：换游戏时整组横幅被换掉，下标可能没变（两个游戏都从第 0 张开始）但内容全变了，只看下标会漏掉这种情况，新旧横幅会硬碰硬地闪一下。离场图存**对象** `{url, index}` 而不是下标——旧横幅已不在新列表里，按下标回查会取到新游戏的第一条（错的图）。
 - 页面层**不含背景**：背景由 `layouts/dashboard.tsx` 的页面层统一渲染，避免两层背景互相穿插。
@@ -456,7 +474,8 @@
 | add-card-modal.tsx | 234 | `AddCardModal` |
 | app-info-drawer.tsx | 71 | `AppInfoDrawer` |
 | custom-titlebar.tsx | 419 | `CustomTitlebar`、`TitlebarBrand`、`TitlebarControls` |
-| game-page.tsx | 268 | `GamePageContent`、`EMPTY_PAGE_DATA`、`fetchPageData`、`getCachedPageData`、`prefetchOtherGame` |
+| game-background-video.tsx | 34 | `GameBackgroundVideo`（命名 + 默认） |
+| game-page.tsx | 374 | `GamePageContent`、`EMPTY_PAGE_DATA`、`fetchPageData`、`getCachedPageData`、`prefetchOtherGame` |
 | role-select-modal.tsx | 182 | 默认 `RoleSelectModal` |
 | tab-editor-modal.tsx | 244 | `TabEditorModal` |
 | tab-selector.tsx | 207 | `TabSelector` |

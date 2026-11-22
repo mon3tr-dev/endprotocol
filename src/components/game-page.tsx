@@ -16,6 +16,7 @@ import {
   readGameChannel,
 } from "@/utils/launcherService";
 import { type LauncherGame } from "@/stores/launcherGame";
+import { openInAppBrowser } from "@/stores/inAppBrowser";
 import { GameActionPanel } from "@/components/game-action-panel";
 import { GameSidebarRail } from "@/components/game-sidebar-rail";
 
@@ -247,6 +248,14 @@ export function GamePageContent({ game, data }: GamePageProps) {
                        高达 200px+，把下面的公告列表整个挤出屏幕）。
                        桌面端保持「高度撑满容器、宽度按比例」。 */
                     className="h-24 w-auto object-contain rounded-lg cursor-pointer transition-transform duration-300 ease-out group-hover:scale-[1.08] lg:h-full"
+                    onClick={() => {
+                      // 落地页是后端 `get_notice_content` 下发的 `jump_url`；空串表示
+                      // 这条横幅是纯展示（官方确实有），此时不跳转。注意 `cursor-pointer`
+                      // 与这个 onClick 是一对：只留样式不留处理，横幅就变成
+                      // 「看起来能点、点下去毫无反应」。
+                      const url = banners[bannerIndex]?.jump_url;
+                      if (url) openInAppBrowser(url);
+                    }}
                     onError={(e) => {
                       (e.target as HTMLImageElement).style.display = "none";
                     }}
@@ -332,6 +341,9 @@ export function GamePageContent({ game, data }: GamePageProps) {
                   {filteredAnnouncements.slice(0, 6).map((item, i) => (
                     <div
                       key={i}
+                      onClick={() => {
+                        if (item.jump_url) openInAppBrowser(item.jump_url);
+                      }}
                       className="flex items-center justify-between py-1.5 px-1 rounded-lg lg-hoverable-soft transition-colors cursor-pointer"
                     >
                       <span className="text-xs text-white/80 truncate mr-2">
