@@ -67,13 +67,14 @@
 | 15–86 | 类型定义与内部接口（`GitHubRelease`、`ChangelogCacheEntry`） |
 | 87–114 | 常量（仓库/镜像基址/TTL）与模块级状态变量 |
 | 115–185 | SemVer 解析/比较与版本频道辅助函数 |
-| 186–229 | GitHub Release 列表与预览 release endpoint 解析 |
-| 230–298 | changelog 缓存、频道切换判定与镜像 changelog URL |
-| 299–707 | 更新解析：Android ABI 解析与 APK 选择（`selectAndroidApkName`）、镜像清单解析、GitHub Release 路径，以及桌面 Tauri updater |
-| 708–1039 | 桌面/预览 changelog 获取与 `performUpdateCheck` 结果组装 |
-| 1040–1439 | 公共 API：频道/来源设置、检查、跨平台下载安装/取消、对话框事件 |
-| 1440–1535 | 订阅系统与遗留 `remoteState` API |
-| 1536–1601 | 消息中心集成（更新提示与下载进度消息） |
+| 186–229 | GitHub Release 列表与预览 release endpoint 解析（`getLatestPreviewEndpoint`） |
+| 230–278 | `fetchReleaseManifest`（取 `latest.json`，失败或无 `version` 返回 null）、changelog 缓存、频道切换判定与镜像 changelog URL |
+| 279–728 | 更新解析：Android ABI 解析与 APK 选择（`selectAndroidApkName`）、镜像清单解析、GitHub Release 路径，以及桌面 Tauri updater |
+| 731–936 | 桌面预览频道解析：`UpdateCandidate`、`resolvePreviewRelease`（同时取 stable 与 preview 清单，取更高的那个）、`resolveChannelSwitchRelease` |
+| 942–1071 | 桌面/预览 changelog 获取与 `performUpdateCheck` 结果组装 |
+| 1077–1471 | 公共 API：频道/来源设置、检查、跨平台下载安装/取消、对话框事件 |
+| 1477–1571 | 订阅系统与遗留 `remoteState` API |
+| 1573–1635 | 消息中心集成（更新提示与下载进度消息） |
 
 **备注**：
 - **Tauri invoke 命令**：Android 使用 `get_android_abi`（取本机 ABI）与 `download_android_apk`（下载缓存 APK，支持 GitHub 与镜像两种来源），并调用 `plugin:apk-installer|install_apk` 打开系统安装器；桌面继续使用 `fetch_url`、`check_update_endpoint`、`install_update_endpoint`；另经 `configService` 使用 `get_config`/`set_config`。
@@ -81,7 +82,8 @@
 - **网络端点**：Android 在 mirror 源下只访问 `<MIRROR_BASE>/<channel>/latest.json` 与其 APK；github 源下访问 GitHub API Release 列表与 release APK 下载。桌面使用镜像稳定/预览清单、`latest.json` 与 release changelog。
 - **缓存**：changelog 为模块内 `Map`，key = `changelog_cache_{channel}_{version}`，TTL 30000ms。
 - **日志写入**：全部经 `./logger` 默认实例，模块标签传在第二个实参位置（见异常项）。
-- **平台限定**：预览下载平台 key 硬编码 `windows-x86_64`（:363）。
+- **预览频道候选比较**：`resolvePreviewRelease` **并行**拉取 stable 与 preview 两份 `latest.json`，各自与本地版本比较后收集成候选，再按 SemVer 排序取最高者。稳定版只有在**确实高于**预览版时才会胜出（例如 `0.1.7-pre2` 用户遇到 `0.1.6` 时不会降级、`0.1.3-pre1` 用户遇到 `0.1.3` 时会拿到正式版）。旧实现「stable 比本地新就立即返回」会让镜像上的 `0.1.6` 永远压住 `0.1.7-pre6`，本地 `0.1.0` 的测试版用户因此一直被告知更新到 `0.1.6`。
+- **平台限定**：桌面预览频道的可下载性由后端 `check_update_endpoint` 判定（按 `platforms[<target>]` 有无条目），前端不再硬编码 `windows-x86_64`。
 
 ## `src/utils/wikiTableParser.ts`
 **职责**：解析 Wiki（文档树 `blockMap`/`rowIds`/`columnIds`/`cellMap`）数据的解析器（共 743 行）。按角色/技能名定位内容文档，把文本、内联富文本段、参数表、升级材料表转换为渲染用的 `WikiRenderedBlock[]`。
