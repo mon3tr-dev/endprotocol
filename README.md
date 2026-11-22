@@ -23,7 +23,7 @@
   <img alt="Platform" src="https://img.shields.io/badge/Platform-Windows%20%7C%20Linux-0078D6?style=for-the-badge&logo=windows&logoColor=white" />
   <img alt="Tauri" src="https://img.shields.io/badge/Tauri-2.x-24C8DB?style=for-the-badge&logo=tauri&logoColor=white" />
   <img alt="React" src="https://img.shields.io/badge/React-19-61DAFB?style=for-the-badge&logo=react&logoColor=black" />
-  <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-5-3178C6?style=for-the-badge&logo=typescript&logoColor=white" />
+  <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-7-3178C6?style=for-the-badge&logo=typescript&logoColor=white" />
   <img alt="Rust" src="https://img.shields.io/badge/Rust-stable-000000?style=for-the-badge&logo=rust&logoColor=white" />
   <img alt="Last commit" src="https://img.shields.io/github/last-commit/mon3tr-dev/endprotocol?style=for-the-badge&label=Last%20commit&color=64748b" />
 </p>
@@ -34,7 +34,8 @@
   <a href="#-快速上手">快速上手</a> ·
   <a href="#-文档">文档</a> ·
   <a href="#-仓库动态">仓库动态</a> ·
-  <a href="#-参与贡献">参与贡献</a>
+  <a href="#-参与贡献">参与贡献</a> ·
+  <a href="README-en.md">English</a>
 </p>
 
 </div>
@@ -48,9 +49,9 @@
 
 ## 🧩 核心功能
 
-| 🗂️ 森空岛数据端                                                             | 🎮 游戏启动器                                                  | 🎨 桌面体验                                         |
+| 🗂️ 森空岛数据端                                                             | 🎮 游戏启动器                                                  | 🎨 桌面与移动体验                                   |
 | :-------------------------------------------------------------------------- | :------------------------------------------------------------- | :-------------------------------------------------- |
-| 多账号管理 · 干员图鉴 · 抽卡统计<br>每日签到 · 区域信息 · 帝江号 · 成就勋章 | 双游戏切换 · 六渠道<br>安装更新 · 校验修复 · 预下载 · 渠道迁移 | 玻璃拟态 · 主题配色<br>全屏游戏模式 · 托盘 · 自更新 |
+| 多账号管理 · 干员图鉴 · 抽卡统计<br>每日签到 · 区域信息 · 帝江号 · 成就勋章 | 双游戏切换 · 六渠道<br>安装更新 · 校验修复 · 预下载 · 渠道迁移 | 玻璃拟态 · 主题配色<br>全屏模式 · Android 窄屏 · 托盘与自更新 |
 
 ### 🗂️ 森空岛数据端
 
@@ -78,6 +79,9 @@
 
 一键切换到沉浸式游戏外壳，背景图 / 背景视频随所选游戏与渠道变化，切换游戏时整页推移过渡；底部信息栏展示 Banner 轮播（悬停翻页、圆点跳转）与公告。点击 Banner 或公告会在应用内以原生浏览器打开（支持前进 / 后退 / 刷新，禁嵌站点也能正常访问），切换模式时自动挂起 / 恢复浏览器。
 
+- 背景视频与应用焦点同步：切换到后台或锁屏时暂停，返回前台后在原进度继续播放
+- Banner 与公告使用独立原生浏览器覆盖层，不再受游戏切换动画的页面层级影响
+
 ### 📌 系统托盘
 
 双击托盘图标唤起主窗口，右键弹出面板查看所选账号的理智、活跃、事务与通行证进度。关闭行为可配置（关闭 / 最小化到托盘 / 每次询问）。
@@ -98,6 +102,7 @@
 - 🎨 6 组预设强调色 + 自定义配色（HSV/HSL 取色器 + 屏幕吸管）
 - 🌏 简体中文与英文双语言
 - 🖼️ 自定义背景图与透明度，Windows 亚克力窗口效果
+- 📱 Android 窄屏底部导航、触控底部抽屉、下拉刷新与安全区适配
 
 ---
 
@@ -111,7 +116,7 @@
 
 > 游戏启动器与窗口磨砂等能力仅在 Windows 版本提供；Linux 版本可正常使用森空岛数据端。
 >
-> 移动端（Android）已具备代码级适配：账号、角色、签到、抽卡、明日方舟数据等核心功能可用；游戏启动器、系统托盘、应用自更新与屏幕取色为桌面专属能力，在移动端不提供。构建方法见 [docs/development.md](docs/development.md) §2.1。
+> 移动端（Android）已具备窄屏触控适配：底部导航、抽屉式账户与设置面板、下拉刷新、横向轮播、底部「我的」页面以及状态栏 / 手势条安全区均已适配。账号、角色、签到、抽卡、明日方舟数据等核心功能可用；游戏启动器、系统托盘、桌面应用自更新与屏幕取色为桌面专属能力，在移动端不提供。构建方法见 [docs/development.md](docs/development.md) §2.1。
 
 ---
 
