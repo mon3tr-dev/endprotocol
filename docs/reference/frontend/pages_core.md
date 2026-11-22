@@ -53,8 +53,9 @@
 
 - 264-492 行：**GAME MODE 分支**：
   - 296-305 行：标题栏右侧区（`controlsOnly`）——固定不动，不跟页面走；覆盖层容器 `self-end` 只占右侧控件自身宽度（整宽的 `pointer-events-auto` + drag region 会盖住页面层品牌区，模式拨杆点不动）。
-  - 307-... 行：**页面层**（`pages.map`）：每页一个 `absolute inset-0` 容器，`transform` 为该页当前的位移、`zIndex` 出栈页 0 / 入栈页 1（useMemo 依赖含 `pageDataVersion`——初次拉到页面数据后 bump 触发重算，否则刷新后背景/公告一直是空的）；页内含全屏背景（`<video autoPlay loop muted playsInline>`，或图片分支用 CSS 背景层：`background-size: cover` + `background-position: center` + `background-repeat: no-repeat`，即保持原始宽高比、取 `max(W/w, H/h)` 等比缩放到恰好完全覆盖视口、不留空白，溢出的长边方向居中裁掉；再叠加渐变遮罩；无资源时使用 CSS 渐变占位）、标题栏品牌区（`brandOnly`）、背景模式切换器、`InAppBrowser`（`z-40`）、`GamePageContent`（右侧社媒栏 + 底部横幅公告盒 + 操作面板）。
-  - 页面层之后：`GameSwitchRail`（左侧贴边游戏切换栏）——**只挂载一份、放在页面层之外**：它本身 portal 到 body、fixed 贴左边缘，不随页面推移；放进页面层会导致每次切换随新页重新挂载出收起态的新实例（portal 后入者的 DOM 顺序在上，盖住旧实例），表现为切一下游戏左侧栏就收回去、要再动一下鼠标才重新展开。
+  - 307-... 行：**页面层**（`pages.map`）：每页一个 `absolute inset-0` 容器，`transform` 为该页当前的位移、`zIndex` 出栈页 0 / 入栈页 1（useMemo 依赖含 `pageDataVersion`——初次拉到页面数据后 bump 触发重算，否则刷新后背景/公告一直是空的）；页内含全屏背景（`<video autoPlay loop muted playsInline>`，或图片分支用 CSS 背景层：`background-size: cover` + `background-position: center` + `background-repeat: no-repeat`，即保持原始宽高比、取 `max(W/w, H/h)` 等比缩放到恰好完全覆盖视口、不留空白，溢出的长边方向居中裁掉；再叠加渐变遮罩；无资源时使用 CSS 渐变占位）、标题栏品牌区（`brandOnly`）、背景模式切换器、`GamePageContent`（右侧社媒栏 + 底部横幅公告盒 + 操作面板）。
+  - **`InAppBrowser` 必须挂在页面层之外（根层）**——它要全屏覆盖含标题栏，而这只有根层叠上下文里才成立。页面层带 `zIndex`（`enter ? 1 : 0`），自身就是一个层叠上下文，里面写 `z-40` 只在该层内部排序、对外只表现为「父层的 z-index」；标题栏右侧区是根层 `z-20`，`20 > 1`，于是铃铛与窗口按钮永远压在内置浏览器工具栏之上——浏览器的关闭按钮正好落在铃铛那一格，点 × 打开的是消息面板、浏览器关不掉（用户报的「关闭按钮和消息按钮重合了」）。挂在页面层外还顺带修掉两处同源问题：页面层带 `transform`（推移）会把 `absolute` 后代一起推走，原生子 Webview 按视口坐标贴图就会错位；推移期间两页同场，挂在页面层里会**同时存在两个** `InAppBrowser` 实例。
+  - 页面层之后：`InAppBrowser`（内置浏览器全屏覆盖层，`absolute inset-0 z-40`）——**只挂载一份、必须在页面层之外**（理由见上方页面层条目）；然后是 `GameSwitchRail`（左侧贴边游戏切换栏）——同样**只挂载一份、放在页面层之外**：它本身 portal 到 body、fixed 贴左边缘，不随页面推移；放进页面层会导致每次切换随新页重新挂载出收起态的新实例（portal 后入者的 DOM 顺序在上，盖住旧实例），表现为切一下游戏左侧栏就收回去、要再动一下鼠标才重新展开。
   - **游戏模式不挂磨砂层**：背景是视频，标题栏保持背景本身清晰（原先的 `.frost-main frost-titlebar-only` 已移除）。
 - 494-609 行：**DATA MODE 分支**（默认业务界面）：
   - 497 行：`dashboard-background` 背景层；515 行：`CustomTitlebar`（**仅 `lg` 及以上渲染**：`hidden lg:block`）。

@@ -36,6 +36,7 @@ import {
   resumeInAppBrowser,
 } from "@/stores/inAppBrowser";
 import { InAppBrowser } from "@/components/in-app-browser";
+import { GameBackgroundVideo } from "@/components/game-background-video";
 import { GameSwitchRail } from "@/components/game-switch-rail";
 import { AppInfoDrawer } from "@/components/app-info-drawer";
 import { BellIcon, ChevronDownIcon } from "@/components/ui/app-icon";
@@ -440,14 +441,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
               {page.backgroundSrc ? (
                 <>
                   {page.backgroundSrc.showVideo ? (
-                    <video
-                      src={page.backgroundSrc.src}
-                      autoPlay
-                      loop
-                      muted
-                      playsInline
-                      className="w-full h-full object-cover"
-                    />
+                    <GameBackgroundVideo src={page.backgroundSrc.src} />
                   ) : (
                     // 图片背景规则（等价 CSS object-fit/background-size: cover）：
                     // 保持原始宽高比，取 max(W/w, H/h) 等比缩放，使缩放后的宽和高都
@@ -479,13 +473,26 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
               <GameBackgroundSwitch mode={bgMediaMode} media={page.background} />
             )}
 
-            {/* In-app browser overlay — 全屏覆盖（含标题栏），自带窗口控制 */}
-            <InAppBrowser />
-
             {/* 页面内容：右侧社媒栏 + 底部横幅公告 + 操作面板 */}
             <GamePageContent game={page.game} data={page.data} />
           </div>
         ))}
+
+        {/*
+         * In-app browser overlay —— **必须挂在页面层之外**（见下方长注释）。
+         *
+         * 它要「全屏覆盖（含标题栏）」，而这只有在**根层叠上下文**里才成立：
+         * 页面层带 `z-index`（推移时 `enter ? 1 : 0`），自己就是一个层叠上下文，
+         * 里面写 `z-40` 只在该层内部排序，对外只表现为「父层的 z-index」。
+         * 标题栏右侧区是根层的 `z-20`，20 > 1，于是铃铛与窗口按钮永远压在
+         * 内置浏览器的工具栏之上 —— 浏览器自带的关闭按钮正好落在铃铛那一格，
+         * 点下去关的是消息面板，浏览器的 × 完全点不到。
+         *
+         * 顺带修掉两个同源问题：页面层带 `transform`（推移），`absolute` 后代
+         * 会被一起推走，原生子 Webview 按视口坐标贴图就会错位；推移期间两页同场，
+         * 挂在页面层里还会**同时存在两个** InAppBrowser 实例。
+         */}
+        <InAppBrowser />
 
         {/*
          * 左侧游戏切换栏：**只挂载一份**，放在页面层之外（终末地 / 明日方舟）。

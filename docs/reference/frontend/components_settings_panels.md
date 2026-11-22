@@ -238,6 +238,8 @@
 
 **备注**：`invoke` 命令（见 [../backend/commands.md](../backend/commands.md)）：`browser_go_back`、`browser_go_forward`、`browser_reload`、`browser_navigate`、`browser_current_url`（经 `@/utils/browserViewService` 包装）；窗口控制走 `minimize_window`、`toggle_maximize_window`、`minimize_to_tray`、`app_quit`；`listen` 事件：`browser://page-load`（后端 `lib.rs` 的 `on_page_load` 桥接）；配置键：`close_action`；无 `postMessage` 依赖。开合状态仍来自 `@/stores/inAppBrowser` 的订阅。地址栏导航不改写浏览器 history（仅 store + Webview）。原生层会覆盖 DOM，因此高于浏览器区域的浮层（标题栏消息浮窗 z-[10005]、弹窗 z-[100]/z-[200]）在浏览器打开时会不可见，属已知取舍。
 
+> ⚠️ **本组件必须挂在根层叠上下文**（`layouts/dashboard.tsx` 里放在页面层 `pages.map` **之外**）。它不是 portal，而是 `absolute inset-0 z-40` 的普通覆盖层；一旦套进带 `zIndex` 的页面层，`z-40` 就只在该层内部排序、对外只表现为父层的 `z-index`（推移时 0/1），于是根层的标题栏右侧区（`z-20`）会压住整条工具栏——浏览器自带的关闭按钮正好落在铃铛那一格，点 × 打开的是消息面板、浏览器关不掉。同理不能挂在带 `transform` 的容器里：原生子 Webview 按视口坐标贴图，会被祖先的推移位移带偏。
+
 > ⚠️ 窗口控制必须走 app command（`minimize_window` / `toggle_maximize_window`），**不能**改用 `plugin:window|*` 前端 API：后者受 capability 作用域约束（子 webview 会继承 `main` 的 ACL），且 `is-maximized` 等 getter 在本项目 capability 下未授权（实测报 `window.is-maximized not allowed`）。app command 不经 capabilities 授权，行为稳定。
 
 ## `src/components/tray-panel.tsx`
