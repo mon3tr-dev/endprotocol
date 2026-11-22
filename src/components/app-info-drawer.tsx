@@ -39,23 +39,26 @@ export function AppInfoDrawer({ isOpen, onClose }: AppInfoDrawerProps) {
       style={{ pointerEvents: "auto" }}
     >
       {/*
-       * 窄屏：右侧抽屉改成**底部抽屉**（占满宽度、贴底）。
+       * 窄屏模式（仅 Android）：右侧抽屉改成**底部抽屉**（占满宽度、贴底）。
        *
        * 原来固定 380px 宽、右侧贴边，在手机上会占掉 2/3 屏宽，
        * 背后的消息列表只剩一条缝；而消息中心是竖向内容，底部抽屉
        * 能给出完整宽度 + 拇指可达的关闭位置。
        * 高度留出顶部安全区，避免被状态栏压住。
+       *
+       * ⚠️ 用 `narrow:` / `wide:` 而不是 `lg:`：桌面窗口拖窄时不该变成底部抽屉
+       * （那会让面板贴到底部、把上方内容全挡住）。
        */}
       <div
-        className="lg-regular lg-float-in fixed inset-x-0 bottom-0 lg:inset-y-0 lg:left-auto lg:right-0 z-[210] w-full lg:w-[380px] lg:max-w-[85vw] max-h-[85dvh] lg:max-h-none border-t lg:border-t-0 lg:border-l border-separator/60 flex flex-col rounded-t-2xl lg:rounded-l-2xl lg:rounded-tr-none"
+        className="lg-regular lg-float-in fixed inset-x-0 bottom-0 wide:inset-y-0 wide:left-auto wide:right-0 z-[210] w-full wide:w-[380px] wide:max-w-[85vw] max-h-[85dvh] wide:max-h-none border-t wide:border-t-0 wide:border-l border-separator/60 flex flex-col rounded-t-2xl wide:rounded-l-2xl wide:rounded-tr-none"
         style={{
           pointerEvents: "auto",
           paddingBottom: "var(--safe-area-bottom)",
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* 窄屏：抽屉顶部的抓手 */}
-        <span className="mobile-sheet-grip lg:hidden" aria-hidden="true" />
+        {/* 窄屏模式：抽屉顶部的抓手 */}
+        <span className="mobile-sheet-grip hidden narrow:block" aria-hidden="true" />
 
         {unreadCount > 0 && (
           <div className="flex items-center justify-end px-4 py-2 border-b border-separator/40 shrink-0">

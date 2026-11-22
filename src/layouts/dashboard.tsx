@@ -531,12 +531,14 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
 
       {/*
        * 标题栏：桌面端是「图标 + 游戏名 + 模式拨杆 + 铃铛 + 窗口按钮」一整条；
-       * 窄屏下这套排布塞不下（模式拨杆 + 铃铛 + 三个窗口按钮至少要 200px，
-       * 加上品牌区就超出 375px 屏宽），而且移动端本来就没有窗口按钮。
-       * 所以窄屏另给一条精简顶栏：左侧**下拉箭头**打开「更多工具」顶部抽屉，
-       * 中间标题，右侧留空（铃铛改挂在底部导航里不现实，这里保留标题栏自带的铃铛）。
+       * 窄屏模式（**仅 Android**，见 `utils/platform.ts` 的 `isNarrowLayout`）
+       * 下这套排布塞不下，而且移动端本来就没有窗口按钮 —— 由 `MobileTopBar` 顶上。
+       *
+       * ⚠️ 这里的显隐走 `wide:` / `narrow:` 而不是 `lg:`：桌面窗口拖窄时若切到
+       * 窄屏顶栏，窗口既不能拖动（窄屏顶栏没有 drag region）也没有关闭按钮，
+       * 整个窗口就锁死了。
        */}
-      <div className="hidden lg:block">
+      <div className="hidden wide:block">
         <CustomTitlebar />
       </div>
       <MobileTopBar onOpenDrawer={() => setMobileOpen(true)} />
@@ -545,7 +547,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
         {/* Desktop Sidebar */}
         <div
           className={clsx(
-            "relative hidden lg:flex shrink-0 overflow-hidden transition-[width] duration-300 ease-out will-change-[width]",
+            "relative hidden wide:flex shrink-0 overflow-hidden transition-[width] duration-300 ease-out will-change-[width]",
             sidebarCollapsed ? "w-[64px]" : "w-72",
           )}
         >
@@ -581,13 +583,13 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
           createPortal(
             <>
               <div
-                className="lg-scrim lg:hidden fixed inset-0 z-[55] [animation:lg-backdrop-in_var(--lg-dur-base)_var(--lg-ease-emphasized)]"
+                className="lg-scrim hidden narrow:block fixed inset-0 z-[55] [animation:lg-backdrop-in_var(--lg-dur-base)_var(--lg-ease-emphasized)]"
                 onClick={() => setMobileOpen(false)}
                 aria-label="Close menu"
                 role="button"
               />
               <div
-                className="lg-regular lg:hidden fixed inset-x-0 top-0 z-[60] w-full max-h-[85dvh] border-b border-separator/60 animate-slide-down-top flex flex-col"
+                className="lg-regular hidden narrow:flex fixed inset-x-0 top-0 z-[60] w-full max-h-[85dvh] border-b border-separator/60 animate-slide-down-top flex-col"
                 style={{ paddingTop: "var(--safe-area-top)" }}
               >
               {/*
@@ -640,10 +642,9 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
 
         <div className="flex-1 flex flex-col overflow-hidden min-w-0">
           {/* overflow-x-hidden：`overflow-y-auto` 会让 overflow-x 被计算成 auto，
-              于是任何超宽内容都会在 <main> 上生出一条横向滚动条。窄屏下卡片
-              已改为单列堆叠（见 cards/card-container.tsx 的 isNarrow），这里
-              再兜一道，确保手机上只能上下滚。 */}
-          <main className="flex-1 overflow-y-auto overflow-x-hidden scroll-touch p-3 sm:p-4 lg:p-8 lg:pt-6 pb-28 lg:pb-8">
+              于是任何超宽内容都会在 <main> 上生出一条横向滚动条。
+              `pb-28` 只在窄屏模式（Android 底部导航胶囊）下需要；桌面端用 `wide:pb-8`。 */}
+          <main className="flex-1 overflow-y-auto overflow-x-hidden scroll-touch p-3 sm:p-4 lg:p-8 lg:pt-6 pb-28 wide:pb-8">
             <div
               id="dashboard-main"
               key={location.pathname}
@@ -722,7 +723,7 @@ function MobileTopBar({ onOpenDrawer }: { onOpenDrawer: () => void }) {
   const showBack = !inBottomNav;
 
   return (
-    <header className="mobile-top-bar lg:hidden">
+    <header className="mobile-top-bar hidden narrow:block">
       <div className="flex h-12 items-center gap-2 px-2">
         <button
           type="button"

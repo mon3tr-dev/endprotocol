@@ -56,7 +56,7 @@
 | lib.rs:618-660 | 完整模式窗口动态创建与关闭行为（`create_full_windows` / `exclude_from_alt_tab`） |
 | lib.rs:768-829 | `WEBVIEW2_BROWSER_ARGS` + `apply_webview2_browser_args()`：WebView2 启动参数，关掉 `CalculateNativeWinOcclusion` 等后台化开关，避免切走一段时间再回来时**背景视频停在最后一帧**；另有 `disable-background-timer-throttling` 保证后台时定时器不降到 1Hz。前端兜底见 `hooks/useResumeVideoOnForeground.ts` |
 | lib.rs:40（`run()` 起点） | 调用 `apply_webview2_browser_args()` 写 `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` 环境变量。**必须在任何 webview 创建之前**（WebView2 环境在首次创建 WebView 时建立，之后改环境变量不生效），所以放在 `run()` 最前面 |
-| lib.rs:838-908 | `create_main_window`：主窗口创建与「关闭→隐藏/退出」行为 |
+| lib.rs:838-915 | `create_main_window`：主窗口创建与「关闭→隐藏/退出」行为。窗口尺寸 `inner_size(1200, 700)` + **`min_inner_size(640, 480)`**：标题栏（品牌区 + 模式拨杆 + 铃铛 + 三个窗口按钮）约需 400px 才排得下，再窄会把窗口按钮挤出可视区（表现为「关不掉、也拖不动」）。这与前端窄屏模式无关 —— 窄屏只看操作系统（`isNarrowLayout()`，仅 Android），桌面窗口再窄都保持桌面版式 |
 | lib.rs:983-1010 | debug 专用：`endprotocol` 自定义协议，经 `register_uri_scheme_protocol` 提供 `frontendDist` 构建产物 |
 
 > ⚠️ **WebView2 启动参数只能走进程级环境变量，不能用 `WebviewWindowBuilder::additional_browser_args`。**

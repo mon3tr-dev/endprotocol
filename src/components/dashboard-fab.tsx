@@ -23,14 +23,15 @@ export function DashboardFAB({
   }, [isEditMode]);
 
   return createPortal(
-    // 移动端（<lg）：抬到贴底导航胶囊**上方**。
+    // 窄屏模式（仅 Android，见 `utils/platform.ts` 的 `isNarrowLayout`）：抬到贴底
+    // 导航胶囊**上方**。
     //
     // 胶囊现在的实际高度是 62px（`MobileBottomNav` 的 `h-[62px]`），
     // 加上容器的底部留白 8px 与安全区，FAB 的 56px 圆钮必须整体落在它上方：
     // 胶囊顶边 = safe + 8 + 62 = safe + 70px，这里取 safe + 88px（5.5rem），
     // 留 18px 呼吸间距。压上去会盖住胶囊右端的「我的」入口，导航就点不到了。
-    // 桌面端（lg+）用 bottom-6：底部导航只在窄屏渲染，两边不会打架。
-    <div className="fixed right-4 z-50 lg:right-6 lg:bottom-6 [bottom:calc(5.5rem+var(--safe-area-bottom))]">
+    // 桌面端用 `bottom-6`：底部导航只在窄屏模式渲染，两边不会打架。
+    <div className="fixed right-4 z-50 bottom-6 wide:right-6 narrow:[bottom:calc(5.5rem+var(--safe-area-bottom))]">
       {isExpanded && (
         <div className="absolute bottom-16 right-0 flex flex-col gap-2 animate-fade-in">
           <button

@@ -21,7 +21,7 @@
 **备注**：
 - 两个导航都渲染了搜索框（DOM 里各一份），`Cmd/Ctrl+F` 用 `offsetParent !== null` 挑出可见的那个聚焦。
 - 输入框用 `type="text"` 而非 `type="search"`：Android WebView 会给后者再画一个原生清除按钮，与组件自绘的 × 叠在一起。
-- 锚点对应的样式约定见 `src/styles/globals.css`：`[id^="settings-"] { scroll-margin-top: 104px }`（仅 `< lg`，让开吸住的搜索条）与 `.settings-anchor-flash`（outline 用**负** offset，卡片是 `overflow-hidden`，正 offset 会被裁掉）。
+- 锚点对应的样式约定见 `src/styles/globals.css`：`html[data-narrow-layout="on"] [id^="settings-"] { scroll-margin-top: 104px }`（**仅窄屏模式**，让开吸住的搜索条；判据是操作系统而非视口宽度，桌面窗口拖窄时分区栏仍在左侧、不该多出这段偏移）与 `.settings-anchor-flash`（outline 用**负** offset，卡片是 `overflow-hidden`，正 offset 会被裁掉）。
 - **玻璃宿主与滚动容器必须分层**：`.lg-material` 的材质是宿主上的 `::before { position:absolute; inset:0 }`，它**不随内容滚动**。若把 `lg-material` 和 `overflow-y-auto` 写在同一个元素上，滚动时材质留在原地、内容滚走，露出透明底（分区栏曾出现这道断层）。正确写法是外层负责玻璃/圆角/裁切，内层负责滚动。
 - **高度链用 `min-h-0 flex-1` 而不是 `h-full`**：`height:100%` 要求父级有确定高度，而滚动容器的高度来自 flex 分配，百分比在个别 WebView 会解析成 `auto`，导致内层跟着内容长高、`overflow-y` 永不触发。
 - **滚动容器标 `data-no-ovs` 以隐藏滚动条**：`@/utils/overlayScrollbar` 会给每个 `overflow-y: auto|scroll` 的元素自动打 `data-ovs`，而 `[data-ovs]::-webkit-scrollbar { width: 8px }` 会把全局隐藏的滚动条恢复出来。分区栏**能滚但不要可见的条**（内容超出直接滚），故在**真正的滚动容器**上标 `data-no-ovs` —— 标在只负责玻璃的外层不起作用，因为外层是 `overflow-hidden`，不会被 `overlayScrollbar` 接管。

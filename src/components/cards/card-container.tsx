@@ -22,6 +22,7 @@ import logger from "@/utils/logger";
 import { loadAllCards } from "./registry/loader";
 import { CardContextMenu, type ContextMenuItem } from "./card-context-menu";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
+import { isNarrowLayout } from "@/utils/platform";
 
 // Grid configuration
 //
@@ -34,15 +35,14 @@ import { confirmDialog } from "@/components/ui/confirm-dialog";
 // 就把卡片挤成一条、或让最后一张卡探出右边缘。
 const GRID_SIZE = 100; // Each grid cell is 100x100 pixels
 
-// 窄屏断点（px），与 Tailwind 的 `sm` 对齐。
+// 窄屏模式（Android）下改为**单列纵向堆叠**（见 `CardContainer` 的
+// `isNarrow`）：卡片宽度撑满内容区、高度按原网格行数换算，因此手机上
+// 永远只有纵向滚动，没有横向溢出。
 //
-// 低于该宽度时，绝对定位的网格不再可用：4 列缩到 400px 以下，卡片会小到
-// 看不清、且每张卡只占屏幕一角。此时改为**单列纵向堆叠**（见
-// `CardContainer` 的 `isNarrow`），卡片宽度撑满内容区、高度按原网格行数
-// 换算，因此手机上永远只有纵向滚动，没有横向溢出。
-const NARROW_BREAKPOINT = 640;
-/** 窄屏媒体查询：与 NARROW_BREAKPOINT 同源，避免两处阈值漂移 */
-const NARROW_MEDIA_QUERY = `(max-width: ${NARROW_BREAKPOINT - 1}px)`;
+// ⚠️ 堆叠判据是**操作系统**（`isNarrowLayout()`，仅 Android），不是视口宽度。
+// 桌面端即使把窗口拖到 320px 也是「画布变小」，仍保持可拖拽的绝对定位网格
+// （此时 `gridScale` 会把格子等比缩小，见上方注释），而不是切成单列 ——
+// 单列堆叠没有拖拽编辑，桌面用户会突然失去布局编辑能力。
 
 // Generate SVG grid pattern with dashed lines (uses default token)
 const generateGridSVG = (isDragging: boolean) => {
@@ -616,24 +616,17 @@ export function CardContainer({
   // 格子边长、卡片尺寸、拖拽吸附全部乘以它。桌面宽屏系数恒为 1，行为不变。
   //
   // 但一直缩下去没有尽头：400px 时系数 0.99 还好，320px 就只剩 0.79，
-  // 4 列各占 79px，卡片内容全被压扁。所以**屏幕**窄于 NARROW_BREAKPOINT 时
-  // 不再缩放，改用 `isNarrow` 切到单列堆叠（见 `FreeDragCard` 的 `stacked`）。
+  // 4 列各占 79px，卡片内容全被压扁。所以**窄屏模式**（`isNarrowLayout()`，
+  // 仅 Android）下不再缩放，改用 `isNarrow` 切到单列堆叠（见 `FreeDragCard`
+  // 的 `stacked`）。桌面端窗口再窄也留在可拖拽网格里 —— 缩小之后仍能点、能拖，
+  // 切成单列反而会让桌面用户失去布局编辑能力。
   const GRID_COLS = 4;
   const [gridScale, setGridScale] = useState(1);
 
-  // 窄屏以**视口**为准（用户说的「屏幕为窄屏」），不用内容区宽度：
-  // 内容区还受侧栏展开与否影响，用它会关掉侧栏就换布局、来回跳。
-  const [isNarrow, setIsNarrow] = useState(
-    () => typeof window !== "undefined" && window.matchMedia(NARROW_MEDIA_QUERY).matches,
-  );
-
-  useEffect(() => {
-    const mq = window.matchMedia(NARROW_MEDIA_QUERY);
-    const sync = () => setIsNarrow(mq.matches);
-    sync();
-    mq.addEventListener("change", sync);
-    return () => mq.removeEventListener("change", sync);
-  }, []);
+  // ⚠️ 判据是**操作系统**（`isNarrowLayout()`，仅 Android），不是视口宽度。
+  // 早先这里读 `matchMedia("(max-width: 639px)")`，于是把桌面窗口拖窄就会
+  // 掉进单列堆叠：卡片变成只读长列表，拖拽编辑整套消失。
+  const isNarrow = isNarrowLayout();
 
   const observerRef = useRef<ResizeObserver | null>(null);
 

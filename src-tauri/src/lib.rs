@@ -851,6 +851,12 @@ pub(crate) fn create_main_window<R: Runtime>(
             WebviewWindowBuilder::new(app, "main", app_webview_url(app, "index.html")?)
                 .title("endprotocol")
                 .inner_size(1200.0, 700.0)
+                // 最小尺寸：标题栏（品牌区 + 模式拨杆 + 铃铛 + 三个窗口按钮）
+                // 大约要 400px 才能排得下，再窄就会把窗口按钮挤出可视区 ——
+                // 表现为「窗口关不掉、也拖不动」。这**与窄屏模式无关**：
+                // 窄屏模式只看操作系统（`isNarrowLayout()`，仅 Android），
+                // 桌面窗口再窄也保持桌面版式，所以这里只需要保证版式本身不塌。
+                .min_inner_size(640.0, 480.0)
                 .resizable(true)
                 .center()
                 .decorations(false)

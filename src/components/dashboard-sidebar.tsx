@@ -144,11 +144,11 @@ function GripHandle({
         e.preventDefault();
         e.stopPropagation();
       }}
-      /* 窄屏隐藏：拖拽换位依赖 `onMouseEnter` 越过另一项触发交换，
+      /* 窄屏模式（仅 Android）隐藏：拖拽换位依赖 `onMouseEnter` 越过另一项触发交换，
          触屏上 mouseenter 不触发 —— 手柄显示出来也换不了位。
-         桌面端侧栏所在的容器是 `hidden lg:flex`，所以这里用 `lg:block`
-         正好只让桌面侧栏显示手柄。 */
-      className={`hidden lg:block absolute right-1.5 top-1/2 -translate-y-1/2 p-1 rounded-md opacity-0 group-hover:opacity-100 transition-all duration-150 cursor-grab text-muted hover:text-foreground active:cursor-grabbing ${
+         桌面端侧栏所在的容器是 `hidden wide:flex`（见 `layouts/dashboard.tsx`），
+         所以这里用 `wide:block` 正好只让桌面侧栏显示手柄。 */
+      className={`hidden wide:block absolute right-1.5 top-1/2 -translate-y-1/2 p-1 rounded-md opacity-0 group-hover:opacity-100 transition-all duration-150 cursor-grab text-muted hover:text-foreground active:cursor-grabbing ${
         isDragging ? "opacity-100 cursor-grabbing" : ""
       }`}
       aria-label="Drag to reorder"
@@ -1364,7 +1364,7 @@ export const Sidebar = ({
                   </button>
                 )}
                 {!searchQuery && (
-                  <GlassKbd className="hidden lg:inline-flex text-xs">
+                  <GlassKbd className="hidden wide:inline-flex text-xs">
                     <GlassKbd.Abbr keyValue="command" />
                     <GlassKbd.Content>K</GlassKbd.Content>
                   </GlassKbd>

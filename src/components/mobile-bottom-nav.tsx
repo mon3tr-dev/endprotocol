@@ -78,7 +78,10 @@ export function MobileBottomNav({ game }: MobileBottomNavProps) {
   );
 
   return (
-    <nav className="mobile-bottom-nav lg:hidden" aria-label={t("sidebar.title", "主导航")}>
+    <nav
+      className="mobile-bottom-nav hidden narrow:block"
+      aria-label={t("sidebar.title", "主导航")}
+    >
       <div className="relative mx-auto flex h-[62px] items-stretch overflow-hidden rounded-full border border-separator/70 p-1.5 shadow-lg lg-control">
         <GlassPillIndicator index={activeIndex} count={entries.length} />
         {entries.map((entry) => {

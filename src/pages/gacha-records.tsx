@@ -896,10 +896,10 @@ export default function GachaRecordsPage() {
        * 早先尝试过把两者合并成一条（页面分类占用时导航让位），代价是
        * 「某些页面上底部导航整条消失」，已回退。
        *
-       * 桌面端（lg+）不显示这条：宽屏用下面那条吸底胶囊（原来的布局）。
+       * 桌面端（wide，即非窄屏模式）不显示这条：宽屏用下面那条吸底胶囊（原来的布局）。
        */}
       <div
-        className="lg:hidden sticky z-30"
+        className="hidden narrow:block sticky z-30"
         style={{ top: 10 }}
       >
         {/* 实底壳：sticky 吸住时内容从下方滚过，半透明玻璃挡不住加粗标题 */}
@@ -1197,8 +1197,8 @@ export default function GachaRecordsPage() {
        * 只有一层 DOM、一套命中区，行为确定。
        */}
 
-      {/* 桌面端（lg+）仍在页面内吸底 —— 那里是宽屏布局，没有窄屏导航条。 */}
-      <div className="hidden lg:flex sticky z-40 bottom-4 mx-auto rounded-full p-1.5 lg-control border border-separator/70 shadow-lg w-full max-w-2xl">
+      {/* 桌面端仍在页面内吸底 —— 那里是宽屏布局，没有窄屏导航条。 */}
+      <div className="hidden wide:flex sticky z-40 bottom-4 mx-auto rounded-full p-1.5 lg-control border border-separator/70 shadow-lg w-full max-w-2xl">
         {/*
          * 滑动指示器：与窄屏底部胶囊**共用同一组件**，几何完全一致
          * （内容区内缩 + 上下留白 + 惯性滑动的 glide 缓动）。

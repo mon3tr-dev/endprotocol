@@ -42,13 +42,16 @@ export const CustomModal: React.FC<CustomModalProps> = ({
   height = "auto",
 }) => {
   const config = SIZE_CONFIG[size] ?? SIZE_CONFIG.md;
-  const isNarrow = useIsBelowSm();
   // 高度上限用 `dvh`（动态视口高度）：移动端浏览器地址栏收起/展开时
   // `vh` 不会变，弹窗会超出实际可见区域；`dvh` 跟着变。
+  //
+  // ⚠️ 宽屏分支用 `wide:` 而不是 `sm:`：`sm:` 是视口宽度，桌面窗口拖窄时
+  // 会让弹窗掉进「移动端尺寸」，而 `isNarrow` 此时是 false（桌面版式），
+  // 两者说的不是同一件事。
   const dialogHeightClass =
     height === "fixed"
-      ? "!h-[85dvh] sm:!h-[90vh] !max-h-[85dvh] sm:!max-h-[90vh]"
-      : "!max-h-[85dvh] sm:!max-h-[90vh]";
+      ? "!h-[85dvh] wide:!h-[90vh] !max-h-[85dvh] wide:!max-h-[90vh]"
+      : "!max-h-[85dvh] wide:!max-h-[90vh]";
 
   return (
     <GlassModal
@@ -66,9 +69,9 @@ export const CustomModal: React.FC<CustomModalProps> = ({
           placement="center"
           scroll="inside"
         >
-          {/* 窄屏：底部抽屉贴底（去掉 my-auto 的居中倾向）；
+          {/* 窄屏模式：底部抽屉贴底（去掉 my-auto 的居中倾向）；
               宽屏：保持 my-auto 让卡片在容器内垂直居中。 */}
-          <div className="relative w-full sm:my-auto">
+          <div className="relative w-full wide:my-auto">
             <GlassModal.Dialog
               className={`!p-0 ${config.widthClass} ${dialogHeightClass} flex flex-col`}
             >

@@ -39,7 +39,7 @@
 
 - `buildSettingsSections({supportsLauncher, supportsTray, supportsUpdateChecks})` 按平台能力生成分区，与页面真实渲染的卡片严格对应（Windows 才有「游戏启动」，移动端无「关闭窗口时 / 托盘显示用户」，「更新通道 / 更新源」随 `supportsUpdateChecks`）。
 - 搜索对「分区标签 + 设置项标签 + `keywords`」做归一化匹配（转小写、压掉空格与 `-_/·`），所以「下载线程」「download-threads」都能命中同一条。
-- 跳转走 `jumpToSettingAnchor(anchorId)`：`scrollIntoView({block:"start"})` + 给目标加 `.settings-anchor-flash`（globals.css 的 outline 动画，1.4s 后自动移除）。窄屏用 `[id^="settings-"] { scroll-margin-top: 104px }` 让开吸住的搜索条。
+- 跳转走 `jumpToSettingAnchor(anchorId)`：`scrollIntoView({block:"start"})` + 给目标加 `.settings-anchor-flash`（globals.css 的 outline 动画，1.4s 后自动移除）。窄屏模式用 `html[data-narrow-layout="on"] [id^="settings-"] { scroll-margin-top: 104px }` 让开吸住的搜索条（判据是操作系统：`isNarrowLayout()`，仅 Android；桌面窗口拖窄时左侧分区栏仍在，不需要这段偏移）。
 - 当前分区由 `useActiveSettingsSection(anchorIds)` 计算：rAF 节流的**捕获阶段** `scroll` 监听（`<main>` 是滚动容器，`scroll` 不冒泡），按「最后一条顶边越过阈值」判定，滚到底强制选中最后一个分区。
 - 桌面 `Cmd/Ctrl+F` 聚焦可见的那个搜索框（两个断点各渲染一个，`display:none` 的那个 `focus()` 无效）。
 

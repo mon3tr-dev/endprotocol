@@ -154,14 +154,14 @@
 | 区间 | 结构 / 职责 |
 | --- | --- |
 | 1-24 | import 声明 |
-| 26-42 | 网格常量与背景：`GRID_SIZE = 100`（:35，网格**坐标/基准**单位，与视口无关）；`NARROW_BREAKPOINT = 640`（:43，窄屏断点，与 Tailwind `sm` 对齐）；`NARROW_MEDIA_QUERY`（:44，由断点拼出的媒体查询）；`generateGridSVG(isDragging)` 生成虚线网格 data-URI（拖拽时透明度 0.3，否则 0.15） |
+| 26-47 | 网格常量与背景：`GRID_SIZE = 100`（:36，网格**坐标/基准**单位，与视口无关）；`generateGridSVG(isDragging)` 生成虚线网格 data-URI（拖拽时透明度 0.3，否则 0.15）。原 `NARROW_BREAKPOINT` / `NARROW_MEDIA_QUERY` 已随「窄屏模式只看操作系统」一并移除 |
 | 43 | `export const CONTAINER_HEIGHT = 2000`（容器可用高度，被 `src/pages/account.tsx:16` 引用） |
 | 45-51 | `FreeDragCardProps`（接口，未导出）：`card`/`roleId`/`isEditMode`/`onRemoveCard`/`onUpdatePosition` |
 | 53-445 | `FreeDragCard()`（私有组件）：单张可拖拽卡片外壳，见下方细分行。**窄屏缩放**：额外接收 `gridScale`（默认 1），内部用 `cell = GRID_SIZE * gridScale` 计算 `left/top/width/height`；布局坐标仍按 100 记，渲染时统一乘系数。**窄屏堆叠**：额外接收 `stacked`（默认 false），为真时卡片回到文档流（`position: relative` / `width: 100%` / `height: h*cell-2` / `flexShrink: 0`），不写 `left/top/transform`；同时禁用 dnd-kit（`useDraggable` 的 `disabled: !isEditMode \|\| stacked`）、不挂 `attributes/listeners`、不接管 pointer 事件与长按进度环（编辑模式只保留删除按钮与右键菜单） |
 | 447-456 | `CardContainerProps`（接口，未导出）：`roleId`、`tabId?`、`cards: CardConfig[]`、`onRemoveCard`、`isEditMode?`、`onEnterEditMode?`、`onExitEditMode?`、`highlightCardId?` |
 | 458-957 | `CardContainer()`（导出组件）：容器主体，见下方细分行 |
 | `gridScale` 测量 | `CardContainer` 内用**回调 ref**（`gridAreaRef`）在网格容器挂载时起 `ResizeObserver`，求 `min(1, (w-1)/(4*100))`。**为什么缩放**：卡片是绝对定位且宽度写死为 `w*100`，411px 宽的手机内容区只有 379px，4 列 = 398px 会探出右边缘（整页横向溢出 4px）。缩放而非改坐标，是因为坐标是持久化的用户布局；桌面宽屏系数恒为 1，行为不变。拖拽吸附同样除以 `cell`，否则缩放下拖一格吸附不上。**为什么用回调 ref 而不是 `useEffect(…, [])`**：空列表时组件提前 return，网格 div 不存在，空依赖 effect 只在无节点那一刻跑一次、之后永不重跑，加进第一张卡时测量结果仍是初值 |
-| `isNarrow`（窄屏堆叠） | `useState` 初值取 `matchMedia(NARROW_MEDIA_QUERY).matches`，并由 `useEffect` 订阅 `change` 事件同步。以**视口**宽度为准而不用内容区宽度——内容区还受侧栏展开与否影响，用它会「关掉侧栏就换布局、来回跳」。为真时：格子边长固定为 1:1（不再随视口缩小，否则越窄手机卡片越矮）、卡片列表改为 `flex flex-col` + `rowGap: 12`、不渲染网格背景/落点高亮/行列坐标标签、卡片按 `y` 再 `x` 排序（`displayCards`）以保持与桌面一致的阅读顺序 |
+| `isNarrow`（窄屏堆叠） | **判据是操作系统，不是视口宽度**：直接 `const isNarrow = isNarrowLayout()`（`@/utils/platform`，仅 Android）。早先它取 `matchMedia("(max-width: 639px)")` 并由 `useEffect` 订阅 `change`，于是把桌面窗口拖窄，卡片就掉进只读的单列堆叠、拖拽编辑整套消失。为真时：格子边长固定为 1:1（不再随视口缩小，否则越窄卡片越矮）、卡片列表改为 `flex flex-col` + `rowGap: 12`、不渲染网格背景/落点高亮/行列坐标标签、卡片按 `y` 再 `x` 排序（`displayCards`）以保持与桌面一致的阅读顺序 |
 
 ### `FreeDragCard` 细分（53-445）
 

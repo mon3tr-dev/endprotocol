@@ -203,6 +203,7 @@
 | --- | --- |
 | 1 行 | `@import "tailwindcss"`（Tailwind v4 入口） |
 | 3 行 | `@custom-variant dark` —— 深色变体以 `.dark` 类为作用域（`&:is(.dark *)`），即**类名切换式深色模式** |
+| 5-24 行 | `@custom-variant narrow` / `@custom-variant wide` —— **窄屏模式变体**，只读 `<html data-narrow-layout="on\|off">`，**与视口宽度无关**（判据是操作系统，见 `utils/platform.ts` 的 `isNarrowLayout()`，仅 Android）。骨架层（侧边栏 / 标题栏 / 底部导航 / 窄屏顶栏 / FAB 贴底偏移）一律用这两个变体；`sm:` `md:` `lg:` `xl:` 只保留给页面内容自身的密度（字号、内边距、栅格列数） |
 | 6-96 行 | `@layer base` 主题令牌：`:root`（7-66 行）浅色变量；`.dark`（67-95 行）覆盖为深色变量 |
 | 98-151 行 | `@theme inline` —— 把 CSS 变量桥接为 Tailwind 语义色（`--color-background`、`--color-primary` 等）并派生 radius 刻度 |
 | 159-190 行 | `.glass-field` 原生玻璃输入控件（底色 + 模糊位于 `::before` 独立层；`input/textarea/select` 因不支持伪元素改为直接铺底色、去掉模糊） |
@@ -259,6 +260,7 @@
 
 **主题切换 / 深色模式实现**：
 1. 深色由 `@custom-variant dark`（:3）定义，JS 在 `<html>` 上挂 `.dark` 类（而非 `prefers-media-query`）驱动；`.dark` 块（67-95 行）覆盖颜色变量，`color-scheme` 由 light 翻转为 dark。
+2. **窄屏模式与深色模式同一套机制**：`narrow:` / `wide:`（:5-24）读 `<html data-narrow-layout>`，属性由 `applyNarrowLayoutMode()`（`utils/platform.ts`，`main.tsx` 首帧前调用）与 `index.html` 的启动内联脚本写入。因此「窗口被拖窄」不会触发任何骨架层切换 —— 早先这里是 `lg:` 媒体查询，桌面窗口缩到 640px 以下就会切到窄屏版式，桌面标题栏（含窗口控制按钮与 `data-tauri-drag-region`）被 `hidden lg:block` 藏掉，窗口既不能拖也关不掉。
 2. `:root` 与 `.dark` 的变量经 `@theme inline`（98-151 行）映射为 Tailwind 的 `bg-background`、`text-foreground`、`bg-surface`、`border-border`、`text-primary` 等工具类，实现全站一键换肤。
 3. 主题色（accent）改写 `--primary*` / `--accent` 变量即可全局生效；多处用 `color-mix(in oklab/oklch, var(--primary) …)` 派生 hover/发光色，因此换色自动跟随。
 

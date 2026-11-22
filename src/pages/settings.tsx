@@ -435,8 +435,8 @@ export default function SettingsPage() {
      * 窄屏仍是 `flex-col`：标题 → 吸附条 → 卡片，整页随 `<main>` 滚动。
      * 手机上标题不钉住，把高度留给内容；分区导航由吸附的搜索条承担。
      */
-    <div className="mx-auto flex w-full max-w-3xl flex-col pb-12 lg:grid lg:h-full lg:max-w-5xl lg:grid-cols-[248px_minmax(0,1fr)] lg:grid-rows-[auto_minmax(0,1fr)] lg:gap-x-6 lg:pb-0">
-      <header className="shrink-0 lg:col-start-1 lg:row-start-1">
+    <div className="mx-auto flex w-full max-w-3xl flex-col pb-12 wide:grid wide:h-full wide:max-w-5xl wide:grid-cols-[248px_minmax(0,1fr)] wide:grid-rows-[auto_minmax(0,1fr)] wide:gap-x-6 wide:pb-0">
+      <header className="shrink-0 wide:col-start-1 wide:row-start-1">
         <h1 className="text-2xl font-bold tracking-tight text-foreground lg:text-3xl">
           {t("settings.title")}
         </h1>
@@ -466,7 +466,7 @@ export default function SettingsPage() {
       />
 
       {/* 左栏导航：宽屏占 row 2（标题下方）；窄屏由上面的吸附条负责，这里隐藏 */}
-      <div className="lg:col-start-1 lg:row-start-2 lg:flex lg:min-h-0 lg:flex-col">
+      <div className="wide:col-start-1 wide:row-start-2 wide:flex wide:min-h-0 wide:flex-col">
         <SettingsSideNav
           sections={sections}
           activeAnchor={activeAnchor}
@@ -516,7 +516,7 @@ export default function SettingsPage() {
        */}
       <div
         data-no-ovs
-        className="mt-6 min-w-0 space-y-6 lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:-ml-2 lg:-mr-2 lg:-mt-4 lg:min-h-0 lg:overflow-y-auto lg:overflow-x-hidden lg:pb-6 lg:pl-2 lg:pr-2 lg:pt-4 lg:scroll-touch"
+        className="mt-6 min-w-0 space-y-6 wide:col-start-2 wide:row-span-2 wide:row-start-1 wide:-ml-2 wide:-mr-2 wide:-mt-4 wide:min-h-0 wide:overflow-y-auto wide:overflow-x-hidden wide:pb-6 wide:pl-2 wide:pr-2 wide:pt-4 wide:scroll-touch"
       >
         {/* General Settings */}
         <GlassCard

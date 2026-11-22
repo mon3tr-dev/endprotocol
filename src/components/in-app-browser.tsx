@@ -576,12 +576,13 @@ export function InAppBrowser() {
           </svg>
         </button>
 
-        {/* Refresh —— 窄屏隐藏：手机上没有「刷新」的习惯动作，
-            而它会把地址栏挤到只剩几十像素（见上方工具栏注释）。 */}
+        {/* Refresh —— 窄屏模式（仅 Android）隐藏：手机上「刷新」几乎用不上，
+            而它会把地址栏挤到只剩几十像素（见上方工具栏注释）。桌面窗口拖窄
+            不属于这种情况，刷新按钮必须保留。 */}
         <button
           type="button"
           onClick={handleRefresh}
-          className="hidden sm:flex w-7 h-7 items-center justify-center rounded-lg text-muted hover:text-foreground lg-hoverable transition-colors cursor-pointer"
+          className="hidden wide:flex w-7 h-7 items-center justify-center rounded-lg text-muted hover:text-foreground lg-hoverable transition-colors cursor-pointer"
           title={t("browser.refresh", "Refresh")}
           aria-label={t("browser.refresh", "Refresh")}
         >
@@ -590,11 +591,11 @@ export function InAppBrowser() {
           </svg>
         </button>
 
-        {/* Open in external browser —— 窄屏隐藏（同上） */}
+        {/* Open in external browser —— 窄屏模式（仅 Android）隐藏（同上） */}
         <button
           type="button"
           onClick={handleOpenExternal}
-          className="hidden sm:flex w-7 h-7 items-center justify-center rounded-lg text-muted hover:text-foreground lg-hoverable transition-colors cursor-pointer"
+          className="hidden wide:flex w-7 h-7 items-center justify-center rounded-lg text-muted hover:text-foreground lg-hoverable transition-colors cursor-pointer"
           title={t("browser.open_in_browser", "Open in Browser")}
           aria-label={t("browser.open_in_browser", "Open in Browser")}
         >

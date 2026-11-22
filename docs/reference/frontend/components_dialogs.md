@@ -25,7 +25,7 @@
 - 层级：Backdrop 固定 `z-[100]`；Dialog 尺寸/滚动由 `GlassModal.Container` 的 `size` + `scroll="inside"` 控制。
 - 无 `invoke` / `listen` / i18n，纯展示层。
 - 异常：`ModalSize`（line 5）声明了 `xs/full/cover` 但 `SIZE_CONFIG` 无这些键，且该类型未被使用——外部传 `size="xs"` 或 `"full"` 会静默回退到 `md`。
-- **窄屏整体形态**：居中卡片 → **底部抽屉**（`useIsBelowSm()` 判定，判定与形变都交给 `GlassModal` 的 `Container`/`Dialog`/`Backdrop`）。理由见 `ui_components.md` 的 modal 段落。
+- **窄屏整体形态**：居中卡片 → **底部抽屉**（`useIsBelowSm()` 判定，判定与形变都交给 `GlassModal` 的 `Container`/`Dialog`/`Backdrop`）。`useIsBelowSm()` **只看操作系统**（`isNarrowLayout()`，仅 Android），不随窗口宽度变化 —— 桌面窗口拖窄时弹窗仍是居中卡片。理由见 `ui_components.md` 的 modal 段落。
 
 ## `src/components/close-confirm-dialog.tsx`
 **职责**：关闭窗口二次确认对话框，让用户选择「最小化到托盘」或「关闭程序」，可勾选记住选择并写入配置。
@@ -109,7 +109,7 @@
 | 渲染/portal | app-info-drawer.tsx:33-90 | `isOpen` 为 `false` 时返回 `null`；`createPortal(..., document.body)`。遮罩 `fixed inset-0 z-[200]`，抽屉本体 `fixed inset-y-0 right-0 z-[210] w-[380px] max-w-[85vw] rounded-l-2xl`，并 `stopPropagation` 防止点击抽屉关闭。**窄屏改底部抽屉**（`inset-x-0 bottom-0 w-full max-h-[85dvh] border-t rounded-t-2xl`，`lg:` 断点恢复右侧抽屉形态），并吃掉底部安全区 |
 | 内容块 | app-info-drawer.tsx:42-90 | 顶部抓手（仅窄屏 `.mobile-sheet-grip`）→「全部已读」按钮（仅 `unreadCount > 0` 时显示）→ 消息列表（空态为铃铛 SVG + 文案，否则 `msgs.map(m => <MessageCard key={m.id} msg={m} />)`） |
 
-**窄屏行为**：右侧抽屉改成**底部抽屉**。原来固定 380px 宽、右侧贴边，在手机上会占掉 2/3 屏宽，背后的消息列表只剩一条缝；而消息中心是竖向内容，底部抽屉能给出完整宽度 + 拇指可达的关闭位置。高度留出顶部安全区，避免被状态栏压住。
+**窄屏行为**：右侧抽屉改成**底部抽屉**（`narrow:` / `wide:` 变体驱动，判据是操作系统而非视口宽度）。原来固定 380px 宽、右侧贴边，在手机上会占掉 2/3 屏宽，背后的消息列表只剩一条缝；而消息中心是竖向内容，底部抽屉能给出完整宽度 + 拇指可达的关闭位置。高度留出顶部安全区，避免被状态栏压住。
 
 **备注**：
 - 无 `invoke` / `listen`（数据同步靠 `subscribeMessages` 回调，非 Tauri 事件）。

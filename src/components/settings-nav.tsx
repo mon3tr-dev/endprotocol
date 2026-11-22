@@ -696,7 +696,7 @@ export function SettingsSideNav({
      * 的网格项里（见 settings.tsx 的左栏容器），必须是 flex 子项才能拿到
      * 确定高度，内部那个 `h-full` 才解析得出来。
      */
-    <aside className="hidden lg:block lg:min-h-0 lg:flex-1">
+    <aside className="hidden wide:block wide:min-h-0 wide:flex-1">
       {/*
        * 竖向 flex，`h-full` 取满可用高度。
        *
@@ -854,7 +854,7 @@ export function SettingsMobileNav({
       ref={navRef}
       // 贴住 `<main>` 的滚动视口：`sticky top-0` 的偏移基准是滚动容器的
       // padding box，而 `<main>` 本身已让开了顶部安全区与移动端顶栏。
-      className="sticky top-0 z-20 -mx-3 mb-4 mt-4 border-b border-separator/50 bg-background px-3 pb-2 pt-2 sm:-mx-4 sm:px-4 lg:hidden"
+      className="sticky top-0 z-20 -mx-3 mb-4 mt-4 border-b border-separator/50 bg-background px-3 pb-2 pt-2 sm:-mx-4 sm:px-4 wide:hidden"
     >
       <SettingsSearchField value={query} onChange={onQueryChange} />
 

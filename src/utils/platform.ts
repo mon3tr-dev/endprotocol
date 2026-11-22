@@ -47,6 +47,26 @@ export function isDesktopApp(): boolean {
 }
 
 /**
+ * 是否启用**窄屏模式**（底部导航栏那一套版式）。
+ *
+ * ⚠️ 判据是**操作系统**，不是视口宽度。
+ *
+ * 早先这里统一走 `useIsBelowSm()`（`max-width: 639px`）与 Tailwind 的 `lg:`
+ * 断点，结果是「把电脑上的窗口拖窄」也会切进窄屏版式：侧边栏与桌面标题栏
+ * 一起消失，换成窄屏顶栏 + 底部导航 —— 而窄屏顶栏按设计**不带窗口控制按钮**，
+ * 窗口既不能拖动也不能关闭，只能靠任务栏或键盘恢复窗口大小。
+ *
+ * 窄屏版式本身是为 Android 手写的（全屏、贴底导航、安全区、拇指可达），
+ * 桌面窗口只是「画布变小」而不是「设备变了」，所以这里只认 Android。
+ * 桌面端无论窗口多窄都保持桌面版式（侧边栏 + 标题栏 + 窗口按钮）。
+ *
+ * iOS 暂时也返回 `false`：Tauri iOS 尚未出包，等真要支持时把它并入即可。
+ */
+export function isNarrowLayout(): boolean {
+  return isAndroidApp();
+}
+
+/**
  * 是否是「粗指针 / 无悬停」设备（手机、平板触屏）。
  *
  * 桌面浏览器在某些外接触屏屏上也会命中 `(hover: none)`，但桌面端的主交互
@@ -132,6 +152,7 @@ export function needsSelfDrawnWindowRadius(): boolean {
 
 const WINDOW_EFFECTS_ATTR = "data-window-effects";
 const WINDOW_RADIUS_ATTR = "data-window-radius";
+const NARROW_LAYOUT_ATTR = "data-narrow-layout";
 
 /**
  * 把窗口磨砂能力写进 `<html data-window-effects="native|fallback">`，
@@ -149,5 +170,25 @@ export function applyWindowEffectsSupport(): void {
   root.setAttribute(
     WINDOW_RADIUS_ATTR,
     needsSelfDrawnWindowRadius() ? "self" : "native",
+  );
+  applyNarrowLayoutMode();
+}
+
+/**
+ * 把「是否窄屏模式」写进 `<html data-narrow-layout="on|off">`，供
+ * `globals.css` 的 `narrow:` / `wide:` 变体（见 `@custom-variant`）分流。
+ *
+ * 由 `isNarrowLayout()` 决定 —— 即**只看操作系统**，与窗口/视口宽度无关。
+ * 写入 `html` 而不是某个容器：`<body>` 下还有大量 portal 出来的浮层
+ * （弹窗、抽屉、FAB）不在布局 DOM 树里，只有根元素能覆盖到它们。
+ *
+ * `applyWindowEffectsSupport()` 会顺带调用；`index.html` 的启动内联脚本
+ * 也写了同一个属性 —— 那次写入早于样式表首帧，保证不会先闪一帧桌面版式。
+ */
+export function applyNarrowLayoutMode(): void {
+  if (typeof document === "undefined") return;
+  document.documentElement.setAttribute(
+    NARROW_LAYOUT_ATTR,
+    isNarrowLayout() ? "on" : "off",
   );
 }

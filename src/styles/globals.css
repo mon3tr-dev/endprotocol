@@ -2,6 +2,25 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* ------------------------------------------------------------------
+ * 窄屏模式变体：`narrow:` / `wide:`
+ *
+ * ⚠️ **判据是操作系统，不是视口宽度**。`utils/platform.ts` 的
+ * `isNarrowLayout()`（= 仅 Android）在首屏前把结果写进
+ * `<html data-narrow-layout="on|off">`，这里只读那个属性。
+ *
+ * 早先骨架层的切换写的是 `lg:` 断点 —— 于是「把桌面窗口拖窄」也会切进
+ * 窄屏版式：侧边栏与桌面标题栏一起消失，换成窄屏顶栏 + 底部导航，而
+ * 窄屏顶栏按设计**没有窗口控制按钮**，窗口既不能拖动也关不掉。
+ *
+ * 现在骨架层（侧边栏 / 标题栏 / 底部导航 / 窄屏顶栏 / FAB 贴底偏移）
+ * 一律用 `narrow:` / `wide:`，与窗口大小无关；`sm:` `md:` `lg:` `xl:`
+ * 只保留给**页面内容自身的密度**（字号、内边距、栅格列数），那类样式
+ * 跟着画布宽度变是正确的，且不影响窗口控制。
+ * ------------------------------------------------------------------ */
+@custom-variant narrow (html[data-narrow-layout="on"] &);
+@custom-variant wide (html:not([data-narrow-layout="on"]) &);
+
 /* Theme Tokens */
 @layer base {
   :root {
@@ -2278,11 +2297,11 @@ html {
  * `scroll-margin-top` 让浏览器自己让开这段距离，不依赖 JS 算偏移。
  *
  * `[id^="settings-"]` 覆盖设置页全部锚点（分区卡片 + 每一行设置项）：
- * 窄屏才需要让位（桌面左侧是分区栏，它不覆盖内容列），故只在 < lg 生效。 */
-@media (max-width: 1023px) {
-  [id^="settings-"] {
-    scroll-margin-top: 104px;
-  }
+ * 只有窄屏模式才需要让位（桌面左侧是分区栏，它不覆盖内容列）。
+ * 判据与分区栏本体一致 —— `html[data-narrow-layout="on"]`（仅 Android），
+ * **不是视口宽度**：桌面窗口拖窄时分区栏仍在左侧，不该凭空多出 104px 偏移。 */
+html[data-narrow-layout="on"] [id^="settings-"] {
+  scroll-margin-top: 104px;
 }
 
 /* 设置项定位高亮：从设置导航（分区栏 / 搜索框）跳到某一项后，目标行短暂

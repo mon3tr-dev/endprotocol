@@ -55,13 +55,13 @@ export function BackToTopFab({
     <button
       type="button"
       className={cn(
-        // 移动端（<lg）：右下角是**悬浮的底部导航胶囊**（`fixed bottom-0`，高 58px，
-        // 通栏），与本按钮的 `bottom-6 right-6` 完全重合 —— 本按钮
-        // z-[10003] 更高，会把导航胶囊整个盖住，导航在移动端就用不了了。
-        // 参照 DashboardFAB 的做法：<lg 抬到导航胶囊上方，lg 及以上恢复 bottom-6
-        // （桌面没有底部导航）。
+        // 窄屏模式（仅 Android）：右下角是**悬浮的底部导航胶囊**（`fixed bottom-0`，
+        // 高 62px，通栏），与本按钮的 `bottom-6 right-6` 完全重合 —— 本按钮
+        // z-[10003] 更高，会把导航胶囊整个盖住，导航在手机上就用不了了。
+        // 参照 DashboardFAB 的做法：窄屏抬到导航胶囊上方；桌面端永远是 `bottom-6`
+        // （桌面没有底部导航，窗口拖窄也不会切过去，见 `utils/platform.ts`）。
         "fixed right-6 z-[10003] w-12 h-12 rounded-full bg-primary text-primary-foreground shadow-lg flex items-center justify-center transition-all duration-300 hover:scale-110 active:scale-90",
-        "bottom-[calc(7rem+var(--safe-area-bottom))] lg:bottom-6",
+        "bottom-6 narrow:[bottom:calc(7rem+var(--safe-area-bottom))]",
         className,
       )}
       onClick={() => getContainer()?.scrollTo({ top: 0, behavior: "smooth" })}

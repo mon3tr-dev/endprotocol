@@ -86,7 +86,7 @@
 **内部结构**：
 - 按当前游戏过滤入口：`PRIMARY_NAV.filter(entry => isNavVisible(entry.key, game))` —— 与侧栏**同一张真值表**，两处不会给出不同答案。「我的」对应的 `account` 键未登记在 `PAGE_GAME_SUPPORT`，任何账户下都常驻。
 - `isActive(path)`：`path === "/"` 时精确匹配，否则 `location.pathname.startsWith(path)`；`activeIndex` 由它算给指示器。
-- 渲染：`<nav class="mobile-bottom-nav lg:hidden">` → 胶囊容器（`relative mx-auto flex h-[62px] items-stretch overflow-hidden rounded-full border border-separator/70 p-1.5 shadow-lg lg-control`）→ `GlassPillIndicator` + 每个入口一个 `GlassPillItem`（`flex-1 min-w-0` 等分）。五个入口共用同一段渲染逻辑，无「更多」特例。
+- 渲染：`<nav class="mobile-bottom-nav hidden narrow:block">` → 胶囊容器（`relative mx-auto flex h-[62px] items-stretch overflow-hidden rounded-full border border-separator/70 p-1.5 shadow-lg lg-control`）→ `GlassPillIndicator` + 每个入口一个 `GlassPillItem`（`flex-1 min-w-0` 等分）。五个入口共用同一段渲染逻辑，无「更多」特例。
 
 **高度与内边距必须一起定（62px，实测确认）**：
 - 胶囊 `h-[62px]` + `p-1.5`（6px）+ 1px 边框，内容区 48px；竖排「18px 图标 + 2px 间距 + 12.5px 文字」共约 32.5px，居中后余 16px。
@@ -101,7 +101,7 @@
 - **为什么只放 5 格**：再多就会挤（每格不足 64px，低于 44px 的可点区域下限），而且高频入口本来就只有这几个；次级工具入口收进顶栏的「更多工具」顶部抽屉（矩阵显示）。
 - **游戏过滤的两套「游戏」不要混淆**：`game` prop 传的是**当前选中账户**的游戏（`endfield` / `arknights`，决定哪些页面可用），与 `stores/launcherGame` 的「当前启动器游戏页」不是一回事。布局层 `layouts/dashboard.tsx` 用 `getSelectedAccount()` + `getAccounts()` 取到它。
 - **invoke 命令**：本文件 0 个直接 `invoke`；账户数据由布局层取好后传入。
-- **使用点**：`src/layouts/dashboard.tsx`（数据模式的 DATA MODE 分支，`lg:hidden`）。
+- **使用点**：`src/layouts/dashboard.tsx`（数据模式的 DATA MODE 分支，`hidden narrow:block`）。**显隐走 `narrow:` 变体而不是 `lg:`**：窄屏模式只看操作系统（`isNarrowLayout()`，仅 Android），桌面窗口拖窄也**不**渲染这条导航，桌面标题栏与侧边栏照常保留（否则窗口会失去拖动区与关闭按钮）。
 
 ## `src/components/me-page.tsx`
 **职责**：**Android / 窄屏专属的「我的」页面**（个人中心形态）。底部导航最右一格「Me」进入的就是它（路由仍是 `/account`）。结构自上而下：**下拉刷新指示器** → 头部（`SwipeCarousel` 头像轮播，左右滑动切号；单账户时退化为静态头像）+ 昵称 + 用户 ID + 等级/服务器/同步状态 + 右上角设置 → **页面入口矩阵**（4 列网格，按账户游戏过滤）→ 账户维护列表（添加账户 / 设置）→ 版本号。

@@ -480,7 +480,7 @@
 
 ## `src/utils/platform.ts`
 **职责**：同步判断当前 WebView/浏览器运行平台，供平台能力受限的 UI 做一致性门控；并把「窗口是否有原生磨砂」「窗口圆角由谁负责」写进根元素供样式层分流。
-**导出**：`isWindowsPlatform(): boolean`、`isMacPlatform(): boolean`、`isAndroidApp(): boolean`、`isIosApp(): boolean`、`isMobileApp(): boolean`、`isDesktopApp(): boolean`、`isTouchPrimaryDevice(): boolean`、`supportsHover(): boolean`、`supportsNativeWindowEffects(): boolean`、`needsSelfDrawnWindowRadius(): boolean`、`applyWindowEffectsSupport(): void`。
+**导出**：`isWindowsPlatform(): boolean`、`isMacPlatform(): boolean`、`isAndroidApp(): boolean`、`isIosApp(): boolean`、`isMobileApp(): boolean`、`isDesktopApp(): boolean`、`isNarrowLayout(): boolean`、`isTouchPrimaryDevice(): boolean`、`supportsHover(): boolean`、`supportsNativeWindowEffects(): boolean`、`needsSelfDrawnWindowRadius(): boolean`、`applyWindowEffectsSupport(): void`、`applyNarrowLayoutMode(): void`。
 **主要依赖**：浏览器 `navigator.platform` / `navigator.userAgent` / `navigator.userAgentData`、`window.matchMedia`、`document.documentElement`。
 
 | 符号 | 位置 | 说明 |
@@ -491,16 +491,20 @@
 | `isIosApp` | platform.ts:31 | UA 含 `iphone|ipad|ipod`（预留，Tauri iOS 同按移动端处理） |
 | `isMobileApp` | platform.ts:40 | `isAndroidApp() \|\| isIosApp()`；Android/iOS 移动端门控的统一入口（托盘、更新器、窗口控制、取色器等全部按它隐藏） |
 | `isDesktopApp` | platform.ts:45 | `!isMobileApp()` |
+| `isNarrowLayout` | platform.ts:65 | **窄屏模式（底部导航栏那一套版式）的唯一判据：只看操作系统，不看视口宽度**。当前实现为 `isAndroidApp()`。历史上这里走的是 `useIsBelowSm()`（`max-width: 639px`）与 Tailwind `lg:` 断点，于是「把桌面窗口拖窄」也会切进窄屏版式 —— 侧栏与桌面标题栏一起消失，而窄屏顶栏按设计不带窗口控制按钮，窗口既不能拖也关不掉。桌面端窗口再窄都是「画布变小」而不是「设备变了」，一律保持桌面版式。iOS 暂返回 `false`（未出包），将来并入即可 |
 | `isTouchPrimaryDevice` | platform.ts:59 | `(pointer: coarse)` **与** `(hover: none)` **同时**成立才算触屏主设备。两个条件同时用是刻意的：桌面浏览器接了外接触屏屏也会命中 `hover: none`，但桌面端主交互仍是鼠标；只问 `pointer: coarse` 会把触屏笔记本误判成手机。用它把「只有悬停才出现」的控件（编辑/删除/更多）在手机上改成常驻或点击触发 |
 | `supportsHover` | platform.ts:77 | `(hover: hover)`——设备**能不能**稳定停在元素上并触发 hover。与 `isTouchPrimaryDevice` 互补：这个问的是能力，用于决定 tooltip / hover 浮出这类交互是否值得启用 |
 | `isTauriWindow`（私有） | platform.ts:91 | 读 `window.__TAURI_INTERNALS__`（Tauri v2 在每个 webview 注入）判断是否真在 Tauri 窗口内，不引入 `@tauri-apps/api`，保持本模块零依赖 |
 | `supportsNativeWindowEffects` | platform.ts:108 | Tauri 窗口内且为 Windows 或 macOS 才算有原生窗口磨砂。依据是 Tauri 的 `vibrancy::set_window_effects` 只按 `#[cfg(windows)]` / `#[cfg(target_os = "macos")]` 分发，Linux（WebKitGTK）分支什么都不做；直接用浏览器打开 dev server 时同样按无磨砂处理 |
 | `needsSelfDrawnWindowRadius` | platform.ts:124 | Tauri 窗口内、且**非移动端**、非 Windows 也非 macOS（即 Linux）时为 `true`：这类无边框窗口没有系统圆角，需前端自己裁。移动端（Android/iOS）是系统全屏窗口，排除在 clip-path 兜底之外 |
-| `applyWindowEffectsSupport` | platform.ts:142 | 写 `<html data-window-effects="native\|fallback">` 与 `<html data-window-radius="native\|self">`；必须在首屏渲染前调用（`main.tsx` 在 `setStartupPhase(12)` 之后、读配置之前调用，`tray-panel.tsx` 在挂载 React 前调用），否则会先闪一帧透明背景/直角窗口 |
+| `applyWindowEffectsSupport` | platform.ts:163 | 写 `<html data-window-effects="native\|fallback">` 与 `<html data-window-radius="native\|self">`，并顺带调用 `applyNarrowLayoutMode()`；必须在首屏渲染前调用（`main.tsx` 在 `setStartupPhase(12)` 之后、读配置之前调用，`tray-panel.tsx` 在挂载 React 前调用），否则会先闪一帧透明背景/直角窗口 |
+| `applyNarrowLayoutMode` | platform.ts:188 | 写 `<html data-narrow-layout="on\|off">`（值来自 `isNarrowLayout()`）。`globals.css` 的 `narrow:` / `wide:` 变体只读这个属性，因此**骨架层（侧边栏 / 标题栏 / 底部导航 / 窄屏顶栏 / FAB 贴底偏移）的切换与窗口宽度完全解耦**。写在 `html` 而不是某个容器上：弹窗、抽屉、FAB 都 portal 到 `body`，不在布局 DOM 树里。`index.html` 的启动内联脚本会先写一次同值属性（先于样式表首帧），避免闪一帧桌面版式 |
 
 **备注**：`isWindowsPlatform` 用于限定 Windows 原生屏幕取色器和游戏启动器；`isMobileApp` 用于 Android/iOS 适配（后端命令层面也有对应 stub，见 `docs/development.md` §2.1 的差异表）；`applyWindowEffectsSupport` 供 `globals.css` 分流两条样式——`data-window-effects="fallback"` 时给 `body` 铺不透明的 `--background`，让 `.dashboard-background` 的主题渐变在没有系统 Acrylic 的平台上真正渲染出来；`data-window-radius="self"` 时用 `clip-path: inset(0 round 12px)` 把整个窗口裁圆（Windows 交 DWM、macOS 交系统，只有 Linux 需要）。不依赖 IPC、配置或第三方库。
 
 **为什么新增 `isTouchPrimaryDevice` / `supportsHover`**：Tailwind v4 的 `hover:` 变体被包在 `@media (hover: hover)` 里（见 `tailwindcss/dist/lib.js` 的 `static("hover", …)`），因此在触屏设备上 `group-hover:opacity-100` **完全不生效** —— 那些「悬停才出现」的按钮在手机上不是「不好看」，而是**永远点不到**。这两个函数把「设备能不能悬停」变成可查询的事实，让组件在渲染期就能改用常驻 / 点击驱动的形态，而不是靠 CSS 补救。
+
+**为什么窄屏模式只认操作系统**：窄屏版式是为 Android 手写的（全屏、贴底导航、安全区、拇指可达），桌面窗口缩窄只是画布变小。按视口宽度判定的直接后果是**窗口被锁死**：桌面窗口一旦窄于 `lg`，桌面标题栏被 `hidden lg:block` 藏掉，换上不带 drag region、不带窗口按钮的 `MobileTopBar`，用户既拖不动也关不掉窗口，只能去任务栏恢复尺寸。所以判据收敛到 `isNarrowLayout()` 一处，CSS 侧对应 `narrow:` / `wide:` 变体（`globals.css` 顶部的 `@custom-variant`，读 `<html data-narrow-layout>`）；`sm:` `md:` `lg:` `xl:` 仍保留给**页面内容自身的密度**（字号、内边距、栅格列数），那类样式跟着画布宽度变是正确的。
 
 ## `src/utils/browserViewService.ts`
 **职责**：in-app browser 原生子 Webview 的后端导航服务封装。JS 侧 `@tauri-apps/api/webview` 的 `Webview` 类只有生命周期与布局方法（无 back/forward/reload/navigate/url），这些能力由 `src-tauri/src/commands/browser.rs` 以 app command 暴露，本文件统一加类型并把失败显式转成返回值，不抛给 UI 层。

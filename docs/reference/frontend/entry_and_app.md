@@ -32,6 +32,7 @@
 - 托盘数据不再在本文件组装：字段映射（含 `accountLevel` 游戏账号等级）全部下沉到 `@/utils/trayService`（main.tsx:16），本文件只在启动后触发一次刷新，因此 `invoke`/`roleDataService`/`getAccounts` 已不再直接出现在此。
 - 魔数：3000（更新检查延迟 ms）、5000（托盘数据拉取延迟 ms）、0（启动任务延迟 ms）；进度/主题色阶键名 50–900 为 Tailwind 风格约定。
 - `index.html` 的启动动画遵循 `prefers-reduced-motion`，静态启动文案先按浏览器语言显示，配置读取后切换为应用保存语言。另有 30 秒静态兜底计时器 `window.__endprotocolBootTimer`：若前端模块脚本未执行（加载/语法错误），静态展示「启动超时」与重新加载按钮；`main.tsx` 一旦执行即清除该计时器，改由 `armStartupTimeout` 的 45 秒看门狗接管。
+- `index.html` 的 `<head>` 内联脚本除了按 `theme` 挂 `.dark`，还会写 **`<html data-narrow-layout="on|off">`**（判据与 `utils/platform.ts` 的 `isNarrowLayout()` 一致：仅 Android）。这次写入早于样式表首帧，避免先闪一帧桌面版式；`globals.css` 的 `narrow:` / `wide:` 变体只读这个属性。⚠️ **不要把它改成视口宽度判断**：桌面窗口拖窄时切进窄屏版式会让窗口既不能拖动也关不掉。
 - `index.html` 末尾另有一个**模块求值阶段**的早期错误监听（捕获阶段 `error` + `unhandledrejection`）：`main.tsx` 之前抛出的错误（例如 vendor chunk 的 `Cannot set properties of undefined (setting 'Activity')`、资源加载失败）此时 `installCrashHandlers` 还没装上，界面只会停在「正在启动…」；该监听把首个未捕获错误（含 `file:line:col` 或失败的资源 URL）直接写进 `#startup-splash-error-detail` 并把状态文案改为「启动失败」，同时隐藏导出/打开日志按钮（此时后端尚未就绪）。`main.tsx` 把 `__endprotocolBootTimer` 置为 `undefined` 后该监听立即失效，不会与 React 侧崩溃弹窗重复报告。
 
 ## `src/App.tsx`
@@ -229,21 +230,23 @@
 - 使用点：`layouts/dashboard.tsx` 的底部内容排（`contentRowRef`）、`components/custom-titlebar.tsx` 的游戏名（`titleRef`）；序号与方向来自 `stores/launcherGame.ts` 的 `getGameSwitchSeq()` / `getGameSwitchDirection()`。
 
 ## `src/hooks/useMediaQuery.ts`
-**职责**：响应式媒体查询 Hook（SSR / 首帧安全），把「视口宽度 / 指针类型」这类**结构性**判断暴露给 React 组件。Tailwind 的 `sm:` / `lg:` 只能在**样式**层面切换，而很多移动端优化要改的是**结构**（侧栏换成底部导航条、居中弹窗换成底部抽屉）；结构必须由 JS 决定渲染哪套 DOM，否则两套结构会同时挂载（双份 DOM、状态不同步、焦点错乱）。
-**导出**：`useMediaQuery`（useMediaQuery.ts:18）、`useIsBelowSm`（:42）、`useIsTouchPrimary`（:52）、`useSupportsHover`（:61）。
-**主要依赖**：`react`（useState/useEffect）、`window.matchMedia`。
+**职责**：响应式媒体查询 Hook（SSR / 首帧安全），把「指针类型 / 设备能否悬停」这类**结构性**判断暴露给 React 组件；并提供**窄屏模式**的统一读取入口（判据是操作系统，见 `utils/platform.ts` 的 `isNarrowLayout()`）。Tailwind 的 `sm:` / `lg:` 只能在**样式**层面切换，而很多移动端优化要改的是**结构**（侧栏换成底部导航条、居中弹窗换成底部抽屉）；结构必须由 JS 决定渲染哪套 DOM，否则两套结构会同时挂载（双份 DOM、状态不同步、焦点错乱）。
+**导出**：`useMediaQuery`（useMediaQuery.ts:16）、`useIsBelowSm`（:54）、`useNarrowLayout`（:64）、`useIsTouchPrimary`（:73）、`useSupportsHover`（:83）。
+**主要依赖**：`react`、`window.matchMedia`、`@/utils/platform`（`isNarrowLayout`）。
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
-| `useMediaQuery` | useMediaQuery.ts:18-38 | 参数 `(query: string): boolean`。首帧返回 `false`（桌面假设），effect 里建 `MediaQueryList` 同步 `matches` 并监听 `change`；`matchMedia` 不可用或抛错时返回 `false` |
-| `useIsBelowSm` | useMediaQuery.ts:42-44 | `(max-width: 639px)`——与 Tailwind `sm` 断点对齐。**窄屏判定统一走它**（而非 `isMobileApp()`）：后者看的是 UA（判断「是不是手机 App」），前者看的是视口宽度（判断「当前屏幕够不够窄」）—— 平板与桌面窗口缩窄同样需要窄屏版式 |
-| `useIsTouchPrimary` | useMediaQuery.ts:56-58 | `(pointer: coarse) and (hover: none)`——触屏主设备。用于把「只有悬停才出现」的控件在手机上改为常驻 / 点击触发 |
-| `useSupportsHover` | useMediaQuery.ts:65-67 | `(hover: hover)`——设备能否悬停。tooltip 这类交互在手机上没有意义，用它在**渲染期**直接关掉，省掉一次无用的浮层渲染 |
+| `useMediaQuery` | useMediaQuery.ts:16-41 | 参数 `(query: string): boolean`。首帧返回 `false`（桌面假设），effect 里建 `MediaQueryList` 同步 `matches` 并监听 `change`；`matchMedia` 不可用或抛错时返回 `false` |
+| `useIsBelowSm` | useMediaQuery.ts:54-56 | **历史命名保留，语义已改为「是否窄屏模式」**：直接返回 `isNarrowLayout()`（= 仅 Android），**不再读视口宽度**。原实现是 `(max-width: 639px)`，导致桌面窗口拖窄也被当成手机 —— 见下方备注 |
+| `useNarrowLayout` | useMediaQuery.ts:64-66 | `useIsBelowSm` 的语义化别名，新代码用它。判据是常量（操作系统运行期不变），因此不订阅媒体查询，但保留 Hook 形态 |
+| `useIsTouchPrimary` | useMediaQuery.ts:73-75 | `(pointer: coarse) and (hover: none)`——触屏主设备。用于把「只有悬停才出现」的控件在手机上改为常驻 / 点击触发 |
+| `useSupportsHover` | useMediaQuery.ts:83-85 | `(hover: hover)`——设备能否悬停。tooltip 这类交互在手机上没有意义，用它在**渲染期**直接关掉，省掉一次无用的浮层渲染 |
 
 **备注**：
 - 首帧返回 `false` 与 Tailwind 断点行为一致（`lg:` 之前就是手机样式）。对「宽屏才渲染」的结构，首帧多渲染一次桌面结构是无害的。
+- **窄屏模式只认操作系统**：`useIsBelowSm()` 曾用 `(max-width: 639px)`，与骨架层的 `lg:` 断点配合——桌面窗口一拖窄就切进窄屏版式，桌面标题栏被藏掉、换成不带 drag region 与窗口按钮的 `MobileTopBar`，窗口既不能拖也关不掉。现在判据统一为 `isNarrowLayout()`（仅 Android），CSS 侧对应 `globals.css` 的 `narrow:` / `wide:` 变体（读 `<html data-narrow-layout>`）；`sm:` `md:` `lg:` `xl:` 只保留给页面内容自身密度（字号、内边距、栅格列数）。
 - 与 `utils/platform.ts` 的 `isTouchPrimaryDevice()` / `supportsHover()` 是**同一套判据的两种形态**：前者是零依赖的同步读（适合模块级判断），后者是可订阅的 Hook（适合组件内按指针类型切换渲染）。
-- 使用点：`components/ui/modal.tsx`（窄屏底部抽屉）、`components/ui/tooltip.tsx`（触屏不渲染 tooltip）、`components/game-switch-rail.tsx` 与 `components/game-sidebar-rail.tsx`（触屏改点击驱动展开）、`components/game-action-panel.tsx`（长按显示取消入口）。
+- 使用点：`components/ui/modal.tsx` 与 `components/custom-modal.tsx`（窄屏底部抽屉）、`pages/account.tsx`（窄屏「我的」页分流）、`components/ui/tooltip.tsx`（触屏不渲染 tooltip）、`components/game-switch-rail.tsx` 与 `components/game-sidebar-rail.tsx`（触屏改点击驱动展开）、`components/game-action-panel.tsx`（长按显示取消入口）。
 
 ## `src/hooks/useElapsedSeconds.ts`
 **职责**：等待计时 Hook——`active` 为 true 时从 0 开始每秒 +1，变回 false 时归零。给「只有转圈、没有进度」的等待加一个可见的时间刻度，让用户能判断「还在跑」还是「已经卡死」。

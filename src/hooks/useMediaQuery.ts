@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { isNarrowLayout } from "@/utils/platform";
 
 /**
  * 响应式媒体查询 hook（SSR / 首帧安全）。
@@ -39,9 +40,29 @@ export function useMediaQuery(query: string): boolean {
   return matches;
 }
 
-/** 视口宽度小于 `sm`（640px）—— 与 Tailwind 的 `sm` 断点对齐。 */
+/**
+ * 是否启用**窄屏模式** —— 判据是**操作系统，不是视口宽度**。
+ *
+ * 见 `utils/platform.ts` 的 `isNarrowLayout()`：只有 Android 走窄屏版式。
+ * 桌面端（Windows / macOS / Linux）无论把窗口拖多窄都保持桌面版式 ——
+ * 否则窗口一窄就切到「窄屏顶栏 + 底部导航」，而窄屏顶栏按设计不带窗口
+ * 控制按钮，窗口既不能拖也关不掉。
+ *
+ * 名字保留 `useIsBelowSm` 是为了不动调用点（弹窗/自定义弹窗/账户页）；
+ * 语义已从「视口够窄」改为「设备是手机」，二者在 Android 上一致。
+ */
 export function useIsBelowSm(): boolean {
-  return useMediaQuery("(max-width: 639px)");
+  return isNarrowLayout();
+}
+
+/**
+ * 窄屏模式的读取入口（语义化的别名，供新代码使用）。
+ *
+ * 判据是常量（操作系统不会在运行期改变），因此不需要订阅媒体查询 ——
+ * 但保留 Hook 形态，调用点仍按 Hook 规则统一调用。
+ */
+export function useNarrowLayout(): boolean {
+  return isNarrowLayout();
 }
 
 /**

@@ -168,6 +168,18 @@
             : window.matchMedia("(prefers-color-scheme: dark)").matches;
           var root = document.documentElement;
           root.classList.toggle("dark", dark);
+
+          // 窄屏模式（底部导航 + 窄屏顶栏那一套）**只按操作系统**启用：
+          // 判据与 src/utils/platform.ts 的 isNarrowLayout() 保持一致（仅 Android）。
+          // 在样式表首帧之前写定 data-narrow-layout，避免先闪一帧桌面版式。
+          // 注意：不要改成视口宽度 —— 桌面窗口拖窄时切进窄屏版式会让窗口
+          // 既不能拖动也关不掉（窄屏顶栏没有 drag region 与窗口按钮）。
+          var ua = navigator.userAgent || "";
+          var uaData = navigator.userAgentData;
+          var narrow =
+            /android/i.test(ua) ||
+            !!(uaData && uaData.platform && /android/i.test(uaData.platform));
+          root.setAttribute("data-narrow-layout", narrow ? "on" : "off");
         } catch (e) {}
       })();
     </script>
