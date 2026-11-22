@@ -25,7 +25,7 @@ export function TodoSettings() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between gap-4">
+      <div id="settings-todo-sort" className="flex items-center justify-between gap-4">
         <Label
           title={t("settings.todo.sort_mode")}
           desc={t("settings.todo.sort_mode_desc")}
@@ -44,7 +44,10 @@ export function TodoSettings() {
 
       <SettingsDivider />
 
-      <div className="flex items-center justify-between gap-4">
+      <div
+        id="settings-todo-hide-completed"
+        className="flex items-center justify-between gap-4"
+      >
         <Label
           title={t("settings.todo.hide_completed")}
           desc={t("settings.todo.hide_completed_desc")}
@@ -61,7 +64,7 @@ export function TodoSettings() {
 
       <SettingsDivider />
 
-      <div className="flex items-center justify-between gap-4">
+      <div id="settings-todo-priority" className="flex items-center justify-between gap-4">
         <Label
           title={t("settings.todo.priority")}
           desc={t("settings.todo.priority_desc")}
@@ -78,7 +81,7 @@ export function TodoSettings() {
 
       <SettingsDivider />
 
-      <div className="flex items-center justify-between gap-4">
+      <div id="settings-todo-due" className="flex items-center justify-between gap-4">
         <Label
           title={t("settings.todo.due")}
           desc={t("settings.todo.due_desc")}
@@ -95,7 +98,7 @@ export function TodoSettings() {
 
       <SettingsDivider />
 
-      <div className="flex items-center justify-between gap-4">
+      <div id="settings-todo-color" className="flex items-center justify-between gap-4">
         <Label
           title={t("settings.todo.color")}
           desc={t("settings.todo.color_desc")}
@@ -118,7 +121,7 @@ export function TodoSettings() {
 
       <SettingsDivider />
 
-      <div>
+      <div id="settings-todo-icon">
         <Label
           title={t("settings.todo.icon")}
           desc={t("settings.todo.icon_desc")}

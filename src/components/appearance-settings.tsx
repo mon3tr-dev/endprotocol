@@ -703,7 +703,10 @@ export function AppearanceSettings() {
   return (
     <div className="space-y-6">
       {/* Theme Mode */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div
+        id="settings-theme-mode"
+        className="flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+      >
         <div className="min-w-0 flex-1">
           <p className="font-medium text-foreground">
             {t("settings.appearance.theme_mode")}
@@ -738,7 +741,7 @@ export function AppearanceSettings() {
       <SettingsDivider />
 
       {/* Theme Color */}
-      <div>
+      <div id="settings-theme-color">
         <div className="mb-4">
           <p className="font-medium text-foreground">
             {t("settings.appearance.theme_color")}
@@ -1146,7 +1149,7 @@ export function AppearanceSettings() {
       <SettingsDivider />
 
       {/* Background Image */}
-      <div>
+      <div id="settings-background-image">
         <div className="mb-4">
           <p className="font-medium text-foreground">
             {t("settings.appearance.bg_image")}

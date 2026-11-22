@@ -294,6 +294,13 @@
   },
   "settings": {
     "title": "Settings",
+    "nav": {
+      "search_placeholder": "Search settings…",
+      "clear": "Clear",
+      "no_results": "No matching settings",
+      "sections": "Settings sections",
+      "search_hint": "Tip: Ctrl+F focuses search"
+    },
     "general": {
       "title": "General Settings",
       "language": "Language",
@@ -341,7 +348,13 @@
       "proxy_test": "Test Connection",
       "proxy_testing": "Testing…",
       "proxy_auto_detect": "Auto Detect",
-      "proxy_auto_detect_desc": "Auto detect common local proxy client ports (HTTP and SOCKS5) and configure"
+      "proxy_auto_detect_desc": "Auto detect common local proxy client ports (HTTP and SOCKS5) and configure",
+      "refresh_on_switch": "Refresh on Account Switch",
+      "refresh_on_switch_desc": "Whether to fetch latest data from API when switching accounts",
+      "lazy_load": "Lazy Load Mode",
+      "lazy_load_desc": "Only load current role's data when enabled, saving memory",
+      "wiki_detail_preload": "Preload Wiki Details on Startup",
+      "wiki_detail_preload_desc": "When disabled, wiki details load on demand per character"
     },
     "network": {
       "title": "Network",
@@ -537,7 +550,8 @@
       "better_endfield_desc": "Provided the approach for bypassing the official launcher",
       "android_permission_hint": "Allow EndProtocol to install unknown apps, then come back and tap Install Again — no need to download again.",
       "android_install_retry": "Install Again",
-      "android_install_ready": "Package downloaded"
+      "android_install_ready": "Package downloaded",
+      "about_section": "Updates & About"
     },
     "account": {
       "title": "Account Management",

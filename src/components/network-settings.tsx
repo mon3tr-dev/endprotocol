@@ -318,7 +318,7 @@ export function NetworkSettings() {
 
   return (
     <>
-      <div>
+      <div id="settings-proxy-enable">
         {/* 总开关 */}
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">
@@ -358,7 +358,10 @@ export function NetworkSettings() {
               <SettingsDivider />
 
               {/* 协议 */}
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div
+                id="settings-proxy-protocol"
+                className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
+              >
                 <div className="min-w-0">
                   <p className="font-medium text-foreground">
                     {t("settings.general.proxy_protocol")}
@@ -388,7 +391,10 @@ export function NetworkSettings() {
               <SettingsDivider />
 
               {/* 主机 + 端口 */}
-              <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_160px] sm:items-end">
+              <div
+                id="settings-proxy-host"
+                className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_160px] sm:items-end"
+              >
                 <Field
                   label={t("settings.general.proxy_host")}
                   badge={t("settings.general.proxy_host_required")}
@@ -428,25 +434,27 @@ export function NetworkSettings() {
               <SettingsDivider />
 
               {/* 排除主机（直连不走代理） */}
-              <Field
-                label={t("settings.general.proxy_exclude")}
-                badge={t("settings.general.proxy_exclude_optional")}
-                htmlFor="proxy-exclude"
-              >
-                <GlassInput
-                  id="proxy-exclude"
-                  value={config.exclude ?? ""}
-                  placeholder={t("settings.general.proxy_exclude_placeholder")}
-                  autoComplete="off"
-                  spellCheck={false}
-                  onValueChange={(value) => patch({ exclude: value })}
-                />
-              </Field>
+              <div id="settings-proxy-exclude">
+                <Field
+                  label={t("settings.general.proxy_exclude")}
+                  badge={t("settings.general.proxy_exclude_optional")}
+                  htmlFor="proxy-exclude"
+                >
+                  <GlassInput
+                    id="proxy-exclude"
+                    value={config.exclude ?? ""}
+                    placeholder={t("settings.general.proxy_exclude_placeholder")}
+                    autoComplete="off"
+                    spellCheck={false}
+                    onValueChange={(value) => patch({ exclude: value })}
+                  />
+                </Field>
+              </div>
 
               <SettingsDivider />
 
               {/* 认证：HTTP 与 SOCKS5 都支持，但文案不同 */}
-              <div className="space-y-3">
+              <div id="settings-proxy-auth" className="space-y-3">
                 <div className="flex flex-wrap items-center gap-2">
                   <p className="font-medium text-foreground">
                     {t("settings.general.proxy_auth")}
@@ -506,7 +514,10 @@ export function NetworkSettings() {
                   {/* 外层 space-y-6 已负责上间距；这里的分隔线只在展开时可见 */}
                   <div className="space-y-6">
                     <SettingsDivider />
-                    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div
+                      id="settings-proxy-remote-dns"
+                      className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"
+                    >
                       <div className="min-w-0">
                         <p className="flex flex-wrap items-center gap-2 font-medium text-foreground">
                           {t("settings.general.proxy_remote_dns")}
@@ -535,7 +546,10 @@ export function NetworkSettings() {
               <SettingsDivider />
 
               {/* 系统代理读取 + 自动嗅探 */}
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div
+                id="settings-proxy-import-system"
+                className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
+              >
                 <div className="min-w-0">
                   <p className="font-medium text-foreground">
                     {t("settings.general.proxy_import_system")}

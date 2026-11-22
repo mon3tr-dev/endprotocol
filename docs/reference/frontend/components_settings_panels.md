@@ -2,6 +2,30 @@
 
 > 逐文件精读源码生成。行号基于当前工作区版本，仅用于快速定位。
 
+## `src/components/settings-nav.tsx`
+**职责**：设置页的「分区 / 设置项」索引与两种导航形态 —— 宽屏左侧吸附分区栏（`SettingsSideNav`）与窄屏顶部吸附条（`SettingsMobileNav`，搜索框 + 横向分区胶囊），两者共用同一份索引与同一套搜索匹配。设置项总数已达 40+ 且分布在 5 个子组件里，卡片顺序铺下来的长列表在手机上要滑好几屏，这个文件是「好找」的唯一实现点。
+**导出**：`SettingsItem` / `SettingsSection` / `SettingsSectionFlags` / `SettingsSearchHit`（类型）、`buildSettingsSections`、`searchSettings`、`jumpToSettingAnchor`、`useActiveSettingsSection`、`SettingsSideNav`、`SettingsMobileNav`。私有：`SettingsSearchField`、`SettingsSearchResults`、`normalize`，以及 9 个 `createMorphIcon` 图标常量。
+**主要依赖**：`react`（`useCallback`/`useEffect`/`useMemo`/`useRef`/`useState`）、`react-i18next`、`clsx`、`lucide`（`SlidersHorizontal`/`Globe`/`Gamepad2`/`Palette`/`Activity`/`ListChecks`/`Code`/`Info`/`Search`）、`@/components/morph-icon`（`createMorphIcon`）、`@/components/ui/glass`（`GlassInput`）、`@/components/ui/app-icon`（`CloseIcon`）。
+
+| 符号 | 说明 |
+| --- | --- |
+| `SettingsItem` | `{ id: string; labelKey: string; keywords?: string[] }`。`id` **必须**是页面上真实存在的 DOM 锚点；`keywords` 放英文/技术词/同义词（`proxy`、`下载`、`dx11`…），弥补 i18n 文案里不出现的检索词 |
+| `SettingsSection` | `{ id; anchor; labelKey; icon; items }`，`anchor` 是卡片级锚点 |
+| `buildSettingsSections(flags)` | 按平台能力生成 8 个分区的索引：`supportsLauncher` 为假不登记「游戏启动」；`supportsTray` 为假不登记「关闭窗口时 / 托盘显示用户」（这两行在移动端整段隐藏）；`supportsUpdateChecks` 为假不登记「更新通道 / 更新源」（iOS）。**与页面渲染的分支必须逐条对齐** |
+| `searchSettings(sections, query, t)` | 归一化匹配（转小写 + 压掉 `空格 - _ / ·`）。命中分区标签时该分区下所有项一并命中；返回 `{section, item}[]` |
+| `jumpToSettingAnchor(anchorId)` | 先给目标加 `.settings-anchor-flash`（globals.css 的 outline 动画，1.5s 后移除）再 `scrollIntoView({behavior:"smooth", block:"start"})`——长距离滚动要几百毫秒，高亮若等滚动结束才加，用户会先看到「什么都没发生」 |
+| `useActiveSettingsSection(anchorIds)` | 当前分区。rAF 节流的**捕获阶段** `scroll` 监听（`scroll` 不冒泡，靠捕获才能接住任意内部滚动容器）；滚动基准由 `findScrollContainer` 从第一个锚点向上找**真正可滚**的祖先（`overflow-y: auto|scroll` 且 `scrollHeight > clientHeight`），**不能写死 `closest("main")`** —— 宽屏下滚的是右侧卡片列，`<main>` 自己已无滚动余量；按「最后一条顶边越过阈值」判定；滚到底（剩余 <8px）强制选中最后一个分区 |
+| `SettingsSideNav` | 宽屏。**整体静止不参与滚动**（设置页是「标题固定 + 只有右侧列滚动」的满高布局，左栏不在滚动流里，因此不用 `sticky`）。`h-full max-h-[min(620px,calc(100dvh-8rem))]` 的竖向 flex：搜索框 + 导航 + 底部提示，面板高度受上限约束、底部留间隙；当前分区自动展开成员列表 |
+| `SettingsMobileNav` | 窄屏。`sticky top-0 z-20` + 实底 `bg-background`（半透明挡不住下方加粗的分区标题）+ `-mx-3/sm:-mx-4` 拉回 `<main>` 的 padding。搜索结果容器限 `max-h-[45dvh]` 内滚，避免手机键盘弹起后整条超出视口；当前分区的胶囊会自动横滑到中间 |
+
+**备注**：
+- 两个导航都渲染了搜索框（DOM 里各一份），`Cmd/Ctrl+F` 用 `offsetParent !== null` 挑出可见的那个聚焦。
+- 输入框用 `type="text"` 而非 `type="search"`：Android WebView 会给后者再画一个原生清除按钮，与组件自绘的 × 叠在一起。
+- 锚点对应的样式约定见 `src/styles/globals.css`：`[id^="settings-"] { scroll-margin-top: 104px }`（仅 `< lg`，让开吸住的搜索条）与 `.settings-anchor-flash`（outline 用**负** offset，卡片是 `overflow-hidden`，正 offset 会被裁掉）。
+- **玻璃宿主与滚动容器必须分层**：`.lg-material` 的材质是宿主上的 `::before { position:absolute; inset:0 }`，它**不随内容滚动**。若把 `lg-material` 和 `overflow-y-auto` 写在同一个元素上，滚动时材质留在原地、内容滚走，露出透明底（分区栏曾出现这道断层）。正确写法是外层负责玻璃/圆角/裁切，内层负责滚动。
+- **高度链用 `min-h-0 flex-1` 而不是 `h-full`**：`height:100%` 要求父级有确定高度，而滚动容器的高度来自 flex 分配，百分比在个别 WebView 会解析成 `auto`，导致内层跟着内容长高、`overflow-y` 永不触发。
+- **滚动容器标 `data-no-ovs` 以隐藏滚动条**：`@/utils/overlayScrollbar` 会给每个 `overflow-y: auto|scroll` 的元素自动打 `data-ovs`，而 `[data-ovs]::-webkit-scrollbar { width: 8px }` 会把全局隐藏的滚动条恢复出来。分区栏**能滚但不要可见的条**（内容超出直接滚），故在**真正的滚动容器**上标 `data-no-ovs` —— 标在只负责玻璃的外层不起作用，因为外层是 `overflow-hidden`，不会被 `overlayScrollbar` 接管。
+
 ## `src/components/network-settings.tsx`
 **职责**：设置页「网络」分区的完整表单——自定义代理的启用开关、HTTP/SOCKS5 协议单选、主机/端口、排除主机、可选认证（用户名+密码）、SOCKS5 专属的远程 DNS 解析开关、从系统代理一键读取、自动嗅探本地代理、连通性测试与重置。**代理关闭时所有子选项与操作按钮都不显示**；字段变更后 **自动保存**（500ms 防抖），无需手动点「保存」；**开启代理时弹出警告对话框**（说明可能影响 API 可用性，可勾选「不再提示」）。
 **导出**：`NetworkSettings`（其余 `Field`、`isValidPort`、`Notice`、`AUTOSAVE_DEBOUNCE_MS` 为模块内私有）。
@@ -45,6 +69,7 @@
 - **无 window 事件、无 emit/listen**；一般反馈走组件内 `notice`，自动嗅探的结果走全局 `pushGlobalAlert`（`@/components/ui/global-alert`）。
 - **必填/可选标注**：协议、主机、端口标注「必选/必填」；排除主机、用户名、密码标注「可选」；远程 DNS 带「仅 SOCKS5」徽标且选中 SOCKS5 时才出现。
 - **「不再提示」的作用域**：当前为组件内状态，页面刷新后重置（如需永久记忆应改为写入配置键）。
+- **DOM 锚点**（供 `settings-nav.tsx` 索引跳转）：`settings-proxy-enable`（总开关）、`settings-proxy-protocol`、`settings-proxy-host`（主机 + 端口）、`settings-proxy-exclude`、`settings-proxy-auth`、`settings-proxy-remote-dns`（SOCKS5 展开区内部）、`settings-proxy-import-system`。**每个锚点都包住整行**（标题 + 控件），不能只挂在标题上——`.settings-anchor-flash` 的 outline 画在锚点元素自身范围里。
 
 ## `src/components/appearance-settings.tsx`
 **职责**：外观设置面板，集中管理主题模式（浅色/深色/跟随系统）、主题色（预设 + 自定义色阶）与窗口背景图（选择/删除/透明度/模糊），并实时写入 CSS 变量与持久化配置。主题色板与应用函数已抽到 `@/utils/theme`（与 `main.tsx`、`theme-switch.tsx`、`tray-panel.tsx` 共用），本文件只保留取色器专用的色彩空间转换。
@@ -111,6 +136,7 @@
 - 配置键（经 `@/utils/configService`）：`theme_mode`、`theme_color`、`theme_custom_colors`、`bg_image_path`、`bg_image_opacity`、`bg_blur`。（旧 `glass_clarity` 已随 Liquid Glass 重构移除）
 - 写入的 CSS 变量：`--primary-50`…`--primary-900`、`--primary`、`--primary-foreground`、`--bg-image-opacity`、`--bg-blur`、`--bg-image`。（旧 `--glass-blur` 等四个玻璃变量已随重构移除）
 - 默认值常量：背景图透明度 0.5、背景模糊 16、默认取色 `#6366f1`、自定义色命名前缀 `custom-${Date.now()}`。（旧「玻璃清晰度 55」常量已删除）
+- **DOM 锚点**：`settings-theme-mode`、`settings-theme-color`、`settings-background-image`（供 `settings-nav.tsx` 索引跳转）。
 
 ## `src/components/language-switch.tsx`
 **职责**：顶栏语言切换下拉（English/中文），带搜索、旗帜图标与选中校验，切换后写入持久化配置。
@@ -200,7 +226,7 @@
 - 两个打开入口：设置页「静默启动」区块内按钮，以及游戏行动面板汉堡菜单的「游戏设置」项。
 - `.lnk` 与 Steam 条目的启动命令为 `--silent --launch-game`，按开关追加 `--dx11`；游戏目录、渠道与 DX11 设置同步到后端 `ConfigService`。
 
-**备注**：通过 `launcherService` 调用 `get_game_launch_command` / `create_game_shortcut` / `steam_shortcut_defaults` / `pick_steam_icon` / `pick_steam_icon_source` / `extract_steam_icon` / `add_steam_shortcut`，并用 `set_config` 同步 `launcher_install_path` / `launcher_channel` / `launcher_dx11`；图标预览额外 `invoke("read_image_file")`。剪贴板使用浏览器 Clipboard API。localStorage 键：`launcher_cancel_behavior`、`launcher_verify_threads`、`launcher_download_threads`、`launcher_download_resume`、`launcher_dx11`、`launcher_install_path`、`launcher_channel`；window 事件：`game-launch-settings-sync`。下载线程数与断点续传由下载调用方（`game-action-panel.tsx`）在发起安装/预下载时读取并透传后端。文案位于 `settings.game_launch.*` 与 `launcher.*`。
+**备注**：通过 `launcherService` 调用 `get_game_launch_command` / `create_game_shortcut` / `steam_shortcut_defaults` / `pick_steam_icon` / `pick_steam_icon_source` / `extract_steam_icon` / `add_steam_shortcut`，并用 `set_config` 同步 `launcher_install_path` / `launcher_channel` / `launcher_dx11`；图标预览额外 `invoke("read_image_file")`。剪贴板使用浏览器 Clipboard API。localStorage 键：`launcher_cancel_behavior`、`launcher_verify_threads`、`launcher_download_threads`、`launcher_download_resume`、`launcher_dx11`、`launcher_install_path`、`launcher_channel`；window 事件：`game-launch-settings-sync`。下载线程数与断点续传由下载调用方（`game-action-panel.tsx`）在发起安装/预下载时读取并透传后端。文案位于 `settings.game_launch.*` 与 `launcher.*`。**DOM 锚点**（供 `settings-nav.tsx` 索引跳转）：`settings-cancel-behavior`、`settings-dx11`、`settings-download-threads`、`settings-download-resume`、`settings-verify-threads`、`settings-bg-media`、`settings-silent-launch`。`GameLaunchSettingsFields` 与游戏行动面板的「游戏设置」弹窗共用同一份字段（因此也带同名 id），但两者分处不同路由（设置页 / 仪表板），不会同时挂载，`document.getElementById` 不会取错。
 
 ## `src/components/in-app-browser.tsx`
 **职责**：应用内嵌浏览器覆盖层——玻璃工具栏（后退/前进/刷新/外部打开/地址栏/关闭）+ **窗口控制组**（最小化/最大化-还原/关闭，接管被覆盖的标题栏）+ 加载进度条 + **原生子 Webview**（Tauri `new Webview()`，用于加载被 `X-Frame-Options` / CSP 禁止内嵌的站点），非 Tauri 环境降级为沙箱 `iframe`。开合与地址由 `@/stores/inAppBrowser` 状态驱动。
@@ -310,7 +336,7 @@
 
 **配置项**：默认刷新频率、默认单位制式、默认精度、**默认自动翻页间隔**、默认告警阈值（warn/critical）、默认是否显示曲线、默认主题色（预设色/自定义色）、默认卡片组模板（指标多选）。任一改动即时 `setSystemResourceDefaults(patch)` 写入配置键 `system_resource_defaults`。（卡片尺寸由卡片自身的三档预设决定，不再作为全局默认值。）
 
-**备注**：新增卡片/卡片组时由 `dashboard.tsx` + `buildDefaultCardSettings` 读取该配置键；卡片级配置可覆盖全局默认值。i18n 键：`settings.system_resource.*`，选项文案复用 `card:system_resource_*`。
+**备注**：新增卡片/卡片组时由 `dashboard.tsx` + `buildDefaultCardSettings` 读取该配置键；卡片级配置可覆盖全局默认值。i18n 键：`settings.system_resource.*`，选项文案复用 `card:system_resource_*`。**DOM 锚点**：`settings-sys-refresh` / `-unit` / `-rotate` / `-precision` / `-thresholds` / `-sparklines` / `-accent` / `-template`（每项包住整行）。
 
 ## `src/components/todo-settings.tsx`
 **职责**：全局设置页「To-Do 卡片」分区。
@@ -318,3 +344,5 @@
 **主要依赖**：`@/utils/todoDefaults`（`getTodoDefaults`/`setTodoDefaults`）、`@/types/todo`（`DEFAULT_TODO_DEFAULTS`/`TODO_COLORS`/`TODO_ICONS`）、`@/components/cards/todo/todo-icon`（图标标识渲染）、`@/components/ui/{settings-row,glass}`。
 
 **配置项**：默认排序方式、默认是否隐藏已完成、默认优先级体系（是否启用）、默认是否开启截止时间、默认卡片颜色、默认图标；写入配置键 `todo_defaults`。
+
+**备注**：**DOM 锚点**：`settings-todo-sort` / `-hide-completed` / `-priority` / `-due` / `-color` / `-icon`（每项包住整行）。

@@ -9,12 +9,47 @@
 
 > 托盘相关的 `invoke`（`set_tray_user`/`update_tray_user_data`）与 `roleDataService.queryData` 组装已迁到 `@/utils/trayService`（见 [utils_services_a.md](utils_services_a.md)），本文件因此不再直接依赖 `@tauri-apps/api/core` 与 `@/utils/roleDataService`；账号列表只在 `loadConfig` 里动态 `import("@/utils/accountService")`。
 
+### 布局与设置导航
+页面布局由「8 张卡片顺序铺下的长列表」改为**导航 + 单列内容**：
+
+宽屏（`lg+`）是**满高、只有右侧卡片列滚动**的结构 —— 标题与左侧分区栏都不跟随滚动：
+
+```
+根容器  mx-auto flex flex-col lg:h-full            ← 高度取自 <main>，页面自身不滚
+├ header                shrink-0                    ← 标题固定
+├ SettingsMobileNav     (lg:hidden)                 ← 窄屏吸附条
+└ 网格  lg:min-h-0 lg:flex-1 lg:grid-rows-[minmax(0,1fr)]
+   ├ SettingsSideNav    静止                        ← 左栏不滚
+   └ div  block + space-y-6                         ← 唯一滚动容器（不能是 grid/flex）
+```
+
+> ⚠️ **右列必须是块级，不能用 `grid` / `flex`。** 它的高度被父级网格行
+> `minmax(0,1fr)` 压死，一旦右列自己是 grid/flex，卡片就成了它的布局子项、
+> 会参与压缩分配（grid 的 `auto` 行、flex 的 `flex-shrink:1` 都会收缩），
+> 实测 4 张卡从应有的 356px 被压到 **169px**，正文被卡片的 `overflow:hidden`
+> 裁掉 —— 页面只剩一排标题条。块级布局没有收缩语义，卡片保持内容高度，
+> 超出部分交给容器的 `overflow-y: auto`。间距用 `space-y-6`（块级 margin）。
+
+| 断点 | 导航形态 | 说明 |
+| --- | --- | --- |
+| `< lg`（手机 / Android） | `SettingsMobileNav`：顶部 `sticky top-0` 的**搜索框 + 横向分区胶囊**（可横滑，当前分区的胶囊会自动滚到中间） | 实底 `bg-background` 而非半透明玻璃：下方加粗的分区标题会透出来。`-mx-3/sm:-mx-4` 拉回 `<main>` 的 padding，吸住时左右不留缝 |
+| `lg+` | `SettingsSideNav`：左侧 `248px` 静止分区栏 + 搜索框；当前分区自动展开成员列表 | 见上方结构图 |
+
+导航索引与搜索都在 `src/components/settings-nav.tsx`（见 [components_settings_panels.md](components_settings_panels.md)）：
+
+- `buildSettingsSections({supportsLauncher, supportsTray, supportsUpdateChecks})` 按平台能力生成分区，与页面真实渲染的卡片严格对应（Windows 才有「游戏启动」，移动端无「关闭窗口时 / 托盘显示用户」，「更新通道 / 更新源」随 `supportsUpdateChecks`）。
+- 搜索对「分区标签 + 设置项标签 + `keywords`」做归一化匹配（转小写、压掉空格与 `-_/·`），所以「下载线程」「download-threads」都能命中同一条。
+- 跳转走 `jumpToSettingAnchor(anchorId)`：`scrollIntoView({block:"start"})` + 给目标加 `.settings-anchor-flash`（globals.css 的 outline 动画，1.4s 后自动移除）。窄屏用 `[id^="settings-"] { scroll-margin-top: 104px }` 让开吸住的搜索条。
+- 当前分区由 `useActiveSettingsSection(anchorIds)` 计算：rAF 节流的**捕获阶段** `scroll` 监听（`<main>` 是滚动容器，`scroll` 不冒泡），按「最后一条顶边越过阈值」判定，滚到底强制选中最后一个分区。
+- 桌面 `Cmd/Ctrl+F` 聚焦可见的那个搜索框（两个断点各渲染一个，`display:none` 的那个 `focus()` 无效）。
+
 ### 内部结构总览
 | 区间 | 内容 |
 | --- | --- |
-| settings.tsx:1-41 | import 区（UI 组件、子设置组件、Tauri API、配置/更新/托盘服务、对话框） |
+| settings.tsx:1-41 | import 区（UI 组件、子设置组件、设置导航、Tauri API、配置/更新/托盘服务、对话框） |
 | settings.tsx:43-81 | `SettingsPage` 组件开头：`t`/`i18n` 解构、`supportsLauncher` 与全部 `useState`（语言下拉、6 个偏好、版本/更新状态、对话框可见性） |
 | settings.tsx:83-86 | `languages` 常量（`en` / `zh` 两个选项） |
+| — | 设置导航状态：`navQuery`、`sections`（`buildSettingsSections` + `useMemo`）、`sectionAnchors`、`activeAnchor`；回调 `jumpToItem`（先清搜索再滚）/ `jumpToSection`；`Cmd/Ctrl+F` 聚焦 effect |
 | settings.tsx:88-156 | 挂载 effect：`loadConfig()`（89-142）并行读取 9 项配置与应用版本信息 → 动态 import 载入账号列表 → `initializeChannel()` 后 `fetchRemoteVersion()`；并 `subscribeRemoteVersion` 订阅更新状态 |
 | settings.tsx:158-172 | 语言下拉的外点/滚动关闭 effect（`mousedown` + 捕获阶段 `scroll`） |
 | settings.tsx:174-201 | 5 个轻量 handler：语言切换、刷新开关、懒加载、Wiki 预加载、关闭行为 |
@@ -89,9 +124,9 @@
 - **invoke 命令名（本文件直接调用）**：无。托盘相关的 `set_tray_user` / `update_tray_user_data` 已随数据组装逻辑迁到 `@/utils/trayService`（见 [utils_services_a.md](utils_services_a.md) 的 `trayService` 一节）。
 - **invoke 命令名（经服务间接触发）**：`set_tray_user`、`update_tray_user_data`、`query_role_data`（`setTrayUser`→`refreshTrayUserData`→`roleDataService.queryData`）、`is_lazy_load_enabled` / `set_lazy_load_enabled`（roleDetailService）、`fetch_url`（updateService 内部拉取更新元数据）；代理相关命令全部由 `NetworkSettings` 经 `proxyService` 触发（见 `components_settings_panels.md`）。
 - **配置键**：`refresh_on_account_switch`、`wiki_detail_preload`、`close_action`、`tray_user_role_id`、`developer_mode`（本文件直接读写）；`update_channel`、`update_source`（经 updateService 间接读写）；委托组件另用 `proxy_config`、`app.language`、`theme_mode`、`theme_color`、`theme_custom_colors`、`bg_image_path`、`bg_image_opacity`、`bg_blur`。
-- **i18n key 前缀**：`settings.title`、`common.managePreferences`、`settings.general.*`（含 `language`、`close_action*`、`tray_user*`、`title`）、`settings.network.*`（`title`/`desc`，网络卡标题）、`settings.game_launch.title`、`settings.appearance.title`、`settings.system_resource.title`、`settings.todo.title`、`settings.developer.*`（`title`/`enable`/`enable_desc`/`warning_*`）、`settings.update_channel.*`、`settings.update_source.*`、`settings.update.*`（`app_version`/`tauri_version`/`platform`/`latest_version`/`release_date`/`license*`/`open_source_credits`/`special_thanks`/`xel_launcher_desc`/`better_endfield_desc`）。
+- **i18n key 前缀**：`settings.title`、`settings.nav.*`（`search_placeholder`/`clear`/`no_results`/`sections`/`search_hint`）、`common.managePreferences`、`settings.general.*`（含 `language`、`close_action*`、`tray_user*`、`refresh_on_switch*`、`lazy_load*`、`wiki_detail_preload*`、`title`）、`settings.network.*`（`title`/`desc`，网络卡标题）、`settings.game_launch.title`、`settings.appearance.title`、`settings.system_resource.title`、`settings.todo.title`、`settings.developer.*`（`title`/`enable`/`enable_desc`/`warning_*`）、`settings.update_channel.*`、`settings.update_source.*`、`settings.update.*`（`about_section`/`app_version`/`tauri_version`/`platform`/`latest_version`/`release_date`/`license*`/`open_source_credits`/`special_thanks`/`xel_launcher_desc`/`better_endfield_desc`）。
 - **窗口事件**：`openUpdateDialog`（监听，settings.tsx:331）、`developerModeChange`（派发两次，settings.tsx:216、:226，detail 为 `{enabled:boolean}`；`@/utils/logSettings` 监听后同步前后端日志级别，关闭时回到 INFO）。
-- **DOM 锚点 id**：`settings-general`、`settings-language`、`settings-refresh-on-switch`、`settings-lazy-load`、`settings-wiki-detail-preload`、`settings-close-action`、`settings-tray-user`、`settings-network`、`settings-game-launch`、`settings-appearance`、`settings-system-resource`、`settings-todo`、`settings-developer`、`settings-about`。
+- **DOM 锚点 id**：分区卡片 `settings-general`、`settings-network`、`settings-game-launch`、`settings-appearance`、`settings-system-resource`、`settings-todo`、`settings-developer`、`settings-about`；行级锚点见 [components_settings_panels.md](components_settings_panels.md) 各子组件的「DOM 锚点」小节。**这些 id 是 `settings-nav.tsx` 里 `buildSettingsSections()` 索引的唯一真值来源**——改 id 必须同步改索引，否则导航跳到空处。
 - 非持久化展示项：远端版本徽标、版本四宫格、发布日期、identifier、License、20 条开源致谢（内联数组）、2 条特别鸣谢（Xel-Launcher / Better-Endfield，内联数组，说明文案走 i18n）、GitHub/License 外链、「检查更新」与「更新到 vX」按钮。
 
 ## `src/pages/developer.tsx`

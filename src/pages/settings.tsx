@@ -12,8 +12,15 @@ import { AppearanceSettings } from "@/components/appearance-settings";
 import { NetworkSettings } from "@/components/network-settings";
 import { SystemResourceSettings } from "@/components/system-resource-settings";
 import { TodoSettings } from "@/components/todo-settings";
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { createPortal } from "react-dom";
+import {
+  buildSettingsSections,
+  jumpToSettingAnchor,
+  useActiveSettingsSection,
+  SettingsMobileNav,
+  SettingsSideNav,
+} from "@/components/settings-nav";
 import {
   getAppIdentifier,
   getAppVersion,
@@ -86,6 +93,57 @@ export default function SettingsPage() {
     null,
   );
   const [pendingSource, setPendingSource] = useState<UpdateSource | null>(null);
+
+  // 设置导航（分区栏 / 搜索框）：分区索引按平台能力生成，与下面渲染的卡片一一对应。
+  const [navQuery, setNavQuery] = useState("");
+  const sections = useMemo(
+    () =>
+      buildSettingsSections({
+        supportsLauncher,
+        supportsTray,
+        supportsUpdateChecks,
+      }),
+    [supportsLauncher, supportsTray, supportsUpdateChecks],
+  );
+  const sectionAnchors = useMemo(
+    () => sections.map((section) => section.anchor),
+    [sections],
+  );
+  const { active: activeAnchor, navRef } = useActiveSettingsSection(sectionAnchors);
+
+  const jumpToItem = useCallback((id: string) => {
+    // 手机端搜索结果是浮在内容上的列表：点完要收起来，否则遮住的正好是目标行
+    setNavQuery("");
+    // 等搜索结果收起、布局回稳后再滚，否则目标位置按「列表还开着」算
+    window.requestAnimationFrame(() => jumpToSettingAnchor(id));
+  }, []);
+
+  const jumpToSection = useCallback((anchor: string) => {
+    setNavQuery("");
+    window.requestAnimationFrame(() => jumpToSettingAnchor(anchor));
+  }, []);
+
+  // 桌面端 Cmd/Ctrl+F 直接聚焦设置搜索框（长页面里浏览器自带查找不好用）
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "f")
+        return;
+      // 窄屏的分区栏是 `lg:hidden`：它里面的输入框也在 DOM 里，但 `display:none`
+      // 的祖先下 focus() 无效。这里挑第一个「确实可见」的搜索框。
+      const inputs = Array.from(
+        document.querySelectorAll<HTMLInputElement>(
+          "[data-settings-search] input",
+        ),
+      );
+      const input = inputs.find((el) => el.offsetParent !== null);
+      if (!input) return;
+      event.preventDefault();
+      input.focus();
+      input.select();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
 
   const languages = [
     { key: "en", label: "English" },
@@ -363,21 +421,103 @@ export default function SettingsPage() {
   })();
 
   return (
-    <div className="max-w-4xl mx-auto space-y-8 pb-12">
-      <div>
-        <h1 className="text-2xl lg:text-3xl font-bold text-foreground tracking-tight">
+    /*
+     * 宽屏（lg+）：两列网格，**右列从标题那一行就开始**，与「设置」二字的
+     * 顶端齐平；标题与左栏都不跟随滚动，只有右列内部滚动。
+     *
+     * 网格定义 `lg:grid-rows-[auto_minmax(0,1fr)]`：
+     *   row 1 (auto)      ← 只放标题，高度 = 标题块
+     *   row 2 (1fr)       ← 左栏导航
+     * 右列 `row-span-2` 同时跨两行，于是它的顶边贴着 row 1 的顶边（= 标题
+     * 顶端），底边吃到容器底部。左栏则从 row 2 开始，正好排在标题下方 ——
+     * 这就是「右侧顶端对齐设置字样顶端」的几何来源。
+     *
+     * 窄屏仍是 `flex-col`：标题 → 吸附条 → 卡片，整页随 `<main>` 滚动。
+     * 手机上标题不钉住，把高度留给内容；分区导航由吸附的搜索条承担。
+     */
+    <div className="mx-auto flex w-full max-w-3xl flex-col pb-12 lg:grid lg:h-full lg:max-w-5xl lg:grid-cols-[248px_minmax(0,1fr)] lg:grid-rows-[auto_minmax(0,1fr)] lg:gap-x-6 lg:pb-0">
+      <header className="shrink-0 lg:col-start-1 lg:row-start-1">
+        <h1 className="text-2xl font-bold tracking-tight text-foreground lg:text-3xl">
           {t("settings.title")}
         </h1>
-        <p className="text-foreground/70 mt-1.5">
+        <p className="mt-1.5 text-foreground/70">
           {t("common.managePreferences")}
         </p>
+      </header>
+
+      {/*
+       * 窄屏（手机 / Android）：搜索框 + 横向分区胶囊，吸附在页面顶部。
+       *
+       * 设置页原本是 8 张卡片顺序铺下来的长列表，手机上要滑好几屏才能找到
+       * 某一项 —— 这条吸附条让「跳到某个分区 / 搜某一项」在任何位置都能做。
+       *
+       * ⚠️ 必须直接作为本页容器的子元素：`sticky` 的定位范围是**包含块**，
+       * 套一层只包住它自己的 `<div>` 就等于没有可滚动距离，永远吸不住。
+       * 宽屏下它自己是 `lg:hidden`（`display:none` 不生成盒子），不占网格单元。
+       */}
+      <SettingsMobileNav
+        sections={sections}
+        activeAnchor={activeAnchor}
+        query={navQuery}
+        onQueryChange={setNavQuery}
+        onJumpItem={jumpToItem}
+        onJumpSection={jumpToSection}
+        navRef={navRef}
+      />
+
+      {/* 左栏导航：宽屏占 row 2（标题下方）；窄屏由上面的吸附条负责，这里隐藏 */}
+      <div className="lg:col-start-1 lg:row-start-2 lg:flex lg:min-h-0 lg:flex-col">
+        <SettingsSideNav
+          sections={sections}
+          activeAnchor={activeAnchor}
+          query={navQuery}
+          onQueryChange={setNavQuery}
+          onJumpItem={jumpToItem}
+          onJumpSection={jumpToSection}
+        />
       </div>
 
-      <div className="grid grid-cols-1 gap-6">
+      {/*
+       * 右侧卡片列 = 唯一滚动容器，跨两行（顶边与标题齐平）。
+       *
+       * ⚠️ **必须是块级（block），不能是 grid / flex**。
+       *
+       * 这个容器的可视高度是被网格行定死的。一旦它自己是 grid 或 flex，
+       * 卡片就成了它的"布局子项"、会参与压缩分配（grid 的 `auto` 行在确定
+       * 高度下会收缩、flex 子项 `flex-shrink` 默认 1），实测 4 张卡从应有的
+       * 362px 被压到 169px，正文被卡片的 `overflow:hidden` 裁掉 —— 页面只剩
+       * 一排标题条。块级布局没有收缩语义：卡片保持内容高度，超出部分交给
+       * 这里的 `overflow-y: auto`。间距用 `space-y-6`（块级 margin）。
+       *
+       * ② **上方留出「悬停余量」且卡片顶边仍与标题齐平**。
+       *
+       *    `GlassCard` 悬停时 `-translate-y-1`（上浮 4px）并 `scale-[1.01]`，
+       *    两者叠加后顶边实际外扩约 6px（实测：4px 位移 + 卡片高 ~400px 的
+       *    1% 缩放再溢出 ~2px）。若卡片贴近滚动容器顶边，这几像素会被
+       *    `overflow: auto` 裁掉 —— 表现为滑到最顶时悬停、上边缘圆角被切平。
+       *
+       *    三个阶段（实测校准过的）：
+       *      容器盒子顶边 = 68 - 8 = 60px    ← `lg:-mt-2`
+       *      内容起点     = 60 + 8 = 68px    ← `lg:pt-2`
+       *      卡片静止顶边 = 68px             ← `lg:-mt-2` 的负外边距把**第一张卡**
+       *                                        再向上拉，抵消刚才的 padding
+       *
+       *    即：容器向外扩 8px 提供余量，而卡片靠自身的负 margin 回到 68px，
+       *    与「设置」二字顶端严格齐平。8px > 实测所需 6px，留 2px 安全边际。
+       *    `-ml-1/-mr-1` 给左右两侧 1.01 缩放留余量（右侧另有 `pr-2`）。
+       *
+       * `data-no-ovs`：不要可见滚动条（全局已隐藏），溢出能滚但看不到条。
+       * `lg:min-h-0` 不能省：网格项默认 `min-height: auto`（不小于内容），
+       * 那样容器会被内容撑高、`overflow-y` 永远不触发。
+       */}
+      <div
+        data-no-ovs
+        className="mt-6 min-w-0 space-y-6 lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:-mb-6 lg:-ml-1 lg:-mr-1 lg:-mt-2 lg:min-h-0 lg:overflow-y-auto lg:overflow-x-hidden lg:pb-6 lg:pl-1 lg:pr-2 lg:pt-2 lg:scroll-touch"
+      >
         {/* General Settings */}
         <GlassCard
           id="settings-general"
-          className="p-4 sm:p-6 lg-material border border-separator/90"
+          className="shrink-0 p-4 sm:p-6 lg-material border border-separator/90"
         >
           <h2 className="text-lg font-semibold mb-6 flex items-center gap-3">
             <div className="w-8 h-8 rounded-xl bg-primary/10 flex items-center justify-center ring-1 ring-primary/20">
@@ -439,7 +579,7 @@ export default function SettingsPage() {
           ) : (
             <div className="space-y-6">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-4">
-                <div id="settings-language">
+                <div id="settings-language" className="min-w-0">
                   <p className="font-medium text-foreground">
                     {t("settings.general.language")}
                   </p>
@@ -553,14 +693,10 @@ export default function SettingsPage() {
               >
                 <div className="min-w-0">
                   <p className="font-medium text-foreground">
-                    {i18n.language === "zh"
-                      ? "切换账户时刷新数据"
-                      : "Refresh on Account Switch"}
+                    {t("settings.general.refresh_on_switch")}
                   </p>
                   <p className="text-sm text-muted mt-0.5">
-                    {i18n.language === "zh"
-                      ? "切换账户时是否访问API获取最新数据"
-                      : "Whether to fetch latest data from API when switching accounts"}
+                    {t("settings.general.refresh_on_switch_desc")}
                   </p>
                 </div>
                 <GlassSwitch
@@ -581,12 +717,10 @@ export default function SettingsPage() {
               >
                 <div className="min-w-0">
                   <p className="font-medium text-foreground">
-                    {i18n.language === "zh" ? "懒加载模式" : "Lazy Load Mode"}
+                    {t("settings.general.lazy_load")}
                   </p>
                   <p className="text-sm text-muted mt-0.5">
-                    {i18n.language === "zh"
-                      ? "开启时只加载当前角色的数据，节省内存"
-                      : "Only load current role's data when enabled, saving memory"}
+                    {t("settings.general.lazy_load_desc")}
                   </p>
                 </div>
                 <GlassSwitch
@@ -607,14 +741,10 @@ export default function SettingsPage() {
               >
                 <div className="min-w-0">
                   <p className="font-medium text-foreground">
-                    {i18n.language === "zh"
-                      ? "启动时预加载 Wiki 详情"
-                      : "Preload Wiki Details on Startup"}
+                    {t("settings.general.wiki_detail_preload")}
                   </p>
                   <p className="text-sm text-muted mt-0.5">
-                    {i18n.language === "zh"
-                      ? "关闭后将按需逐个加载角色 Wiki 详情，加快启动速度"
-                      : "When disabled, wiki details load on demand per character"}
+                    {t("settings.general.wiki_detail_preload_desc")}
                   </p>
                 </div>
                 <GlassSwitch
@@ -724,7 +854,7 @@ export default function SettingsPage() {
         {/* Network Settings */}
         <GlassCard
           id="settings-network"
-          className="p-4 sm:p-6 lg-material border border-separator/90"
+          className="shrink-0 p-4 sm:p-6 lg-material border border-separator/90"
         >
           <h2 className="text-lg font-semibold mb-6 flex items-center gap-3">
             <div className="w-8 h-8 rounded-xl bg-primary/10 flex items-center justify-center ring-1 ring-primary/20">
@@ -754,7 +884,7 @@ export default function SettingsPage() {
         {supportsLauncher && (
           <GlassCard
             id="settings-game-launch"
-            className="p-4 sm:p-6 lg-material border border-separator/90"
+            className="shrink-0 p-4 sm:p-6 lg-material border border-separator/90"
           >
             <h2 className="text-lg font-semibold mb-6 flex items-center gap-3">
               <div className="w-8 h-8 rounded-xl bg-primary/10 flex items-center justify-center ring-1 ring-primary/20">
@@ -788,7 +918,7 @@ export default function SettingsPage() {
         {/* Appearance Settings */}
         <GlassCard
           id="settings-appearance"
-          className="p-4 sm:p-6 lg-material border border-separator/90"
+          className="shrink-0 p-4 sm:p-6 lg-material border border-separator/90"
         >
           <h2 className="text-lg font-semibold mb-6 flex items-center gap-3">
             <div className="w-8 h-8 rounded-xl bg-primary/10 flex items-center justify-center ring-1 ring-primary/20">
@@ -810,7 +940,7 @@ export default function SettingsPage() {
         {/* System Resource Card Defaults */}
         <GlassCard
           id="settings-system-resource"
-          className="p-4 sm:p-6 lg-material border border-separator/90"
+          className="shrink-0 p-4 sm:p-6 lg-material border border-separator/90"
         >
           <h2 className="text-lg font-semibold mb-6 flex items-center gap-3">
             <div className="w-8 h-8 rounded-xl bg-primary/10 flex items-center justify-center ring-1 ring-primary/20">
@@ -833,7 +963,7 @@ export default function SettingsPage() {
         {/* To-Do Card Defaults */}
         <GlassCard
           id="settings-todo"
-          className="p-4 sm:p-6 lg-material border border-separator/90"
+          className="shrink-0 p-4 sm:p-6 lg-material border border-separator/90"
         >
           <h2 className="text-lg font-semibold mb-6 flex items-center gap-3">
             <div className="w-8 h-8 rounded-xl bg-primary/10 flex items-center justify-center ring-1 ring-primary/20">
@@ -856,7 +986,7 @@ export default function SettingsPage() {
         {/* Developer Mode */}
         <GlassCard
           id="settings-developer"
-          className="p-4 sm:p-6 lg-material border border-separator/90"
+          className="shrink-0 p-4 sm:p-6 lg-material border border-separator/90"
         >
           {isConfigLoading ? (
             <div className="space-y-6">
@@ -886,7 +1016,10 @@ export default function SettingsPage() {
                 {t("settings.developer.title")}
               </h2>
               <div className="space-y-6">
-                <div className="flex items-center justify-between gap-4">
+                <div
+                  id="settings-developer-enable"
+                  className="flex items-center justify-between gap-4"
+                >
                   <div className="min-w-0">
                     <p className="font-medium text-foreground">
                       {t("settings.developer.enable")}
@@ -912,7 +1045,7 @@ export default function SettingsPage() {
         {/* Updates & About */}
         <GlassCard
           id="settings-about"
-          className="p-4 sm:p-6 lg-material border border-separator/90"
+          className="shrink-0 p-4 sm:p-6 lg-material border border-separator/90"
         >
           <h2 className="text-lg font-semibold mb-6 flex items-center gap-3">
             <div className="w-8 h-8 rounded-xl bg-primary/10 flex items-center justify-center ring-1 ring-primary/20">
@@ -927,9 +1060,8 @@ export default function SettingsPage() {
                 <path d="M12 16v-4M12 8h.01" />
               </svg>
             </div>
-            {i18n.language === "zh" ? "更新与关于" : "Updates & About"}
+            {t("settings.update.about_section")}
           </h2>
-
           <div className="space-y-5">
             {/* App Header */}
             <div className="flex items-center gap-4">
@@ -970,7 +1102,7 @@ export default function SettingsPage() {
             <SettingsDivider />
 
             {/* Update Channel */}
-            <div>
+            <div id="settings-update-channel">
               <p className="text-sm font-medium text-foreground mb-2">
                 {t("settings.update_channel.title")}
               </p>
@@ -1045,7 +1177,7 @@ export default function SettingsPage() {
 
             {/* Update Source（桌面与 Android 都可用：两端都能从镜像源取更新） */}
             {supportsUpdateChecks && (
-            <div>
+            <div id="settings-update-source">
               <p className="text-sm font-medium text-foreground mb-2">
                 {t("settings.update_source.title")}
               </p>
@@ -1122,7 +1254,7 @@ export default function SettingsPage() {
             <SettingsDivider />
 
             {/* Version Info */}
-            <div className="grid grid-cols-2 gap-3">
+            <div id="settings-update-versions" className="grid grid-cols-2 gap-3">
               <div className="p-3 rounded-xl lg-material border border-separator/40">
                 <p className="text-[11px] text-muted uppercase tracking-wider mb-1">
                   {t("settings.update.app_version")}
@@ -1245,7 +1377,7 @@ export default function SettingsPage() {
             <SettingsDivider />
 
             {/* License */}
-            <div>
+            <div id="settings-license">
               <h4 className="text-sm font-semibold text-foreground mb-2">
                 {t("settings.update.license")}
               </h4>
@@ -1260,7 +1392,7 @@ export default function SettingsPage() {
             <SettingsDivider />
 
             {/* Open Source Credits */}
-            <div>
+            <div id="settings-credits">
               <h4 className="text-sm font-semibold text-foreground mb-3">
                 {t("settings.update.open_source_credits")}
               </h4>

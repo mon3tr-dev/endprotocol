@@ -2273,6 +2273,46 @@ html {
   }
 }
 
+/* 设置页锚点：窄屏顶部吸着「搜索 + 分区胶囊」那条（约 96px 高），
+ * `scrollIntoView({ block: "start" })` 会把目标行顶到它下面、被盖住。
+ * `scroll-margin-top` 让浏览器自己让开这段距离，不依赖 JS 算偏移。
+ *
+ * `[id^="settings-"]` 覆盖设置页全部锚点（分区卡片 + 每一行设置项）：
+ * 窄屏才需要让位（桌面左侧是分区栏，它不覆盖内容列），故只在 < lg 生效。 */
+@media (max-width: 1023px) {
+  [id^="settings-"] {
+    scroll-margin-top: 104px;
+  }
+}
+
+/* 设置项定位高亮：从设置导航（分区栏 / 搜索框）跳到某一项后，目标行短暂
+ * 亮一下，否则滚得远了用户看不出「跳到的就是这一行」。
+ *
+ * `outline` + **负 offset**：不参与布局（不把下方内容顶动一像素），且画在
+ * 元素自身范围内 —— 锚点都在 `GlassCard` 里，卡片是 `overflow-hidden` 的，
+ * 正 offset 的描边在靠边的那几行会被裁掉。用 outline 而不是 box-shadow 是
+ * 因为锚点可能本身就是玻璃宿主（`#settings-network` 等），box-shadow 会盖掉
+ * `.lg-material` 自带的那层材质阴影。 */
+.settings-anchor-flash {
+  animation: settings-anchor-flash 1.4s var(--lg-ease-standard) forwards;
+  border-radius: 0.75rem;
+}
+
+@keyframes settings-anchor-flash {
+  0% {
+    outline: 2px solid color-mix(in oklab, var(--primary) 75%, transparent);
+    outline-offset: -3px;
+  }
+  70% {
+    outline: 2px solid color-mix(in oklab, var(--primary) 45%, transparent);
+    outline-offset: -3px;
+  }
+  100% {
+    outline: 2px solid transparent;
+    outline-offset: -3px;
+  }
+}
+
 /* 触屏上没有悬停，`:hover` 会被点击瞬间「粘住」（移动端 Safari/Chrome 的
  * 已知行为：点过的元素保持 hover 态直到点别处）。这会让玻璃按钮在点过一次
  * 后长期保持高亮，看起来像「卡住了」。

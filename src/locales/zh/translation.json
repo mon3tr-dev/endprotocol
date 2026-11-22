@@ -294,6 +294,13 @@
   },
   "settings": {
     "title": "设置",
+    "nav": {
+      "search_placeholder": "搜索设置项…",
+      "clear": "清除",
+      "no_results": "没有找到相关设置项",
+      "sections": "设置分区",
+      "search_hint": "提示：Ctrl+F 可快速唤起搜索"
+    },
     "general": {
       "title": "通用设置",
       "language": "语言",
@@ -341,7 +348,13 @@
       "proxy_test": "测试连接",
       "proxy_testing": "测试中…",
       "proxy_auto_detect": "自动嗅探",
-      "proxy_auto_detect_desc": "自动探测本地常用代理客户端端口并配置（支持 HTTP 与 SOCKS5）"
+      "proxy_auto_detect_desc": "自动探测本地常用代理客户端端口并配置（支持 HTTP 与 SOCKS5）",
+      "refresh_on_switch": "切换账户时刷新数据",
+      "refresh_on_switch_desc": "切换账户时是否访问 API 获取最新数据",
+      "lazy_load": "懒加载模式",
+      "lazy_load_desc": "开启时只加载当前角色的数据，节省内存",
+      "wiki_detail_preload": "启动时预加载 Wiki 详情",
+      "wiki_detail_preload_desc": "关闭后将按需逐个加载角色 Wiki 详情，加快启动速度"
     },
     "network": {
       "title": "网络",
@@ -537,7 +550,8 @@
       "better_endfield_desc": "提供了绕过官方启动器启动游戏的思路",
       "android_permission_hint": "请先允许本应用「安装未知应用」，返回后点击「重新安装」即可，无需重新下载。",
       "android_install_retry": "重新安装",
-      "android_install_ready": "安装包已下载完成"
+      "android_install_ready": "安装包已下载完成",
+      "about_section": "更新与关于"
     },
     "account": {
       "title": "账户管理",

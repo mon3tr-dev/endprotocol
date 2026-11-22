@@ -53,7 +53,7 @@ export function SystemResourceSettings() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between gap-4">
+      <div id="settings-sys-refresh" className="flex items-center justify-between gap-4">
         <Label
           title={t("settings.system_resource.refresh")}
           desc={t("settings.system_resource.refresh_desc")}
@@ -70,7 +70,7 @@ export function SystemResourceSettings() {
 
       <SettingsDivider />
 
-      <div className="flex items-center justify-between gap-4">
+      <div id="settings-sys-unit" className="flex items-center justify-between gap-4">
         <Label
           title={t("settings.system_resource.unit")}
           desc={t("settings.system_resource.unit_desc")}
@@ -89,7 +89,7 @@ export function SystemResourceSettings() {
 
       <SettingsDivider />
 
-      <div className="flex items-center justify-between gap-4">
+      <div id="settings-sys-rotate" className="flex items-center justify-between gap-4">
         <Label
           title={t("settings.system_resource.rotate")}
           desc={t("settings.system_resource.rotate_desc")}
@@ -109,7 +109,7 @@ export function SystemResourceSettings() {
 
       <SettingsDivider />
 
-      <div className="flex items-center justify-between gap-4">
+      <div id="settings-sys-precision" className="flex items-center justify-between gap-4">
         <Label
           title={t("settings.system_resource.precision")}
           desc={t("settings.system_resource.precision_desc")}
@@ -123,7 +123,10 @@ export function SystemResourceSettings() {
 
       <SettingsDivider />
 
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+      <div
+        id="settings-sys-thresholds"
+        className="flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+      >
         <Label
           title={t("settings.system_resource.thresholds")}
           desc={t("settings.system_resource.thresholds_desc")}
@@ -148,7 +151,7 @@ export function SystemResourceSettings() {
 
       <SettingsDivider />
 
-      <div className="flex items-center justify-between gap-4">
+      <div id="settings-sys-sparklines" className="flex items-center justify-between gap-4">
         <Label
           title={t("settings.system_resource.sparklines")}
           desc={t("settings.system_resource.sparklines_desc")}
@@ -165,7 +168,7 @@ export function SystemResourceSettings() {
 
       <SettingsDivider />
 
-      <div className="flex items-center justify-between gap-4">
+      <div id="settings-sys-accent" className="flex items-center justify-between gap-4">
         <Label
           title={t("settings.system_resource.accent")}
           desc={t("settings.system_resource.accent_desc")}
@@ -179,7 +182,7 @@ export function SystemResourceSettings() {
 
       <SettingsDivider />
 
-      <div>
+      <div id="settings-sys-template">
         <Label
           title={t("settings.system_resource.template")}
           desc={t("settings.system_resource.template_desc")}
