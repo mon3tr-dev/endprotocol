@@ -489,22 +489,26 @@ export default function SettingsPage() {
        * 一排标题条。块级布局没有收缩语义：卡片保持内容高度，超出部分交给
        * 这里的 `overflow-y: auto`。间距用 `space-y-6`（块级 margin）。
        *
-       * ② **上方留出「悬停余量」且卡片顶边仍与标题齐平**。
+       * ② **上方留出「悬停余量」且卡片顶边仍与标题齐平**（`lg:-mt-4 lg:pt-4`，16px）。
        *
-       *    `GlassCard` 悬停时 `-translate-y-1`（上浮 4px）并 `scale-[1.01]`，
-       *    两者叠加后顶边实际外扩约 6px（实测：4px 位移 + 卡片高 ~400px 的
-       *    1% 缩放再溢出 ~2px）。若卡片贴近滚动容器顶边，这几像素会被
-       *    `overflow: auto` 裁掉 —— 表现为滑到最顶时悬停、上边缘圆角被切平。
+       *    `GlassCard` 悬停时上浮 4px（`lg:hover:-translate-y-1`）并以中心
+       *    放大 1.01（`lg:hover:scale-[1.01]`），顶边实际外扩：
        *
-       *    三个阶段（实测校准过的）：
-       *      容器盒子顶边 = 68 - 8 = 60px    ← `lg:-mt-2`
-       *      内容起点     = 60 + 8 = 68px    ← `lg:pt-2`
-       *      卡片静止顶边 = 68px             ← `lg:-mt-2` 的负外边距把**第一张卡**
-       *                                        再向上拉，抵消刚才的 padding
+       *        4px（位移） + 卡片高度 × 0.005（缩放取上半）
        *
-       *    即：容器向外扩 8px 提供余量，而卡片靠自身的负 margin 回到 68px，
-       *    与「设置」二字顶端严格齐平。8px > 实测所需 6px，留 2px 安全边际。
-       *    `-ml-1/-mr-1` 给左右两侧 1.01 缩放留余量（右侧另有 `pr-2`）。
+       *    「通用设置」这张卡高约 800px，缩放一项就外扩 ~4px，合计 ~8px。
+       *    ⚠️ 这是**按卡片高度变化**的量 —— 早先按 402px 小卡估算只留了 8px，
+       *    换成真实高度后边际归零，抗锯齿一渲染顶边圆角就被削平（实测复现）。
+       *    因此取 16px，覆盖到约 2400px 高的极端卡片仍有余量。
+       *
+       *    同时**不能把卡片整体下移**（要与「设置」二字齐平），故用负 margin
+       *    把容器盒子向上扩、再用等量 padding 把内容推回：
+       *      容器盒子顶边 = 68 - 16 = 52px   ← `lg:-mt-4`
+       *      内容起点     = 52 + 16 = 68px   ← `lg:pt-4`
+       *      卡片静止顶边 = 68px             ← 与标题齐平
+       *      悬停后顶边   = 60px             ← 仍在 52 之内，不再被裁
+       *
+       *    `-ml-2/-mr-2` 同理给左右两侧 1.01 缩放留 8px（右侧另有 `pr-2`）。
        *
        * `data-no-ovs`：不要可见滚动条（全局已隐藏），溢出能滚但看不到条。
        * `lg:min-h-0` 不能省：网格项默认 `min-height: auto`（不小于内容），
@@ -512,7 +516,7 @@ export default function SettingsPage() {
        */}
       <div
         data-no-ovs
-        className="mt-6 min-w-0 space-y-6 lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:-mb-6 lg:-ml-1 lg:-mr-1 lg:-mt-2 lg:min-h-0 lg:overflow-y-auto lg:overflow-x-hidden lg:pb-6 lg:pl-1 lg:pr-2 lg:pt-2 lg:scroll-touch"
+        className="mt-6 min-w-0 space-y-6 lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:-ml-2 lg:-mr-2 lg:-mt-4 lg:min-h-0 lg:overflow-y-auto lg:overflow-x-hidden lg:pb-6 lg:pl-2 lg:pr-2 lg:pt-4 lg:scroll-touch"
       >
         {/* General Settings */}
         <GlassCard
