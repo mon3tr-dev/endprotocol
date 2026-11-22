@@ -311,7 +311,7 @@
 | 自动展开 effect | dashboard-fab.tsx:21-23 | `isEditMode` 为真时强制 `setIsExpanded(true)` |
 | 展开动作区 | dashboard-fab.tsx:27-53 | 绝对定位在主按钮上方（`bottom-16 right-0` 纵向堆叠，`animate-fade-in`）：①「Add Card」（`MorphIcon Plus`，调 `onAddCard`）②「Edit Mode / Exit Edit」（`Pencil`/`Check` 图标随 `isEditMode` 切换，调 `onToggleEdit`） |
 | 主按钮 | dashboard-fab.tsx:55-64 | `h-14 w-14` 圆形玻璃按钮，`aria-label="FAB toggle"`；展开时旋转 90°，图标在 `Plus`/`X` 间切换 |
-| 渲染/portal | dashboard-fab.tsx:25-67 | `createPortal(..., document.body)`，外层 `fixed right-4 z-50 lg:right-6 lg:bottom-6 [bottom:calc(5rem+var(--safe-area-bottom))]`。**窄屏抬到悬浮导航胶囊上方** —— 胶囊高约 52px（图标行 + py-1.5 上下 + 边框）加底部留白与安全区，FAB 的 56px 圆钮压上去会盖住胶囊右端的「更多」入口，导航在移动端就打不开了。桌面端用 `bottom-6`（底部导航只在窄屏渲染） |
+| 渲染/portal | dashboard-fab.tsx:25-67 | `createPortal(..., document.body)`，外层 `fixed right-4 z-50 lg:right-6 lg:bottom-6 [bottom:calc(5rem+var(--safe-area-bottom))]`。**窄屏抬到悬浮导航胶囊上方** —— 胶囊高 62px（图标 18px + 文字 10px 竖排 + `p-1.5` 上下 + 边框）加底部留白与安全区，FAB 的 56px 圆钮压上去会盖住胶囊右端的入口，导航在移动端就点不到了。移动端取 `5.5rem`（Android 模拟器实测与胶囊间距 18dp），桌面端用 `bottom-6`（底部导航只在窄屏渲染） |
 
 **备注**：
 - 无 `invoke` / `listen`。

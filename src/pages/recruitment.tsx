@@ -213,7 +213,7 @@ export default function RecruitmentPage() {
             </GlassButton>
 
             {showRoleMenu && (
-              <div className="lg-regular absolute right-0 top-full mt-2 z-50 w-64 rounded-xl border border-separator/60 overflow-hidden animate-scale-in">
+              <div className="lg-regular absolute left-0 top-full mt-2 z-50 w-64 max-w-[calc(100vw_-_1.5rem)] sm:left-auto sm:right-0 rounded-xl border border-separator/60 overflow-hidden animate-scale-in">
                 <div className="max-h-72 overflow-y-auto">
                   {pageAccounts.map((acc) => {
                     const isSelected = acc.id === roleId;

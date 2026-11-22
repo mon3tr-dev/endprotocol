@@ -1,5 +1,8 @@
 import { useTranslation } from "react-i18next";
+import { useSearchParams } from "react-router-dom";
 import { Img } from "@/utils/imageLoader";
+import { useIsBelowSm } from "@/hooks/useMediaQuery";
+import { MePage } from "@/components/me-page";
 import QRCode from "qrcode";
 import {
   GlassAlert,
@@ -646,6 +649,23 @@ function QRCodeImage({ value, size = 200 }: { value: string; size?: number }) {
 
 export default function AccountPage() {
   const { t, i18n } = useTranslation();
+
+  /**
+   * 窄屏（Android / 手机）：渲染「我的」页面而不是桌面账户工作台。
+   *
+   * 为什么在**顶层**分流而不是在 JSX 里按断点切样式：桌面账户页是
+   * 「森空岛父账户 → 游戏角色 → 绑定/授权」的多层工作台，窄屏下这套结构
+   * 既挤不下也无法用点按顺畅操作；而底部导航最右一格「我的」需要一个
+   * 一般应用形态的个人中心。两套结构必须只挂载一套，否则两边的弹窗、
+   * 快捷键、滚动容器会同时存在（见 `hooks/useMediaQuery` 的说明）。
+   *
+   * `?desktop=1` 是逃生门：「我的」页里的「添加账户」「退出登录」需要
+   * 完整的桌面工作流，由它强制渲染桌面版（即使当前是窄屏）。
+   */
+  const isBelowSm = useIsBelowSm();
+  const [searchParams] = useSearchParams();
+  const forceDesktop = searchParams.get("desktop") === "1";
+  const showMePage = isBelowSm && !forceDesktop;
 
   // 状态管理
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -2573,6 +2593,13 @@ export default function AccountPage() {
       </div>
     );
   };
+
+  // 窄屏「我的」页面。放在这里（全部 hooks 之后、主 return 之前）是为了
+  // 保持 hooks 调用顺序恒定 —— 提前 return 若发生在 hooks 之前，宽窄屏切换
+  // 会让 hooks 数量变化，React 直接报错。
+  if (showMePage) {
+    return <MePage />;
+  }
 
   return (
     <div className="max-w-6xl mx-auto space-y-8 pb-12 relative">

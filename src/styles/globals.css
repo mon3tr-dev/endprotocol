@@ -1439,6 +1439,24 @@ html[data-window-radius="self"] {
 .animate-slide-in-left {
   animation: slide-in-left var(--lg-dur-slow) var(--lg-ease-emphasized);
 }
+/* 顶部抽屉入场：从视口上方滑下（移动端「更多工具」抽屉）。
+ * 与 slide-in-left 同族：只动 transform 不动 opacity —— 淡入会让玻璃宿主
+ * 变成 backdrop root，backdrop-filter 当场失效（动效系统硬约束）。 */
+@keyframes slide-down-top {
+  0% {
+    transform: translateY(-100%);
+  }
+  100% {
+    transform: translateY(0);
+  }
+}
+.animate-slide-down-top {
+  /* `backwards` 而非 `both`/`forwards`：入场动画的 fill-mode 保留终态时，
+   * 元素会**永久**成为 backdrop root，自身与后代的玻璃（本抽屉用 `lg-regular`）
+   * 会整体失效 —— 项目动效系统的硬约束，见 types_locales_styles.md。
+   * `backwards` 让延迟期间停在 0% 帧（不先闪一帧原位），结束后回到基础样式。 */
+  animation: slide-down-top var(--lg-dur-slow) var(--lg-ease-emphasized) backwards;
+}
 @keyframes scale-in {
   0% {
     transform: translateY(-8px) scale(0.9);
@@ -2139,6 +2157,10 @@ html {
  * 这里用 `inset-inline: 0` 而不是 `left: 0; right: 0`：后者会让 nav 本身
  * 铺满整行宽，胶囊的 `mx-3` 依然生效，但 nav 的背景（若有）会铺满 ——
  * 现在没有背景，但保持这个约束能防止后来者给 nav 加底色时意外铺满。
+ *
+ * ⚠️ 这套 `fixed` 贴底样式**已不再用于导航条**（导航改为页内 sticky，见
+ * `.mobile-sticky-nav`）。保留是因为桌面端的游戏模式等处仍可能引用同类样式，
+ * 且里面的安全区/横向 inset 约定是移动端适配层的一部分。
  */
 .mobile-bottom-nav {
   position: fixed;
@@ -2155,6 +2177,33 @@ html {
 /* 胶囊本体要能接收指针事件（nav 本身不吃）。 */
 .mobile-bottom-nav > * {
   pointer-events: auto;
+}
+
+/* 移动端导航条（页内 sticky 版）。
+ *
+ * 放在 `<main>` 的内容流里、排在页面内容之前，所以它的**起始位置就是页面
+ * 内容上方**（视觉上紧跟标题区）。向上滚动时先随页面一起上移，滚到距容器
+ * 顶部 10px 处吸住；向下滚动时离开吸住位置、重新随页面下移 —— 这是
+ * `position: sticky` 的原生行为，不需要脚本监听滚动。
+ *
+ * 两条硬约束：
+ *  1) **祖先不能有 `overflow: hidden`**：sticky 相对**最近的有滚动祖先的
+ *     容器**定位，若中间某层是 `overflow: hidden`，sticky 会失效（元素直接
+ *     滚出视野）。`<main>` 自己是 `overflow-y: auto`，正是期望的滚动容器。
+ *  2) **必须有 `z-index`**：吸住时页面内容会从它下方经过，需要它压在上面。
+ *
+ * 吸住状态下背景是半透明的玻璃（`lg-control`），下方内容会透出一点 ——
+ * 这是刻意的：与整个应用的 Liquid Glass 语言一致。
+ */
+.mobile-sticky-nav {
+  position: sticky;
+  z-index: 30;
+  /* 吸住时与吸住前的观感一致：胶囊自身带玻璃材质，这里只负责定位 */
+  margin-bottom: 0.75rem;
+  /* 横向留白与胶囊的 `mx-3` 对齐：胶囊在组件里是 `mx-auto`，这里给容器
+     同样的安全区与 inset，避免刘海屏上贴边。 */
+  padding-left: var(--safe-area-left);
+  padding-right: var(--safe-area-right);
 }
 
 /* 移动端顶栏：覆盖在内容之上（sticky），高度含顶部安全区。 */

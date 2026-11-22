@@ -67,34 +67,139 @@
 - **异常/注意点**：① 搜索 UI 被 `{false && ...}` 永久隐藏，但其状态、4 个键盘/鼠标 effect 与约 500 行 JSX 仍保留在文件中（属死代码）。② `handleManualRefresh` 中 `void expectedAccountCount` 为规避 lint 的占位。③ `highlightMatch` 用带 `g` 标志的正则做 `.test()`，`lastIndex` 有状态残留风险。④ ~~`location.pathname === ""` 永不命中~~ 已修复：与父节点高亮统一为 `pathname === "/" && !sidebarActiveTab`。⑤ `startNavDrag`/`startTabDrag` 注册的 `pointerup` 监听只在触发后移除，拖拽中途卸载组件会短暂泄漏。⑥ FLIP 动画与 `grid-template-rows` 展开折叠并存：换位只改顺序（高度不变），折叠展开只改容器（keys 不变），互不干扰；`prefers-reduced-motion` 下 FLIP 自动跳过。
 
 ## `src/components/mobile-bottom-nav.tsx`
-**职责**：**移动端底部导航条 —— 悬浮胶囊**形态。桌面端把全部导航放在左侧栏里，窄屏下侧栏收成一个汉堡按钮，于是手机上每次换页面都要「开抽屉 → 点 → 关抽屉」（三次点击）。底部导航条把最常用的几个入口常驻在拇指可达范围内。
+**职责**：**移动端底部导航条 —— 悬浮胶囊**形态。桌面端把全部导航放在左侧栏里，窄屏下侧栏收成一个下拉箭头，于是手机上每次换页面都要「开抽屉 → 点 → 关抽屉」（三次点击）。底部导航条把最常用的几个入口常驻在拇指可达范围内。最右一格是「我的」（账户页，展示头像 / 昵称 / 等级等基础信息），与一般应用的底部「我的」一致；其余工具入口收进顶栏下拉箭头的「更多工具」顶部抽屉（Android 端不适配侧边栏式的抽屉）。
 **导出**：`MobileBottomNav`（命名导出）、`MobileAccountIcon`（命名导出，`AccountIcon` 的再导出，供抽屉头部使用）。
-**主要依赖**：`react-router-dom`（`useLocation`/`useNavigate`）、`react-i18next` 的 `useTranslation`、`clsx`、`@/components/icons`（`HomeIcon`/`CalendarIcon`/`GachaIcon`/`BookmarkIcon`/`AccountIcon`）、`morphicons/react` 的 `MorphIcon`、`lucide` 的 `Menu`、**`@/config/gameSupport`（`isNavVisible`）**。
+**主要依赖**：`react-router-dom`（`useLocation`/`useNavigate`）、`react-i18next` 的 `useTranslation`、`clsx`、`@/components/icons`（`HomeIcon`/`CalendarIcon`/`GachaIcon`/`BookmarkIcon`/`AccountIcon`）、**`@/config/gameSupport`（`isNavVisible`）**。
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
-| `MobileBottomNavProps` | mobile-bottom-nav.tsx:35 | props：`game?: GameId \| string \| null`（当前**账户**的游戏，决定哪些入口可见）、`onOpenDrawer: () => void`（点击「更多」时打开侧栏抽屉） |
-| `NavEntry`（接口） | mobile-bottom-nav.tsx:42 | `{ key, path, labelKey, Icon }` |
-| `PRIMARY_NAV` | mobile-bottom-nav.tsx:50 | 底部常驻的四个入口（仪表板 `/`、签到 `/attendance`、抽卡 `/gacha`、待办 `/todo`），顺序即显示顺序。标签走**独立的短文案**（`mobile_nav.*`：仪表板/签到/抽卡/待办/更多）而不是复用侧栏的 `sidebar.*` —— 「抽卡记录」四个字在胶囊里会把格子撑宽、挤掉图标 |
-| `MobileBottomNav` | mobile-bottom-nav.tsx:57 | 主组件 |
+| `MobileBottomNavProps` | mobile-bottom-nav.tsx:37 | props：`game?: GameId \| string \| null`（当前**账户**的游戏，决定哪些入口可见）。~~`onOpenDrawer`~~ 已移除：最右一格改为「我的」（跳 `/account`），不再从底部导航开抽屉 |
+| `NavEntry`（接口） | mobile-bottom-nav.tsx:45 | `{ key, path, labelKey, Icon }` |
+| `PRIMARY_NAV` | mobile-bottom-nav.tsx:55 | 底部常驻的五个入口（仪表板 `/`、签到 `/attendance`、抽卡 `/gacha`、待办 `/todo`、我的 `/account`），顺序即显示顺序。标签走**独立的短文案**（`mobile_nav.*`：仪表板/签到/抽卡/待办/我的）而不是复用侧栏的 `sidebar.*` —— 「抽卡记录」四个字在胶囊里会把格子撑宽、挤掉图标 |
+| `MobileBottomNav` | mobile-bottom-nav.tsx:73 | 主组件 |
 
 **形态（对齐 Apple 的悬浮导航条）**：
-- **不贴边**：左右各留 12px（`mx-3`），底部留 8px + 安全区（`mb-2` + `.mobile-bottom-nav` 的 `padding-bottom`）—— 悬浮感的关键。
-- **四角全圆**（`rounded-[28px]`），不是只有上两角圆 —— 它是悬浮件不是抽屉。
-- **半透明玻璃**：`.lg-regular` 材质（模糊 + 提亮 + 边缘高光 + 阴影），与全应用的 Liquid Glass 语言一致；底下滚动的卡片会透出一点。
-- **竖排**：图标在上、文字在下（`flex-col`）；选中态用一枚 `lg-control lg-solid bg-primary` 的**实底主色胶囊**托住整个图标+文字组 —— 胶囊是浅色玻璃上的浮层，只改文字色的话「未选中的灰」与「选中的主色」在浅背景上区分度不够，一眼扫过去不知道自己在哪一页。
+- **不贴边**：左右各留 12px，底部留 8px + 安全区（`.mobile-bottom-nav` 的 `padding-bottom`）—— 悬浮感的关键。`nav` 本身是 `pointer-events: none` 的全宽层，只有胶囊吃指针事件。
+- **胶囊本体**：`mx-auto` + `rounded-full` + `border border-separator/70` + `p-1.5` + `shadow-lg` + `lg-control`（玻璃材质，底下滚动的卡片会透出一点）。
+- **竖排**：图标在上、文字在下（`GlassPillItem` 的 `className="flex-col gap-0.5"`）；选中态**由滑块指示器承担**（`GlassPillIndicator`，`lg-control border-primary/50` 的浮层滑到当前项），按钮本身只改文字色 —— 按钮各自换底会与滑块打架（抽卡页当初就踩过），两处共用 `ui/glass-pill.tsx` 保证观感一致。
 
 **内部结构**：
-- 按当前游戏过滤入口：`PRIMARY_NAV.filter(entry => isNavVisible(entry.key, game))` —— 与侧栏**同一张真值表**，两处不会给出不同答案。
-- `isActive(path)`：`path === "/"` 时精确匹配，否则 `location.pathname.startsWith(path)`。
-- 渲染：`<nav class="mobile-bottom-nav lg:hidden">` → 胶囊容器（`mx-3 mb-2 lg-regular rounded-[28px]`）→ `<ul>` 里每个入口一个 `<li class="flex-1">` + 按钮（`touch-target` 保证 ≥44px 命中区）。
-- 第五格是「更多」：调 `onOpenDrawer()` 打开**已有的侧栏**（`<Sidebar>`），不重复实现一份导航 —— 侧栏里还有账户、设置、开发者模式、按游戏过滤的完整列表与标签页树。
+- 按当前游戏过滤入口：`PRIMARY_NAV.filter(entry => isNavVisible(entry.key, game))` —— 与侧栏**同一张真值表**，两处不会给出不同答案。「我的」对应的 `account` 键未登记在 `PAGE_GAME_SUPPORT`，任何账户下都常驻。
+- `isActive(path)`：`path === "/"` 时精确匹配，否则 `location.pathname.startsWith(path)`；`activeIndex` 由它算给指示器。
+- 渲染：`<nav class="mobile-bottom-nav lg:hidden">` → 胶囊容器（`relative mx-auto flex h-[62px] items-stretch overflow-hidden rounded-full border border-separator/70 p-1.5 shadow-lg lg-control`）→ `GlassPillIndicator` + 每个入口一个 `GlassPillItem`（`flex-1 min-w-0` 等分）。五个入口共用同一段渲染逻辑，无「更多」特例。
+
+**高度与内边距必须一起定（62px，实测确认）**：
+- 胶囊 `h-[62px]` + `p-1.5`（6px）+ 1px 边框，内容区 48px；竖排「18px 图标 + 2px 间距 + 12.5px 文字」共约 32.5px，居中后余 16px。
+- **52px 时框线贴字（用户反馈的 bug）**：内容区只剩 40px，而滑块指示器是相对内容区 `top/bottom: 3px` 的浮层 —— 它的上下描边距图标与文字**不足 1px**，视觉上框线和文字连成一片。
+- **58px 仍偏紧**：Android 模拟器（411×914dp @2.625）实测，指示器环线与图标/文字各只剩 **2dp**。
+- **62px 是选定值**：同一环境实测环线上下各留 **4dp**，呼吸感够且胶囊不至于显得笨重。66px（6dp）视觉上开始发暄。
+- 所以调高度时**不能只改 `h-[...]`**：指示器的 `gap`（默认 3）与胶囊的 `p-1.5` 是一套几何，改一个必须同时看另外两个，否则不是框线贴字、就是滑块浮得离选项太远。**改完必须用 CDP 量一遍**（`icon.getBoundingClientRect().top - ring.getBoundingClientRect().top`），别只靠眼睛。
+- 抽卡页的分类胶囊（`pages/gacha-records.tsx` 的 sticky 分类栏）用**同一套几何**，两处高度必须保持相等，否则两个页面来回切会看到胶囊「跳一下」。改一处就得改另一处。
+- **下游联动**：`DashboardFAB` 与 `BackToTopFab` 都靠「胶囊高度」抬高自己让位（`bottom: calc(... + var(--safe-area-bottom))`），胶囊变高后要让位值一起调。62px 时胶囊顶边 = 安全区 + 8px + 62px，`DashboardFAB` 取 `5.5rem`，实测与胶囊间距 18dp；`BackToTopFab` 的 `7rem` 仍有余量。
 
 **备注**：
-- **为什么只放 4+1 格**：再多就会挤（每格不足 64px，低于 44px 的可点区域下限），而且高频入口本来就只有这几个。
+- **为什么只放 5 格**：再多就会挤（每格不足 64px，低于 44px 的可点区域下限），而且高频入口本来就只有这几个；次级工具入口收进顶栏的「更多工具」顶部抽屉（矩阵显示）。
 - **游戏过滤的两套「游戏」不要混淆**：`game` prop 传的是**当前选中账户**的游戏（`endfield` / `arknights`，决定哪些页面可用），与 `stores/launcherGame` 的「当前启动器游戏页」不是一回事。布局层 `layouts/dashboard.tsx` 用 `getSelectedAccount()` + `getAccounts()` 取到它。
 - **invoke 命令**：本文件 0 个直接 `invoke`；账户数据由布局层取好后传入。
 - **使用点**：`src/layouts/dashboard.tsx`（数据模式的 DATA MODE 分支，`lg:hidden`）。
+
+## `src/components/me-page.tsx`
+**职责**：**Android / 窄屏专属的「我的」页面**（个人中心形态）。底部导航最右一格「Me」进入的就是它（路由仍是 `/account`）。结构自上而下：**下拉刷新指示器** → 头部（`SwipeCarousel` 头像轮播，左右滑动切号；单账户时退化为静态头像）+ 昵称 + 用户 ID + 等级/服务器/同步状态 + 右上角设置 → **页面入口矩阵**（4 列网格，按账户游戏过滤）→ 账户维护列表（添加账户 / 设置）→ 版本号。
+**导出**：`MePage`（命名导出）。
+**主要依赖**：`react-router-dom`（`useNavigate`/`useLocation`）、`react-i18next`、`@/components/icons`、`@/components/ui/app-icon`（`ChevronRightIcon`/`RefreshIcon`）、`@/utils/accountService`（`getAccounts`/`getSelectedAccount`/`setSelectedAccount`）、`@/utils/accountAvailability`、`@/config/gameSupport`（`isNavVisible`）、`@/components/ui/account-avatar`、`@/components/ui/game-badge`、`@/components/ui/swipe-carousel`、`@/hooks/usePullToRefresh`、`@/types`（`resolveServerLabel`）、`@/utils/appInfoService`（`getAppVersion`）、`@/utils/tabSnapshotService`（`runDashboardLeaveHandler`）、`@/components/ui/status-badge`（`SYNC_STATUS_META`）、`@/components/add-account-modal`、`@/components/account-switch-modal`。
+
+| 符号 | 位置 | 说明 |
+| --- | --- | --- |
+| `ME_GRID` | me-page.tsx:65 | 入口矩阵表：仪表板/签到/抽卡/待办/干员/蚀刻章/地区/帝江号/公开招募/基地/游戏数据，每项 `{ key, path, labelKey, Icon }`。**不含 `me`**（本页自身） |
+| `MePage` | me-page.tsx:84 | 主组件：拉当前选中账户、监听 `accountChanged`/`manualRefresh`、按 `isNavVisible` 过滤矩阵、管理添加/切号弹窗与设置导航 |
+| `loadAccounts` | me-page.tsx:100 | 并发拉「当前选中 ID + 账户列表」，失败时清空（空态） |
+| `switchTo` | me-page.tsx:155 | 轮播换号：先乐观设置 `currentId`，`setSelectedAccount` 失败则回滚并广播 `accountChanged` |
+| `usePullToRefresh` | me-page.tsx:142 | 下拉刷新（移动端主刷新方式，不设刷新按钮） |
+
+**关键行为**：
+- **为什么单独一个组件**：`pages/account.tsx` 有 4800+ 行，承担森空岛父账户、角色绑定、扫码登录、设备认证、U8 授权等桌面工作流；在同一组件里按断点切结构，会让每条流程都多一套「窄屏怎么办」分支。这里只读账户数据，把「我的」做成一般应用的样子。
+- **添加账户走自己的弹窗**：「添加账户」直接弹 [`add-account-modal.tsx`](#srccomponentsadd-account-modaltsx)（走完整登录 → 确认 → 选角色链路），**不再** `navigate("/account?desktop=1")` 转交桌面页。
+- **账户管理走自己的抽屉**：「账户管理」弹 [`account-manager-drawer.tsx`](#srccomponentsaccount-manager-drawertsx)，补齐窄屏缺失的绑定/解绑、授权/取消授权、删除账户。
+- **必须在 `AccountPage` 的 hooks 之后分流**：分流 return 放在全部 hooks 之后、主 return 之前（见 `pages/account.tsx` 的 `if (showMePage)`），否则宽窄屏切换会改变 hooks 数量，React 直接报错。
+- **下拉刷新代替刷新按钮**：`common.refreshing` / `common.release_to_refresh` / `common.pull_to_refresh` 三个 key **在 locale 里不存在**，靠 `defaultValue` 兜底中文；补 key 时注意别让兜底失效。
+- **invoke 命令**：本文件 0 个直接 `invoke`；经 `getAccounts`/`getSelectedAccount`/`setSelectedAccount` 间接调用。
+- **配置键**：无直接读写。
+
+
+## `src/components/account-manager-drawer.tsx`
+**职责**：**窄屏「账户管理」抽屉** —— 补齐 Android 端缺失的账户写操作，与桌面 `pages/account.tsx` 的账户管理能力对齐：绑定/解绑游戏角色、授权/取消授权抽卡数据、删除森空岛账户。
+**导出**：`AccountManagerDrawer`（命名导出）。props：`isOpen`、`onClose`、`onChanged`。
+**主要依赖**：`@/components/custom-modal`、`@/components/ui/glass`（`GlassButton`/`GlassSpinner`）、`@/components/ui/account-avatar`、`@/components/ui/game-badge`、`@/components/ui/app-icon`（`ChevronRightIcon`）、`@/utils/accountService`（`getSklandAccounts`/`getAccounts`/`getSklandAccountRoles`/`saveSelectedRoles`/`authorizeRoleU8Token`/`revokeRoleU8Token`/`deleteSklandAccount`）。
+
+| 符号 | 位置 | 说明 |
+| --- | --- | --- |
+| `AccountManagerDrawer` | account-manager-drawer.tsx:47 | 主组件：森空岛账户列表 → 展开看角色 → 每角色两个开关（绑定 / 抽卡授权）+ 删账户 |
+| `SklandRoleSet` | account-manager-drawer.tsx:39 | 展开后才拉的角色集：`roles` + `cred` + `token` |
+| `toggleExpand` | account-manager-drawer.tsx:172 | 展开账户时按需 `get_skland_account_roles`（走两次网络，十几秒正常） |
+| `toggleBind` | account-manager-drawer.tsx:201 | 绑/解绑：算出新的角色集再 `save_selected_roles` |
+| `toggleU8` | account-manager-drawer.tsx:232 | 授权/取消：`authorize_role_u8token` / `revoke_role_u8token`，成功后**就地**改该行开关（不重拉整份列表） |
+| `confirmDelete` | account-manager-drawer.tsx:289 | 账户级删除 `delete_skland_account`，带独立二次确认弹窗 |
+
+**关键行为**：
+- **为什么需要它**：窄屏「Me」指向 `/account`，但那里渲染的是简化的 `me-page.tsx`（只读账户）。桌面页的写操作在窄屏**没有任何入口** —— 用户看得见账户却改不了。这个抽屉补的就是这部分。
+- **父子两级权限**：删除是**账户级**（父账户 + 全部角色 + 凭据一起删，不可逆，必须二次确认）；绑定/授权是**角色级**。
+- **授权是幂等的开关写入**：后端每次现换令牌校验、令牌不落盘，所以反复点安全。
+- **角色按需拉取并缓存**：`get_skland_accounts` 只给角色**数量**，详情要 `get_skland_account_roles`；展开哪个才拉哪个，重复展开不再请求。
+- **invoke 命令**：`get_skland_accounts`、`get_accounts`、`get_skland_account_roles`、`save_selected_roles`、`authorize_role_u8token`、`revoke_role_u8token`、`delete_skland_account`。
+- **配置键**：无直接读写（全部经 `accountService`）。
+
+
+## `src/components/ui/swipe-carousel.tsx`
+**职责**：头像轮播 —— **连续位置模型**：拖动时按「离中心多远」给每个头像独立插值缩放/饱和度/透明度（左淡出、当前缩小灰化、右变大恢复、外圈淡入），松手停在最近整格、首尾相连。
+**导出**：`SwipeCarousel`（泛型组件）+ `SwipeCarouselProps`。
+
+| 符号 | 位置 | 说明 |
+| --- | --- | --- |
+| `SwipeCarousel` | swipe-carousel.tsx:60 | 主组件：唯一驱动真值是连续位置 `pos`（单位＝第几个账户，可为小数） |
+| `ITEM_SIZE` / `SLOT_GAP` | swipe-carousel.tsx:40 | 居中头像 80px、相邻中心距 0.92×80 |
+| `WINDOW` | swipe-carousel.tsx:45 | 渲染窗口 1.55：`|d|` 超过它即完全透明、不渲染 |
+| `SETTLE_MS` / `FLING_VX` | swipe-carousel.tsx:47 | 停靠动画 300ms；甩动速度阈值 0.35 px/ms |
+| `finish` | swipe-carousel.tsx:190 | 松手结算：`pos` 动画到最近整数，**同一次提交**内通知 `onIndexChange` |
+
+**关键行为**：
+- **连续插值取代刚性平移**：旧实现只有一个 `dragX` 让三张牌同步横移、松手靠 `index` 切换，看起来是「先回弹再换像」。现在每个头像按自己的 `d` 算形态：`d=0` 满尺寸满色；`d=±1` 缩到 0.62、`saturate(0.25)`、`opacity 0.45`；`|d|→WINDOW` 淡到 0。
+- **虚拟槽位**：只渲染 `|k - pos| <= WINDOW` 的整数槽，`key` 用虚拟槽号 `k`（不是账户下标）—— 循环时同一账户会同时出现在两侧（count=2 时尤其明显），用 `k` 才能各自独立动画。
+- **窗口上下界必须由 `pos` 直接算**：写死 `floor(pos)±2` 会在 `pos=2.4` 时把 `d=1.6` 的外圈裁掉，表现为「拖到一半时该淡入的那张永远不出现」。
+- **轴向判定为纵向时不要 `setIsDragging(false)`**：那会让 `finish` 因 `isDragging` 已假而提前返回，指针捕获永不释放 —— 症状是「第一次滑动正常，之后每次按下都没反应」，与滚动/下拉刷新冲突时也不是这个解法（纵向只需 `return` 让事件冒泡）。
+- **松手要显式 `releasePointerCapture`**：松手点可能已在元素外。
+- **核心定位写内联样式**：`position/left/top/transform` 不走 Tailwind 工具类 —— 曾经用 `left-1/2` 等类，在没加载 CSS 的 harness 里头像直接跑到视口外（x=-132）。
+- **回归必须用 touch 事件驱动**：CDP 的 `Input.dispatchMouseEvent` 在指针捕获下会派发 `pointercancel`，把拖动当场取消，用鼠标事件写回归会一直误报「第二次拖动没反应」。
+
+
+
+## `src/components/add-account-modal.tsx`
+**职责**：**窄屏「添加账户」弹窗**，把「森空岛登录 → 确认父账户 → 挑游戏角色 → 落盘」这条完整链路封装在一个自持状态的组件里，供 `me-page.tsx` 直接弹出。
+**导出**：`AddAccountModal`（default 导出）。props：`isOpen`、`onClose`、`onAdded`。
+**主要依赖**：`@/components/custom-modal`（`CustomModal`/`Header`/`Body`/`Footer`）、`@/components/ui/glass`（`GlassButton`/`GlassInput`/`GlassSpinner`）、`@/utils/accountService`（`addAccount`/`addAccountByCode`/`addAccountByScan`/`genScanLogin`/`scanStatus`/`sendVerificationCode`/`saveSklandAccount`/`getSklandAccountRoles`/`saveSelectedRoles`/`getSklandUserInfoByCred`/`getAccounts`/`getSelectedAccount`/`setSelectedAccount`）、`@/utils/imageLoader`（`Img`）、`@/components/ui/account-avatar`、`@/components/ui/game-badge`、`@/utils/logger`。
+
+| 符号 | 位置 | 说明 |
+| --- | --- | --- |
+| `Method` | add-account-modal.tsx:61 | 登录方式：`password` / `sms` / `qrcode` |
+| `Stage` | add-account-modal.tsx:64 | 阶段机：`method` → `credentials` → `confirm` → `roles` → `auth` |
+| `AddAccountModal` | add-account-modal.tsx:66 | 主组件；`reset()` 在 `isOpen` 变 false 时清空全部状态 |
+| `loadProfile` | add-account-modal.tsx:160 | 用刚登录的 cred/token 拉森空岛资料（`get_skland_user_info_by_cred`），失败置 `profileFailed` 但**不阻断**流程 |
+| `handleLoginResult` | add-account-modal.tsx:181 | 登录结果分派：有 `account` → 完成；有 `availableRoles` → 角色页；**只有 cred/token → 确认页 + 拉资料** |
+| `startQr` | add-account-modal.tsx:213 | 扫码：生成二维码 + 2s 轮询；`status` 兼顾 1/101（已扫码）与 2/0（已确认 + `scanCode`）两套历史取值 |
+| `handleSubmit` | add-account-modal.tsx:261 | 密码 / 验证码登录入口 |
+| `handleConfirmSkland` | add-account-modal.tsx:285 | **确认父账户**：`save_skland_account` → `get_skland_account_roles` → 进角色页；角色为空时仍进角色页给「重试」空态 |
+| `handleConfirmRoles` | add-account-modal.tsx:325 | 角色落盘：`save_selected_roles` → 自动选号 → **进授权抽卡页**（不再是直接 `onAdded`） |
+| `runAuthorizeRole` | add-account-modal.tsx:360 | 授权 / 取消授权单个角色：`authorize_role_u8token` / `revoke_role_u8token`，就地改该行状态 |
+| `selectPreferredAccount` | add-account-modal.tsx:400 | 绑定后自动选号，优先终末地角色（明日方舟角色的数据接口与现有卡片不兼容） |
+
+**关键行为**：
+- **确认页必须自己拉资料**：此时账户**尚未保存**，`get_skland_user_info`（按 userId 读本地配置）读不到东西；必须用刚登录的 cred/token 走 `get_skland_user_info_by_cred`，否则确认页只剩空头像框。
+- **确认按钮必须真的调后端**：`complete_login_from_token` 只返回 cred/token/userId（`account` 与 `available_roles` 恒为 `None`），所以「确认」不能直接 `onAdded()` 关弹窗 —— 必须 `save_skland_account` + `get_skland_account_roles`，否则就是「登录成功但账户没出现」。
+- **`checkingRoles` 是独立真值**：不能用 `busy` 兼职。`busy` 一回落界面就会给出「暂无可绑定角色」这种**结论式**空态，用户看到的是「流程结束了」而不是「还在检测」。
+- **绑定后先问要不要授权抽卡**：角色落盘后进 `auth` 阶段，按角色逐个给「授权 / 抽卡已授权」按钮，与桌面 `pages/account.tsx` 的 `openAuthStep` 对齐。抽卡同步需要每个角色单独授权，不授权只会得到「该角色还没有授权抽卡数据访问」—— 在这里顺手给入口，比让用户事后去账户管理里找好得多。授权可选：跳过直接完成，之后仍可在账户管理里补。
+- **invoke 命令**：`add_account`、`add_account_by_code`、`add_account_by_scan`、`gen_scan_login`、`scan_status`、`send_verification_code`、`save_skland_account`、`get_skland_account_roles`、`save_selected_roles`、`get_skland_user_info_by_cred`、`get_accounts`、`get_selected_account`、`set_selected_account`。
+- **配置键**：无直接读写（全部经 `accountService`）。
+
+
 
 ## `src/components/gacha-pity-chart.tsx`
 **职责**：抽卡「寻访统计」保底条形图——按卡池分组，以横向柱条展示每次六星距离上个六星的抽数（或赠送十连内序号）及未出六星的余量，柱头附角色/武器圆形头像，支持卡池筛选与中英文案。

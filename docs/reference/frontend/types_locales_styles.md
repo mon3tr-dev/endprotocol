@@ -142,7 +142,7 @@
 - **干员头像不在接口里**（`charInfoMap` 无图片字段、`charAssets` 实测空数组），但官方 CDN 有确定规律：**半身像** `https://web.hycdn.cn/arknights/game/assets/char/portrait/{charId}.png`（180×360，实测 12 个含 token 干员的 id 均 200）→ `arknightsPortraitUrl`；**方形头像** `https://web.hycdn.cn/arknights/game/assets/char_skin/avatar/{charId}%231.png`（180×180，实测 24/24 覆盖）→ `arknightsAvatarUrl`。⚠️ 小尺寸方块一律用后者——半身像塞进正方形缩略图会被 `object-cover` 裁成躯干、看不见脸。封面用接口自带的 `activityInfoMap[].picUrl`（约 57% 覆盖，**空时前端不渲染封面**，章节行降级为紧凑行、引航者试炼图标不渲染）。
 
 ## `src/locales/zh/translation.json`
-**职责**：中文 i18n 资源，共 989 行、903 个叶子 key、24 个顶层命名空间（2026-11 加入 recruitment/building/gamedata 三页后更新）。
+**职责**：中文 i18n 资源，共 1065 行、974 个叶子 key、26 个顶层命名空间（2026-11 加入 recruitment/building/gamedata 三页后更新）。
 **顶层命名空间清单**（这是重点，要完整列出）：
 
 | 命名空间/key 前缀 | 用途 | 大致行号 |
@@ -184,11 +184,11 @@
 | `building_page.*` | 基地数据页面（**明日方舟**）：无人机（距补满 `{{time}}`）、宿舍休息、疲劳干员、各设施 `room_*`、`facility_room`/`facility_rooms`/`level_short`（槽位文案）、`facility_not_built`、`hire_refresh_next`/`hire_refresh_ready`、心情/订单/线索、训练室 | :175 |
 | `gamedata_page.*` | 游戏数据页面（**明日方舟**）：主线进度、章节分组 `chapter_type_*`（别传 Side Story / 故事集 Story Collection / 插曲 Intermezzo / 活动 Event）、行内状态 `state_done`/`state_ongoing`、`max_kills`、`medal_progress`、`bp_level`、`relics`（Collectibles）、`bank_invest`（Investments）、`bossrush_name`（Trials for Navigator）、`bossrush_season`（第 N 期 / Season N）、`not_played`（暂无记录） | :214 |
 
-- **与 en/translation.json 的 key 差异**：无。经脚本对比，zh 与 en 叶子 key 均为 795 个，键集合完全一致（既无 zh 缺键也无 en 缺键），且两文件结构逐行对齐（行号一一对应）。
+- **与 en/translation.json 的 key 差异**：无。经脚本对比，zh 与 en 叶子 key 均为 974 个，键集合完全一致（既无 zh 缺键也无 en 缺键），且两文件结构逐行对齐（行号一一对应）。
 - **异常（两边共有）**：`settings.update` 内存在重复键 —— `latest_version` 同时出现于 :177 与 :187、`release_date` 同时出现于 :179 与 :188。JSON 解析时后者覆盖前者（zh 实际生效值为 :187 的“远端最新版本”、:188 的“发布日期”；en 同理）。建议后续合并为 `latest_version_remote` 之类的独立键。
 
 ## `src/locales/en/translation.json`
-**职责**：英文 i18n 资源，与 zh 文件同为 989 行、903 个叶子 key、24 个顶层命名空间，行号与 zh 完全对应（见上表）。
+**职责**：英文 i18n 资源，与 zh 文件同为 1065 行、974 个叶子 key、26 个顶层命名空间，行号与 zh 完全对应（见上表）。
 - 主要差异仅在文案语言，个别本地化选择值得注意：`settings.characters.cultivation_talents` zh 为“基建技能”而 en 为 “O.M.V. Dijiang Skills”（帝江号相关译名）；`settings.logs.level_*` en 使用大写日志级别（DEBUG/INFO/WARN/ERROR），`source_frontend/source_backend` 缩写为 FE/BE。
 - 同样存在 `settings.update` 的 `latest_version` / `release_date` 重复键（:177/:187、:179/:188），与 zh 完全一致。
 
@@ -216,7 +216,7 @@
 | 约 762-790 行 | 文字对比度兜底：`.adaptive-contrast-text` 取 `--foreground`；`:is([class~="text-muted"], [class*="text-muted/"], text-gray-400/500/600)` 统一改为 `--muted`（**不再一律涂成 `--foreground`**，否则标题与次要信息同色、层级全丢）；`text-foreground/50`、`/60` 抬到 `--foreground`。**全局 `[class*="text-"]` 双向 text-shadow 已移除**（黑 55% + 白 65% 双层阴影会把中文小字号笔画染成灰边，形成「重影糊字」） |
 | 206-224 行 | `.titlebar-mode-toggle` 标题栏模式切换胶囊动画（`.is-game` 右移） |
 | 226-227 行 | `::selection` 选区配色 |
-| 约 1250-1345 行 | 动画 keyframes 与 `.animate-*` 工具类（含系统资源指标切换的 `.animate-resource-page`、`fade-in` 系列、`spin-slow`，以及启动器下载按钮的 `.launcher-download-arrow`：只对 SVG 内部的 `<g>` 做 transform + opacity，不承载玻璃层也没有 backdrop-filter 后代，因此不受「opacity < 1 即成为 backdrop root」约束） |
+| 约 1250-1345 行 | 动画 keyframes 与 `.animate-*` 工具类（含系统资源指标切换的 `.animate-resource-page`、`fade-in` 系列、`spin-slow`、侧栏抽屉的 `slide-in-left`、**顶部抽屉的 `slide-down-top`（`translateY(-100%)` → 0，移动端「更多工具」抽屉入场，同样只动 transform 不做淡入，fill-mode 为 `backwards` 以免终态残留把面板永久变成 backdrop root）**，以及启动器下载按钮的 `.launcher-download-arrow`：只对 SVG 内部的 `<g>` 做 transform + opacity，不承载玻璃层也没有 backdrop-filter 后代，因此不受「opacity < 1 即成为 backdrop root」约束） |
 | 257-265 行 | Banner 轮播「翻页推动」动画：`@keyframes banner-push-in/out-left/right` 与 `.animate-banner-push-*` 工具类（dashboard 游戏模式底部宣传图使用） |
 | 游戏切换过渡 | 切游戏走**整页推移**（旧页往一个方向退出、新页从另一方向进入），位移由 `layouts/dashboard.tsx` 的 rAF 驱动 —— 两页位置都由同一个进度算出，CSS 要写两套 keyframes 且难以保证严格同步（一边先到、一边后到就穿帮了）。**只动 transform，不做淡入**：opacity < 1 会让元素成为 backdrop root，自身与后代的 backdrop-filter 当场失效，玻璃退化成半透明色块（见上「backdrop root 约束」） |
 | 267-283 行 | 页面转场（`.page-transition-enter/slide-up/scale-in`）与列表项级联动画 `.animate-list-item`（8 档 40ms 阶梯延迟） |

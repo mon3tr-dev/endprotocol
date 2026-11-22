@@ -1,12 +1,26 @@
 import { useState, useEffect, useRef, useCallback, useMemo, Suspense } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { createPortal } from "react-dom";
 import clsx from "clsx";
 import { CustomTitlebar } from "@/components/custom-titlebar";
 import { Sidebar } from "@/components/dashboard-sidebar";
 import { MobileBottomNav } from "@/components/mobile-bottom-nav";
+import {
+  HomeIcon,
+  UsersIcon,
+  MedalIcon,
+  MapIcon,
+  SatelliteIcon,
+  ClockIcon,
+  FactoryIcon,
+  ChartIcon,
+  SettingsIcon,
+  DeveloperIcon,
+} from "@/components/icons";
 import { GlassProgressCircle } from "@/components/ui/glass";
 import { getConfig, setConfig } from "@/utils/configService";
+import { isNavVisible } from "@/config/gameSupport";
+import { runDashboardLeaveHandler } from "@/utils/tabSnapshotService";
 import {
   getLauncherMode,
   subscribeLauncherMode,
@@ -24,7 +38,7 @@ import {
 import { InAppBrowser } from "@/components/in-app-browser";
 import { GameSwitchRail } from "@/components/game-switch-rail";
 import { AppInfoDrawer } from "@/components/app-info-drawer";
-import { BellIcon } from "@/components/ui/app-icon";
+import { BellIcon, ChevronDownIcon } from "@/components/ui/app-icon";
 import {
   getMessages,
   getUnreadCount,
@@ -512,8 +526,8 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
        * 标题栏：桌面端是「图标 + 游戏名 + 模式拨杆 + 铃铛 + 窗口按钮」一整条；
        * 窄屏下这套排布塞不下（模式拨杆 + 铃铛 + 三个窗口按钮至少要 200px，
        * 加上品牌区就超出 375px 屏宽），而且移动端本来就没有窗口按钮。
-       * 所以窄屏另给一条精简顶栏：左侧「更多」按钮打开抽屉，中间标题，
-       * 右侧留空（铃铛改挂在底部导航里不现实，这里保留标题栏自带的铃铛）。
+       * 所以窄屏另给一条精简顶栏：左侧**下拉箭头**打开「更多工具」顶部抽屉，
+       * 中间标题，右侧留空（铃铛改挂在底部导航里不现实，这里保留标题栏自带的铃铛）。
        */}
       <div className="hidden lg:block">
         <CustomTitlebar />
@@ -535,13 +549,13 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
         </div>
 
         {/*
-         * 移动端抽屉。
+         * 移动端「更多工具」顶部抽屉。
          *
          * ⚠️ 必须 **portal 到 body**（`createPortal`），不能直接放在这里。
          *
          * 原因：这段 JSX 在 `<div class="relative z-10 flex flex-1 overflow-hidden">`
          * 里面，那个容器有 `z-10` —— **它建立了一个层叠上下文**。抽屉的
-         * `fixed z-50` 只在这个上下文**内部**排序，对外只表现为「父容器的 z-10」。
+         * `fixed z-60` 只在这个上下文**内部**排序，对外只表现为「父容器的 z-10」。
          * 于是同为 root 层元素的窄屏顶栏（`sticky z-30`）和底部导航
          * （`fixed z-40`）都会**盖在抽屉上面**：
          *   - 顶栏压住抽屉头部，抽屉的标题与关闭按钮点不到；
@@ -551,6 +565,10 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
          *
          * portal 到 body 之后，抽屉与遮罩回到 root 层，z-60 高于顶栏的
          * z-30 与导航的 z-40，层级才正确。
+         *
+         * 形态是**从顶部滑下的抽屉**而不是左侧抽屉：Android 端不适配侧边栏式的
+         * 抽屉（窄屏下左抽屉占掉大半屏宽，点按与滚动都别扭），从顶部展开的抽屉
+         * 全宽、贴顶，与顶栏的下拉箭头是同一方向的动线。
          */}
         {mobileOpen &&
           createPortal(
@@ -558,31 +576,25 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
               <div
                 className="lg-scrim lg:hidden fixed inset-0 z-[55] [animation:lg-backdrop-in_var(--lg-dur-base)_var(--lg-ease-emphasized)]"
                 onClick={() => setMobileOpen(false)}
-                aria-label="Close sidebar"
+                aria-label="Close menu"
                 role="button"
               />
               <div
-                className="lg:hidden fixed inset-y-0 left-0 z-[60] w-[min(20rem,85vw)] border-r border-separator/60 animate-slide-in-left flex flex-col"
+                className="lg-regular lg:hidden fixed inset-x-0 top-0 z-[60] w-full max-h-[85dvh] border-b border-separator/60 animate-slide-down-top flex flex-col"
                 style={{ paddingTop: "var(--safe-area-top)" }}
               >
               {/*
-               * 抽屉自身的磨砂：fixed 定位，不能复用桌面端那条全屏覆盖层。
-               * 这里只需要侧边栏的横向遮罩（抽屉从顶部到底，不经过标题栏段）。
+               * 抽屉头部：标题 + 关闭按钮。手机上必须有一个显式关闭按钮 ——
+               * 遮罩点按在窄屏上容易误触（内容区贴边时）。
+               *
+               * 材质用面板自身的 `lg-regular`（与底部导航胶囊、消息底部抽屉
+               * 同一材质），而不是桌面侧栏那套 `.frost-drawer` 磨砂层：
+               * 磨砂层是 `fixed bottom: 0` 的全高层，顶部抽屉只有 85dvh，
+               * 滑入动画结束后定位基准回到视口，会向下多铺出一截盖住页面。
                */}
-              <div
-                className="frost-main frost-drawer"
-                style={
-                  {
-                    "--frost-sidebar-w": "min(20rem,85vw)",
-                  } as React.CSSProperties
-                }
-                aria-hidden="true"
-              />
-              {/* 抽屉头部：标题 + 关闭按钮。手机上必须有一个显式关闭按钮 ——
-                  遮罩点按在窄屏上容易误触（内容区贴边时）。 */}
               <div className="flex items-center justify-between px-4 py-3 shrink-0 border-b border-separator/40">
                 <span className="text-sm font-semibold text-foreground">
-                  {t("sidebar.title", "导航")}
+                  {t("mobile_nav.more_tools", "更多工具")}
                 </span>
                 <button
                   type="button"
@@ -602,8 +614,17 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                   </svg>
                 </button>
               </div>
-              <div className="flex-1 min-h-0 overflow-hidden">
-                <Sidebar onNavigate={() => setMobileOpen(false)} />
+              {/*
+               * 中间容器必须是 **flex 列**：滚动层靠 `flex-1 min-h-0` 从抽屉的
+               * `max-h-[85dvh]` 里拿到受限高度，`overflow-y-auto` 才会有滚动条。
+               * 若这里是块级容器，子元素的 `flex-1`/`h-full` 都解析成 auto，
+               * 高度被内容撑开、再被 `overflow-hidden` 裁掉 —— 工具一多就滚不动。
+               */}
+              <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+                <MobileMoreTools
+                  game={activeGameAccountGame}
+                  onNavigate={() => setMobileOpen(false)}
+                />
               </div>
               </div>
             </>,
@@ -643,27 +664,31 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
       </div>
 
       {/*
-       * 移动端底部导航条。
+       * 移动端底部导航栏：**常驻视口底部**，只放五个导航入口。
        *
-       * 桌面端那个右下角悬浮的汉堡按钮在窄屏上被撤掉了：它和仪表板的
-       * 「添加卡片」FAB（同样固定在右下角）会重叠，两个半透明圆钮叠在一起
-       * 互相遮挡。改用底部导航条承载「更多」入口后，右下角空出来给 FAB。
+       * 页面的分类栏（如抽卡页）不再占用这条胶囊 —— 它由页面自己渲染在
+       * 内容里并做 sticky（见 `pages/gacha-records.tsx`）。两者材质同源，
+       * 但定位独立，导航不会因为某个页面有分类栏就消失。
        */}
-      <MobileBottomNav game={activeGameAccountGame} onOpenDrawer={() => setMobileOpen(true)} />
+      <MobileBottomNav game={activeGameAccountGame} />
     </div>
   );
 }
-
 /**
- * 窄屏顶栏：左侧「更多」按钮 + 标题 + 右侧铃铛。
+ * 窄屏顶栏：左侧下拉箭头（打开「更多工具」顶部抽屉）+ 标题 + 右侧铃铛。
  *
  * 桌面端标题栏（`CustomTitlebar`）在窄屏下并不适用：它带数据/游戏模式拨杆
  * 与三个窗口按钮，移动端既没有窗口可控制、模式拨杆也只在 Windows 上出现
  * （见 `custom-titlebar.tsx` 里 `isWindowsPlatform()` 的判断），整条排布在
  * 375px 宽的屏上必然溢出。
+ *
+ * 左上角用**向下箭头**而不是汉堡：抽屉从顶部展开，箭头方向与展开方向一致，
+ * 用户看一眼就知道点了会从哪出来（侧边栏式抽屉才用汉堡）。
  */
 function MobileTopBar({ onOpenDrawer }: { onOpenDrawer: () => void }) {
   const { t } = useTranslation();
+  const navigate = useNavigate();
+  const location = useLocation();
   const [unreadCount, setUnreadCount] = useState(() => getUnreadCount());
   const [hasUrgent, setHasUrgent] = useState(() => hasUrgentUnread());
   const [infoOpen, setInfoOpen] = useState(false);
@@ -675,26 +700,61 @@ function MobileTopBar({ onOpenDrawer }: { onOpenDrawer: () => void }) {
     });
   }, []);
 
+  /**
+   * 当前页是否**不在**底部导航里。
+   *
+   * 底部导航只有五个常驻入口（仪表板/签到/抽卡/待办/我的）。像干员、蚀刻章、
+   * 地区、帝江号、公开招募、基地、游戏数据、设置、开发者这些页面，进去之后
+   * 底部导航一格都不高亮，用户会「不知道自己在哪里、也不知道怎么回去」。
+   * 这类页面在顶栏给一个回退按钮（放在下拉箭头右边），把它送回上一页。
+   */
+  const NAV_PATHS = ["/", "/attendance", "/gacha", "/todo", "/account"];
+  const inBottomNav =
+    location.pathname === "/" ||
+    NAV_PATHS.some((p) => p !== "/" && location.pathname.startsWith(p));
+  const showBack = !inBottomNav;
+
   return (
     <header className="mobile-top-bar lg:hidden">
       <div className="flex h-12 items-center gap-2 px-2">
         <button
           type="button"
           onClick={onOpenDrawer}
-          aria-label={t("sidebar.title", "打开导航")}
+          aria-label={t("mobile_nav.open_more_tools", "打开更多工具")}
           className="lg-control flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-foreground"
         >
-          <svg
-            className="h-5 w-5"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-            strokeWidth={2}
-            strokeLinecap="round"
-          >
-            <path d="M4 6h16M4 12h16M4 18h16" />
-          </svg>
+          <ChevronDownIcon size={20} />
         </button>
+
+        {/*
+         * 回退按钮：只在「不在底部导航里的页面」出现，紧贴在箭头右侧。
+         * 与箭头同尺寸同材质，避免两个按钮视觉重量不一致。
+         */}
+        {showBack && (
+          <button
+            type="button"
+            onClick={() => {
+              // 有历史就退一格；直接落地（如从外链/深链进入）时退回仪表板，
+              // 否则 navigate(-1) 会把人送出应用（WebView 里是关掉页面）。
+              if (window.history.length > 1) navigate(-1);
+              else navigate("/");
+            }}
+            aria-label={t("common.back", "返回")}
+            className="lg-control flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-foreground"
+          >
+            <svg
+              className="h-5 w-5"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              strokeWidth={2}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M15 18l-6-6 6-6" />
+            </svg>
+          </button>
+        )}
 
         {/* 标题：居中且可截断，避免长标题把铃铛挤出屏幕 */}
         <div className="flex-1 min-w-0 text-center">
@@ -726,6 +786,113 @@ function MobileTopBar({ onOpenDrawer }: { onOpenDrawer: () => void }) {
 
       <AppInfoDrawer isOpen={infoOpen} onClose={() => setInfoOpen(false)} />
     </header>
+  );
+}
+
+/** 「更多工具」矩阵里的次级入口（顺序即网格顺序）。 */
+const MORE_TOOLS: Array<{
+  key: string;
+  path: string;
+  labelKey: string;
+  Icon: typeof HomeIcon;
+}> = [
+  { key: "characters", path: "/characters", labelKey: "sidebar.characters", Icon: UsersIcon },
+  { key: "medals", path: "/medals", labelKey: "sidebar.medals", Icon: MedalIcon },
+  { key: "domain", path: "/domain", labelKey: "sidebar.domain", Icon: MapIcon },
+  { key: "spaceship", path: "/spaceship", labelKey: "sidebar.spaceship", Icon: SatelliteIcon },
+  { key: "recruitment", path: "/recruitment", labelKey: "sidebar.recruitment", Icon: ClockIcon },
+  { key: "building", path: "/building", labelKey: "sidebar.building", Icon: FactoryIcon },
+  { key: "gamedata", path: "/game-data", labelKey: "sidebar.gamedata", Icon: ChartIcon },
+  { key: "settings", path: "/settings", labelKey: "sidebar.settings", Icon: SettingsIcon },
+  { key: "developer", path: "/developer", labelKey: "sidebar.developer", Icon: DeveloperIcon },
+];
+
+/**
+ * 移动端「更多工具」顶部抽屉的内容 —— **矩阵（网格）**显示。
+ *
+ * Android 端不适配侧边栏式的抽屉，次级工具入口以矩阵形式铺开：全宽、贴顶的
+ * 抽屉里按网格排列「图标 + 短标签」，一眼扫完所有入口，点按目标也比侧栏的
+ * 单行列表大。
+ *
+ * 与侧栏同一真值表过滤（`isNavVisible`）：当前账户游戏不支持的页面不出现，
+ * 与侧栏/底部导航给出同一个答案。点击先跑仪表盘 leave handler（标签页截图），
+ * 再跳转并关闭抽屉 —— 与侧栏导航同一约定。
+ */
+function MobileMoreTools({
+  game,
+  onNavigate,
+}: {
+  game?: string | null;
+  onNavigate: () => void;
+}) {
+  const { t } = useTranslation();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [developerMode, setDeveloperMode] = useState(false);
+
+  // 开发者入口与侧栏一致：仅开发者模式开启时出现
+  useEffect(() => {
+    void getConfig<boolean>("developer_mode").then((value) => {
+      setDeveloperMode(value ?? false);
+    });
+  }, []);
+
+  const entries = useMemo(
+    () =>
+      MORE_TOOLS.filter(
+        (entry) =>
+          (entry.key !== "developer" || developerMode) &&
+          isNavVisible(entry.key, game),
+      ),
+    [game, developerMode],
+  );
+
+  const handleNavigate = async (path: string) => {
+    await runDashboardLeaveHandler();
+    navigate(path);
+    onNavigate();
+  };
+
+  return (
+    /*
+     * `flex-1 min-h-0`：本层是调用方那个 flex 列容器的子项，只有成为 flex 子项
+     * 才能从抽屉的 `max-h-[85dvh]` 里分到受限高度，`overflow-y-auto` 才会滚动。
+     *
+     * 底部 `pb-5` 比顶部厚：网格最后一行若正好落在面板下缘，抽屉看起来像被
+     * 生硬截断（面板是贴顶的下拉件，下边缘是它的「收口」，必须留白）。
+     */
+    <div className="min-h-0 flex-1 overflow-y-auto scroll-touch px-3 pt-3 pb-5">
+      <div className="grid grid-cols-4 gap-2">
+        {entries.map((entry) => {
+          const Icon = entry.Icon;
+          const active = location.pathname.startsWith(entry.path);
+          return (
+            <button
+              key={entry.key}
+              type="button"
+              onClick={() => void handleNavigate(entry.path)}
+              aria-current={active ? "page" : undefined}
+              /*
+               * 不在格子上叠 `lg-control`：抽屉面板本身已经是 `lg-regular` 玻璃，
+               * 再给 8 个格子各加一层玻璃底，会变成「一堆白块浮在另一块白玻璃上」，
+               * 层次糊成一片。这里只用**极轻的填充**区分可点区域，选中态才给实底。
+               */
+              className={clsx(
+                "flex flex-col items-center gap-1.5 rounded-xl py-2.5 transition-colors duration-200 touch-target",
+                active
+                  ? "lg-control lg-solid bg-primary text-primary-foreground"
+                  : "bg-foreground/[0.04] text-muted",
+              )}
+            >
+              <Icon className="h-5 w-5 shrink-0" />
+              <span className="truncate text-[10px] leading-tight">
+                {t(entry.labelKey)}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 

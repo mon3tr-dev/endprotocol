@@ -55,8 +55,8 @@ export function BackToTopFab({
     <button
       type="button"
       className={cn(
-        // 移动端（<lg）：右下角是**悬浮的底部导航胶囊**（`fixed bottom-0`，高约
-        // 56px，通栏），与本按钮的 `bottom-6 right-6` 完全重合 —— 本按钮
+        // 移动端（<lg）：右下角是**悬浮的底部导航胶囊**（`fixed bottom-0`，高 58px，
+        // 通栏），与本按钮的 `bottom-6 right-6` 完全重合 —— 本按钮
         // z-[10003] 更高，会把导航胶囊整个盖住，导航在移动端就用不了了。
         // 参照 DashboardFAB 的做法：<lg 抬到导航胶囊上方，lg 及以上恢复 bottom-6
         // （桌面没有底部导航）。

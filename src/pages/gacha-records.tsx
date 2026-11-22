@@ -14,10 +14,20 @@ import {
   CustomModalFooter,
 } from "@/components/custom-modal";
 import { RefreshIcon, ChevronDownIcon, CheckIcon } from "@/components/ui/app-icon";
-import { AccountNameLine } from "@/components/ui/game-badge";
+import { GlassPillIndicator, GlassPillItem } from "@/components/ui/glass-pill";
+import { AccountNameLine, GameBadge } from "@/components/ui/game-badge";
+import { AccountAvatar } from "@/components/ui/account-avatar";
 import { SearchIcon } from "@/components/icons";
 import { Img } from "@/utils/imageLoader";
-import { getSelectedAccount, getAccounts, type Account, type GameId } from "@/utils/accountService";
+import {
+  authorizeRoleU8Token,
+  getAccounts,
+  getSelectedAccount,
+  U8_AUTH_TIMEOUT_MESSAGE,
+  U8_AUTH_TIMEOUT_SECONDS,
+  type Account,
+  type GameId,
+} from "@/utils/accountService";
 import { resolveServerLabel } from "@/types";
 import { logError } from "@/utils/logger";
 import { addMessage } from "@/utils/messageStore";
@@ -138,6 +148,10 @@ function tabLabel(tabKey: string, isZh: boolean): string {
 
 export default function GachaRecordsPage() {
   const { t, i18n } = useTranslation();
+  /**
+   * 窄屏分类栏交给布局层的底部胶囊（见 `ui/bottom-layer.ts`）。
+   * 相关注册在 `categories` / `category` 定义之后（下方）。
+   */
   const isZh = i18n.language === "zh";
 
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -179,6 +193,47 @@ export default function GachaRecordsPage() {
   const [progressModalOpen, setProgressModalOpen] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
   const [syncResult, setSyncResult] = useState<GachaSyncResult | null>(null);
+
+  /**
+   * 未授权时的授权抽屉。
+   *
+   * 同步因「该角色未授权抽卡数据」失败时，**不再把一段报错文字丢给用户**，
+   * 而是直接弹出授权抽屉，点一下就能授权、然后自动重试同步 ——
+   * 报错文案里「去账户页展开账户点授权」那套指路在窄屏上根本走不通
+   * （窄屏没有那个账户页结构）。
+   */
+  const [authDrawerOpen, setAuthDrawerOpen] = useState(false);
+  const [authBusy, setAuthBusy] = useState(false);
+  const [authNotice, setAuthNotice] = useState<{
+    tone: "ok" | "danger";
+    text: string;
+  } | null>(null);
+  /** 触发授权抽屉的那个错误：抽卡令牌被拒时也能给出同样的指引 */
+  const [authReason, setAuthReason] = useState<"u8" | "arknights">("u8");
+
+  /**
+   * 本角色是否已经成功执行过授权动作（用于防止「授权 → 重试 → 又弹授权」死循环）。
+   *
+   * 用 ref 而不是 state：`handleSync` 的 catch 回调在 Promise 里执行，闭包会
+   * 捕获旧的 state 值，用它判断会永远读到「没授权过」。
+   */
+  const authorizedRoleRef = useRef<string | null>(null);
+
+  /**
+   * 该角色是否已经授权过。
+   *
+   * `true` 时后续的同步失败**不再弹授权抽屉** —— 否则会形成
+   * 「授权 → 自动重试 → 仍失败 → 再弹」的死循环。
+   */
+  const isAuthRetryBlocked = (rid: string | null): boolean =>
+    !!rid && authorizedRoleRef.current === rid;
+
+  /** 切到别的角色时清掉标记：不同角色的授权互不相干 */
+  useEffect(() => {
+    if (roleId && authorizedRoleRef.current !== null && authorizedRoleRef.current !== roleId) {
+      authorizedRoleRef.current = null;
+    }
+  }, [roleId]);
 
   const loadSaved = useCallback(async (rid: string) => {
     try {
@@ -357,6 +412,67 @@ export default function GachaRecordsPage() {
         // 丢弃过期请求的错误
         if (requestSeq !== syncRequestRef.current) return;
         logError("[Gacha] Sync failed:", e);
+
+        /**
+         * 未授权 / 令牌被拒 → 弹授权抽屉，而不是显示一段「去账户页点授权」的报错。
+         *
+         * 窄屏没有桌面那种「展开账户 → 点角色授权」的结构，照着报错走不通；
+         * 用户真正要做的是「就地授权」。所以这里把失败转成一个动作：
+         * 关掉进度窗、打开抽屉，授权成功后自动重试。
+         *
+         * ⚠️ **只在本次同步还没授权过时才弹**。
+         *
+         * 授权成功后会自动重试同步；如果重试仍然失败（典型：该账号**没有任何
+         * 抽卡记录**，明日方舟的 `/api/gacha/cate` 返回空列表，后端把空列表
+         * 判定成鉴权失败），再弹一次抽屉就会形成死循环：点授权 → 重试 → 又弹
+         * → 点授权 → …… 用户永远出不来。
+         *
+         * 所以一旦本角色的授权动作已经成功执行过，后续失败一律走普通错误分支，
+         * 把「授权已完成、但同步仍失败」如实说清楚。
+         */
+        if (isAuthRetryBlocked(roleId)) {
+          /**
+           * 已经授权过还失败：不再兜圈子，直接报错。
+           *
+           * 最典型的成因是**该账号本来就没有抽卡记录**：明日方舟的
+           * `/api/gacha/cate` 对「没抽过卡」和「token 无效」都返回空列表，
+           * 后端无法区分，一律报鉴权错误。所以这里要把这层含义说出来，
+           * 而不是让用户反复点授权。
+           */
+          const friendly = isArknightsTokenRejected(e)
+            ? isZh
+              ? "授权已完成，但服务端仍没有返回任何卡池数据。如果你的账号确实没有抽卡记录，这是正常现象；否则可能是令牌已过期，请稍后重试。"
+              : "Authorization succeeded, but the server returned no pool data. If this account has never pulled, that is expected; otherwise the token may have expired — try again later."
+            : describeGachaSyncError(e, i18n.language === "zh");
+          addMessage({
+            type: "urgent",
+            title: isZh ? "抽卡记录同步失败" : "Gacha Sync Failed",
+            body: friendly,
+            tag: "gacha",
+          });
+          setSyncError(friendly);
+          setSyncing(false);
+          setProgressModalOpen(true);
+          return;
+        }
+
+        if (isU8UnauthorizedError(e)) {
+          setAuthReason("u8");
+          setAuthNotice(null);
+          setSyncing(false);
+          setProgressModalOpen(false);
+          setAuthDrawerOpen(true);
+          return;
+        }
+        if (isArknightsTokenRejected(e)) {
+          setAuthReason("arknights");
+          setAuthNotice(null);
+          setSyncing(false);
+          setProgressModalOpen(false);
+          setAuthDrawerOpen(true);
+          return;
+        }
+
         const friendly = describeGachaSyncError(e, i18n.language === "zh");
         addMessage({ type: "urgent", title: i18n.language === "zh" ? "抽卡记录同步失败" : "Gacha Sync Failed", body: friendly, tag: "gacha" });
         setSyncError(friendly);
@@ -375,8 +491,7 @@ export default function GachaRecordsPage() {
       });
   };
 
-  const handleSelectRole = (rid: string) => {
-    // 切换角色时游戏可能也变了（终末地 ↔ 明日方舟），分类集合要跟着换
+  const handleSelectRole = (rid: string) => {    // 切换角色时游戏可能也变了（终末地 ↔ 明日方舟），分类集合要跟着换
     const g = accounts.find((a) => a.id === rid)?.game;
     setRoleId(rid);
     setGame(g);
@@ -393,6 +508,55 @@ export default function GachaRecordsPage() {
     () => accounts.find((a) => a.id === roleId) ?? null,
     [accounts, roleId],
   );
+
+  /**
+   * 授权抽屉里点「授权」：先授权该角色，成功后自动重试同步。
+   *
+   * 授权是幂等的开关写入（后端每次现换令牌校验，令牌不落盘），所以重试安全。
+   * 已有的 `role.u8Authorized` 为真时说明是「令牌被拒」而非「未授权」，
+   * 这时也要重新授权一次以刷新令牌 —— 所以这里不判断当前状态，直接授权。
+   */
+  const authorizeAndRetrySync = async () => {
+    if (!roleId) return;
+    setAuthBusy(true);
+    setAuthNotice(null);
+    try {
+      const result = await authorizeRoleU8Token(roleId);
+      if (result.status !== "authorized") {
+        setAuthNotice({
+          tone: "danger",
+          text:
+            result.message === U8_AUTH_TIMEOUT_MESSAGE
+              ? (isZh
+                  ? `授权超时（${U8_AUTH_TIMEOUT_SECONDS} 秒），请稍后重试`
+                  : `Authorization timed out after ${U8_AUTH_TIMEOUT_SECONDS}s. Please try again.`)
+              : result.message || t("settings.account.u8_authorize_failed"),
+        });
+        return;
+      }
+
+      setAuthNotice({
+        tone: "ok",
+        text: t("settings.account.u8_authorized_ok"),
+      });
+      /**
+       * 记下「本角色已授权」再重试。
+       *
+       * 这是防死循环的关键：重试若仍失败，`handleSync` 的 catch 会看到这个标记，
+       * 于是走普通错误分支而不是再弹一次授权抽屉。
+       */
+      authorizedRoleRef.current = roleId;
+      // 授权成功 → 关抽屉、自动重新同步
+      setAuthDrawerOpen(false);
+      setSyncError(null);
+      handleSync();
+    } catch (e) {
+      logError("[Gacha] Authorize failed:", e);
+      setAuthNotice({ tone: "danger", text: String(e) });
+    } finally {
+      setAuthBusy(false);
+    }
+  };
 
   /**
    * 当前游戏可用的分类。
@@ -601,12 +765,13 @@ export default function GachaRecordsPage() {
   }
 
   return (
-    /* pb：为吸底分类胶囊留出空间。原来固定 pb-28，但胶囊是 `sticky bottom-4`，
-     * 滚动时始终浮在内容上方，手机上还要再让开手势条（safe-area-bottom）与
-     * 右下角 FAB，否则最后一屏最后一行会被盖住。 */
+    /* pb：给贴底导航胶囊留出空间（胶囊高 58px + 底部间隙 + 安全区）。
+     * 分类栏改为与底部导航胶囊二选一显示（同一位置，见 ui/bottom-layer.ts），
+     * 不再是独立的吸底浮层，
+     * 所以这里不再需要原来那份额外让位。 */
     <div
       className="max-w-6xl mx-auto space-y-6"
-      style={{ paddingBottom: "calc(9rem + var(--safe-area-bottom))" }}
+      style={{ paddingBottom: "calc(6.5rem + var(--safe-area-bottom))" }}
     >
       {/* 页面标题 + 右上角操作（角色切换 / 同步） */}
       <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -662,7 +827,7 @@ export default function GachaRecordsPage() {
             </GlassButton>
 
             {showRoleMenu && (
-              <div className="lg-regular absolute right-0 top-full mt-2 z-50 w-64 rounded-xl border border-separator/60 overflow-hidden animate-scale-in">
+              <div className="lg-regular absolute left-0 top-full mt-2 z-50 w-64 max-w-[calc(100vw_-_1.5rem)] sm:left-auto sm:right-0 rounded-xl border border-separator/60 overflow-hidden animate-scale-in">
                 <div className="max-h-72 overflow-y-auto">
                   {accounts.map((acc) => {
                     const isSelected = acc.id === roleId;
@@ -716,6 +881,51 @@ export default function GachaRecordsPage() {
           </GlassButton>
         </div>
       </header>
+
+      {/*
+       * 分类栏（窄屏）：**页面内 sticky**，排在工具行（角色选择 / 同步按钮）之下。
+       *
+       * 滚动行为（用户明确要求的那种）：
+       * - 起始位置就在工具行下方，跟着页面上移；
+       * - 上滑到距容器顶部 10px 时**吸住**，之后一直悬浮；
+       * - 下滑时离开吸住位置，重新跟随页面移动。
+       * 这是 `position: sticky` 的原生行为，不需要脚本监听 scroll。
+       *
+       * 材质与底部导航一致（`lg-control` + 滑块共用 `GlassPillIndicator`），
+       * 但两者是**独立的条**：底部导航常驻视口底部，本分类栏只属于抽卡页。
+       * 早先尝试过把两者合并成一条（页面分类占用时导航让位），代价是
+       * 「某些页面上底部导航整条消失」，已回退。
+       *
+       * 桌面端（lg+）不显示这条：宽屏用下面那条吸底胶囊（原来的布局）。
+       */}
+      <div
+        className="lg:hidden sticky z-30"
+        style={{ top: 10 }}
+      >
+        {/* 实底壳：sticky 吸住时内容从下方滚过，半透明玻璃挡不住加粗标题 */}
+        <div className="rounded-full bg-background py-1">
+          <div className="relative flex h-[62px] items-stretch overflow-hidden rounded-full border border-separator/70 p-1.5 shadow-lg lg-control">
+            <GlassPillIndicator
+              index={Math.max(0, categories.findIndex((c) => c.key === category))}
+              count={categories.length}
+            />
+            {categories.map((c) => (
+              <GlassPillItem
+                key={c.key}
+                active={category === c.key}
+                onClick={() => {
+                  setCategory(c.key);
+                  setTablePoolFilter(null);
+                  setPage(1);
+                }}
+                className="text-xs font-semibold"
+              >
+                {isZh ? c.labelZh : c.labelEn}
+              </GlassPillItem>
+            ))}
+          </div>
+        </div>
+      </div>
 
       {!active || active.records.length === 0 ? (
         <GlassCard className="p-8 sm:p-16 border border-separator/90">
@@ -824,13 +1034,18 @@ export default function GachaRecordsPage() {
                   整条 `shrink-0` + 标签 `whitespace-nowrap`：这一行里只有它能被压到
                   比文字还窄，一旦被压，「全部」会折成两行溢出胶囊（看着像排版坏掉）。 */}
               <div className="relative flex shrink-0 items-center p-1 rounded-full lg-control">
-                <span
-                  aria-hidden
-                  className="pointer-events-none absolute top-1 bottom-1 left-1 rounded-full lg-control border border-primary/50 [transition:transform_var(--lg-dur-slow)_var(--lg-ease-glide)]"
-                  style={{
-                    width: `calc((100% - 0.5rem) / ${RARITY_OPTIONS.length})`,
-                    transform: `translateX(${Math.max(0, RARITY_OPTIONS.findIndex((o) => o.value === rarityFilter)) * 100}%)`,
-                  }}
+                {/*
+                 * 滑动指示器：与底部胶囊共用同一组件（`wrapInset=4` 对应本容器的
+                 * `p-1`），留白规则一致，两处不会各自漂移。
+                 */}
+                <GlassPillIndicator
+                  index={Math.max(
+                    0,
+                    RARITY_OPTIONS.findIndex((o) => o.value === rarityFilter),
+                  )}
+                  count={RARITY_OPTIONS.length}
+                  wrapInset={4}
+                  gap={2}
                 />
                 {RARITY_OPTIONS.map((opt) => (
                   <button
@@ -970,42 +1185,29 @@ export default function GachaRecordsPage() {
       )}
 
       {/*
-       * 分类选择（悬浮于内容区底部的多项 switch）：指示器滑过去，不再逐项换底。
+       * 窄屏分类栏：**本页不渲染胶囊**，而是把分类项注册给布局层。
        *
-       * 这个胶囊是 `sticky`（吸底悬浮），窄屏上有三点必须收敛：
-       *  1) 它整条压在内容之上，手机上没有留白就会盖住最后一行表格；
-       *     用 `--safe-area-bottom` + 底部留白把它抬到手势条之上。
-       *  2) ⚠️ 它与**移动端底部导航胶囊**同处屏幕底部：
-       *     导航胶囊是 `fixed bottom-0` 的悬浮件（高约 56px），分类胶囊若也贴底，
-       *     两者会**重叠**，导航胶囊把分类胶囊的下半截整个盖住，分类项点不到。
-       *     → 移动端把分类胶囊**抬到导航胶囊之上**：`bottom` 给到
-       *     `calc(4.5rem + var(--safe-area-bottom))`（72px + 安全区），
-       *     并去掉右侧让位（`mr-[4.25rem]`）—— 让位对象已从「菜单按钮」变成
-       *     「整条导航胶囊」，那是通栏的，横向让位不再成立。
-       *  3) 空出来的宽度要**分给每个分类项**（`flex-1` 等分），而不是让文字
-       *     按内容宽度挤在左边 —— 否则「全部角色」三项之外大片留白、右侧空荡。
-       *     实测 411px 视口：胶囊 x16–319（303px 宽），各项等分、文字不截断。
+       * 布局层的 `MobileBottomNav`（在 `<main>` 内容流里、页面内容之前）从
+       * `bottom-layer` 读到本页注册的分类项后就显示分类、否则显示导航项，
+       * 两者共用那条 **sticky** 条 —— 起始位置在页面内容上方，向上滚动时
+       * 先随页面一起上移、到距顶 10px 处吸住。
        *
-       * 切换动画（滑动指示器）在**移动端与桌面端完全一致**：
-       * 指示器始终渲染，各项等分宽度（`flex-1`），指示器宽度 = 每项宽度，
-       * 靠 `translateX(下标 * 100%)` 滑过去；选中态由**指示器**承担，
-       * 按钮本身只改文字色 —— 与桌面端同一套实现，没有第二套。
-       * （早先窄屏曾让按钮自己换底 `bg-primary` + 指示器 `hidden lg:block`，
-       *  两套并存；现已统一为指示器方案。）
-       *
-       * `lg` 及以上桌面没有底部导航胶囊，恢复原来的 `w-full max-w-2xl` 居中 +
-       * `bottom-4`。
+       * 之所以这样拆：胶囊在布局层、分类在路由子树，两者是兄弟；把节点
+       * portal 过去会依赖挂载点与 effect 时序（实测反复出错），只传数据则
+       * 只有一层 DOM、一套命中区，行为确定。
        */}
-      <div className="sticky z-40 mx-auto rounded-full p-1.5 flex lg-control border border-separator/70 shadow-lg overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden bottom-[calc(4.5rem+var(--safe-area-bottom))] lg:bottom-4 w-auto max-w-none lg:mr-0 lg:w-full lg:max-w-2xl">
-        {/* 滑动指示器：始终渲染（移动端与桌面同一套动画）。
-         * 宽度 = 胶囊内容宽 / 项数 —— 各项等分（`flex-1`）时正好落在对应项上。 */}
-        <span
-          aria-hidden
-          className="pointer-events-none absolute top-1.5 bottom-1.5 left-1.5 rounded-full lg-control border border-primary/50 [transition:transform_var(--lg-dur-slow)_var(--lg-ease-glide)]"
-          style={{
-            width: `calc((100% - 0.75rem) / ${categories.length})`,
-            transform: `translateX(${Math.max(0, categories.findIndex((c) => c.key === category)) * 100}%)`,
-          }}
+
+      {/* 桌面端（lg+）仍在页面内吸底 —— 那里是宽屏布局，没有窄屏导航条。 */}
+      <div className="hidden lg:flex sticky z-40 bottom-4 mx-auto rounded-full p-1.5 lg-control border border-separator/70 shadow-lg w-full max-w-2xl">
+        {/*
+         * 滑动指示器：与窄屏底部胶囊**共用同一组件**，几何完全一致
+         * （内容区内缩 + 上下留白 + 惯性滑动的 glide 缓动）。
+         * 此前这里是手写的一套（`top-1.5 bottom-1.5` + `calc((100% - 0.75rem)/n)`），
+         * 与窄屏那套的留白规则会各自漂移，改成共用后两处不会再分叉。
+         */}
+        <GlassPillIndicator
+          index={Math.max(0, categories.findIndex((c) => c.key === category))}
+          count={categories.length}
         />
         {categories.map((c) => {
           const isActive = category === c.key;
@@ -1098,12 +1300,126 @@ export default function GachaRecordsPage() {
                   : `+${syncResult.newRecords} new, ${syncResult.totalRecords} total`}
               </p>
             </div>
-          ) : null}
+          ) : (
+            /*
+             * 收尾态：`syncing` 已经回落、但 `syncResult` 还没到手。
+             *
+             * 后端在收尾时先发一个 `done=true` 的进度事件（监听器据此把
+             * `syncing` 置 false），而 `syncResult` 要等 `invoke` 的 Promise
+             * 才落地 —— 这中间会有一小段「既不在同步、也没有结果」的窗口。
+             * 原先这里渲染 `null`，表现就是**抽屉突然空白一下**，看着像卡死。
+             * 用一个不转的进度环 + 「正在整理数据」把这段缝补上。
+             */
+            <div className="flex flex-col items-center justify-center gap-3 py-6 text-center">
+              <GlassProgressCircle
+                isIndeterminate
+                size="lg"
+                aria-label="Finalizing"
+                className="text-primary"
+              >
+                <GlassProgressCircle.Track>
+                  <GlassProgressCircle.TrackCircle />
+                  <GlassProgressCircle.FillCircle />
+                </GlassProgressCircle.Track>
+              </GlassProgressCircle>
+              <p className="text-sm text-foreground">
+                {isZh ? "正在整理同步结果..." : "Finalizing..."}
+              </p>
+            </div>
+          )}
         </CustomModalBody>
         <CustomModalFooter>
           <GlassButton variant="secondary" onPress={() => setProgressModalOpen(false)}>
             {isZh ? "关闭" : "Close"}
           </GlassButton>
+        </CustomModalFooter>
+      </CustomModal>
+
+      {/*
+       * 授权抽屉：同步因「未授权」失败时弹出。
+       *
+       * 为什么不是普通弹窗：用户此刻要做的是一件有明确因果的动作 ——
+       * 「授权 → 同步」。抽屉里直接给授权按钮，成功后自动重试同步，
+       * 不用再让用户回到抽卡页点一次。
+       */}
+      <CustomModal
+        isOpen={authDrawerOpen}
+        onClose={() => setAuthDrawerOpen(false)}
+        size="sm"
+      >
+        <CustomModalHeader onClose={() => setAuthDrawerOpen(false)}>
+          {t("settings.account.u8_auth_title")}
+        </CustomModalHeader>
+        <CustomModalBody className="space-y-3">
+          <p className="text-sm text-muted">
+            {authReason === "arknights"
+              ? isZh
+                ? "该角色的抽卡令牌已失效或被服务端拒绝。点下方按钮重新授权后再同步。"
+                : "This role's gacha token was rejected or has expired. Re-authorize it below, then sync again."
+              : t("settings.account.u8_auth_desc")}
+          </p>
+
+          {selectedAccount && (
+            <div className="flex items-center gap-3 rounded-lg border border-separator/60 p-3">
+              <AccountAvatar
+                src={selectedAccount.avatar}
+                alt={selectedAccount.nickname}
+                size="sm"
+                className="!rounded-full"
+              />
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-1.5">
+                  <span className="truncate text-sm font-medium text-foreground">
+                    {selectedAccount.nickname}
+                  </span>
+                  <GameBadge
+                    game={selectedAccount.game}
+                    variant="icon"
+                    size="sm"
+                  />
+                </div>
+                <span className="block text-[11px] text-muted">
+                  Lv.{selectedAccount.level}
+                </span>
+              </div>
+            </div>
+          )}
+
+          {authNotice && (
+            <p
+              className={clsx(
+                "text-xs",
+                authNotice.tone === "ok"
+                  ? "text-success-text"
+                  : "text-danger-text",
+              )}
+              role="status"
+            >
+              {authNotice.text}
+            </p>
+          )}
+        </CustomModalBody>
+        <CustomModalFooter>
+          <div className="flex w-full gap-2">
+            <GlassButton
+              variant="secondary"
+              isDisabled={authBusy}
+              onPress={() => setAuthDrawerOpen(false)}
+              className="flex-1"
+            >
+              {t("settings.account.u8_skip")}
+            </GlassButton>
+            <GlassButton
+              variant="primary"
+              isDisabled={authBusy || !selectedAccount}
+              onPress={() => void authorizeAndRetrySync()}
+              className="flex-1"
+            >
+              {authBusy
+                ? t("settings.account.loading")
+                : t("settings.account.u8_authorize")}
+            </GlassButton>
+          </div>
         </CustomModalFooter>
       </CustomModal>
     </div>

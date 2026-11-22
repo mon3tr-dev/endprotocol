@@ -75,7 +75,9 @@
 
 **备注**：用 `requestAnimationFrame` 轮询等待容器挂载（back-to-top.tsx:34-44）；固定定位 `right-6 z-[10003]`；文件头注释写"超过 50% 显示"，实际代码是 `p > 20`，以代码为准。
 
-⚠️ **移动端（`<lg`）的 bottom 必须让开右下角菜单按钮**：`bottom-6 right-6` 的 48px 悬浮球与 `layouts/dashboard.tsx` 的移动端菜单按钮（`fixed right-6 bottom-[1.5rem+safe]`、52px 见方、z-30）**完全重合**，而本组件 `z-[10003]` 更高，会把菜单按钮整个盖住 —— 移动端点右下角变成"点了没反应"，且菜单永远打不开。现行写法为 `bottom-[calc(6rem+var(--safe-area-bottom))] lg:bottom-6`（`<lg` 抬到菜单按钮上方留 20px 间隙，`lg` 及以上桌面没有菜单按钮，恢复 `bottom-6`）。`DashboardFAB`（`components/dashboard-fab.tsx`）是同一问题的既有解法，两者取值保持一致。
+⚠️ **移动端（`<lg`）的 bottom 必须让开右下角的悬浮件**：`bottom-6 right-6` 的 48px 悬浮球会与其下方的悬浮控件**完全重合**，而本组件 `z-[10003]` 更高，会把对方整个盖住 —— 移动端点右下角变成"点了没反应"。现行写法为 `bottom-[calc(7rem+var(--safe-area-bottom))] lg:bottom-6`（`<lg` 抬到底部导航胶囊上方留出间隙，`lg` 及以上桌面没有底部导航，恢复 `bottom-6`）。`DashboardFAB`（`components/dashboard-fab.tsx`）是同一问题的既有解法，两者有同一套取值规则。
+
+> **为什么是 7rem 而不是 6rem**：底部导航胶囊现在高 62px（52px 时滑块指示器的框线与图标/文字贴死，58px 仍只有 2dp，62px 实测留 4dp —— 详见 [components_sidebar_charts.md](components_sidebar_charts.md) 的 `mobile-bottom-nav` 一节）。胶囊顶边 = 安全区 + 8px 留白 + 62px ≈ 70px，本组件取 7rem（112px）留足余量。**胶囊高度变了，这里的值要跟着复核**（`DashboardFAB` 用 5.5rem，实测与胶囊间距 18dp）。
 
 ## `src/components/ui/badge.tsx`
 **职责**：胶囊形标签（Chip/Badge），三维度变体：填充样式 x 尺寸 x 语义色。
