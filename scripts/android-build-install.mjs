@@ -58,10 +58,22 @@ const LOCAL_HEADROOM = 1_000_000;
 const LOCAL_STRIDE = 1;
 
 // Files worth keeping across a reinstall. Everything else under /data/data is
-// regenerable cache (webview, code_cache, image_cache). `secrets.key` is
-// deliberately excluded: it is bound to the install and the config layer
-// tolerates its absence, but it is never *needed* to read app_config.json.
-const PRESERVE = ["app_config.json", "app_config.json.bak"];
+// regenerable cache (webview, code_cache, image_cache).
+//
+// `secrets.key` is only the key for the *encrypted-file* fallback backend (used
+// where no OS credential store exists, e.g. a Linux AppImage). On Android the
+// keyring backend is available, so credentials live in the Android Keystore,
+// which is bound to the package + signature and lives outside /data/data —
+// `run-as` cannot reach it. Preserving these files is therefore necessary but
+// not sufficient: after a signature-crossing reinstall the account metadata and
+// role bindings survive while `cred`/`token` become unreadable, and the user has
+// to sign in to that account once to restore them. See docs/development.md.
+const PRESERVE = [
+  "app_config.json",
+  "app_config.json.bak",
+  "secrets.key",
+  "secrets.enc",
+];
 
 const EXE = process.platform === "win32" ? ".exe" : "";
 

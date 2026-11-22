@@ -93,8 +93,20 @@ pnpm android:install
    **注意它通过 `tauri --config` 叠加注入，不改 `tauri.conf.json`**：把
    `bundle.android.versionCode` 写进仓库配置会污染所有后续 release 包。
 2. 签名边界无法就地跨越，因此在卸载前用 `run-as` 把私有配置打包备份，
-   装完立刻还原（`app_config.json` + `.bak`）。release 包不可 `run-as`，
-   脚本会明确拒绝而不是静默清空数据。
+   装完立刻还原。release 包不可 `run-as`，脚本会明确拒绝而不是静默清空数据。
+
+> ⚠️ **重装会丢凭据（Android Keystore 存不进 tar 包）。**
+> 机密字段（`cred` / `token` / `hytoken`）由 `SecretStore` 保存。Android 上
+> `keyring` 后端可用，所以密钥与密文都在 **Android Keystore**（系统服务，按
+> 包名 + 签名绑定），`run-as` 只能读到应用私有目录，**碰不到它**。
+> 于是卸载重装后：`app_config.json` 里的账户元数据与角色列表回来了，但凭据
+> 读不出来 —— `get_skland_accounts` 仍能列出账户，`get_accounts` **静默返回
+> 空数组**、展开账户报 `Skland cred was not found`，用户看到的是「账户全没了」。
+>
+> 这是当前的已知边界，脚本无法自动救回。**遇到这种情况，在应用里对该账户
+> 重新登录一次即可恢复**（角色绑定还在，不需要重绑）。要彻底避免，只能改成
+> 以 release 签名就地覆盖安装（同签名时 `adb install -r` 不卸载，Keystore 记录
+> 保留）。
 
 ```bash
 pnpm android:install                       # 构建 + 备份 + 安装 + 还原
