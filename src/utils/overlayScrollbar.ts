@@ -12,6 +12,10 @@ function isScrollable(el: HTMLElement): boolean {
 function attach(el: HTMLElement): void {
   if (!isScrollable(el)) return;
   if (el.hasAttribute("data-ovs")) return;
+  // 显式退出：该容器不要可见滚动条，允许内容溢出后直接滚。
+  // （设置页左侧分区栏用它 —— 玻璃材质铺满整块面板，多出一条 8px 滚动条
+  //   既挤占宽度，也让材质在滚动时看起来"错位"。）
+  if (el.hasAttribute("data-no-ovs")) return;
 
   // overflow: overlay 在 Chromium 中让滚动条覆盖内容、不占布局空间，
   // 且保留原生滚动条的拖动能力。不支持的浏览器会忽略该值回退为 auto。

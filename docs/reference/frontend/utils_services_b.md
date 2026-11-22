@@ -265,7 +265,7 @@
 **备注**：**配置键** `developer_mode`、`log_level`；**invoke** `set_log_level`（参数 `{ level }`）；**窗口事件** `developerModeChange`（`detail.enabled`）。浏览器环境（无 Tauri）时 invoke 失败会静默忽略。
 
 ## `src/utils/overlayScrollbar.ts`
-**职责**：悬浮覆盖式滚动条初始化器（共 37 行）。扫描文档中 `overflow-y: auto/scroll` 的元素并改为 `overflow-y: overlay`，加 `data-ovs` 标记防重复处理；用 `MutationObserver` 持续接管后续新增的可滚动节点。
+**职责**：悬浮覆盖式滚动条初始化器。扫描文档中 `overflow-y: auto/scroll` 的元素并改为 `overflow-y: overlay`，加 `data-ovs` 标记防重复处理；用 `MutationObserver` 持续接管后续新增的可滚动节点。
 
 **导出**：函数 `initOverlayScrollbar`。
 
@@ -273,7 +273,9 @@
 
 | 符号 | 位置 | 说明 |
 | --- | --- | --- |
-| `initOverlayScrollbar` | overlayScrollbar.ts:24 | 幂等初始化（模块级 `inited` 标志 :22）：全量 `document.querySelectorAll("*")` 扫描并 `attach`；随后监听 `document.documentElement` 的 `childList+subtree` 变更，每次变更在 `requestAnimationFrame` 中重扫 |
+| `initOverlayScrollbar` | overlayScrollbar.ts:35 | 幂等初始化（模块级 `inited` 标志）：全量 `document.querySelectorAll("*")` 扫描并 `attach`；随后监听 `document.documentElement` 的 `childList+subtree` 变更，每次变更在 `requestAnimationFrame` 中重扫 |
+
+**退出标记 `data-no-ovs`**：`attach` 遇到带 `data-no-ovs` 的元素直接跳过。用途是**不要可见滚动条**的容器（设置页左侧分区栏）——被接管后 `[data-ovs]::-webkit-scrollbar { width: 8px }` 会把全局隐藏的滚动条恢复出来。注意标记必须落在**真正的滚动容器**上：标在只负责玻璃材质的父元素上无效，因为父元素通常是 `overflow-hidden`，`isScrollable` 就不会命中它。
 
 ### 内部结构（行号区间）
 
